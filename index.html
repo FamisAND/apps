@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mis Dashboards</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{
+  background:#000308;
+  background-image:linear-gradient(rgba(34,211,238,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.04) 1px,transparent 1px);
+  background-size:40px 40px;
+  background-attachment:fixed;
+  color:#e0f2fe;
+  font-family:'DM Sans','Segoe UI',sans-serif;
+  min-height:100vh;
+}
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:#000308;}
+::-webkit-scrollbar-thumb{background:#06b6d4;border-radius:3px;}
+
+/* ════════ NEON FX ════════ */
+/* Layer 1: SVG ray fullscreen (behind everything) */
+.fx-ray-svg{
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  pointer-events:none;
+  z-index:0;
+  opacity:.85;
+}
+.fx-ray-path{
+  fill:none;
+  stroke:#22d3ee;
+  stroke-width:2;
+  stroke-linecap:round;
+  filter:drop-shadow(0 0 6px #22d3ee) drop-shadow(0 0 14px #22d3ee99) drop-shadow(0 0 28px #22d3ee55);
+  stroke-dasharray:240 4000;
+  animation:rayTravel 9s linear infinite;
+}
+.fx-ray-path-2{
+  stroke:#a855f7;
+  filter:drop-shadow(0 0 6px #a855f7) drop-shadow(0 0 14px #a855f799) drop-shadow(0 0 28px #a855f755);
+  stroke-dasharray:180 4000;
+  animation:rayTravel2 13s linear infinite;
+  animation-delay:-3s;
+}
+@keyframes rayTravel{
+  0%   { stroke-dashoffset:0;     opacity:0;}
+  10%  { opacity:1;}
+  90%  { opacity:1;}
+  100% { stroke-dashoffset:-4240; opacity:0;}
+}
+@keyframes rayTravel2{
+  0%   { stroke-dashoffset:0;     opacity:0;}
+  10%  { opacity:.7;}
+  90%  { opacity:.7;}
+  100% { stroke-dashoffset:-4180; opacity:0;}
+}
+
+/* Layer 2: Floating particles (CSS puro, sin libs) */
+.fx-particles{
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  pointer-events:none;
+  z-index:0;
+  overflow:hidden;
+}
+.fx-particle{
+  position:absolute;
+  width:2px;height:2px;
+  background:#22d3ee;
+  border-radius:50%;
+  box-shadow:0 0 6px #22d3ee,0 0 12px #22d3ee99;
+  animation:particleFloat linear infinite;
+  opacity:0;
+}
+@keyframes particleFloat{
+  0%   { transform:translate(0,100vh) scale(0.5); opacity:0;}
+  10%  { opacity:.8;}
+  90%  { opacity:.8;}
+  100% { transform:translate(20px,-10vh)  scale(1.2); opacity:0;}
+}
+
+/* Layer 3: ensure main content stays above fx */
+.screen{position:relative;z-index:1;}
+
+.screen{display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;}
+.screen.active{display:flex;}
+
+.logo{display:flex;align-items:center;gap:14px;margin-bottom:6px;}
+.logo-icon{
+  width:46px;height:46px;background:#000;border:1px solid #22d3ee;
+  display:flex;align-items:center;justify-content:center;font-size:1.4rem;
+  box-shadow:0 0 20px #22d3ee88;
+  clip-path:polygon(0 0,100% 0,100% 70%,85% 100%,0 100%);
+}
+.logo-name{font-weight:500;font-size:1.5rem;letter-spacing:.06em;color:#22d3ee;text-shadow:0 0 12px #22d3eecc,0 0 24px #22d3ee44;}
+.logo-sub{font-size:.66rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.2em;margin-top:3px;}
+
+.last-update{font-size:.6rem;color:#22d3ee;font-family:'DM Mono',monospace;text-align:center;letter-spacing:.18em;margin-bottom:32px;opacity:.7;text-transform:uppercase;}
+
+.card{background:#020617;border:1px solid #06b6d4;
+  border-radius:6px;padding:28px;width:100%;max-width:420px;
+  box-shadow:0 0 30px rgba(34,211,238,.18),inset 0 0 30px rgba(34,211,238,.04);}
+.card-title{font-weight:600;font-size:1rem;margin-bottom:6px;text-align:center;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;text-shadow:0 0 8px #22d3ee99;}
+.card-sub{font-size:.78rem;color:#67e8f9;margin-bottom:22px;text-align:center;line-height:1.5;}
+
+.fld-lbl{font-size:.65rem;color:#0e7490;margin-bottom:5px;letter-spacing:.15em;font-family:'DM Mono',monospace;text-transform:uppercase;}
+.inp{background:#000;border:1px solid #0e7490;border-radius:4px;color:#e0f2fe;
+  padding:10px 12px;font-size:.9rem;font-family:inherit;width:100%;outline:none;
+  transition:all .15s;}
+.inp:focus{border-color:#22d3ee;box-shadow:0 0 12px #22d3ee44;}
+.inp+.fld-lbl{margin-top:14px;}
+
+.btn{background:#000;color:#22d3ee;border:1px solid #22d3ee;
+  padding:11px 22px;border-radius:4px;font-family:inherit;font-size:.85rem;font-weight:500;
+  cursor:pointer;width:100%;margin-top:18px;transition:all .15s;letter-spacing:.12em;text-transform:uppercase;
+  box-shadow:0 0 14px #22d3ee44;text-shadow:0 0 8px #22d3ee99;}
+.btn:hover{background:#022c43;box-shadow:0 0 22px #22d3eecc;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn-ghost{background:transparent;border:1px solid #0e7490;color:#67e8f9;margin-top:8px;box-shadow:none;text-shadow:none;}
+.btn-ghost:hover{background:transparent;border-color:#22d3ee;color:#22d3ee;box-shadow:0 0 14px #22d3ee66;}
+.btn-danger{background:transparent;border:1px solid #7f1d1d;color:#f87171;margin-top:8px;box-shadow:none;text-shadow:none;}
+.btn-danger:hover{background:#1a0808;border-color:#ef4444;color:#ef4444;box-shadow:0 0 14px #ef444466;}
+
+.help{font-size:.72rem;color:#0e7490;line-height:1.55;margin-top:14px;
+  background:#000;border:1px solid #0e749055;border-radius:4px;padding:10px 12px;font-family:'DM Mono',monospace;}
+.help a{color:#22d3ee;text-decoration:none;}
+.help a:hover{text-shadow:0 0 8px #22d3ee;}
+
+.err{color:#f87171;font-size:.78rem;min-height:18px;text-align:center;margin:8px 0;text-shadow:0 0 8px #ef444466;}
+
+/* GRID DE LAS 3 CARDS DE APPS */
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;
+  width:100%;max-width:780px;margin-bottom:24px;
+  perspective:1200px;}
+
+.menu-card{
+  background:linear-gradient(180deg,#020617 0%,#01101e 100%);
+  border-left:2px solid #22d3ee;
+  border-right:1px solid #06b6d433;
+  border-top:1px solid #06b6d433;
+  border-bottom:1px solid #06b6d433;
+  padding:24px 18px;text-align:center;cursor:pointer;text-decoration:none;color:inherit;
+  display:block;position:relative;transition:box-shadow .25s,border-color .25s;
+  box-shadow:0 0 24px rgba(34,211,238,.2);
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);
+  /* 3D tilt support */
+  transform-style:preserve-3d;
+  will-change:transform;
+}
+.menu-card:hover{
+  box-shadow:0 0 48px rgba(34,211,238,.65),0 0 96px rgba(34,211,238,.25),inset 0 0 24px rgba(34,211,238,.08);
+  border-color:#22d3ee;
+}
+.menu-card:hover .card-emoji{filter:drop-shadow(0 0 14px #22d3ee) drop-shadow(0 0 28px #22d3ee88);transform:scale(1.08);}
+.menu-card .card-emoji{transition:all .25s;}
+/* Shimmer overlay on hover */
+.menu-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(120deg,transparent 30%,rgba(34,211,238,.13) 50%,transparent 70%);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .25s;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);
+}
+.menu-card:hover::before{
+  opacity:1;
+  animation:shimmerSweep 1.6s ease-in-out infinite;
+}
+@keyframes shimmerSweep{
+  0%   { background-position:-200% 0;}
+  100% { background-position:200% 0;}
+}
+.menu-card .corner-tr{display:none;}
+.menu-card .corner-bl{display:none;}
+.menu-card:hover .corner-tr,.menu-card:hover .corner-bl{width:36px;height:36px;box-shadow:0 0 12px #22d3ee;}
+
+/* ════════ IA APIs LIST ════════ */
+.ia-api-item{
+  display:flex;align-items:center;gap:12px;
+  background:#020617;border:1px solid #06b6d433;border-left:3px solid #06b6d4;
+  padding:12px 14px;margin-bottom:8px;
+  transition:all .2s;cursor:default;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);
+}
+.ia-api-item:hover{border-left-color:#22d3ee;box-shadow:0 0 20px rgba(34,211,238,.25);}
+.ia-api-item.dragging{opacity:.4;border-style:dashed;}
+.ia-api-item.drag-over{border-top:2px solid #22d3ee;}
+.ia-api-handle{
+  cursor:grab;color:#0e7490;font-size:1.1rem;letter-spacing:-2px;user-select:none;
+  padding:4px 2px;
+}
+.ia-api-handle:hover{color:#22d3ee;}
+.ia-api-handle:active{cursor:grabbing;}
+.ia-api-info{flex:1;min-width:0;}
+.ia-api-name{font-weight:600;color:#67e8f9;font-size:.9rem;letter-spacing:.05em;}
+.ia-api-meta{font-size:.68rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;margin-top:3px;}
+.ia-api-status{
+  font-size:.6rem;font-family:'DM Mono',monospace;letter-spacing:.15em;
+  padding:3px 8px;border:1px solid;
+  text-transform:uppercase;
+}
+.ia-api-status.on{color:#22d3ee;border-color:#22d3ee;text-shadow:0 0 6px #22d3ee99;}
+.ia-api-status.off{color:#475569;border-color:#475569;}
+.ia-api-actions{display:flex;gap:4px;}
+.ia-api-btn{
+  background:transparent;border:1px solid #0e7490;color:#67e8f9;
+  font-family:'DM Mono',monospace;font-size:.65rem;
+  padding:4px 8px;cursor:pointer;letter-spacing:.1em;
+  transition:all .15s;
+}
+.ia-api-btn:hover{border-color:#22d3ee;color:#22d3ee;background:rgba(34,211,238,.05);}
+.ia-api-btn.danger{border-color:#7f1d1d;color:#fca5a5;}
+.ia-api-btn.danger:hover{border-color:#ef4444;color:#f87171;background:rgba(239,68,68,.05);}
+.ia-api-empty{
+  text-align:center;padding:40px 20px;
+  color:#0e7490;font-family:'DM Mono',monospace;font-size:.78rem;letter-spacing:.1em;
+  border:1px dashed #0e7490;
+}
+.card-num{font-size:.55rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.18em;margin-bottom:6px;}
+.card-emoji{font-size:1.6rem;margin-bottom:6px;filter:drop-shadow(0 0 8px #22d3ee);}
+.menu-name{font-weight:600;font-size:.85rem;margin-bottom:16px;color:#22d3ee;letter-spacing:.15em;text-transform:uppercase;text-shadow:0 0 8px #22d3ee99;}
+.kpi-main{font-size:2.1rem;font-weight:700;font-family:'DM Mono',monospace;color:#67e8f9;text-shadow:0 0 18px #22d3ee,0 0 36px #22d3ee66;letter-spacing:-.02em;}
+.kpi-main.green{color:#86efac;text-shadow:0 0 18px #22c55e,0 0 36px #22c55e66;}
+.kpi-main.red{color:#fca5a5;text-shadow:0 0 18px #ef4444,0 0 36px #ef444466;}
+.kpi-sub{font-size:.65rem;color:#0e7490;margin-top:8px;font-family:'DM Mono',monospace;letter-spacing:.08em;text-transform:uppercase;}
+.kpi-bar{background:#000;height:4px;border:1px solid #0e7490;margin-top:14px;overflow:hidden;}
+.kpi-bar-fill{background:linear-gradient(90deg,#06b6d4,#22d3ee);height:100%;width:0;transition:width .4s;box-shadow:0 0 10px #22d3ee;}
+.kpi-badges{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;justify-content:center;min-height:22px;}
+.kpi-badge{background:transparent;border:1px solid #0e7490;color:#67e8f9;padding:3px 10px;font-size:.55rem;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;}
+.kpi-badge.amber{border-color:#f59e0b;color:#fbbf24;text-shadow:0 0 6px #f59e0baa;box-shadow:0 0 10px #f59e0b33;}
+.kpi-badge.red{border-color:#ef4444;color:#f87171;text-shadow:0 0 6px #ef444466;}
+.card-update{font-size:.5rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.2em;margin-top:8px;text-align:right;text-transform:uppercase;transition:color .2s;}
+.card-update.upd-warn{color:#fbbf24;text-shadow:0 0 6px #f59e0b88;}
+.card-update.upd-old{color:#f87171;text-shadow:0 0 8px #ef444488;animation:updPulse 2s ease-in-out infinite;}
+@keyframes updPulse{
+  0%,100%{opacity:1;}
+  50%{opacity:.55;}
+}
+
+.footer{font-size:.6rem;color:#0e7490;font-family:'DM Mono',monospace;margin-top:18px;
+  text-align:center;letter-spacing:.18em;text-transform:uppercase;}
+.footer a{color:#22d3ee;text-decoration:none;}
+
+/* ════════ MOBILE (≤640px) ════════ */
+@media (max-width: 640px) {
+  /* Pantallas con padding más pequeño */
+  .screen{padding:16px 12px;}
+
+  /* Logo más compacto */
+  .logo-icon{width:38px;height:38px;font-size:1.1rem;}
+  .logo-name{font-size:1.15rem;letter-spacing:.04em;}
+  .logo-sub{font-size:.6rem;letter-spacing:.16em;}
+  .last-update{font-size:.55rem;margin-bottom:20px;}
+
+  /* Cards una por fila, padding ajustado */
+  .menu-grid{
+    grid-template-columns:1fr;
+    gap:12px;
+    perspective:none; /* desactivar 3D context en mobile (no hay tilt) */
+  }
+  .menu-card{padding:18px 16px;}
+  .menu-card .corner-tr,.menu-card .corner-bl{display:none !important;}
+
+  /* En mobile, NO usar transform 3D ni shimmer (consume CPU sin valor) */
+  .menu-card{transform:none !important;}
+  .menu-card::before{display:none;}
+  .menu-card:hover{
+    /* En mobile no hay hover real, pero por si acaso suaviza */
+    box-shadow:0 0 28px rgba(34,211,238,.35);
+    transform:none !important;
+  }
+
+  /* Card content: un poco más compacto */
+  .card-num{font-size:.5rem;}
+  .card-emoji{font-size:1.4rem;margin-bottom:4px;}
+  .menu-name{font-size:.78rem;margin-bottom:12px;}
+  .kpi-main{font-size:1.85rem;}
+  .kpi-sub{font-size:.6rem;}
+
+  /* Card del setup más pequeña */
+  .card{padding:22px 18px;max-width:100%;}
+  .card-title{font-size:.92rem;}
+  .card-sub{font-size:.72rem;}
+  .inp{font-size:.85rem;padding:9px 11px;}
+
+  /* SVG ray: más sutil para no distraer en pantalla pequeña */
+  .fx-ray-svg{opacity:.55;}
+  /* En mobile ocultamos el segundo path (violeta) — solo cyan */
+  .fx-ray-path-2{display:none;}
+
+  /* Botones de la barra (Resync, IA APIs, Logout): cada uno línea entera si hace falta */
+  .screen > div[style*="display:flex;gap:8px;flex-wrap:wrap"] .btn{
+    min-width:100% !important; /* fuerza 1 por línea */
+    flex:0 0 100% !important;
+  }
+
+  /* Modal IA APIs: padding reducido */
+  #iaApisModal{padding:20px 12px;}
+  #iaApisModal > div{max-width:100%;}
+
+  /* Editor de API: ocupa toda la pantalla */
+  #iaApiEditorModal{padding:12px;}
+  #iaApiEditorModal > div{padding:18px 16px;max-width:100%;}
+
+  /* Items de la lista de APIs en mobile: el handle + info en una fila, status + actions en otra */
+  .ia-api-item{
+    flex-wrap:wrap;
+    padding:10px 12px;
+    gap:8px;
+  }
+  .ia-api-info{flex:1 1 calc(100% - 32px);min-width:0;order:1;}
+  .ia-api-handle{order:0;}
+  .ia-api-status{order:2;}
+  .ia-api-actions{order:3;flex:0 0 auto;margin-left:auto;}
+  .ia-api-name{font-size:.82rem;}
+  .ia-api-meta{font-size:.62rem;word-break:break-all;}
+}
+
+/* ════════ MOBILE PEQUEÑO (≤380px — móviles antiguos) ════════ */
+@media (max-width: 380px) {
+  .logo-name{font-size:1rem;}
+  .menu-name{font-size:.72rem;}
+  .kpi-main{font-size:1.6rem;}
+}
+</style>
+</head>
+<body>
+
+<!-- ════════ NEON FX BACKGROUND ════════ -->
+<!-- Rayo neón animado: dos paths que cruzan la pantalla en diagonal con offsets distintos -->
+<svg class="fx-ray-svg" viewBox="0 0 2000 1200" preserveAspectRatio="none" aria-hidden="true">
+  <!-- Path 1: cyan, ondulado, dirección descendente diagonal -->
+  <path class="fx-ray-path" d="
+    M -100,200
+    Q 200,80 400,260
+    T 800,180
+    T 1200,340
+    T 1600,220
+    T 2100,400
+  "/>
+  <!-- Path 2: violeta, otra forma, otra dirección -->
+  <path class="fx-ray-path fx-ray-path-2" d="
+    M 2100,800
+    Q 1700,1000 1400,820
+    T 1000,940
+    T 600,760
+    T 200,900
+    T -100,720
+  "/>
+</svg>
+
+<!-- Partículas flotantes -->
+<div class="fx-particles" id="fxParticles" aria-hidden="true"></div>
+
+<!-- SETUP INICIAL -->
+<div id="setupScreen" class="screen">
+  <div class="logo">
+    <div class="logo-icon">📊</div>
+    <div>
+      <div class="logo-name">// MIS DASHBOARDS</div>
+      <div class="logo-sub">[ INITIAL SETUP ]</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Conectar con GitHub</div>
+    <div class="card-sub">Pega aquí tu repo privado de datos y un token de acceso. Se guardan solo en este dispositivo.</div>
+
+    <div class="fld-lbl">Repositorio (formato: <span style="color:#94a3b8">usuario/repo</span>)</div>
+    <input class="inp" id="setupRepo" placeholder="ejemplo: famisand/mis-datos" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+    <div class="fld-lbl">Rama (normalmente <span style="color:#94a3b8">main</span>)</div>
+    <input class="inp" id="setupBranch" value="main" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+    <div class="fld-lbl">Token de GitHub</div>
+    <input class="inp" id="setupToken" type="password" placeholder="github_pat_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" autocapitalize="off" spellcheck="false">
+
+    <div class="help">
+      ¿Cómo creo un token? Ve a
+      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>,
+      crea un token "fine-grained" con permiso de <b>Contents: Read and write</b> sobre tu repo de datos.
+    </div>
+
+    <div class="err" id="setupErr"></div>
+    <button class="btn" id="setupBtn">Probar conexión y entrar</button>
+  </div>
+</div>
+
+<!-- DESCARGANDO -->
+<div id="loadingScreen" class="screen">
+  <div class="logo">
+    <div class="logo-icon">⏳</div>
+    <div>
+      <div class="logo-name">// SYNC</div>
+      <div class="logo-sub" id="loadingMsg">descargando datos de github</div>
+    </div>
+  </div>
+</div>
+
+<!-- MENÚ -->
+<div id="menuScreen" class="screen">
+  <div class="logo">
+    <div class="logo-icon">📊</div>
+    <div>
+      <div class="logo-name">// MIS DASHBOARDS</div>
+      <div class="logo-sub">[<span id="menuRepo">—</span> · ONLINE]</div>
+    </div>
+  </div>
+
+  <div class="last-update" id="lastUpd">▸ SYNC OK ◂</div>
+
+  <div class="menu-grid" id="menuGrid">
+    <a class="menu-card" href="patrimonio.html">
+      <div class="corner-tr"></div><div class="corner-bl"></div>
+      <div class="card-num">// 01</div>
+      <div class="card-emoji">💰</div>
+      <div class="menu-name">Patrimonio</div>
+      <div class="kpi-main" id="kpiPatPct">—</div>
+      <div class="kpi-sub" id="kpiPatSub">objetivo</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" id="kpiPatBar"></div></div>
+      <div class="card-update" id="kpiPatUpd">— ◂</div>
+    </a>
+    <a class="menu-card" href="options.html">
+      <div class="corner-tr"></div><div class="corner-bl"></div>
+      <div class="card-num">// 02</div>
+      <div class="card-emoji">📈</div>
+      <div class="menu-name">Opciones</div>
+      <div class="kpi-main" id="kpiOptActivas">—</div>
+      <div class="kpi-sub">posiciones activas</div>
+      <div class="kpi-badges" id="kpiOptBadges"></div>
+      <div class="card-update" id="kpiOptUpd">— ◂</div>
+    </a>
+    <a class="menu-card" href="full_training.html">
+      <div class="corner-tr"></div><div class="corner-bl"></div>
+      <div class="card-num">// 03</div>
+      <div class="card-emoji">💪</div>
+      <div class="menu-name">Full Training</div>
+      <div class="kpi-main" id="kpiFtClientes">—</div>
+      <div class="kpi-sub">clientes activos</div>
+      <div class="card-update" id="kpiFtUpd">— ◂</div>
+    </a>
+    <a class="menu-card" href="facturas.html">
+      <div class="corner-tr"></div><div class="corner-bl"></div>
+      <div class="card-num">// 04</div>
+      <div class="card-emoji">📄</div>
+      <div class="menu-name">Facturas</div>
+      <div class="kpi-main" id="kpiFacTotal">—</div>
+      <div class="kpi-sub">facturas totales</div>
+      <div class="card-update" id="kpiFacUpd">— ◂</div>
+    </a>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:780px;">
+    <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="reSync()">↻ Resync</button>
+    <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="openIaApisModal()">🤖 IA APIs</button>
+    <button class="btn-danger btn" style="flex:1;min-width:130px;margin-top:0;" onclick="askLogout()">✕ Logout</button>
+  </div>
+
+  <div class="footer">
+    [ <span id="menuRepoFull">—</span> ]
+  </div>
+</div>
+
+<!-- ════════ IA APIs MODAL (centralizado) ════════ -->
+<div id="iaApisModal" class="screen" style="display:none;align-items:flex-start;padding:40px 16px;overflow-y:auto;">
+  <div style="width:100%;max-width:760px;margin:0 auto;">
+    <div class="logo" style="margin-bottom:18px;">
+      <div class="logo-icon">🤖</div>
+      <div>
+        <div class="logo-name">// CONFIG IA APIs</div>
+        <div class="logo-sub">[ FALLBACK CHAIN · DRAG TO REORDER ]</div>
+      </div>
+    </div>
+
+    <div style="background:#020617;border:1px solid #06b6d4;padding:20px;margin-bottom:18px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+      <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;margin-bottom:14px;">
+        Las APIs se prueban <strong>en orden</strong>. Si la primera falla (rate limit, error, key inválida...), se intenta automáticamente con la siguiente. Arrastra <span style="color:#22d3ee">⋮⋮</span> para reordenar.
+      </div>
+      <div style="color:#0e7490;font-size:.7rem;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">
+        Dónde sacar la key:
+      </div>
+      <div style="color:#67e8f9;font-size:.72rem;line-height:1.7;">
+        • <strong>Groq</strong>: <span style="color:#22d3ee">console.groq.com/keys</span> (gratis, sin tarjeta) — <em>recomendado</em><br>
+        • <strong>OpenRouter</strong>: <span style="color:#22d3ee">openrouter.ai/keys</span> (gratis, modelos :free)<br>
+        • <strong>Gemini</strong>: <span style="color:#22d3ee">aistudio.google.com/apikey</span> (requiere facturación vinculada en muchas regiones)
+      </div>
+    </div>
+
+    <div id="iaApisList" style="margin-bottom:14px;"></div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <button class="btn" style="flex:1;min-width:160px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="openIaApiEditor()">+ Añadir API</button>
+      <button class="btn btn-ghost" style="flex:1;min-width:160px;" onclick="closeIaApisModal()">← Volver al menú</button>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="exportIaConfig()" title="Descargar todas las APIs y instrucciones como archivo JSON">📤 Exportar config</button>
+      <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="document.getElementById('iaImportFile').click()" title="Cargar un archivo JSON exportado previamente">📥 Importar config</button>
+      <input type="file" id="iaImportFile" accept=".json,application/json" style="display:none" onchange="importIaConfig(event)">
+    </div>
+
+    <div id="iaTestResult" style="display:none;background:#020617;border:1px solid #0e7490;padding:14px;font-size:.78rem;color:#67e8f9;font-family:'DM Mono',monospace;line-height:1.6;"></div>
+  </div>
+</div>
+
+<!-- ════════ EDITOR DE UNA API ════════ -->
+<div id="iaApiEditorModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
+  <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:520px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+    <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;" id="iaApiEditorTitle">// NUEVA API</div>
+
+    <div class="fld-lbl">Nombre identificativo</div>
+    <input type="text" class="inp" id="iaApiName" placeholder="Ej: Groq cuenta principal">
+
+    <div class="fld-lbl">Proveedor</div>
+    <select class="inp" id="iaApiProvider" onchange="onProviderChange()">
+      <option value="groq">Groq (Llama 3.3 70B)</option>
+      <option value="openrouter">OpenRouter (modelos :free)</option>
+      <option value="gemini">Google Gemini</option>
+    </select>
+
+    <div class="fld-lbl">Modelo</div>
+    <input type="text" class="inp" id="iaApiModel" placeholder="llama-3.3-70b-versatile">
+
+    <div class="fld-lbl">API key</div>
+    <input type="password" class="inp" id="iaApiKey" placeholder="sk-... / gsk_... / AIza...">
+
+    <div style="display:flex;align-items:center;gap:8px;margin-top:14px;color:#67e8f9;font-size:.85rem;">
+      <input type="checkbox" id="iaApiActive" checked style="accent-color:#22d3ee;">
+      <label for="iaApiActive" style="cursor:pointer;">Activa (incluir en la cadena de fallback)</label>
+    </div>
+
+    <div id="iaApiEditorMsg" style="display:none;margin-top:12px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
+
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+      <button class="btn" style="flex:1;min-width:120px;background:transparent;border:1px solid #0e7490;color:#67e8f9;" onclick="testIaApi()">⚡ Probar</button>
+      <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="closeIaApiEditor()">Cancelar</button>
+      <button class="btn" style="flex:1;min-width:120px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveIaApi()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="github-sync.js"></script>
+<script>
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+document.getElementById('setupBtn').onclick = async function(){
+  const repo   = document.getElementById('setupRepo').value.trim();
+  const branch = document.getElementById('setupBranch').value.trim() || 'main';
+  const token  = document.getElementById('setupToken').value.trim();
+  const errEl  = document.getElementById('setupErr');
+  errEl.textContent='';
+
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){
+    errEl.textContent = 'Formato de repo inválido. Debe ser usuario/repo'; return;
+  }
+  if(!token){
+    errEl.textContent = 'El token es obligatorio'; return;
+  }
+
+  this.disabled = true; this.textContent = 'comprobando…';
+
+  try{
+    const res = await fetch('https://api.github.com/repos/'+repo, {
+      headers: { 'Authorization': 'token '+token, 'Accept':'application/vnd.github.v3+json' }
+    });
+    if(res.status === 404){ errEl.textContent = 'No encuentro ese repo (o el token no tiene acceso)';
+      this.disabled=false; this.textContent='Probar conexión y entrar'; return; }
+    if(res.status === 401){ errEl.textContent = 'Token inválido o caducado';
+      this.disabled=false; this.textContent='Probar conexión y entrar'; return; }
+    if(!res.ok){ errEl.textContent = 'Error de GitHub: '+res.status;
+      this.disabled=false; this.textContent='Probar conexión y entrar'; return; }
+  } catch(e){
+    errEl.textContent = 'Error de red: '+e.message;
+    this.disabled=false; this.textContent='Probar conexión y entrar'; return;
+  }
+
+  GitHubSync.setupCredentials({ repo, branch, token });
+  this.disabled = false; this.textContent='Probar conexión y entrar';
+  goLoading();
+};
+
+// Enter key avanza por los campos
+['setupRepo','setupBranch','setupToken'].forEach((id,i,arr) => {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      if(i < arr.length - 1){
+        document.getElementById(arr[i+1]).focus();
+      } else {
+        document.getElementById('setupBtn').click();
+      }
+    }
+  });
+});
+
+async function goLoading(){
+  show('loadingScreen');
+  const msg = document.getElementById('loadingMsg');
+  try{
+    msg.textContent = 'descargando data.json…';
+    const result = await GitHubSync.pullAndApplyAll();
+    if(result.fresh){ msg.textContent = 'primer arranque, sin datos remotos'; }
+    setTimeout(goMenu, 400);
+  } catch(e){
+    msg.textContent = 'Error: '+(e.message||'desconocido');
+    setTimeout(()=>{
+      if(e.status === 401 || e.status === 403){
+        if(confirm('Token inválido. ¿Borrar credenciales y empezar de nuevo?')){
+          GitHubSync.clearCredentials();
+          location.reload();
+        }
+      }
+    }, 1200);
+  }
+}
+
+async function reSync(){ await goLoading(); }
+
+function goMenu(){
+  document.getElementById('menuRepo').textContent     = GitHubSync.getRepo() || '—';
+  document.getElementById('menuRepoFull').textContent = GitHubSync.getRepo() || '—';
+  computeKpis();
+  show('menuScreen');
+}
+
+// ── KPIs DEL MENÚ ────────────────────────────────────────
+// Lee localStorage de cada app y rellena los KPIs no sensibles.
+// Sin importes, sin saldos. Solo: % progreso, nº activas, fecha objetivo, nº clientes.
+function computeKpis(){
+  computePatKpi();
+  computeOptKpi();
+  computeFtKpi();
+  computeFacKpi();
+}
+
+const MO3 = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+
+// Umbrales de "frescura" (en días)
+const STALE_WARN_DAYS = 7;    // ámbar si hace >= 7 días
+const STALE_OLD_DAYS  = 30;   // rojo si hace >= 30 días
+
+// Formatea fecha + aplica clase de antigüedad al elemento
+function setUpd(elementId, d){
+  const el = document.getElementById(elementId);
+  if(!el) return;
+  el.textContent = fmtUpd(d);
+  // Reset clases
+  el.classList.remove('upd-warn','upd-old');
+  if(!d || isNaN(d.getTime())) return;
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if(days >= STALE_OLD_DAYS) el.classList.add('upd-old');
+  else if(days >= STALE_WARN_DAYS) el.classList.add('upd-warn');
+}
+
+// Formatea una fecha como "ACT 06 MAY" si es de este año, o "ACT MAY 25" si es de otros años
+function fmtUpd(d){
+  if(!d || isNaN(d.getTime())) return '— ◂';
+  const now = new Date();
+  if(d.getFullYear() === now.getFullYear()){
+    return 'ACT ' + String(d.getDate()).padStart(2,'0') + ' ' + MO3[d.getMonth()] + ' ◂';
+  }
+  return 'ACT ' + MO3[d.getMonth()] + ' ' + String(d.getFullYear()).slice(-2) + ' ◂';
+}
+
+// Devuelve la fecha más reciente de un array de Dates (o null si no hay)
+function maxDate(dates){
+  let max = null;
+  dates.forEach(d => {
+    if(d && !isNaN(d.getTime()) && (!max || d > max)) max = d;
+  });
+  return max;
+}
+
+function computePatKpi(){
+  try{
+    const raw = localStorage.getItem('pat_v5');
+    if(!raw) return;
+    const profiles = JSON.parse(raw);
+    if(!Array.isArray(profiles) || !profiles.length) return;
+    const p = profiles[0];
+    const ents = (p.entries || []).slice().sort((a,b)=>{
+      if(a.year !== b.year) return a.year - b.year;
+      return a.month - b.month;
+    });
+    if(!ents.length) return;
+
+    const calcEnt = e => {
+      let t = 0;
+      Object.values(e.assets || {}).forEach(v => {
+        const n = parseFloat(v);
+        if(!isNaN(n)) t += n;
+      });
+      Object.values(e.debts || {}).forEach(v => {
+        const n = parseFloat(v);
+        if(!isNaN(n)) t -= n;
+      });
+      return t;
+    };
+    const last = ents[ents.length-1];
+    const currentPat = calcEnt(last);
+
+    // Buscar primer objetivo de tipo "patrimonio" (o el primero de la lista si no hay del tipo)
+    const objs = p.objectives || [];
+    const obj = objs.find(o => o.type === 'patrimonio') || objs[0];
+
+    if(obj && obj.target > 0){
+      // % de progreso al objetivo (NO % crecimiento)
+      const pct = (currentPat / obj.target) * 100;
+      const pctClamped = Math.min(100, pct);
+      document.getElementById('kpiPatPct').textContent = pct.toFixed(1) + '%';
+      document.getElementById('kpiPatBar').style.width = pctClamped + '%';
+
+      // Sub-texto: "Objetivo · DEC 27" o "Objetivo · ∞"
+      let sub = 'Objetivo';
+      if(obj.deadline){
+        const d = new Date(obj.deadline);
+        if(!isNaN(d.getTime())){
+          sub += ' · ' + MO3[d.getMonth()] + ' ' + String(d.getFullYear()).slice(-2);
+        } else {
+          sub += ' · ∞';
+        }
+      } else {
+        sub += ' · ∞';
+      }
+      document.getElementById('kpiPatSub').textContent = sub;
+    } else {
+      // Sin objetivo configurado
+      document.getElementById('kpiPatPct').textContent = '—';
+      document.getElementById('kpiPatSub').textContent = 'Sin objetivo';
+    }
+
+    // Última actualización: buscamos la fecha más reciente entre TODOS los datos del perfil
+    const allDates = [];
+    // Fechas de entries (último entry registrado del mes)
+    ents.forEach(e => {
+      if(e.year != null && e.month != null) allDates.push(new Date(e.year, e.month, 28));
+    });
+    // Fechas de transacciones de gastos
+    if(p.gastos && p.gastos.meses){
+      Object.values(p.gastos.meses).forEach(mes => {
+        (mes.transacciones||[]).forEach(t => {
+          if(t.fecha) allDates.push(new Date(t.fecha));
+        });
+        (mes.archivos||[]).forEach(a => {
+          if(a.fechaSubida) allDates.push(new Date(a.fechaSubida));
+        });
+      });
+    }
+    setUpd('kpiPatUpd', maxDate(allDates));
+  } catch(e){ console.warn('KPI patrimonio:', e); }
+}
+
+function computeOptKpi(){
+  try{
+    const activasRaw = localStorage.getItem('ot_activas');
+    let nActivas = 0;
+    let nDteBajos = 0;
+    if(activasRaw){
+      const arr = JSON.parse(activasRaw);
+      if(Array.isArray(arr)){
+        nActivas = arr.length;
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        arr.forEach(a => {
+          if(!a.exp) return;
+          const exp = new Date(a.exp);
+          const dte = Math.round((exp - today) / 86400000);
+          if(dte >= 0 && dte <= 7) nDteBajos++;
+        });
+      }
+    }
+    document.getElementById('kpiOptActivas').textContent = String(nActivas).padStart(2,'0');
+
+    const badgesEl = document.getElementById('kpiOptBadges');
+    badgesEl.innerHTML = '';
+    if(nDteBajos > 0){
+      badgesEl.innerHTML += `<span class="kpi-badge amber">⚠ ${String(nDteBajos).padStart(2,'0')} DTE ≤ 7D</span>`;
+    } else if(nActivas > 0){
+      badgesEl.innerHTML += `<span class="kpi-badge">DTE OK</span>`;
+    }
+
+    // Última actualización: fecha más reciente entre TODO (activas + histórico)
+    const allDates = [];
+    if(activasRaw){
+      const arr = JSON.parse(activasRaw);
+      if(Array.isArray(arr)){
+        arr.forEach(a => {
+          ['apertura','cierre','exp','fechaUltimaActualizacion','fechaActualizacion','lastUpdate'].forEach(k=>{
+            if(a[k]) allDates.push(new Date(a[k]));
+          });
+        });
+      }
+    }
+    const histRaw = localStorage.getItem('ot_hist');
+    if(histRaw){
+      const hist = JSON.parse(histRaw);
+      if(Array.isArray(hist)){
+        hist.forEach(h => {
+          ['cierre','apertura','fechaUltimaActualizacion','fechaActualizacion','lastUpdate'].forEach(k=>{
+            if(h[k]) allDates.push(new Date(h[k]));
+          });
+        });
+      }
+    }
+    setUpd('kpiOptUpd', maxDate(allDates));
+  } catch(e){ console.warn('KPI options:', e); }
+}
+
+function computeFtKpi(){
+  try{
+    const raw = localStorage.getItem('ft_v4');
+    if(!raw) return;
+    const db = JSON.parse(raw);
+    const clients = db.clients || [];
+    const activos = clients.filter(c => c.active).length;
+    document.getElementById('kpiFtClientes').textContent = activos;
+
+    // Última actualización: fecha más reciente entre TODOS los datos
+    const allDates = [];
+
+    // Fechas dentro de los meses
+    if(db.months){
+      Object.entries(db.months).forEach(([key, m]) => {
+        // Cada mes tiene formato "YYYY-MM"
+        const [y, mo] = key.split('-');
+        if(y && mo) allDates.push(new Date(parseInt(y), parseInt(mo)-1, 28));
+        // También buscar fechas internas: pagos, sesiones, etc.
+        if(typeof m === 'object'){
+          const scan = (obj) => {
+            if(!obj || typeof obj !== 'object') return;
+            Object.values(obj).forEach(v => {
+              if(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)){
+                allDates.push(new Date(v));
+              } else if(typeof v === 'object'){
+                scan(v);
+              }
+            });
+          };
+          scan(m);
+        }
+      });
+    }
+    // Fechas en clientes (createdAt, updatedAt, etc.)
+    clients.forEach(c => {
+      ['createdAt','updatedAt','lastVisit','startDate'].forEach(k => {
+        if(c[k]) allDates.push(new Date(c[k]));
+      });
+    });
+
+    setUpd('kpiFtUpd', maxDate(allDates));
+  } catch(e){ console.warn('KPI full training:', e); }
+}
+
+function computeFacKpi(){
+  try{
+    const raw = localStorage.getItem('fac_v1');
+    if(!raw) return;
+    const profiles = JSON.parse(raw);
+    if(!Array.isArray(profiles)) return;
+
+    let totalFacs = 0;
+    const allDates = [];
+    profiles.forEach(p => {
+      const facs = p.facturas || [];
+      totalFacs += facs.length;
+      facs.forEach(f => {
+        if(f.fecha) allDates.push(new Date(f.fecha));
+      });
+    });
+    document.getElementById('kpiFacTotal').textContent = totalFacs;
+    setUpd('kpiFacUpd', maxDate(allDates));
+  } catch(e){ console.warn('KPI facturas:', e); }
+}
+
+function askLogout(){
+  if(!confirm('Esto borra el token de ESTE dispositivo. Tus datos en GitHub no se tocan. ¿Continuar?')) return;
+  GitHubSync.clearCredentials();
+  location.reload();
+}
+
+// ════════ NEON FX ════════
+// Detectar si estamos en mobile (para reducir efectos)
+const _isMobile = window.matchMedia('(max-width: 640px)').matches;
+
+// 1) Generar partículas flotantes (menos en mobile)
+(function spawnParticles(){
+  const cont = document.getElementById('fxParticles');
+  if(!cont) return;
+  const N = _isMobile ? 8 : 24;  // 24 en desktop, 8 en mobile
+  const colors = ['#22d3ee','#22d3ee','#22d3ee','#a855f7','#06b6d4'];
+  for(let i=0;i<N;i++){
+    const p = document.createElement('div');
+    p.className = 'fx-particle';
+    const dur = 12 + Math.random()*18;     // 12-30s de vida
+    const delay = -Math.random()*dur;      // arrancan en momentos distintos
+    const left = Math.random()*100;        // posición horizontal
+    const drift = (Math.random()*120)-60;  // deriva lateral durante el viaje
+    const size = 1 + Math.random()*2;      // 1-3px
+    const color = colors[Math.floor(Math.random()*colors.length)];
+    p.style.left = left + 'vw';
+    p.style.width = size + 'px';
+    p.style.height = size + 'px';
+    p.style.background = color;
+    p.style.boxShadow = `0 0 6px ${color},0 0 12px ${color}99`;
+    p.style.animationDuration = dur + 's';
+    p.style.animationDelay = delay + 's';
+    p.style.setProperty('--drift', drift+'px');
+    p.style.animationName = 'particleFloat'+(i%3);
+    cont.appendChild(p);
+  }
+})();
+
+// Inyectar variantes de keyframes con drifts distintos (más natural)
+(function injectParticleKF(){
+  const css = `
+    @keyframes particleFloat0{0%{transform:translate(0,100vh) scale(.5);opacity:0}10%{opacity:.85}90%{opacity:.85}100%{transform:translate(40px,-10vh) scale(1.1);opacity:0}}
+    @keyframes particleFloat1{0%{transform:translate(0,100vh) scale(.5);opacity:0}10%{opacity:.7}90%{opacity:.7}100%{transform:translate(-50px,-10vh) scale(1.3);opacity:0}}
+    @keyframes particleFloat2{0%{transform:translate(0,100vh) scale(.5);opacity:0}10%{opacity:.9}90%{opacity:.9}100%{transform:translate(15px,-10vh) scale(1);opacity:0}}
+  `;
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+// 2) Tilt 3D en menu-cards (solo desktop — en mobile no aporta y consume CPU)
+(function setupTilt(){
+  if(_isMobile) return;  // Mobile: nada de tilt
+  const MAX_TILT = 8; // grados máximos
+  function attach(card){
+    let rect = null;
+    function onMove(e){
+      if(!rect) rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const cx = rect.width/2;
+      const cy = rect.height/2;
+      const rotY = ((x - cx)/cx) * MAX_TILT;
+      const rotX = -((y - cy)/cy) * MAX_TILT;
+      card.style.transform = `perspective(1000px) rotateX(${rotX}deg) rotateY(${rotY}deg) translateZ(8px)`;
+    }
+    function onEnter(){ rect = card.getBoundingClientRect(); card.style.transition = 'box-shadow .25s,border-color .25s'; }
+    function onLeave(){
+      rect = null;
+      card.style.transform = '';
+      card.style.transition = 'transform .35s ease,box-shadow .25s,border-color .25s';
+    }
+    card.addEventListener('mouseenter', onEnter);
+    card.addEventListener('mousemove', onMove);
+    card.addEventListener('mouseleave', onLeave);
+  }
+  // Observer para attachear a las cards cuando aparecen (el menú no está visible al inicio)
+  const observer = new MutationObserver(()=>{
+    document.querySelectorAll('.menu-card:not([data-tilt])').forEach(c=>{
+      c.dataset.tilt = '1';
+      attach(c);
+    });
+  });
+  observer.observe(document.body, {childList:true,subtree:true,attributes:true});
+  // Y attach inicial por si ya están
+  document.querySelectorAll('.menu-card').forEach(c=>{
+    c.dataset.tilt = '1';
+    attach(c);
+  });
+})();
+
+// ════════ IA APIs MANAGER (centralizado) ════════
+// Storage: localStorage 'ia_providers_v1' = JSON array
+//   [{ id, nombre, tipo: 'groq'|'openrouter'|'gemini', key, modelo, activa }]
+// Otros HTMLs (patrimonio/options/full_training) leen de aquí y ejecutan la cadena.
+
+const IA_PROVIDERS_STORAGE = 'ia_providers_v1';
+const IA_PROVIDER_DEFAULTS = {
+  groq:       { modelo: 'llama-3.3-70b-versatile', endpoint: 'https://api.groq.com/openai/v1/chat/completions' },
+  openrouter: { modelo: 'meta-llama/llama-3.3-70b-instruct:free', endpoint: 'https://openrouter.ai/api/v1/chat/completions' },
+  gemini:     { modelo: 'gemini-2.0-flash', endpoint: '' /* especial */ }
+};
+
+let _editingApiId = null;  // null = nueva, string = editando ese id
+
+function iaLoadProviders(){
+  try { return JSON.parse(localStorage.getItem(IA_PROVIDERS_STORAGE)) || []; }
+  catch { return []; }
+}
+function iaSaveProviders(list){
+  localStorage.setItem(IA_PROVIDERS_STORAGE, JSON.stringify(list));
+}
+function _uid(){ return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+
+// ─── Migración suave: leer keys viejas de cada HTML y sugerir añadir ───
+function iaMigrateLegacyKeys(){
+  const list = iaLoadProviders();
+  if(list.length > 0) return; // ya tiene APIs configuradas, no migra
+  const legacy = [
+    { storage: 'pat_ia_groq_key', label: 'Groq (de Patrimonio)' },
+    { storage: 'ft_ia_groq_key',  label: 'Groq (de Full Training)' },
+    { storage: 'ot_ia_groq_key',  label: 'Groq (de Options)' }
+  ];
+  // Tomar la primera que exista (todas suelen ser la misma key)
+  for(const l of legacy){
+    const k = localStorage.getItem(l.storage);
+    if(k){
+      list.push({
+        id: _uid(),
+        nombre: 'Groq (importada)',
+        tipo: 'groq',
+        key: k,
+        modelo: IA_PROVIDER_DEFAULTS.groq.modelo,
+        activa: true
+      });
+      iaSaveProviders(list);
+      return;
+    }
+  }
+}
+
+// ─── Modal: lista ───
+function openIaApisModal(){
+  iaMigrateLegacyKeys();
+  document.getElementById('menuScreen').classList.remove('active');
+  document.getElementById('iaApisModal').style.display = 'flex';
+  document.getElementById('iaTestResult').style.display = 'none';
+  iaRenderApisList();
+}
+function closeIaApisModal(){
+  document.getElementById('iaApisModal').style.display = 'none';
+  document.getElementById('menuScreen').classList.add('active');
+}
+
+function iaRenderApisList(){
+  const list = iaLoadProviders();
+  const cont = document.getElementById('iaApisList');
+  if(!list.length){
+    cont.innerHTML = '<div class="ia-api-empty">No hay APIs configuradas todavía.<br>Añade una pulsando "+ Añadir API"</div>';
+    return;
+  }
+  const tipoLabels = { groq:'GROQ', openrouter:'OPENROUTER', gemini:'GEMINI' };
+  cont.innerHTML = list.map((p, idx) => `
+    <div class="ia-api-item" draggable="true" data-id="${p.id}">
+      <div class="ia-api-handle" title="Arrastra para reordenar">⋮⋮</div>
+      <div class="ia-api-info">
+        <div class="ia-api-name">${idx+1}. ${escapeHtml(p.nombre || '(sin nombre)')}</div>
+        <div class="ia-api-meta">${tipoLabels[p.tipo]||p.tipo} · ${escapeHtml(p.modelo||'')} · key ****${(p.key||'').slice(-4)}</div>
+      </div>
+      <div class="ia-api-status ${p.activa ? 'on' : 'off'}">${p.activa ? 'ACTIVA' : 'INACTIVA'}</div>
+      <div class="ia-api-actions">
+        <button class="ia-api-btn" onclick="openIaApiEditor('${p.id}')">EDIT</button>
+        <button class="ia-api-btn danger" onclick="deleteIaApi('${p.id}')">DEL</button>
+      </div>
+    </div>
+  `).join('');
+  // Activar drag & drop
+  iaSetupDragDrop();
+}
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ─── Drag & drop reorder ───
+function iaSetupDragDrop(){
+  const items = document.querySelectorAll('#iaApisList .ia-api-item');
+  let dragSrc = null;
+  items.forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrc = item;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', item.dataset.id);
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      document.querySelectorAll('.ia-api-item').forEach(i => i.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if(item !== dragSrc) item.classList.add('drag-over');
+    });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      if(!dragSrc || dragSrc === item) return;
+      const list = iaLoadProviders();
+      const fromId = dragSrc.dataset.id;
+      const toId = item.dataset.id;
+      const fromIdx = list.findIndex(p => p.id === fromId);
+      const toIdx = list.findIndex(p => p.id === toId);
+      if(fromIdx < 0 || toIdx < 0) return;
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      iaSaveProviders(list);
+      iaRenderApisList();
+    });
+  });
+}
+
+// ─── Editor ───
+function openIaApiEditor(id){
+  _editingApiId = id || null;
+  document.getElementById('iaApiEditorTitle').textContent = id ? '// EDITAR API' : '// NUEVA API';
+  document.getElementById('iaApiEditorMsg').style.display = 'none';
+  if(id){
+    const p = iaLoadProviders().find(x => x.id === id);
+    if(p){
+      document.getElementById('iaApiName').value = p.nombre || '';
+      document.getElementById('iaApiProvider').value = p.tipo || 'groq';
+      document.getElementById('iaApiModel').value = p.modelo || '';
+      document.getElementById('iaApiKey').value = p.key || '';
+      document.getElementById('iaApiActive').checked = p.activa !== false;
+    }
+  } else {
+    document.getElementById('iaApiName').value = '';
+    document.getElementById('iaApiProvider').value = 'groq';
+    document.getElementById('iaApiModel').value = IA_PROVIDER_DEFAULTS.groq.modelo;
+    document.getElementById('iaApiKey').value = '';
+    document.getElementById('iaApiActive').checked = true;
+  }
+  document.getElementById('iaApiEditorModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('iaApiName').focus(), 50);
+}
+function closeIaApiEditor(){ document.getElementById('iaApiEditorModal').style.display = 'none'; _editingApiId = null; }
+
+function onProviderChange(){
+  const tipo = document.getElementById('iaApiProvider').value;
+  const def = IA_PROVIDER_DEFAULTS[tipo];
+  // Solo auto-rellena si está vacío o si es el modelo por defecto de OTRO proveedor
+  const modelInput = document.getElementById('iaApiModel');
+  const allDefaults = Object.values(IA_PROVIDER_DEFAULTS).map(d => d.modelo);
+  if(!modelInput.value || allDefaults.includes(modelInput.value)){
+    modelInput.value = def.modelo;
+  }
+}
+
+function saveIaApi(){
+  const nombre = document.getElementById('iaApiName').value.trim() || 'Sin nombre';
+  const tipo = document.getElementById('iaApiProvider').value;
+  const modelo = document.getElementById('iaApiModel').value.trim() || IA_PROVIDER_DEFAULTS[tipo].modelo;
+  const key = document.getElementById('iaApiKey').value.trim();
+  const activa = document.getElementById('iaApiActive').checked;
+  if(!key){ _showApiEditorMsg('⚠ Falta la API key', '#fca5a5'); return; }
+
+  const list = iaLoadProviders();
+  if(_editingApiId){
+    const idx = list.findIndex(p => p.id === _editingApiId);
+    if(idx >= 0) list[idx] = { ...list[idx], nombre, tipo, modelo, key, activa };
+  } else {
+    list.push({ id: _uid(), nombre, tipo, modelo, key, activa });
+  }
+  iaSaveProviders(list);
+  closeIaApiEditor();
+  iaRenderApisList();
+}
+
+function deleteIaApi(id){
+  if(!confirm('¿Eliminar esta API de la cadena?')) return;
+  const list = iaLoadProviders().filter(p => p.id !== id);
+  iaSaveProviders(list);
+  iaRenderApisList();
+}
+
+// ─── Exportar / Importar config completa ───
+function exportIaConfig(){
+  // Exporta APIs + las 3 instrucciones por app, todo en un único JSON
+  const config = {
+    schema: 'mis-dashboards-ia-config',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    providers: iaLoadProviders(),
+    instructions: {
+      pat: localStorage.getItem('pat_ia_instructions') || '',
+      ft:  localStorage.getItem('ft_ia_instructions') || '',
+      ot:  localStorage.getItem('ot_ia_instructions') || ''
+    }
+  };
+  const json = JSON.stringify(config, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().slice(0,10);  // YYYY-MM-DD
+  a.download = `ia-config-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  // Feedback en la zona de test result
+  const resBox = document.getElementById('iaTestResult');
+  if(resBox){
+    resBox.style.display = 'block';
+    resBox.style.color = '#22d3ee';
+    resBox.textContent = `✓ Configuración exportada: ${config.providers.length} API(s) + instrucciones`;
+    setTimeout(() => { resBox.style.display = 'none'; }, 4000);
+  }
+}
+
+function importIaConfig(event){
+  const file = event.target.files?.[0];
+  // Resetear el input para que permita re-importar el mismo archivo después
+  event.target.value = '';
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const config = JSON.parse(e.target.result);
+      // Validación mínima
+      if(config.schema !== 'mis-dashboards-ia-config'){
+        if(!confirm('Este archivo no parece ser una config exportada por esta app. ¿Importarlo de todas formas?')) return;
+      }
+      const providers = Array.isArray(config.providers) ? config.providers : [];
+      const instr = config.instructions || {};
+      // Avisar si va a sobrescribir
+      const current = iaLoadProviders();
+      if(current.length > 0){
+        if(!confirm(`Ya tienes ${current.length} API(s) configurada(s).\n\n¿Reemplazarlas con las ${providers.length} del archivo?\n\n(Si cancelas, no se importa nada.)`)) return;
+      }
+      // Aplicar
+      iaSaveProviders(providers);
+      if(typeof instr.pat === 'string'){
+        if(instr.pat) localStorage.setItem('pat_ia_instructions', instr.pat);
+        else localStorage.removeItem('pat_ia_instructions');
+      }
+      if(typeof instr.ft === 'string'){
+        if(instr.ft) localStorage.setItem('ft_ia_instructions', instr.ft);
+        else localStorage.removeItem('ft_ia_instructions');
+      }
+      if(typeof instr.ot === 'string'){
+        if(instr.ot) localStorage.setItem('ot_ia_instructions', instr.ot);
+        else localStorage.removeItem('ot_ia_instructions');
+      }
+      iaRenderApisList();
+      const resBox = document.getElementById('iaTestResult');
+      if(resBox){
+        resBox.style.display = 'block';
+        resBox.style.color = '#22d3ee';
+        resBox.textContent = `✓ Configuración importada: ${providers.length} API(s) + instrucciones`;
+        setTimeout(() => { resBox.style.display = 'none'; }, 4000);
+      }
+    } catch(err){
+      alert('Error al leer el archivo: ' + err.message);
+    }
+  };
+  reader.onerror = () => alert('No se pudo leer el archivo');
+  reader.readAsText(file);
+}
+
+function _showApiEditorMsg(text, color){
+  const el = document.getElementById('iaApiEditorMsg');
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = text;
+}
+
+// ─── Probar API: hace ping con prompt corto ───
+async function testIaApi(){
+  const tipo = document.getElementById('iaApiProvider').value;
+  const modelo = document.getElementById('iaApiModel').value.trim() || IA_PROVIDER_DEFAULTS[tipo].modelo;
+  const key = document.getElementById('iaApiKey').value.trim();
+  if(!key){ _showApiEditorMsg('⚠ Pega la key primero', '#fca5a5'); return; }
+  _showApiEditorMsg('⏳ Probando...', '#67e8f9');
+  try {
+    const txt = await iaCallProvider({ tipo, modelo, key }, 'Responde "OK" si me oyes, una sola palabra.');
+    _showApiEditorMsg(`✓ Respuesta: ${(txt||'').slice(0,80)}`, '#22d3ee');
+  } catch(err){
+    _showApiEditorMsg(`✕ Error: ${err.message}`, '#fca5a5');
+  }
+}
+
+// ════════ EJECUCIÓN: cadena con fallback ════════
+// Esta función la usarán también los otros HTMLs (lo expongo en window)
+async function iaCallProvider(provider, prompt, systemMsg){
+  const messages = [];
+  if(systemMsg) messages.push({ role:'system', content: systemMsg });
+  messages.push({ role:'user', content: prompt });
+
+  if(provider.tipo === 'gemini'){
+    // Formato distinto
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${provider.modelo}:generateContent?key=${encodeURIComponent(provider.key)}`;
+    // En Gemini, el system prompt se pasa como systemInstruction
+    const body = { contents: [{ parts:[{ text: prompt }] }], generationConfig:{ temperature:0.4, maxOutputTokens:2048 } };
+    if(systemMsg) body.systemInstruction = { parts:[{ text: systemMsg }] };
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if(!res.ok){
+      const t = await res.text(); let m = `HTTP ${res.status}`;
+      try { const j = JSON.parse(t); m = j.error?.message || m; } catch(_){}
+      throw new Error(m);
+    }
+    const data = await res.json();
+    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if(!txt) throw new Error('Respuesta vacía de Gemini');
+    return txt;
+  }
+
+  // Groq y OpenRouter usan formato OpenAI-compatible
+  const endpoint = provider.tipo === 'openrouter'
+    ? IA_PROVIDER_DEFAULTS.openrouter.endpoint
+    : IA_PROVIDER_DEFAULTS.groq.endpoint;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${provider.key}`
+  };
+  // OpenRouter recomienda añadir headers para identificar la app
+  if(provider.tipo === 'openrouter'){
+    headers['HTTP-Referer'] = window.location.origin || 'https://famisand.github.io';
+    headers['X-Title'] = 'Mis Dashboards';
+  }
+  const res = await fetch(endpoint, {
+    method:'POST', headers,
+    body: JSON.stringify({ model: provider.modelo, messages, temperature:0.4, max_tokens:2048 })
+  });
+  if(!res.ok){
+    const t = await res.text(); let m = `HTTP ${res.status}`;
+    try { const j = JSON.parse(t); m = j.error?.message || j.error?.code || m; } catch(_){}
+    throw new Error(m);
+  }
+  const data = await res.json();
+  const txt = data.choices?.[0]?.message?.content;
+  if(!txt) throw new Error('Respuesta vacía del modelo');
+  return txt;
+}
+
+// Función expuesta globalmente para que la usen otros HTMLs
+async function iaCallChain(prompt, systemMsg){
+  const list = iaLoadProviders().filter(p => p.activa);
+  if(!list.length){
+    throw new Error('No hay APIs configuradas. Ve al index → 🤖 IA APIs.');
+  }
+  const errors = [];
+  for(const p of list){
+    try {
+      const result = await iaCallProvider(p, prompt, systemMsg);
+      return { result, providerUsed: p.nombre, providerTipo: p.tipo, errors };
+    } catch(err){
+      errors.push(`[${p.nombre}] ${err.message}`);
+      // continúa con el siguiente
+    }
+  }
+  throw new Error('Todas las APIs fallaron:\n' + errors.join('\n'));
+}
+
+// Exponer globalmente para que otros HTMLs (en pestañas, no aplicable directo,
+// pero también para la consola del usuario y para futura extensión)
+window.iaCallChain = iaCallChain;
+window.iaLoadProviders = iaLoadProviders;
+window.iaCallProvider = iaCallProvider;
+window.IA_PROVIDERS_STORAGE = IA_PROVIDERS_STORAGE;
+
+(function init(){
+  if(!GitHubSync.isLoggedIn()){
+    show('setupScreen');
+    setTimeout(()=>document.getElementById('setupRepo').focus(), 100);
+    return;
+  }
+  goLoading();
+})();
+</script>
+</body>
+</html>
