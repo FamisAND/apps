@@ -1,0 +1,525 @@
+/**
+ * design-system.css
+ * ─────────────────────────────────────────────
+ * Sistema de diseño compartido por todas las apps:
+ * Index, Patrimonio, Full Training, Options, Facturas
+ *
+ * Cada HTML aplica su acento añadiendo al <body> una clase:
+ *   <body class="theme-index">   → cyan
+ *   <body class="theme-pat">     → azul
+ *   <body class="theme-ft">      → amarillo
+ *   <body class="theme-opt">     → cyan-trading
+ *   <body class="theme-fac">     → indigo
+ *
+ * Define variables CSS, componentes base y transiciones suaves.
+ * Compatible con cualquier markup; los HTMLs pueden seguir teniendo
+ * sus clases propias (los selectores de aquí son específicos para
+ * NO pisar layouts existentes a menos que sean componentes base).
+ */
+
+/* ════════ TOKENS GLOBALES ════════ */
+:root{
+  /* Background neutro común */
+  --ds-bg:           #080d1a;
+  --ds-bg-elev:      #0f172a;
+  --ds-bg-elev-2:    #1e293b;
+
+  /* Borders y separadores */
+  --ds-border:       #1e2d4a;
+  --ds-border-soft:  #1e2d4a55;
+
+  /* Texto */
+  --ds-text:         #e2e8f0;
+  --ds-text-soft:    #94a3b8;
+  --ds-text-mute:    #64748b;
+  --ds-text-deep:    #475569;
+
+  /* Estados (universales) */
+  --ds-ok:           #34d399;
+  --ds-ok-soft:      #10b98122;
+  --ds-warn:         #fbbf24;
+  --ds-warn-soft:    #f59e0b22;
+  --ds-bad:          #f87171;
+  --ds-bad-soft:     #ef444422;
+
+  /* Geometría */
+  --ds-radius:       6px;
+  --ds-radius-card:  8px;
+  --ds-radius-pill:  999px;
+
+  /* Sombras */
+  --ds-shadow-sm:    0 1px 2px rgba(0,0,0,.4);
+  --ds-shadow-md:    0 4px 14px rgba(0,0,0,.45);
+
+  /* Tipografía */
+  --ds-font-sans:    'DM Sans','Segoe UI',sans-serif;
+  --ds-font-mono:    'DM Mono',ui-monospace,'Courier New',monospace;
+
+  /* Transiciones */
+  --ds-t-fast:       120ms ease;
+  --ds-t-base:       180ms ease;
+  --ds-t-slow:       300ms cubic-bezier(.4,0,.2,1);
+
+  /* Acento por defecto (se sobrescribe por theme-*) */
+  --ds-acc:          #22d3ee;
+  --ds-acc-2:        #a855f7;
+  --ds-acc-soft:     #22d3ee22;
+  --ds-glow:         #22d3ee99;
+}
+
+/* ════════ TEMAS POR APP ════════ */
+body.theme-index    { --ds-acc:#22d3ee; --ds-acc-2:#a855f7; --ds-acc-soft:#22d3ee22; --ds-glow:#22d3ee99; }
+body.theme-pat      { --ds-acc:#3b82f6; --ds-acc-2:#60a5fa; --ds-acc-soft:#3b82f622; --ds-glow:#3b82f699; }
+body.theme-ft       { --ds-acc:#f5c000; --ds-acc-2:#fbbf24; --ds-acc-soft:#f5c00022; --ds-glow:#f5c000aa; }
+body.theme-opt      { --ds-acc:#4a9eff; --ds-acc-2:#3fb68b; --ds-acc-soft:#4a9eff22; --ds-glow:#4a9eff99; }
+body.theme-fac      { --ds-acc:#6366f1; --ds-acc-2:#818cf8; --ds-acc-soft:#6366f122; --ds-glow:#6366f199; }
+
+/* ════════ TRANSICIONES UNIVERSALES PARA TABS ════════
+   Cualquier elemento con clase .tab-content que pase de oculto a visible
+   se anima suavemente. Funciona con la mayoría de markup ya existente.
+*/
+.tab-content{
+  animation: dsTabFadeIn 220ms cubic-bezier(.4,0,.2,1);
+}
+.tab-content.hidden{
+  display:none !important;
+}
+@keyframes dsTabFadeIn{
+  from{ opacity:0; transform:translateY(4px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+
+/* También animamos cualquier .tab-page (Options usa este nombre) */
+.tab-page{
+  animation: dsTabFadeIn 220ms cubic-bezier(.4,0,.2,1);
+}
+
+/* Y .nc-page si existe */
+.nc-page{
+  animation: dsTabFadeIn 220ms cubic-bezier(.4,0,.2,1);
+}
+
+/* ════════ MICRO-TRANSICIONES UNIVERSALES ════════ */
+.btn,
+button.btn,
+button.btn-primary,
+button.btn-ghost,
+button.btn-sm,
+button.btn-danger,
+.btn-primary,
+.btn-ghost,
+.btn-sm{
+  transition: background-color var(--ds-t-base),
+              border-color var(--ds-t-base),
+              color var(--ds-t-base),
+              box-shadow var(--ds-t-base),
+              transform var(--ds-t-fast) !important;
+}
+
+/* Modales y overlays — fade-in suave al aparecer */
+.modal-bg:not(.hidden),
+[id$="Modal"]:not(.hidden){
+  animation: dsModalFadeIn 200ms ease;
+}
+@keyframes dsModalFadeIn{
+  from{ opacity:0; }
+  to  { opacity:1; }
+}
+
+/* ════════ CLASES UTILITARIAS DEL SISTEMA ════════
+   Estas son OPCIONALES. Los HTMLs pueden usarlas si quieren,
+   pero no rompen nada existente.
+*/
+
+/* Botón estándar (alternativa al .btn de cada app) */
+.ds-btn{
+  background: transparent;
+  border: 1px solid var(--ds-acc);
+  color: var(--ds-acc);
+  padding: 8px 16px;
+  border-radius: var(--ds-radius);
+  font-family: var(--ds-font-sans);
+  font-size: .82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ds-t-base);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: .01em;
+}
+.ds-btn:hover{
+  background: var(--ds-acc-soft);
+  box-shadow: 0 0 14px var(--ds-acc-soft);
+  transform: translateY(-1px);
+}
+.ds-btn-primary{
+  background: var(--ds-acc);
+  color: var(--ds-bg);
+  font-weight: 600;
+}
+.ds-btn-primary:hover{
+  filter: brightness(1.08);
+  box-shadow: 0 0 18px var(--ds-glow);
+}
+
+/* KPI card universal */
+.ds-kpi{
+  background: var(--ds-bg-elev);
+  border: 1px solid var(--ds-border);
+  border-left: 3px solid var(--ds-acc);
+  border-radius: var(--ds-radius-card);
+  padding: 14px 16px;
+}
+.ds-kpi-label{
+  font-family: var(--ds-font-mono);
+  font-size: .62rem;
+  letter-spacing: .16em;
+  color: var(--ds-text-mute);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.ds-kpi-value{
+  font-family: var(--ds-font-mono);
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: var(--ds-acc);
+  line-height: 1.1;
+  letter-spacing: -.02em;
+}
+
+/* Badge / chip universal */
+.ds-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--ds-radius-pill);
+  font-family: var(--ds-font-mono);
+  font-size: .66rem;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  background: var(--ds-acc-soft);
+  color: var(--ds-acc);
+  border: 1px solid var(--ds-acc);
+}
+.ds-badge-ok   { background: var(--ds-ok-soft);   color: var(--ds-ok);   border-color: #10b981; }
+.ds-badge-warn { background: var(--ds-warn-soft); color: var(--ds-warn); border-color: #f59e0b; }
+.ds-badge-bad  { background: var(--ds-bad-soft);  color: var(--ds-bad);  border-color: #ef4444; }
+
+/* Label monoespaciado */
+.ds-label{
+  font-family: var(--ds-font-mono);
+  font-size: .65rem;
+  letter-spacing: .14em;
+  color: var(--ds-text-mute);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* ════════ FOCUS RING UNIVERSAL ════════
+   Inputs y selects con foco ganan un anillo del color del acento.
+*/
+input:focus,
+select:focus,
+textarea:focus{
+  outline: none;
+  border-color: var(--ds-acc) !important;
+  box-shadow: 0 0 0 3px var(--ds-acc-soft) !important;
+  transition: border-color var(--ds-t-fast), box-shadow var(--ds-t-fast);
+}
+
+/* ════════ SCROLLBAR UNIFICADO ════════ */
+::-webkit-scrollbar{ width:6px; height:6px; }
+::-webkit-scrollbar-track{ background: var(--ds-bg); }
+::-webkit-scrollbar-thumb{ background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover{ background: var(--ds-acc); }
+
+/* ════════════════════════════════════════════════════════════════════
+   ════════ OVERRIDES AGRESIVOS POR CLASES COMUNES ════════
+   ════════════════════════════════════════════════════════════════════
+   Estos pisan los estilos antiguos de cada HTML para unificar el look.
+   Usan !important para ganar a los inline styles existentes.
+   Si algo se ve raro tras aplicar esto, identificamos el selector y se ajusta.
+*/
+
+/* ───── Tipografía universal ───── */
+body{
+  font-family: var(--ds-font-sans) !important;
+  background: var(--ds-bg) !important;
+  color: var(--ds-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Cualquier elemento marcado como "mono" usa DM Mono */
+.mono,
+.fld-lbl,
+.kpi-lbl,
+.kpi-label,
+.d-kpi-lbl,
+.label,
+[class*="-lbl"],
+[class*="-label"]{
+  font-family: var(--ds-font-mono) !important;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* KPI values también monoespaciados */
+.kpi-val,
+.kpi-value,
+.d-kpi-val,
+[class*="-val"]:not([class*="-valor"]):not([class*="-validation"]){
+  font-family: var(--ds-font-mono) !important;
+  letter-spacing: -.01em;
+}
+
+/* ───── Botones (aplicado a las 5 apps) ───── */
+.btn,
+.btn-primary,
+.btn-ghost,
+.btn-sm,
+.btn-danger,
+.btn-sec,
+.btn-ghost-sm{
+  font-family: var(--ds-font-sans) !important;
+  border-radius: var(--ds-radius) !important;
+  font-weight: 500 !important;
+  letter-spacing: .01em !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  text-decoration: none !important;
+}
+
+/* Botón "primario" → fondo color acento */
+.btn-primary{
+  background: var(--ds-acc) !important;
+  color: var(--ds-bg) !important;
+  border: 1px solid var(--ds-acc) !important;
+  font-weight: 600 !important;
+  padding: 8px 16px !important;
+  font-size: .82rem !important;
+}
+.btn-primary:hover{
+  filter: brightness(1.08);
+  box-shadow: 0 0 18px var(--ds-glow);
+  transform: translateY(-1px);
+}
+
+/* Botón "ghost" → outline neutro */
+.btn-ghost,
+.btn-sec{
+  background: transparent !important;
+  border: 1px solid var(--ds-border) !important;
+  color: var(--ds-text-soft) !important;
+  padding: 8px 16px !important;
+  font-size: .82rem !important;
+}
+.btn-ghost:hover,
+.btn-sec:hover{
+  border-color: var(--ds-text-soft) !important;
+  color: var(--ds-text) !important;
+  background: var(--ds-bg-elev) !important;
+}
+
+/* Botón "small" → tamaño compacto */
+.btn-sm{
+  padding: 5px 11px !important;
+  font-size: .72rem !important;
+  background: transparent !important;
+  border: 1px solid var(--ds-border) !important;
+  color: var(--ds-text-soft) !important;
+}
+.btn-sm:hover{
+  border-color: var(--ds-acc) !important;
+  color: var(--ds-acc) !important;
+  background: var(--ds-acc-soft) !important;
+}
+
+/* Botón "danger" → rojo */
+.btn-danger{
+  background: transparent !important;
+  border: 1px solid #7f1d1d !important;
+  color: #fca5a5 !important;
+  padding: 8px 16px !important;
+  font-size: .82rem !important;
+}
+.btn-danger:hover{
+  border-color: #ef4444 !important;
+  color: #f87171 !important;
+  background: #ef444411 !important;
+}
+
+/* ───── Inputs ───── */
+.inp,
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="date"],
+input[type="search"],
+select,
+textarea{
+  font-family: var(--ds-font-sans) !important;
+  border-radius: var(--ds-radius) !important;
+  background: var(--ds-bg) !important;
+  border: 1px solid var(--ds-border) !important;
+  color: var(--ds-text) !important;
+  padding: 9px 12px !important;
+  font-size: .88rem !important;
+}
+
+/* Algunos inputs son monoespaciados (números, IBANs, etc.) */
+input.mono,
+.inp.mono,
+input[type="number"]{
+  font-family: var(--ds-font-mono) !important;
+}
+
+/* ───── Cards ───── */
+.card{
+  background: var(--ds-bg-elev) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius-card) !important;
+}
+
+.card-title,
+.sec-title{
+  font-family: var(--ds-font-sans) !important;
+  color: var(--ds-text) !important;
+  font-weight: 600;
+}
+
+/* ───── KPIs (común a todos los dashboards) ───── */
+.kpi,
+.d-kpi{
+  background: var(--ds-bg-elev) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-left: 3px solid var(--ds-acc) !important;
+  border-radius: var(--ds-radius-card) !important;
+}
+
+.kpi-val,
+.d-kpi-val{
+  color: var(--ds-acc) !important;
+}
+
+/* ───── Badges / chips ───── */
+.badge,
+.h-badge,
+.h-badge-otro{
+  font-family: var(--ds-font-mono) !important;
+  border-radius: var(--ds-radius-pill) !important;
+  font-size: .66rem !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase;
+  font-weight: 500 !important;
+  padding: 3px 10px !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ───── Tabs / nav ───── */
+.tab-btn,
+.nav-btn,
+.nc-tab,
+.nav-tab{
+  font-family: var(--ds-font-sans) !important;
+  border-radius: var(--ds-radius) !important;
+  transition: all var(--ds-t-base) !important;
+}
+
+.tab-btn.active,
+.nav-btn.active,
+.nc-tab.active,
+.nav-tab.active{
+  color: var(--ds-acc) !important;
+  background: var(--ds-acc-soft) !important;
+  border-color: var(--ds-acc) !important;
+}
+
+/* ───── Tablas ───── */
+table{
+  font-family: var(--ds-font-sans);
+  border-collapse: collapse;
+}
+table th{
+  font-family: var(--ds-font-mono) !important;
+  font-size: .64rem !important;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ds-text-mute) !important;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ds-border);
+  text-align: left;
+}
+table td{
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--ds-border-soft);
+  color: var(--ds-text);
+}
+
+/* Cantidades monetarias en tablas */
+.td-num,
+.td-r,
+td.num,
+td.amount{
+  font-family: var(--ds-font-mono) !important;
+  text-align: right;
+}
+
+/* ───── Modales ───── */
+.modal,
+.modal.wide{
+  background: var(--ds-bg-elev) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius-card) !important;
+}
+
+.modal-bg{
+  background: rgba(0,0,0,.78) !important;
+  backdrop-filter: blur(5px);
+}
+
+/* ───── Field labels ───── */
+.fld-lbl,
+.fld{
+  color: var(--ds-text-mute) !important;
+}
+
+/* ───── EXCEPCIONES IMPORTANTES ────
+   Index: tiene su propio estilo cyberpunk fuerte (clip-path, neón).
+   No queremos pisarlo del todo, así que dejamos el body sin overrides
+   adicionales. Ya recibe los tokens y las transiciones, eso basta.
+*/
+body.theme-index .menu-card{
+  /* Las cards del menú principal ya tienen clip-path neón propio,
+     no las pisamos */
+  border-radius: 0 !important;
+}
+
+/* ───── Full Training: respetar el modo light ──── */
+body.light-mode{
+  --ds-bg:           #f0f0f0;
+  --ds-bg-elev:      #ffffff;
+  --ds-bg-elev-2:    #f5f5f5;
+  --ds-border:       #ddd;
+  --ds-text:         #111;
+  --ds-text-soft:    #555;
+  --ds-text-mute:    #888;
+}
+
+/* ───── Options: respetar los colores P/L (verde/rojo) en stats ─── */
+body.theme-opt .pos,
+body.theme-opt .pnl-pos,
+body.theme-opt .green{ color: var(--ds-ok) !important; }
+body.theme-opt .neg,
+body.theme-opt .pnl-neg,
+body.theme-opt .red{ color: var(--ds-bad) !important; }
+
