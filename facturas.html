@@ -605,11 +605,11 @@ function openProfileModal(id){
 
 function saveProfile(){
   const name = document.getElementById("pm_name").value.trim();
-  if(!name){ alert("El nombre es obligatorio"); return; }
+  if(!name){ toast("El nombre es obligatorio", 'red'); return; }
   const emoji = document.getElementById("pm_emoji").value || "📄";
   const color = document.getElementById("pm_color").value;
   const pin = document.getElementById("pm_pin").value.trim();
-  if(pin && !/^\d{4,6}$/.test(pin)){ alert("El PIN debe tener entre 4 y 6 dígitos"); return; }
+  if(pin && !/^\d{4,6}$/.test(pin)){ toast("El PIN debe tener entre 4 y 6 dígitos", 'red'); return; }
 
   if(editingProfileId){
     const p = profiles.find(x=>x.id===editingProfileId);
@@ -1140,7 +1140,7 @@ function openCliente(id){
 function saveCliente(){
   const p = prof();
   const name = document.getElementById("cl_name").value.trim();
-  if(!name){ alert("El nombre es obligatorio"); return; }
+  if(!name){ toast("El nombre es obligatorio", 'red'); return; }
   const data = {
     name, nrt: document.getElementById("cl_nrt").value.trim(),
     addr: document.getElementById("cl_addr").value.trim(),
