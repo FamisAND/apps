@@ -407,20 +407,36 @@ input[type="number"]{
 .kpi-val,
 .d-kpi-val{
   color: var(--ds-acc) !important;
-  font-size: 1.15rem !important;
+  font-family: var(--ds-font-mono) !important;
+  font-size: 1.05rem !important;
   font-weight: 500 !important;
   letter-spacing: -.01em !important;
-  line-height: 1.15 !important;
-  word-break: break-word !important;
-  overflow-wrap: break-word !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 
 /* Sub-texto de KPI (cobrado, etc.) */
 .kpi-sub,
 .d-kpi-sub{
-  font-size: .68rem !important;
+  font-size: .65rem !important;
   color: var(--ds-text-mute) !important;
   margin-top: 4px;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Otros números grandes que también se descuadran al cambiar de fuente */
+.stock-num,
+.sess-n,
+.fac-num,
+.insight-val{
+  font-family: var(--ds-font-mono) !important;
+  font-size: 1.1rem !important;
+  letter-spacing: -.01em !important;
+  line-height: 1.2 !important;
 }
 
 /* ───── Badges / chips ───── */
@@ -507,6 +523,26 @@ td.amount{
 .fld-lbl,
 .fld{
   color: var(--ds-text-mute) !important;
+}
+
+/* ───── Forzar tipografía moderna en elementos que aún usan Bebas Neue ─────
+   Algunos HTMLs tienen estilos inline con font-family:'Bebas Neue'.
+   Como hemos sacado Bebas del proyecto, esos elementos con tamaño fijo
+   se ven enormes (DM Sans es más ancho). Los forzamos.
+*/
+[style*="Bebas Neue"]{
+  font-family: var(--ds-font-sans) !important;
+  font-weight: 600 !important;
+  letter-spacing: .01em !important;
+}
+
+/* En particular, los tamaños extremos del logo FT (2.2rem) los reducimos */
+.page-title,
+.modal-title,
+.sec-title{
+  font-family: var(--ds-font-sans) !important;
+  font-weight: 600 !important;
+  letter-spacing: .01em !important;
 }
 
 /* ───── EXCEPCIONES IMPORTANTES ────
