@@ -489,6 +489,18 @@ GitHubSync.attach({
 });
 DashboardAuth.gate({ section: 'facturas', title: 'Facturas' });
 
+// Trackeador de última modificación local
+(function trackLastModified(){
+  const TRACKED = ['fac_v1'];
+  const _orig = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(key, value){
+    _orig.call(this, key, value);
+    if(this === window.localStorage && TRACKED.indexOf(key) >= 0){
+      _orig.call(this, 'lm_fac', String(Date.now()));
+    }
+  };
+})();
+
 const SK = 'fac_v1';
 let profiles = [];
 let curId = null;

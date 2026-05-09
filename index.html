@@ -614,6 +614,10 @@ async function goLoading(){
   try{
     msg.textContent = 'descargando data.json…';
     const result = await GitHubSync.pullAndApplyAll();
+    // Guardar fecha del último JSON remoto como fallback para los ACT
+    if(result.lastUpdate){
+      localStorage.setItem('gh_last_remote_lastUpdate', result.lastUpdate);
+    }
     if(result.fresh){ msg.textContent = 'primer arranque, sin datos remotos'; }
     setTimeout(goMenu, 400);
   } catch(e){
@@ -653,6 +657,30 @@ const MO3 = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','
 // Umbrales de "frescura" (en días)
 const STALE_WARN_DAYS = 7;    // ámbar si hace >= 7 días
 const STALE_OLD_DAYS  = 30;   // rojo si hace >= 30 días
+
+// Lee la marca de última modificación local de una app (lm_pat, lm_ft, lm_ot, lm_fac).
+// Fallback: el lastUpdate global del sync remoto (gh_last_remote_lastUpdate).
+function getAppLastModified(appPrefix){
+  // 1) Marca local específica
+  const local = localStorage.getItem('lm_' + appPrefix);
+  if(local){
+    const t = parseInt(local, 10);
+    if(!isNaN(t)) return new Date(t);
+  }
+  // 2) Fallback: última fecha del JSON remoto
+  const remote = localStorage.getItem('gh_last_remote_lastUpdate');
+  if(remote){
+    const d = new Date(remote);
+    if(!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+// Lee la marca y aplica color en función de la antigüedad
+function setUpdFromAppPrefix(elementId, appPrefix){
+  const d = getAppLastModified(appPrefix);
+  setUpd(elementId, d);
+}
 
 // Formatea fecha + aplica clase de antigüedad al elemento
 function setUpd(elementId, d){
@@ -761,7 +789,7 @@ function computePatKpi(){
         });
       });
     }
-    setUpd('kpiPatUpd', maxDate(allDates));
+    setUpdFromAppPrefix('kpiPatUpd', 'pat');
   } catch(e){ console.warn('KPI patrimonio:', e); }
 }
 
@@ -817,7 +845,7 @@ function computeOptKpi(){
         });
       }
     }
-    setUpd('kpiOptUpd', maxDate(allDates));
+    setUpdFromAppPrefix('kpiOptUpd', 'ot');
   } catch(e){ console.warn('KPI options:', e); }
 }
 
@@ -862,7 +890,7 @@ function computeFtKpi(){
       });
     });
 
-    setUpd('kpiFtUpd', maxDate(allDates));
+    setUpdFromAppPrefix('kpiFtUpd', 'ft');
   } catch(e){ console.warn('KPI full training:', e); }
 }
 
@@ -883,7 +911,7 @@ function computeFacKpi(){
       });
     });
     document.getElementById('kpiFacTotal').textContent = totalFacs;
-    setUpd('kpiFacUpd', maxDate(allDates));
+    setUpdFromAppPrefix('kpiFacUpd', 'fac');
   } catch(e){ console.warn('KPI facturas:', e); }
 }
 

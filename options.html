@@ -1534,6 +1534,18 @@ GitHubSync.attach({
 });
 GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 DashboardAuth.gate({ section: 'options', title: 'Opciones' });
+
+// Trackeador de última modificación local
+(function trackLastModified(){
+  const TRACKED = ['ot_hist','ot_activas'];
+  const _orig = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(key, value){
+    _orig.call(this, key, value);
+    if(this === window.localStorage && TRACKED.indexOf(key) >= 0){
+      _orig.call(this, 'lm_ot', String(Date.now()));
+    }
+  };
+})();
 </script>
 
 <script>

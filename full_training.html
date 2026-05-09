@@ -329,6 +329,18 @@ GitHubSync.attach({
 });
 GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 DashboardAuth.gate({ section: 'training', title: 'Full Training' });
+
+// Trackeador de última modificación local
+(function trackLastModified(){
+  const TRACKED = ['ft_v4'];
+  const _orig = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(key, value){
+    _orig.call(this, key, value);
+    if(this === window.localStorage && TRACKED.indexOf(key) >= 0){
+      _orig.call(this, 'lm_ft', String(Date.now()));
+    }
+  };
+})();
 </script>
 
 <!-- LOGIN — PROFILE SELECTION (sin PIN, click en avatar entra directo) -->
