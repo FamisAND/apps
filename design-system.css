@@ -301,8 +301,8 @@ body{
   color: var(--ds-bg) !important;
   border: 1px solid var(--ds-acc) !important;
   font-weight: 600 !important;
-  padding: 8px 16px !important;
-  font-size: .82rem !important;
+  padding: 7px 14px !important;
+  font-size: .76rem !important;
 }
 .btn-primary:hover{
   filter: brightness(1.08);
@@ -316,8 +316,8 @@ body{
   background: transparent !important;
   border: 1px solid var(--ds-border) !important;
   color: var(--ds-text-soft) !important;
-  padding: 8px 16px !important;
-  font-size: .82rem !important;
+  padding: 7px 14px !important;
+  font-size: .76rem !important;
 }
 .btn-ghost:hover,
 .btn-sec:hover{
@@ -328,8 +328,8 @@ body{
 
 /* Botón "small" → tamaño compacto */
 .btn-sm{
-  padding: 5px 11px !important;
-  font-size: .72rem !important;
+  padding: 4px 10px !important;
+  font-size: .68rem !important;
   background: transparent !important;
   border: 1px solid var(--ds-border) !important;
   color: var(--ds-text-soft) !important;
@@ -345,8 +345,8 @@ body{
   background: transparent !important;
   border: 1px solid #7f1d1d !important;
   color: #fca5a5 !important;
-  padding: 8px 16px !important;
-  font-size: .82rem !important;
+  padding: 7px 14px !important;
+  font-size: .76rem !important;
 }
 .btn-danger:hover{
   border-color: #ef4444 !important;
@@ -369,8 +369,8 @@ textarea{
   background: var(--ds-bg) !important;
   border: 1px solid var(--ds-border) !important;
   color: var(--ds-text) !important;
-  padding: 9px 12px !important;
-  font-size: .88rem !important;
+  padding: 7px 10px !important;
+  font-size: .82rem !important;
 }
 
 /* Algunos inputs son monoespaciados (números, IBANs, etc.) */
@@ -414,11 +414,11 @@ input[type="number"]{
 .h-badge-otro{
   font-family: var(--ds-font-mono) !important;
   border-radius: var(--ds-radius-pill) !important;
-  font-size: .66rem !important;
+  font-size: .6rem !important;
   letter-spacing: .08em !important;
   text-transform: uppercase;
   font-weight: 500 !important;
-  padding: 3px 10px !important;
+  padding: 2px 9px !important;
   display: inline-flex !important;
   align-items: center;
   gap: 4px;
@@ -447,20 +447,21 @@ input[type="number"]{
 table{
   font-family: var(--ds-font-sans);
   border-collapse: collapse;
+  font-size: .78rem;
 }
 table th{
   font-family: var(--ds-font-mono) !important;
-  font-size: .64rem !important;
+  font-size: .6rem !important;
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--ds-text-mute) !important;
   font-weight: 500;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border-bottom: 1px solid var(--ds-border);
   text-align: left;
 }
 table td{
-  padding: 9px 10px;
+  padding: 8px 9px;
   border-bottom: 1px solid var(--ds-border-soft);
   color: var(--ds-text);
 }
