@@ -1666,7 +1666,7 @@ function clearAll(){
 // ── COMPARE ──────────────────────────────────────────────────
 function compareAll(){
   const act = tradeResults.filter(Boolean);
-  if(act.length<2){ alert('Calcula al menos 2 trades para comparar.'); return; }
+  if(act.length<2){ toast('Calcula al menos 2 trades para comparar.', 'red'); return; }
   const panel = document.getElementById('compPanel');
   if(!panel) return;
   panel.classList.add('on');
@@ -2463,7 +2463,7 @@ function saveEntry(){
   const _hfLegs = (typeof legsRead === 'function') ? legsRead('hf_legs_container') : null;
   if(_hfLegs) entry.legs = _hfLegs;
 
-  if(!entry.activo){ alert('El activo es obligatorio.'); return; }
+  if(!entry.activo){ toast('El activo es obligatorio.', 'red'); return; }
 
   // ── Validación de fechas ──
   const dAp = entry.apertura ? new Date(entry.apertura) : null;
@@ -2503,7 +2503,7 @@ function deleteEntry(id){
 
 // ── EXPORT CSV ───────────────────────────────────────────────
 function exportCSV(){
-  if(!HIST.length){ alert('Sin datos para exportar.'); return; }
+  if(!HIST.length){ toast('Sin datos para exportar.', 'red'); return; }
   const data = HIST.map(computeEntry);
   const headers = ['ID OP','Activo','Operativa','Contratos','Apertura','EXP','Cierre','DTE Ini','Tiempo Op','Max Risk','Delta','IV','IVR','P. Crédito','P. Débito','P. Cierre','TP %','Comisiones','P. Neto','Total Neto','Profit Op %','Anotación'];
   const rows = data.map(e=>[
@@ -2915,7 +2915,7 @@ function addSnapFromModal(){
   const dateVal = document.getElementById('sDate')?.value || '';
   const val     = parseFloat(document.getElementById('sVal')?.value)||0;
   const depNet  = parseFloat(document.getElementById('sDep')?.value)||0;
-  if(!dateVal||!val){ alert('Fecha y NAV son obligatorios'); return; }
+  if(!dateVal||!val){ toast('Fecha y NAV son obligatorios', 'red'); return; }
   const dep = depNet >= 0 ? depNet : 0;
   const ret = depNet < 0 ? Math.abs(depNet) : 0;
   // date is now YYYY-MM-DD (daily); month = YYYY-MM
@@ -4392,7 +4392,7 @@ function ttUpdToggleAll(checked){
 
 function applyTtPriceUpdate(){
   const checks = document.querySelectorAll('.ttUpdCheck:checked');
-  if(!checks.length){ alert('No hay propuestas marcadas'); return; }
+  if(!checks.length){ toast('No hay propuestas marcadas', 'red'); return; }
   let count = 0, skipped = 0;
   checks.forEach(cb => {
     const i = parseInt(cb.dataset.i);
@@ -4406,14 +4406,14 @@ function applyTtPriceUpdate(){
     count++;
   });
   if(count === 0){
-    alert('No se aplicó ninguna propuesta (las marcadas no tienen un valor válido)');
+    toast('No se aplicó ninguna propuesta', 'red');
     return;
   }
   activasSave();
   renderActivas();
   closeTtPriceUpdate();
   const msg = '✓ '+count+' precios actualizados'+(skipped?' ('+skipped+' saltadas por valor inválido)':'');
-  alert(msg);
+  toast(msg, 'red');
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -4848,7 +4848,7 @@ function saveActPosition(){
   // Patas (opcional)
   const _legs = legsRead('am_legs_container');
   if(_legs) a.legs = _legs;
-  if(!a.activo){ alert('Introduce el activo'); return; }
+  if(!a.activo){ toast('Introduce el activo', 'red'); return; }
   if(_actEditIdx!=null){
     // Preserve image and priceCurrent from existing entry
     const _old = ACTIVAS[_actEditIdx];
@@ -5032,7 +5032,7 @@ function confirmClosePosition(){
   activasSave();
   closeActCloseModal();
   renderActivas();
-  alert(`✔ ${a.activo} cerrada y añadida al Historial.`);
+  toast(`✔ ${a.activo} cerrada y añadida al Historial`);
 }
 
 function deleteActPosition(idx){
@@ -5162,7 +5162,7 @@ function loadJSON(event){
   setTimeout(renderSemaphores, 150);
       showSaveFlash('Cargado ✓ ('+sanitized.length+' ops)');
     } catch(err){
-      alert('Error al cargar: ' + err.message);
+      toast('Error al cargar: ' + err.message, 'red');
     }
   };
   reader.readAsText(file);
@@ -5761,9 +5761,9 @@ function openStratCustomModal(){
   const name = prompt('Nombre de la nueva estrategia (ej: Ratio Spread):');
   if(!name || !name.trim()) return;
   const code = name.trim().replace(/[^A-Za-z0-9\-_]/g,'').toUpperCase().slice(0,8);
-  if(!code){ alert('Nombre inválido'); return; }
+  if(!code){ toast('Nombre inválido', 'red'); return; }
   const all = getAllStrats();
-  if(all.find(s=>s.code===code)){ alert('La estrategia "'+code+'" ya existe.'); return; }
+  if(all.find(s=>s.code===code)){ toast('La estrategia "'+code+'" ya existe.', 'red'); return; }
   if(!CFG.customStrats) CFG.customStrats = [];
   CFG.customStrats.push({ code, label: name.trim(), tp: 50 });
   // New strats are independent by default (not in OTRO)
@@ -6484,7 +6484,7 @@ function gcRenameCode(input){
   if(!newCode || newCode===orig){ input.value = orig; return; }
   const all = getAllStrats();
   if(all.find(s=>s.code===newCode && s.code!==orig)){
-    alert('El código "'+newCode+'" ya existe.'); input.value = orig; return;
+    toast('El código "'+newCode+'" ya existe.', 'red'); input.value = orig; return;
   }
   // Rename in customStrats
   if(!CFG.customStrats) return;
@@ -6509,7 +6509,7 @@ function gcDeleteStrat(code){
   // Check HIST entries — if any, block deletion
   const histEntries = HIST.filter(h=>(h.strat===code)||(h.stratGroup===code));
   if(histEntries.length > 0){
-    alert('No puedes eliminar "'+code+'" — tiene '+histEntries.length+' operación'+(histEntries.length!==1?'es':'')+' en el Historial.\nCambia la estrategia de esas operaciones primero antes de eliminarla.');
+    toast('No puedes eliminar "'+code+'": tiene '+histEntries.length+' operación'+(histEntries.length!==1?'es':'')+' en el Historial. Cambia la estrategia primero.', 'red');
     return;
   }
   // Check open positions
@@ -6536,12 +6536,12 @@ function gcAddStrat(){
   const nameInp = document.getElementById('gc_newStrat');
   const rawCode = (codeInp?.value||'').trim();
   const rawName = (nameInp?.value||'').trim();
-  if(!rawCode){ alert('Introduce un código para la estrategia (ej: FLD)'); codeInp?.focus(); return; }
+  if(!rawCode){ toast('Introduce un código (ej: FLD)', 'red'); codeInp?.focus(); return; }
   const code = rawCode.replace(/[^A-Za-z0-9\-_]/g,'').toUpperCase().slice(0,8);
-  if(!code){ alert('Código inválido — solo letras y números'); return; }
+  if(!code){ toast('Código inválido — solo letras y números', 'red'); return; }
   const label = rawName || code;
   const all = getAllStrats();
-  if(all.find(s=>s.code===code)){ alert('La estrategia "'+code+'" ya existe.'); return; }
+  if(all.find(s=>s.code===code)){ toast('La estrategia "'+code+'" ya existe.', 'red'); return; }
   if(!CFG.customStrats) CFG.customStrats = [];
   const rawLegs = (document.getElementById('gc_newLegs')?.value||'').trim();
   const legs = rawLegs ? rawLegs.split(',').map(l=>l.trim()).filter(Boolean) : [];
@@ -6845,7 +6845,7 @@ function ncCalculate(){
   const openD = gs('nc_open');
   const expD  = gs('nc_exp');
 
-  if(!ss||!prem||!expD||!openD){ alert('Introduce al menos: strike, prima, apertura y vencimiento.'); return; }
+  if(!ss||!prem||!expD||!openD){ toast('Introduce al menos: strike, prima, apertura y vencimiento.', 'red'); return; }
 
   const dte = Math.max(1, Math.round((new Date(expD)-new Date(openD))/86400000));
   const ap  = prem*100*ctr;
@@ -7126,7 +7126,7 @@ function addMetricEntry(){
   const theta = parseFloat(document.getElementById('sm_theta')?.value);
   const vega  = parseFloat(document.getElementById('sm_vega')?.value);
   const gamma = parseFloat(document.getElementById('sm_gamma')?.value);
-  if(!date){ alert('Introduce la fecha'); return; }
+  if(!date){ toast('Introduce la fecha', 'red'); return; }
 
   const month = date.slice(0,7);
   // Find or create snap for this month
@@ -7767,8 +7767,8 @@ function confirmRoll(){
   const cierre    = document.getElementById('roll_cierre').value;
   const ctr       = a.contracts||1;
 
-  if(!cierre){ alert('Introduce la fecha de cierre.'); return; }
-  if(!newExp){ alert('Introduce la nueva expiración.'); return; }
+  if(!cierre){ toast('Introduce la fecha de cierre.', 'red'); return; }
+  if(!newExp){ toast('Introduce la nueva expiración.', 'red'); return; }
 
   // 1. Create HIST entry for closed leg
   // pnlClose en $ reales: ($/share × 100 × ctr) - comi
@@ -7848,7 +7848,7 @@ function confirmRoll(){
   const pnlStr = (pnlClose>=0?'+':'')+pnlClose.toFixed(2);
   const _pataFinal = _getRollPata();
   const _pataMsg   = _pataFinal !== 'todo' ? ' — '+_pataFinal.toUpperCase() : '';
-  alert('✔ Roll registrado'+_pataMsg+'.\nPata cerrada: '+pnlStr+'$ → Historial\nNueva pata: exp '+newExp);
+  toast('✔ Roll registrado'+_pataMsg+'. Cerrada: '+pnlStr+'$, nueva exp '+newExp);
 }
 
 // ══════════════════════════════
