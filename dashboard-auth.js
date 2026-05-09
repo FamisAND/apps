@@ -375,7 +375,7 @@ async function changePin(section, title){
           return s;
         });
         cleanup();
-        alert('✓ PIN cambiado correctamente');
+        if(typeof window.toast === 'function') window.toast('✓ PIN cambiado correctamente');
         resolve({changed:true});
       } catch(err){
         errEl.textContent = 'Error: '+(err.message||'');

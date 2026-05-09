@@ -1647,7 +1647,7 @@ function saveFactura(){
     if(idx>=0) p.facturas[idx] = f;
   }
   save();
-  alert("Factura guardada ✓");
+  toast("✓ Factura guardada");
   editingFactura = null;
   showTab("facturas");
 }
@@ -2110,12 +2110,12 @@ function importProfileFile(ev){
         data.id = uid();
         profiles.push(data);
       } else {
-        alert("Formato no reconocido"); return;
+        toast("Formato no reconocido", 'red'); return;
       }
       save();
       renderProfiles();
-      alert("Importado ✓");
-    } catch(err){ alert("Error al leer el archivo: "+err.message); }
+      toast("✓ Importado");
+    } catch(err){ toast("Error al leer el archivo: "+err.message, 'red'); }
   };
   reader.readAsText(file);
   ev.target.value = "";

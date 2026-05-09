@@ -257,26 +257,25 @@
   function copyResult(){
     if(!state.currentResult) return;
     navigator.clipboard.writeText(state.currentResult).then(() => {
-      if(typeof toast === 'function') toast('✓ Copiado al portapapeles');
-      else alert('✓ Copiado');
+      toast('✓ Copiado al portapapeles');
     }).catch(() => {
-      if(typeof toast === 'function') toast('No se pudo copiar', 'red');
+      toast('No se pudo copiar', 'red');
     });
   }
 
   // ════════ EJECUCIÓN ════════
   async function runAnalisis(){
     if(state.selectedMeses == null){
-      alert('Selecciona los meses primero'); return;
+      toast('Selecciona los meses primero', 'red'); return;
     }
     let dataset;
     try {
       dataset = state.config.buildDataset(state.selectedMeses);
     } catch(err){
-      alert('Error preparando los datos: ' + err.message); return;
+      toast('Error preparando datos: ' + err.message, 'red'); return;
     }
     if(state.config.datasetIsEmpty?.(dataset)){
-      alert(state.config.datasetEmptyMsg || 'No hay datos.'); return;
+      toast(state.config.datasetEmptyMsg || 'No hay datos.', 'red'); return;
     }
     const previewLine = _previewFromDataset(dataset, state.selectedMeses);
     showLoading(`Analizando: ${previewLine}`);
@@ -292,15 +291,15 @@
   async function runPregunta(){
     const input = document.getElementById('iaPreguntaTxt');
     const pregunta = (input?.value || '').trim();
-    if(!pregunta){ alert('Escribe una pregunta'); return; }
+    if(!pregunta){ toast('Escribe una pregunta', 'red'); return; }
     let dataset;
     try {
       dataset = state.config.buildDataset('todos');
     } catch(err){
-      alert('Error preparando los datos: ' + err.message); return;
+      toast('Error preparando datos: ' + err.message, 'red'); return;
     }
     if(state.config.datasetIsEmpty?.(dataset)){
-      alert(state.config.datasetEmptyMsg || 'No hay datos.'); return;
+      toast(state.config.datasetEmptyMsg || 'No hay datos.', 'red'); return;
     }
     showLoading('Pensando la respuesta...');
     try {
@@ -320,10 +319,10 @@
       const fullDs = state.config.buildDataset('todos', plt);
       dataset = plt.scope ? _filterDataset(fullDs, plt.scope) : fullDs;
     } catch(err){
-      alert('Error preparando los datos: ' + err.message); return;
+      toast('Error preparando datos: ' + err.message, 'red'); return;
     }
     if(state.config.datasetIsEmpty?.(dataset)){
-      alert(state.config.datasetEmptyMsg || 'No hay datos.'); return;
+      toast(state.config.datasetEmptyMsg || 'No hay datos.', 'red'); return;
     }
     showLoading(`${plt.icon} ${plt.label}...`);
     try {
@@ -376,14 +375,14 @@
     const instr = document.getElementById('iaInstructionsInput');
     setInstructions(instr?.value || '');
     closeConfig();
-    if(typeof toast === 'function') toast('✓ Instrucciones guardadas', 'green');
+    toast('✓ Instrucciones guardadas');
     showTab();
   }
   function deleteInstructionsHandler(){
     if(!confirm('¿Borrar las instrucciones personalizadas?')) return;
     setInstructions('');
     closeConfig();
-    if(typeof toast === 'function') toast('Instrucciones borradas', 'red');
+    toast('Instrucciones borradas', 'red');
     showTab();
   }
 
