@@ -554,6 +554,7 @@ html,body{
   </div>
 </div>
 
+<script src="utils.js"></script>
 <script src="github-sync.js"></script>
 <script>
 function show(id){
@@ -1099,7 +1100,6 @@ function iaRenderApisList(){
   // Activar drag & drop
   iaSetupDragDrop();
 }
-function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 // ─── Drag & drop reorder ───
 function iaSetupDragDrop(){

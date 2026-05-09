@@ -138,7 +138,8 @@
   function _hideAll(){
     ['iaNoKey','iaInitial','iaSelectorMeses','iaPregunta','iaLoading','iaResultado','iaError'].forEach(_hide);
   }
-  function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // escapeHtml viene de utils.js (cargado antes que este script en cada HTML)
+  const escapeHtml = global.escapeHtml || (s => String(s||''));
 
   // ════════ ESTADOS ════════
   function showTab(){
