@@ -265,6 +265,7 @@ body{
   letter-spacing: .14em;
   text-transform: uppercase;
   font-weight: 500;
+  font-size: .58rem !important;
 }
 
 /* KPI values también monoespaciados */
@@ -406,6 +407,20 @@ input[type="number"]{
 .kpi-val,
 .d-kpi-val{
   color: var(--ds-acc) !important;
+  font-size: 1.15rem !important;
+  font-weight: 500 !important;
+  letter-spacing: -.01em !important;
+  line-height: 1.15 !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+/* Sub-texto de KPI (cobrado, etc.) */
+.kpi-sub,
+.d-kpi-sub{
+  font-size: .68rem !important;
+  color: var(--ds-text-mute) !important;
+  margin-top: 4px;
 }
 
 /* ───── Badges / chips ───── */
