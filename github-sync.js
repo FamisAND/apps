@@ -104,10 +104,7 @@ async function pullRaw(){
     if(!b64) return null;
     try {
       const decoded = b64decode(b64);
-      console.log('[GitHubSync] '+label+' decoded length:', decoded.length);
-      const parsed = JSON.parse(decoded);
-      console.log('[GitHubSync] '+label+' parsed OK. Top keys:', Object.keys(parsed));
-      return parsed;
+      return JSON.parse(decoded);
     } catch(err){
       console.error('[GitHubSync] '+label+' FALLÓ:', err.message);
       return null;
@@ -127,7 +124,6 @@ async function pullRaw(){
                                     { cache: 'no-store' });
       if(blobRes.ok){
         const blobData = await blobRes.json();
-        console.log('[GitHubSync] blob recibido, tamaño:', blobData.size, 'encoding:', blobData.encoding);
         if(blobData.encoding === 'base64' && blobData.content){
           content = tryParse(blobData.content, 'blob endpoint');
         }
@@ -143,7 +139,6 @@ async function pullRaw(){
   // Bypassea la API de GitHub y va al raw del archivo
   if(!content && data.download_url){
     try {
-      console.log('[GitHubSync] usando fallback download_url');
       const dlRes = await fetch(data.download_url + '?_='+Date.now(), {
         cache: 'no-store',
         headers: { 'Authorization': 'token '+getToken() }
