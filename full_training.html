@@ -238,77 +238,175 @@ tr:hover td{background:rgba(255,255,255,.015);}
 
 /* ════════ MOBILE (≤640px) ════════ */
 @media (max-width: 640px) {
-  body{font-size:14px;}
-
-  /* Sidebar: en mobile es horizontal scroll arriba en lugar de columna lateral */
-  .sidebar{
-    position:relative !important;
-    width:100% !important;
-    height:auto !important;
-    flex-direction:row !important;
-    overflow-x:auto !important;
-    overflow-y:hidden !important;
-    padding:8px !important;
-    border-right:none !important;
-    border-bottom:1px solid var(--border);
-    -webkit-overflow-scrolling:touch;
+  /* CRÍTICO: Liberar el scroll del body y romper el layout flex desktop */
+  html, body {
+    overflow: visible !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    font-size: 14px;
   }
-  .sidebar > div{display:flex !important;flex-direction:row !important;gap:6px !important;}
-  .nav-btn{
-    flex-shrink:0;
-    flex-direction:row !important;
-    padding:8px 12px !important;
-    font-size:.7rem !important;
-    white-space:nowrap;
-    width:auto !important;
+
+  /* El layout principal (body es flex con sidebar+main) → en mobile se apila */
+  body {
+    flex-direction: column !important;
   }
-  .nav-btn .ic{margin-bottom:0 !important;margin-right:6px !important;font-size:.95rem !important;}
+  /* En FT el layout flex está en .screen.active */
+  .screen.active {
+    flex-direction: column !important;
+  }
 
-  /* Main content: ocupa el ancho */
-  .main-area, main, [class*="main"]{margin-left:0 !important;padding:10px !important;}
+  /* Sidebar: arriba, ocupa ancho completo, scroll horizontal de los botones */
+  .sidebar {
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    flex-direction: column !important;
+    overflow: visible !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    flex-shrink: 0 !important;
+  }
+  .sidebar-logo {
+    padding: 10px 14px !important;
+  }
+  /* La nav (los botones de Dashboard, Remesas, etc.) en horizontal scroll */
+  .sidebar .nav,
+  .sidebar > nav,
+  #mainNav {
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding: 6px 8px !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+  }
+  /* Sub-headers tipo "PRINCIPAL", "OPERATIVO", "CONFIGURACIÓN" — los ocultamos en mobile */
+  .sidebar .nav-section,
+  .sidebar .section-label {
+    display: none !important;
+  }
+  /* Cada botón compacto y horizontal */
+  .nav-btn {
+    flex-direction: row !important;
+    flex-shrink: 0 !important;
+    padding: 6px 10px !important;
+    font-size: .7rem !important;
+    white-space: nowrap !important;
+    width: auto !important;
+    min-width: auto !important;
+    text-align: left !important;
+  }
+  .nav-btn .ic,
+  .nav-btn .nav-ic {
+    margin: 0 6px 0 0 !important;
+    font-size: .9rem !important;
+  }
+  /* sidebar-bottom (avatar/logout) horizontal */
+  .sidebar-bottom {
+    flex-direction: row !important;
+    padding: 6px 10px !important;
+    border-top: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    gap: 6px !important;
+    align-items: center !important;
+  }
 
-  /* Topbar: que no se corte */
-  .topbar-sec{padding:8px 12px !important;flex-direction:column !important;gap:8px !important;align-items:stretch !important;}
+  /* MAIN: que SÍ se vea */
+  .main {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .main-scroll {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 12px !important;
+  }
+
+  /* Topbar (header de cada sección): que respire */
+  .topbar-sec {
+    padding: 8px 12px !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
 
   /* Cards */
-  .card{padding:14px 12px !important;}
+  .card { padding: 12px !important; }
 
-  /* KPIs: 2 columnas */
-  [class*="grid"][class*="kpi"], .kpi-grid{grid-template-columns:repeat(2,1fr) !important;gap:8px !important;}
+  /* KPIs: 2 columnas para que entren bien */
+  [class*="grid"][class*="kpi"], .kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
 
-  /* Tablas: scroll horizontal */
-  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  table{font-size:.75rem !important;}
-  th,td{padding:6px 8px !important;white-space:nowrap;}
+  /* Tablas: scroll horizontal y fuente más pequeña */
+  .tbl-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100vw !important;
+  }
+  table { font-size: .72rem !important; }
+  th, td { padding: 5px 7px !important; white-space: nowrap !important; }
 
-  /* Inputs: 16px para evitar zoom de iOS */
-  input,select,textarea{
-    font-size:16px !important;
-    padding:9px 11px !important;
+  /* Inputs ≥16px en mobile (iOS no zoom) */
+  input, select, textarea {
+    font-size: 16px !important;
+    padding: 8px 10px !important;
   }
 
   /* Botones */
-  .btn{min-height:36px;padding:8px 12px !important;font-size:.8rem !important;}
-  .btn-sm{min-height:32px;}
+  .btn { min-height: 34px; padding: 7px 11px !important; font-size: .76rem !important; }
+  .btn-sm { min-height: 28px; padding: 4px 8px !important; font-size: .68rem !important; }
 
   /* IA tab */
-  #tab-ia [style*="grid-template-columns:1fr 1fr"]{
-    grid-template-columns:1fr !important;
+  #tab-ia [style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
   }
-  #iaPlantillas{grid-template-columns:1fr !important;}
-  #iaConfigModal > div{
-    max-width:100% !important;
-    margin:0 8px !important;
-    padding:16px 14px !important;
-    max-height:calc(100vh - 16px) !important;
+  #iaPlantillas { grid-template-columns: 1fr !important; }
+  #iaConfigModal > div {
+    max-width: 100% !important;
+    margin: 0 8px !important;
+    padding: 14px !important;
+    max-height: calc(100vh - 16px) !important;
   }
-  #iaInstructionsInput{font-size:14px !important;}
-  #iaResultadoTxt{padding:12px 14px !important;font-size:.82rem !important;max-height:65vh !important;}
+  #iaInstructionsInput { font-size: 14px !important; }
+  #iaResultadoTxt { padding: 10px 12px !important; font-size: .82rem !important; max-height: 65vh !important; }
+
+  /* Modales en general: full width y scroll interno */
+  .modal-overlay > .modal,
+  [class*="modal"] {
+    max-width: calc(100vw - 16px) !important;
+    width: calc(100vw - 16px) !important;
+    margin: 8px !important;
+    max-height: calc(100vh - 16px) !important;
+    overflow-y: auto !important;
+  }
+
+  /* Topbar de FT: que el botón "Inicio" no se cole sobre el contenido */
+  .home-btn-fixed,
+  [class*="back-btn"] {
+    position: relative !important;
+    margin: 8px !important;
+    width: auto !important;
+  }
+
+  /* Charts: dejarlos respirar */
+  canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
 }
 
 @media (max-width: 380px) {
-  .nav-btn{padding:6px 10px !important;font-size:.65rem !important;}
-  table{font-size:.7rem !important;}
+  .nav-btn { padding: 5px 8px !important; font-size: .65rem !important; }
+  table { font-size: .68rem !important; }
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
