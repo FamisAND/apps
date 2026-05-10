@@ -416,10 +416,12 @@ function getYesterday() {
 
 // Fetch RSS de medios andorranos. Parser regex simple — Node 20+ tiene fetch nativo.
 async function fetchAndorraNews() {
+  // Probados 2026-05-10: estos 3 sí responden y devuelven RSS válido.
+  // Altaveu y Diari d'Andorra no tienen feeds públicos accesibles.
   const FEEDS = [
-    { url: 'https://www.bondia.ad/rss',         source: 'BonDia'    },
-    { url: 'https://www.altaveu.com/rss',       source: 'Altaveu'   },
-    { url: 'https://www.diariandorra.ad/rss/portada', source: 'Diari' },
+    { url: 'https://www.bondia.ad/rss.xml', source: 'BonDia'      },
+    { url: 'https://www.forum.ad/rss',      source: 'Forum.ad'    },
+    { url: 'https://elperiodic.ad/rss',     source: 'El Periòdic' },
   ];
   const all = [];
   await Promise.all(FEEDS.map(async f => {
