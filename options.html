@@ -691,7 +691,11 @@
 <!-- ACTIVAS MODAL: Close position → goes to Historial -->
 <div class="cfg-overlay" id="actCloseModal">
   <div class="cfg-modal" style="width:560px">
-    <div class="cfg-title">Cerrar posición</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+      <div class="cfg-title" style="margin-bottom:0">Cerrar posición</div>
+      <div id="acmMicSlot" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+    <div id="acmVoiceStatus" style="display:none;font-size:10px;font-family:'Courier New',monospace;color:#5a7a9a;margin-bottom:10px;padding:6px 10px;background:#0a1421;border:1px solid #1e2d3d;border-radius:4px"></div>
 
     <!-- Info de la apertura (read-only) -->
     <div id="acm_open_info" style="background:#0a1421;border:1px solid #1e2d3d;border-radius:4px;padding:10px 12px;margin-bottom:12px;font-family:'Courier New',monospace;font-size:11px;color:#5a7a9a">
@@ -4078,6 +4082,61 @@ function _injectActModalMic(){
   slot.appendChild(hint);
 }
 
+// ── Voice input para CIERRE de operación ────────────────────────
+const ACT_CLOSE_VOICE_SYSTEM = `Eres un parser de cierre de operaciones de opciones. Convierte el texto en JSON estricto:
+{
+  "cierre": "YYYY-MM-DD",
+  "pCierre": number,
+  "comi_close": number,
+  "nota": string
+}
+
+Reglas:
+- "Cerré por X dólares" → pCierre: X (precio de cierre por contrato).
+- "comisión Y" → comi_close: Y.
+- Fechas: hoy es la default si no se menciona; convertir relativas ("ayer", "viernes") a YYYY-MM-DD.
+- Si NO se menciona un campo, omítelo.
+- Devuelve SOLO el JSON, sin markdown ni explicación.`;
+
+let _acmMicInjected = false;
+function _injectActCloseMic(){
+  if(_acmMicInjected) return;
+  _acmMicInjected = true;
+  if(typeof createMicButton !== 'function') return;
+  const slot = document.getElementById('acmMicSlot');
+  if(!slot) return;
+  const mic = createMicButton({
+    title: 'Pulsa y dicta los datos del cierre',
+    onTranscript: async (text) => {
+      const status = document.getElementById('acmVoiceStatus');
+      status.style.display = 'block';
+      status.style.color = '#5a7a9a';
+      status.textContent = '⏳ Escuchado: "' + text + '" — interpretando...';
+      try {
+        const json = await parseVoiceJSON(text, ACT_CLOSE_VOICE_SYSTEM);
+        if(json.cierre) document.getElementById('acm_cierre').value = json.cierre;
+        if(json.pCierre != null) document.getElementById('acm_pcierre').value = json.pCierre;
+        if(json.comi_close != null) document.getElementById('acm_comi_close').value = json.comi_close;
+        if(json.nota) document.getElementById('acm_nota').value = json.nota;
+        if(typeof updateCloseCalc === 'function') updateCloseCalc();
+        const filled = Object.keys(json).filter(k=>json[k]!=null).join(', ');
+        status.style.color = '#3fb68b';
+        status.textContent = '✓ Rellenado: ' + filled + '. Revisa y cierra.';
+        setTimeout(()=>{ status.style.display='none'; }, 8000);
+      } catch(err){
+        status.style.color = '#f04545';
+        status.textContent = '✕ ' + err.message;
+      }
+    }
+  });
+  slot.innerHTML = '';
+  slot.appendChild(mic);
+  const hint = document.createElement('span');
+  hint.style.cssText = 'font-size:9px;color:#3a5468;font-family:Courier New,monospace;letter-spacing:.5px';
+  hint.textContent = 'voz';
+  slot.appendChild(hint);
+}
+
 // Rellena los campos del modal a partir del JSON parseado por la IA
 function _fillActModalFromJSON(j){
   if(!j || typeof j !== 'object') return;
@@ -5007,6 +5066,8 @@ function openActCloseModal(idx){
 
   // Auto-calc preview
   updateCloseCalc();
+  // Inyectar botón micrófono (voice input) la primera vez
+  _injectActCloseMic();
   document.getElementById('actCloseModal').classList.add('on');
 
   // Live calc on input change
