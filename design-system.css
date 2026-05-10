@@ -525,18 +525,10 @@ td.amount{
   color: var(--ds-text-mute) !important;
 }
 
-/* ───── Forzar tipografía moderna en elementos que aún usan Bebas Neue ─────
-   Algunos HTMLs tienen estilos inline con font-family:'Bebas Neue'.
-   Como hemos sacado Bebas del proyecto, esos elementos con tamaño fijo
-   se ven enormes (DM Sans es más ancho). Los forzamos.
+/* ───── Display headings unificados ─────
+   Asegura que page-title / modal-title / sec-title usen DM Sans en todos
+   los HTMLs aunque alguno declare otra tipografía localmente.
 */
-[style*="Bebas Neue"]{
-  font-family: var(--ds-font-sans) !important;
-  font-weight: 600 !important;
-  letter-spacing: .01em !important;
-}
-
-/* En particular, los tamaños extremos del logo FT (2.2rem) los reducimos */
 .page-title,
 .modal-title,
 .sec-title{
