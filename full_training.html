@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💪</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 <link rel="stylesheet" href="full_training.css">
@@ -54,7 +54,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
   <div style="width:100%;max-width:520px;padding:20px;">
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;">
       <svg width="38" height="38" viewBox="0 0 52 52" fill="none"><rect x="0" y="0" width="22" height="22" fill="#F5C000"/><rect x="0" y="30" width="22" height="22" fill="#F5C000"/><rect x="30" y="30" width="22" height="22" fill="#F5C000"/></svg>
-      <div style="line-height:.88;"><div style="font-family:'Bebas Neue',sans-serif;font-size:2.2rem;letter-spacing:.02em;"><span style="color:var(--yellow)">FUL</span>L TRAINING</div></div>
+      <div style="line-height:.88;"><div style="font-family:'DM Sans',sans-serif;font-size:1.85rem;font-weight:700;letter-spacing:-.01em;"><span style="color:var(--yellow)">FUL</span>L TRAINING</div></div>
     </div>
     <div style="font-size:.6rem;text-transform:uppercase;letter-spacing:.22em;color:var(--muted);text-align:center;margin-bottom:28px;" data-i18n="selecciona_perfil">Selecciona tu perfil</div>
 
@@ -98,7 +98,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
     <div class="sidebar-logo">
       <div style="display:flex;align-items:center;gap:7px;">
         <svg width="26" height="26" viewBox="0 0 52 52" fill="none"><rect x="0" y="0" width="22" height="22" fill="#F5C000"/><rect x="0" y="30" width="22" height="22" fill="#F5C000"/><rect x="30" y="30" width="22" height="22" fill="#F5C000"/></svg>
-        <div style="line-height:.86;"><div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:.03em;"><span style="color:var(--yellow)">FUL</span>L TRAINING</div><div style="font-size:.52rem;text-transform:uppercase;letter-spacing:.17em;color:var(--muted2);margin-top:1px;">Gestión</div></div>
+        <div style="line-height:.86;"><div style="font-family:'DM Sans',sans-serif;font-size:1rem;font-weight:700;letter-spacing:-.01em;"><span style="color:var(--yellow)">FUL</span>L TRAINING</div><div style="font-size:.52rem;text-transform:uppercase;letter-spacing:.17em;color:var(--muted2);margin-top:1px;">Gestión</div></div>
       </div>
     </div>
     <nav class="nav" id="mainNav">
@@ -849,7 +849,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card2);border:1px solid var(--border2);border-radius:2px;padding:8px 12px;margin-bottom:10px;">
       <span style="font-size:.72rem;color:var(--muted);">Total venta</span>
-      <span id="sell_total" style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;color:var(--yellow);">—</span>
+      <span id="sell_total" style="font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--yellow);">—</span>
     </div>
     <div class="modal-err" id="sellErr"></div>
     <div class="btn-row">
@@ -884,7 +884,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
 if(typeof Chart!=='undefined'){
   Chart.defaults.color='#666';
   Chart.defaults.borderColor='rgba(255,255,255,.05)';
-  Chart.defaults.font.family='Barlow,sans-serif';
+  Chart.defaults.font.family='DM Sans,sans-serif';
   Chart.defaults.font.size=11;
 }
 const SK='ft_v4';
@@ -1131,7 +1131,7 @@ function renderStock(){
     }).join('')}
     <div style="padding:8px 0 2px;display:flex;justify-content:space-between;font-size:.78rem;border-top:1px solid var(--border);margin-top:4px;">
       <span style="color:var(--muted)">Total mes</span>
-      <span style="font-family:'Bebas Neue',sans-serif;color:var(--yellow);font-size:1rem">${fmt(sales.reduce((s,v)=>s+v.qty*v.price,0))}</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:600;color:var(--yellow);font-size:.95rem">${fmt(sales.reduce((s,v)=>s+v.qty*v.price,0))}</span>
     </div>
     </div></div>`
   :`<div class="empty"><div class="empty-ic">🛒</div><div>Sin ventas este mes</div></div>`;
@@ -3724,7 +3724,7 @@ function renderInvoiceLines(entries,igi){
     <div style="text-align:right;font-size:.82rem;">
       <div style="color:var(--muted);margin-bottom:3px;">Base imponible: <span class="mono">${fmt(subtotal)}</span></div>
       <div style="color:var(--muted);margin-bottom:5px;">IGI ${igi}%: <span class="mono">${fmt(igiTotal)}</span></div>
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:.04em;">TOTAL: <span class="yl">${fmt(totalWithIGI)}</span></div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:1.15rem;font-weight:600;letter-spacing:.01em;">TOTAL: <span class="yl">${fmt(totalWithIGI)}</span></div>
     </div>`;
 }
 
@@ -3897,7 +3897,7 @@ function renderMiPanel(){
           <div class="worker-month-title">${label}</div>
         </div>
         <div style="text-align:right">
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;color:var(--yellow)">${fmt(earned)}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--yellow)">${fmt(earned)}</div>
           <div style="font-size:.65rem;color:var(--muted)">facturado: ${fmt(bill)}</div>
         </div>
       </div>
