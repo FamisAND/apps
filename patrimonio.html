@@ -508,8 +508,10 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
       <button class="pin-btn" onclick="pi(0)">0</button>
       <button class="pin-btn" onclick="pinBack()" style="font-size:.88rem">⌫</button>
     </div>
-    <button class="btn-primary" id="pinConfirmBtn" style="width:100%;margin-bottom:8px;display:none" onclick="handleSetupPin()">Confirmar PIN</button>
-    <button class="btn-ghost" style="width:100%" onclick="closePinModal()">Cancelar</button>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:8px">
+      <button class="btn-primary" id="pinConfirmBtn" style="min-width:200px;display:none" onclick="handleSetupPin()">Confirmar PIN</button>
+      <button class="btn-ghost" style="min-width:200px" onclick="closePinModal()">Cancelar</button>
+    </div>
   </div>
 </div>
 
