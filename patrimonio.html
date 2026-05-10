@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 <link rel="stylesheet" href="patrimonio.css">
@@ -1056,6 +1057,8 @@ function dChart(id){if(charts[id]){charts[id].destroy();delete charts[id];}}
 const TT={backgroundColor:"#0f1729",borderColor:"#1e2d4a",borderWidth:1,titleColor:"#94a3b8",bodyColor:"#e2e8f0",padding:9};
 const GR={color:"#1e2d4a"};
 function sc(u){return{x:{ticks:{color:"#475569",font:{size:10}},grid:GR},y:{ticks:{color:"#475569",font:{size:10},callback:v=>u==="€"?fmt(v).replace(" €","")+"€":`${v}%`},grid:GR}};}
+// Config para zoom + pan en charts de series temporales (Ctrl+rueda, pinch, drag).
+const ZCFG={pan:{enabled:true,mode:'x',threshold:5},zoom:{wheel:{enabled:true,modifierKey:'ctrl'},pinch:{enabled:true},mode:'x'}};
 
 function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
@@ -1064,7 +1067,7 @@ function renderCharts(p){
 
   // ── Total line ──
   dChart("total");
-  charts["total"]=new Chart(document.getElementById("cTotal"),{type:"line",data:{labels:lbl,datasets:[{label:"Patrimonio",data:ents.map(e=>calcPat(e,p)),borderColor:"#60a5fa",backgroundColor:"rgba(96,165,250,.07)",borderWidth:2.5,pointRadius:3,pointBackgroundColor:"#60a5fa",tension:.3,fill:true}]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>`Patrimonio: ${fmt(c.parsed.y)}`}}},scales:sc("€")}});
+  charts["total"]=new Chart(document.getElementById("cTotal"),{type:"line",data:{labels:lbl,datasets:[{label:"Patrimonio",data:ents.map(e=>calcPat(e,p)),borderColor:"#60a5fa",backgroundColor:"rgba(96,165,250,.07)",borderWidth:2.5,pointRadius:3,pointBackgroundColor:"#60a5fa",tension:.3,fill:true}]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>`Patrimonio: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
 
   // ── Pie: distribución actual (solo inversiones + banco, sin ingresos) ──
   dChart("pie");
