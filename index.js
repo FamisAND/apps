@@ -1478,6 +1478,7 @@ async function _notifShowForm(){
   document.getElementById('notifChatId').value = (cfg && cfg.chat_id) || '';
   document.getElementById('notifTime').value = (cfg && cfg.time) || '09:00';
   document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
+  // AI insight: por defecto OFF — el usuario puede activarlo si quiere
   document.getElementById('notifAiInsight').checked = cfg ? !!cfg.ai_insight : false;
   _renderNotifDays(cfg && cfg.days);
   _renderNotifSections(cfg && cfg.sections, cfg && cfg.section_order);
@@ -1801,8 +1802,8 @@ function _previewOptions(ctx, data, sec){
         const ctr = parseInt(a.contracts) || 1;
         const dte = a.exp ? Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000) : null;
         const u = _calcUnrealized(a);
-        const pnlStr = u != null ? ` · ${u>=0?'+':''}$${_fnum(Math.abs(u))}` : '';
-        const dteStr = (a.strat === 'ACC') ? '' : (dte != null ? ` ${dte}d` : '');
+        const pnlStr = u != null ? ` · P&L ${u>=0?'+':''}$${_fnum(Math.abs(u))}` : '';
+        const dteStr = (a.strat === 'ACC') ? '' : (dte != null ? ` · ${dte}d DTE` : '');
         const ctrStr = ctr > 1 ? ` x${ctr}` : '';
         out.push(`     • <code>${_esc(a.activo||'?')}</code> ${a.strat||''}${ctrStr}${dteStr}${pnlStr}`);
       });
@@ -1892,7 +1893,8 @@ function _previewTraining(ctx, data, sec){
         out.push(`   📊 Beneficio ${ctx.ftMonthKey}: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
       }
     }
-    // Impagos AGRUPADOS POR CLIENTE — solo MESES CERRADOS (mk <= ftMonthKey)
+    // Impagos — solo MESES CERRADOS (mk <= ftMonthKey).
+    // Agrupados por cliente, con TODOS los meses pendientes detallados.
     if(sec.impagos !== false){
       const cliMap = {};
       (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
@@ -1904,25 +1906,21 @@ function _previewTraining(ctx, data, sec){
           const pr = parseFloat(e.price) || 0;
           if(pr <= 0) return;
           const cli = cliMap[e.clientId] || e.clientId || '?';
-          if(!byCli[cli]) byCli[cli] = { count: 0, total: 0, oldest: null };
-          byCli[cli].count++;
+          if(!byCli[cli]) byCli[cli] = { total: 0, byMonth: {} };
           byCli[cli].total += pr;
-          if(!byCli[cli].oldest || mk < byCli[cli].oldest) byCli[cli].oldest = mk;
+          byCli[cli].byMonth[mk] = (byCli[cli].byMonth[mk] || 0) + pr;
           totalAll += pr; countAll++;
         });
       }
       const grouped = Object.entries(byCli).sort((a,b) => b[1].total - a[1].total);
       if(grouped.length){
         out.push('');
-        out.push(`   ⚠ <b>${countAll} impagos · €${_fnum(totalAll)}</b> <i>(${grouped.length} cliente${grouped.length===1?'':'s'})</i>`);
-        const MAX = 8;
-        grouped.slice(0, MAX).forEach(([cli, d]) => {
-          const facLbl = d.count === 1 ? '1 factura' : `${d.count} facturas`;
-          const old = ctx.monthsAgo(d.oldest);
-          const oldStr = (old != null && old > 0) ? ` · ${old}m antig.` : '';
-          out.push(`     • ${_esc(cli)}: €${_fnum(d.total)} <i>(${facLbl}${oldStr})</i>`);
+        out.push(`   🔴 <b>${countAll} impagos · €${_fnum(totalAll)}</b> <i>(${grouped.length} cliente${grouped.length===1?'':'s'})</i>`);
+        grouped.forEach(([cli, d]) => {
+          const months = Object.entries(d.byMonth).sort((a,b) => b[0].localeCompare(a[0]));
+          out.push(`     ${_esc(cli)} · €${_fnum(d.total)}:`);
+          months.forEach(([mk, amt]) => out.push(`       • ${mk}: €${_fnum(amt)}`));
         });
-        if(grouped.length > MAX) out.push(`     ... y ${grouped.length - MAX} más`);
       }
     }
     if(sec.sesiones_hoy === true){
@@ -1970,7 +1968,7 @@ function _previewFacturas(ctx, data, sec){
     const out = ['📄 <b>Facturas</b>'];
     const parts = [];
     if(sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
-    if(sec.vencidas   !== false && venc) parts.push(`<b>${venc} vencidas</b>`);
+    if(sec.vencidas   !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
     if(parts.length) out.push(`   ${parts.join(' · ')}`);
     if(sec.total_mes !== false && totalMes > 0) out.push(`   💶 Facturado ${ctx.monthKey}: €${_fnum(totalMes)}`);
     if(sec.top_cliente === true){
@@ -1993,7 +1991,7 @@ function _previewUrgent(ctx, data){
       }));
       if(venc.length){
         const tot = venc.reduce((s,x) => s + x.total, 0);
-        out.push(`📄 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${_fnum(tot)}`);
+        out.push(`🔴 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${_fnum(tot)}`);
       }
     }
   } catch(e){}

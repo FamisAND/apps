@@ -558,8 +558,8 @@ function buildOptions(ctx, data, notif) {
         const ctr = parseInt(a.contracts) || 1;
         const dte = a.exp ? Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000) : null;
         const u = calcUnrealized(a);
-        const pnlStr = u != null ? ` · ${u>=0?'+':''}$${fmt(Math.abs(u))}` : '';
-        const dteStr = (a.strat === 'ACC') ? '' : (dte != null ? ` ${dte}d` : '');
+        const pnlStr = u != null ? ` · P&L ${u>=0?'+':''}$${fmt(Math.abs(u))}` : '';
+        const dteStr = (a.strat === 'ACC') ? '' : (dte != null ? ` · ${dte}d DTE` : '');
         const ctrStr = ctr > 1 ? ` x${ctr}` : '';
         out.push(`     • <code>${escape(a.activo||'?')}</code> ${a.strat||''}${ctrStr}${dteStr}${pnlStr}`);
       });
@@ -710,11 +710,12 @@ function buildTraining(ctx, data, notif) {
       }
     }
 
-    // Impagos AGRUPADOS POR CLIENTE — solo de MESES CERRADOS (mk <= ftMonthKey).
-    // El mes en curso aún se está cobrando, no es realmente "impago".
+    // Impagos — solo MESES CERRADOS (mk <= ftMonthKey, el actual aún se cobra).
+    // Agrupados por cliente, con TODOS los meses pendientes detallados.
     if (sec.impagos !== false) {
       const cliMap = {};
       (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
+      // byCliente: { [name]: { total, byMonth: { [mk]: amount } } }
       const byCliente = {}; let totalAll = 0; let countAll = 0;
       for (const [mk, mv] of Object.entries(ft.months||{})) {
         if (mk > ctx.ftMonthKey) continue;
@@ -723,25 +724,23 @@ function buildTraining(ctx, data, notif) {
           const pr = parseFloat(e.price) || 0;
           if (pr <= 0) return;
           const cli = cliMap[e.clientId] || e.clientId || '?';
-          if (!byCliente[cli]) byCliente[cli] = { count: 0, total: 0, oldest: null };
-          byCliente[cli].count++;
+          if (!byCliente[cli]) byCliente[cli] = { total: 0, byMonth: {} };
           byCliente[cli].total += pr;
-          if (!byCliente[cli].oldest || mk < byCliente[cli].oldest) byCliente[cli].oldest = mk;
+          byCliente[cli].byMonth[mk] = (byCliente[cli].byMonth[mk] || 0) + pr;
           totalAll += pr; countAll++;
         });
       }
       const grouped = Object.entries(byCliente).sort((a,b) => b[1].total - a[1].total);
       if (grouped.length) {
         out.push('');
-        out.push(`   ⚠ <b>${countAll} impagos · €${fmt(totalAll)}</b> <i>(${grouped.length} cliente${grouped.length===1?'':'s'})</i>`);
-        const MAX = 8;
-        grouped.slice(0, MAX).forEach(([cli, d]) => {
-          const facLbl = d.count === 1 ? '1 factura' : `${d.count} facturas`;
-          const old = ctx.monthsAgo(d.oldest);
-          const oldStr = (old != null && old > 0) ? ` · ${old}m antig.` : '';
-          out.push(`     • ${escape(cli)}: €${fmt(d.total)} <i>(${facLbl}${oldStr})</i>`);
+        out.push(`   🔴 <b>${countAll} impagos · €${fmt(totalAll)}</b> <i>(${grouped.length} cliente${grouped.length===1?'':'s'})</i>`);
+        grouped.forEach(([cli, d]) => {
+          const months = Object.entries(d.byMonth).sort((a,b) => b[0].localeCompare(a[0])); // mes desc
+          out.push(`     ${escape(cli)} · €${fmt(d.total)}:`);
+          months.forEach(([mk, amt]) => {
+            out.push(`       • ${mk}: €${fmt(amt)}`);
+          });
         });
-        if (grouped.length > MAX) out.push(`     ... y ${grouped.length - MAX} más`);
       }
     }
 
@@ -803,7 +802,7 @@ function buildFacturas(ctx, data, notif) {
     const out = [`📄 <b>Facturas</b>`];
     const parts = [];
     if (sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
-    if (sec.vencidas   !== false && venc) parts.push(`<b>${venc} vencidas</b>`);
+    if (sec.vencidas   !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
     if (parts.length) out.push(`   ${parts.join(' · ')}`);
     if (sec.total_mes !== false && totalMes > 0) out.push(`   💶 Facturado ${ctx.monthKey}: €${fmt(totalMes)}`);
     if (sec.top_cliente === true) {
@@ -835,7 +834,7 @@ function collectUrgent(ctx, data, notif) {
       }));
       if (venc.length) {
         const tot = venc.reduce((s,x) => s + x.total, 0);
-        out.push(`📄 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${fmt(tot)}`);
+        out.push(`🔴 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${fmt(tot)}`);
       }
     }
   } catch (e) { console.error('urgent facturas:', e.message); }
@@ -1019,34 +1018,32 @@ async function generateInsight(data, signals) {
   if (!provider) return '<i>(IA pedida pero ningún provider activo)</i>';
 
   const sysPrompt = [
-    'Eres el asistente personal de Sergio. Te paso SEÑALES extraídas de sus 4 dashboards.',
-    'Tu tarea: producir 2-3 acciones CONCRETAS para HOY, en bullets cortos (≤14 palabras), tono directo, español.',
+    'Eres el asistente personal de Sergio. Recibes SEÑALES literales extraídas de sus dashboards.',
+    'Tu tarea: 2-3 acciones CONCRETAS para HOY, en bullets cortos (≤14 palabras), tono directo, español.',
     '',
-    'CONTEXTO CRÍTICO:',
-    '- "Patrimonio" y "Opciones" se refieren al MES ACTUAL.',
-    '- "FT" (Full Training, gimnasio) SIEMPRE se refiere al MES ANTERIOR CERRADO. NUNCA hables del mes actual de FT — está incompleto.',
-    '- Los impagos FT son SOLO de meses cerrados (no del mes en curso).',
-    '- "Facturas" pueden ser de cualquier estado.',
+    'REGLA #1 (CRÍTICA): Solo puedes mencionar un nombre propio (ticker, cliente, producto) si aparece LITERALMENTE en las SEÑALES. Si no está, NO lo nombres. NUNCA inventes ni completes con conocimiento general.',
     '',
-    'Reglas:',
-    '- Acción = verbo + objetivo + cifra/contexto si aporta.',
-    '- Prioriza señales URGENTES (vencidas, DTE≤1, impagos viejos, stock agotado).',
-    '- Si todo está en orden, responde EXACTAMENTE: "• Todo en orden — nada urgente hoy" y stop.',
-    '- NO repitas datos del resumen como si fueran insights.',
-    '- NO inventes datos que no están en las señales.',
-    '- NO mezcles dashboards (gastos personales ≠ gastos FT).',
+    'REGLA #2: Si una sección no tiene señal urgente, NO sugieras "verifica X" o "revisa Y" — eso es ruido. Solo emite acciones cuando hay un disparador concreto en las señales.',
+    '',
+    'Contexto temporal:',
+    '- Patrimonio y Opciones = mes actual.',
+    '- FT (Full Training) SIEMPRE mes anterior cerrado, NUNCA mes en curso.',
+    '- Impagos FT solo se cuentan de meses cerrados.',
+    '',
+    'Formato:',
+    '- Acción = verbo + objetivo concreto + cifra/contexto.',
     '- Sin markdown, sin negritas. Solo bullets con "• " al inicio.',
+    '- Si no hay nada urgente, responde EXACTAMENTE: "• Todo en orden — nada urgente hoy" y para.',
     '',
     'Buenos:',
-    '• Cobra a Pepe — €340 desde febrero, lleva 3 meses',
-    '• Cierra TSLA NP hoy, expira mañana',
-    '• Pedir camiseta XL — agotada',
+    '• Cobra a Pepe — €340 desde febrero (nombre Pepe SÍ está en señales)',
+    '• Cierra SLV NP hoy, DTE=1 (SLV sí está en señales)',
     '',
-    'Malos:',
-    '• Tu patrimonio sube 2% (solo dato, no acción)',
-    '• Tienes 3 facturas pendientes (genérico, sin nombres)',
-    '• Considera revisar tus gastos (vago)',
-    '• FT este mes facturó X (FT siempre es mes cerrado anterior, nunca actual)',
+    'Malos (todos prohibidos):',
+    '• Cierra TSLA NP — TSLA no está en señales (alucinación)',
+    '• Verifica facturas pendientes — sin disparador (ruido)',
+    '• Revisa opciones — vago, sin nombre concreto',
+    '• Considera revisar tus gastos — genérico',
   ].join('\n');
 
   const userMsg = 'SEÑALES:\n' + signals.map(s => '- ' + s).join('\n');
