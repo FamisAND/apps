@@ -12,7 +12,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 <link rel="stylesheet" href="patrimonio.css">
@@ -570,40 +569,6 @@ let profiles=[],curId=null,pinMode=null,pinBuf="",pinFirst="",pendingId=null,edi
 let cpEmoji=EMOJIS[0],cpColor=COLORS[0];
 let tmpSections=[],tmpEmp={};
 let editObjId=null;
-
-// ── Chart.js: zoom/pan + tooltips compartidos al pasar el cursor ──
-// Se aplica a todos los charts creados después. Pie charts ignoran el zoom
-// (no tienen ejes). Doble-click en cualquier chart resetea el zoom.
-(function setupChartZoom(){
-  if(!window.Chart || !Chart.defaults || !Chart.defaults.plugins){
-    setTimeout(setupChartZoom, 50);
-    return;
-  }
-  Chart.defaults.plugins.zoom = {
-    pan:  { enabled: true, mode: 'x', threshold: 5 },
-    zoom: {
-      wheel: { enabled: true, modifierKey: 'ctrl' },
-      pinch: { enabled: true },
-      mode: 'x',
-    },
-  };
-  // Tooltip: modo "index" — al pasar el cursor se muestran todas las series
-  Object.assign(Chart.defaults.plugins.tooltip, {
-    mode: 'index',
-    intersect: false,
-    padding: 10,
-    cornerRadius: 6,
-  });
-  Chart.defaults.interaction = Chart.defaults.interaction || {};
-  Chart.defaults.interaction.mode = 'index';
-  Chart.defaults.interaction.intersect = false;
-  // Doble-click sobre cualquier canvas resetea el zoom
-  document.addEventListener('dblclick', e => {
-    if(e.target.tagName !== 'CANVAS') return;
-    const c = Chart.getChart(e.target);
-    if(c && typeof c.resetZoom === 'function') c.resetZoom();
-  });
-})();
 
 function uid(){return Math.random().toString(36).slice(2,9);}
 function load(){try{profiles=JSON.parse(localStorage.getItem(SK)||"[]");}catch{profiles=[];}}
