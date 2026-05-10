@@ -18,10 +18,36 @@
 const APPDATA_REPO = 'famisand/appdata';
 const FILE = 'data.json';
 const DAY_CODES = ['sun','mon','tue','wed','thu','fri','sat'];
-const DEFAULT_ORDER = ['patrimonio','options','training','facturas'];
+const DEFAULT_ORDER = ['actualidad','patrimonio','options','training','facturas'];
 
 // Strats de OPTIONS que cuentan como "risk total" (excluye ACC = acciones).
 const RISK_STRATS = ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE','PMCC'];
+
+// Stock total de un producto (mirror de full_training.html line 1094):
+//   - hasVariants=false → p.stock
+//   - hasVariants=true  → suma de p.sizes
+function stockTotal(p) {
+  if (p.hasVariants) return Object.values(p.sizes||{}).reduce((s,n) => s + (parseInt(n)||0), 0);
+  return parseInt(p.stock) || 0;
+}
+
+// Unrealized P&L de una posición activa, replicando options.html:
+//   - ACC (acciones)  → (priceCurrent - precioCompra) * contracts (= shares)
+//   - Opciones (resto) → ((pCredito - |pDebito| - priceCurrent/100) * 100 * contracts)
+//                        + nota: pCredito ya está en escala /100 internamente
+// Devuelve P&L en $ totales o null si no hay datos suficientes.
+function calcUnrealized(a) {
+  const ctr = parseInt(a.contracts) || 1;
+  if (a.priceCurrent == null) return null;
+  if (a.strat === 'ACC') {
+    if (a.precioCompra == null) return null;
+    return (parseFloat(a.priceCurrent) - parseFloat(a.precioCompra)) * ctr;
+  }
+  if (a.pCredito == null) return null;
+  const pc_share = (parseFloat(a.pCredito)||0) * 100;
+  const pd_share = Math.abs(parseFloat(a.pDebito)||0) * 100;
+  return ((pc_share - pd_share - (parseFloat(a.priceCurrent)||0)) * 100 * ctr);
+}
 
 async function main() {
   const PAT = process.env.APPDATA_PAT;
@@ -66,6 +92,7 @@ async function main() {
 
   const ctx = buildContext(data);
   const sections = {
+    actualidad: await buildActualidad(ctx, data, notif),
     patrimonio: buildPatrimonio(ctx, data, notif),
     options:    buildOptions   (ctx, data, notif),
     training:   buildTraining  (ctx, data, notif),
@@ -171,6 +198,119 @@ function buildContext(data) {
   };
 
   return { monthKey, todayStr, today0, ftMonthKey, ftPrevMonthKey, monthsAgo };
+}
+
+// ───────────────────────────────────────────────────────────
+//  ACTUALIDAD — earnings (Finnhub) + noticias Andorra (RSS)
+// ───────────────────────────────────────────────────────────
+async function buildActualidad(ctx, data, notif) {
+  const sec = (notif.sections || {}).actualidad || {};
+  if (sec.enabled === false) return [];
+  const out = [`🌍 <b>Actualidad</b>`];
+
+  // ── Earnings de tickers que tienes activos en options ──
+  if (sec.earnings === true) {
+    try {
+      const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
+      if (!finProv) {
+        out.push(`   <i>(earnings: configura un API Finnhub activo en Configuración → APIs)</i>`);
+      } else {
+        const arr = parseMaybe(data?.options?.ot_activas);
+        const tickers = Array.isArray(arr)
+          ? [...new Set(arr.map(a => (a.activo||'').trim().toUpperCase()).filter(Boolean))]
+          : [];
+        if (tickers.length === 0) {
+          out.push(`   <i>(earnings: no hay posiciones activas)</i>`);
+        } else {
+          const days = sec.earnings_days || 14;
+          const from = ctx.todayStr;
+          const to = new Date(ctx.today0); to.setUTCDate(to.getUTCDate() + days);
+          const toStr = to.toISOString().slice(0,10);
+          const all = [];
+          // Finnhub permite filtrar por symbol — hacemos llamadas en paralelo (max 8 simultáneas)
+          const calls = tickers.map(t =>
+            fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${toStr}&symbol=${encodeURIComponent(t)}&token=${encodeURIComponent(finProv.key)}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(d => { (d?.earningsCalendar || []).forEach(e => all.push(e)); })
+              .catch(() => {})
+          );
+          await Promise.all(calls);
+          if (all.length === 0) {
+            out.push(`   📅 Sin earnings próximos ${days}d para tus tickers`);
+          } else {
+            all.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+            out.push(`   📅 Earnings próximos ${days}d:`);
+            all.slice(0, 6).forEach(e => {
+              const dte = Math.round((new Date(e.date + 'T00:00:00Z') - ctx.today0) / 86400000);
+              const hora = e.hour === 'bmo' ? 'pre' : e.hour === 'amc' ? 'post' : '';
+              const epsStr = e.epsEstimate != null ? ` · est $${e.epsEstimate.toFixed(2)}` : '';
+              out.push(`     • <code>${escape(e.symbol)}</code> ${e.date} <i>(${dte}d${hora?` ${hora}`:''})</i>${epsStr}`);
+            });
+            if (all.length > 6) out.push(`     ... y ${all.length-6} más`);
+          }
+        }
+      }
+    } catch (e) { console.error('actualidad earnings:', e.message); }
+  }
+
+  // ── Noticias Andorra — RSS BonDia + Altaveu ──
+  if (sec.noticias_andorra === true) {
+    try {
+      const news = await fetchAndorraNews();
+      if (news.length) {
+        out.push('');
+        out.push(`   📰 Andorra hoy:`);
+        news.slice(0, 3).forEach(n => {
+          out.push(`     • <a href="${escape(n.link)}">${escape(n.title)}</a> <i>(${escape(n.source)})</i>`);
+        });
+      } else {
+        out.push(`   <i>(noticias: feeds RSS no disponibles ahora)</i>`);
+      }
+    } catch (e) { console.error('actualidad noticias:', e.message); }
+  }
+
+  return out.length > 1 ? out : [];
+}
+
+// Fetch RSS de medios andorranos. Parser regex simple — Node 20+ tiene fetch nativo.
+async function fetchAndorraNews() {
+  const FEEDS = [
+    { url: 'https://www.bondia.ad/rss',         source: 'BonDia'    },
+    { url: 'https://www.altaveu.com/rss',       source: 'Altaveu'   },
+    { url: 'https://www.diariandorra.ad/rss/portada', source: 'Diari' },
+  ];
+  const all = [];
+  await Promise.all(FEEDS.map(async f => {
+    try {
+      const res = await fetch(f.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 mis-dashboards-bot' }
+      });
+      if (!res.ok) return;
+      const xml = await res.text();
+      const items = [...xml.matchAll(/<item[\s\S]*?<\/item>/g)].slice(0, 5);
+      items.forEach(it => {
+        const block = it[0];
+        const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1];
+        const link  = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1];
+        const date  = (block.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1];
+        if (title && link) {
+          all.push({
+            title: title.trim().replace(/\s+/g, ' ').slice(0, 90),
+            link: link.trim(),
+            source: f.source,
+            date: date ? new Date(date.trim()) : null
+          });
+        }
+      });
+    } catch (e) { /* feed individual falla, seguimos */ }
+  }));
+  // ordenar por fecha desc, distintas fuentes en el top
+  all.sort((a,b) => (b.date?.getTime()||0) - (a.date?.getTime()||0));
+  // diversificar: 1 de cada fuente primero, luego rellenar
+  const seen = new Set();
+  const top = []; const rest = [];
+  all.forEach(n => { if (!seen.has(n.source)) { seen.add(n.source); top.push(n); } else { rest.push(n); } });
+  return [...top, ...rest];
 }
 
 // ───────────────────────────────────────────────────────────
@@ -417,14 +557,9 @@ function buildOptions(ctx, data, notif) {
       arr.slice(0, 12).forEach(a => {
         const ctr = parseInt(a.contracts) || 1;
         const dte = a.exp ? Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000) : null;
-        const pIn  = (parseFloat(a.pCredito)||0) * 100;
-        const pAct = a.priceCurrent != null ? parseFloat(a.priceCurrent) * 100 : null;
-        let pnlStr = '';
-        if (pAct != null) {
-          const u = (pIn - pAct) * ctr;
-          pnlStr = ` · ${u>=0?'+':''}$${fmt(Math.abs(u))}`;
-        }
-        const dteStr = dte != null ? ` ${dte}d` : '';
+        const u = calcUnrealized(a);
+        const pnlStr = u != null ? ` · ${u>=0?'+':''}$${fmt(Math.abs(u))}` : '';
+        const dteStr = (a.strat === 'ACC') ? '' : (dte != null ? ` ${dte}d` : '');
         const ctrStr = ctr > 1 ? ` x${ctr}` : '';
         out.push(`     • <code>${escape(a.activo||'?')}</code> ${a.strat||''}${ctrStr}${dteStr}${pnlStr}`);
       });
@@ -575,12 +710,14 @@ function buildTraining(ctx, data, notif) {
       }
     }
 
-    // Impagos AGRUPADOS POR CLIENTE (todos los meses pendientes)
+    // Impagos AGRUPADOS POR CLIENTE — solo de MESES CERRADOS (mk <= ftMonthKey).
+    // El mes en curso aún se está cobrando, no es realmente "impago".
     if (sec.impagos !== false) {
       const cliMap = {};
       (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const byCliente = {}; let totalAll = 0; let countAll = 0;
       for (const [mk, mv] of Object.entries(ft.months||{})) {
+        if (mk > ctx.ftMonthKey) continue;
         (mv.entries||[]).forEach(e => {
           if (e.paid === 'pagado' || e.paid === true) return;
           const pr = parseFloat(e.price) || 0;
@@ -620,16 +757,13 @@ function buildTraining(ctx, data, notif) {
 
     if (sec.stock_critico === true) {
       const critico = (ft.stock||[]).filter(s => {
-        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
+        const t = stockTotal(s);
         return t > 0 && t <= 2;
       });
       if (critico.length) {
         out.push('');
         out.push(`   📦 ${critico.length} con stock ≤2:`);
-        critico.slice(0, 3).forEach(s => {
-          const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-          out.push(`     • ${escape(s.name)} (${t} uds)`);
-        });
+        critico.slice(0, 3).forEach(s => out.push(`     • ${escape(s.name)} (${stockTotal(s)} uds)`));
       }
     }
 
@@ -723,13 +857,14 @@ function collectUrgent(ctx, data, notif) {
     }
   } catch (e) { console.error('urgent options:', e.message); }
 
-  // Impagos FT con antigüedad ≥3 meses
+  // Impagos FT con antigüedad ≥3 meses, SOLO en meses cerrados (mk <= ftMonthKey)
   try {
     const ft = parseMaybe(data?.training?.ft_v4);
     if (ft) {
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const viejos = {}; let viejosCount = 0; let viejosTotal = 0;
       for (const [mk, mv] of Object.entries(ft.months||{})) {
+        if (mk > ctx.ftMonthKey) continue; // descartar mes en curso (no cerrado)
         const age = ctx.monthsAgo(mk);
         if (age == null || age < 3) continue;
         (mv.entries||[]).forEach(e => {
@@ -747,11 +882,8 @@ function collectUrgent(ctx, data, notif) {
         out.push(`💪 ${viejosCount} impago${viejosCount===1?'':'s'} FT >3m antiguos · €${fmt(viejosTotal)}${top?` (top: ${escape(top[0])} €${fmt(top[1])})`:''}`);
       }
 
-      // Stock agotado (=0)
-      const agotados = (ft.stock||[]).filter(s => {
-        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-        return t === 0;
-      });
+      // Stock agotado: total === 0 considerando hasVariants
+      const agotados = (ft.stock||[]).filter(s => stockTotal(s) === 0);
       if (agotados.length) {
         const names = agotados.slice(0, 2).map(s => s.name).join(', ');
         const more = agotados.length > 2 ? ` +${agotados.length-2}` : '';
@@ -834,6 +966,7 @@ function buildSignals(ctx, data, notif, urgent) {
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const byCli = {};
       for (const [mk, mv] of Object.entries(ft.months||{})) {
+        if (mk > ctx.ftMonthKey) continue; // solo meses cerrados
         (mv.entries||[]).forEach(e => {
           if (e.paid === 'pagado' || e.paid === true) return;
           const pr = parseFloat(e.price) || 0;
@@ -847,12 +980,9 @@ function buildSignals(ctx, data, notif, urgent) {
       const top3 = Object.entries(byCli).sort((a,b) => b[1].total - a[1].total).slice(0,3);
       if (top3.length) {
         const detail = top3.map(([cli, d]) => `${cli} €${fmt(d.total)} (desde ${d.oldest})`).join(' | ');
-        sig.push(`FT impagos top: ${detail}`);
+        sig.push(`FT impagos top (meses cerrados): ${detail}`);
       }
-      const agotados = (ft.stock||[]).filter(s => {
-        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-        return t === 0;
-      }).map(s => s.name);
+      const agotados = (ft.stock||[]).filter(s => stockTotal(s) === 0).map(s => s.name);
       if (agotados.length) sig.push(`FT stock agotado: ${agotados.slice(0,3).join(', ')}`);
     }
   } catch(e){}
@@ -892,12 +1022,19 @@ async function generateInsight(data, signals) {
     'Eres el asistente personal de Sergio. Te paso SEÑALES extraídas de sus 4 dashboards.',
     'Tu tarea: producir 2-3 acciones CONCRETAS para HOY, en bullets cortos (≤14 palabras), tono directo, español.',
     '',
+    'CONTEXTO CRÍTICO:',
+    '- "Patrimonio" y "Opciones" se refieren al MES ACTUAL.',
+    '- "FT" (Full Training, gimnasio) SIEMPRE se refiere al MES ANTERIOR CERRADO. NUNCA hables del mes actual de FT — está incompleto.',
+    '- Los impagos FT son SOLO de meses cerrados (no del mes en curso).',
+    '- "Facturas" pueden ser de cualquier estado.',
+    '',
     'Reglas:',
     '- Acción = verbo + objetivo + cifra/contexto si aporta.',
     '- Prioriza señales URGENTES (vencidas, DTE≤1, impagos viejos, stock agotado).',
     '- Si todo está en orden, responde EXACTAMENTE: "• Todo en orden — nada urgente hoy" y stop.',
     '- NO repitas datos del resumen como si fueran insights.',
     '- NO inventes datos que no están en las señales.',
+    '- NO mezcles dashboards (gastos personales ≠ gastos FT).',
     '- Sin markdown, sin negritas. Solo bullets con "• " al inicio.',
     '',
     'Buenos:',
@@ -909,6 +1046,7 @@ async function generateInsight(data, signals) {
     '• Tu patrimonio sube 2% (solo dato, no acción)',
     '• Tienes 3 facturas pendientes (genérico, sin nombres)',
     '• Considera revisar tus gastos (vago)',
+    '• FT este mes facturó X (FT siempre es mes cerrado anterior, nunca actual)',
   ].join('\n');
 
   const userMsg = 'SEÑALES:\n' + signals.map(s => '- ' + s).join('\n');

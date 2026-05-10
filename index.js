@@ -1303,6 +1303,11 @@ const NOTIF_SECTIONS = [
     { id: 'vencidas',      label: 'Facturas vencidas',                     default: true  },
     { id: 'total_mes',     label: 'Total facturado este mes',              default: true  },
     { id: 'top_cliente',   label: 'Top cliente del mes',                   default: false }
+  ]},
+  { id: 'actualidad', icon: '🌍', label: 'Actualidad', items: [
+    { id: 'earnings',         label: 'Earnings de tus tickers (Finnhub)', default: false },
+    { id: 'earnings_days',    label: '↳ N días', default: 14, type: 'number', min: 1, max: 60 },
+    { id: 'noticias_andorra', label: '3 noticias Andorra (RSS)',          default: false }
   ]}
 ];
 
@@ -1519,7 +1524,7 @@ async function previewNotifMessage(){
 function _esc(s){ return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]); }
 
 // Genera el resumen en cliente (mirror de telegram-summary.js)
-const _NOTIF_DEFAULT_ORDER = ['patrimonio','options','training','facturas'];
+const _NOTIF_DEFAULT_ORDER = ['actualidad','patrimonio','options','training','facturas'];
 
 function _buildSummaryClient(data, cfg){
   const S = (cfg && cfg.sections) || {};
@@ -1541,6 +1546,7 @@ function _buildSummaryClient(data, cfg){
   const ctx = { monthKey, todayStr, today0, ftMonthKey, monthsAgo };
 
   const sections = {
+    actualidad: _previewActualidad(ctx, data, S.actualidad || {}),
     patrimonio: _previewPatrimonio(ctx, data, S.patrimonio || {}),
     options:    _previewOptions   (ctx, data, S.options    || {}),
     training:   _previewTraining  (ctx, data, S.training   || {}),
@@ -1585,6 +1591,30 @@ function _buildSummaryClient(data, cfg){
   lines.push('');
   lines.push('<i>Auto-generado · mis-dashboards</i>');
   return lines.join('\n');
+}
+
+// — ACTUALIDAD (preview) —
+// La preview no llama a Finnhub ni RSS (evita exponer claves y latencia).
+// Solo muestra qué se enviará en el resumen real.
+function _previewActualidad(ctx, data, sec){
+  if(sec.enabled === false) return [];
+  const out = ['🌍 <b>Actualidad</b>'];
+  if(sec.earnings === true){
+    const arr = _pmaybe(data?.options?.ot_activas);
+    const tickers = Array.isArray(arr)
+      ? [...new Set(arr.map(a => (a.activo||'').trim().toUpperCase()).filter(Boolean))]
+      : [];
+    const days = sec.earnings_days || 14;
+    if(!tickers.length){
+      out.push(`   <i>(earnings: no hay posiciones activas)</i>`);
+    } else {
+      out.push(`   📅 Earnings próximos ${days}d: <i>(se consulta Finnhub al enviar — ${tickers.length} tickers)</i>`);
+    }
+  }
+  if(sec.noticias_andorra === true){
+    out.push(`   📰 Andorra: <i>(se consulta RSS BonDia/Altaveu/Diari al enviar)</i>`);
+  }
+  return out.length > 1 ? out : [];
 }
 
 // — PATRIMONIO (preview) —
@@ -1716,6 +1746,23 @@ function _previewComputeEntry(e){
 }
 const _RISK_STRATS = ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE','PMCC'];
 
+function _stockTotal(p){
+  if(p.hasVariants) return Object.values(p.sizes||{}).reduce((s,n) => s + (parseInt(n)||0), 0);
+  return parseInt(p.stock) || 0;
+}
+function _calcUnrealized(a){
+  const ctr = parseInt(a.contracts) || 1;
+  if(a.priceCurrent == null) return null;
+  if(a.strat === 'ACC'){
+    if(a.precioCompra == null) return null;
+    return (parseFloat(a.priceCurrent) - parseFloat(a.precioCompra)) * ctr;
+  }
+  if(a.pCredito == null) return null;
+  const pc_share = (parseFloat(a.pCredito)||0) * 100;
+  const pd_share = Math.abs(parseFloat(a.pDebito)||0) * 100;
+  return ((pc_share - pd_share - (parseFloat(a.priceCurrent)||0)) * 100 * ctr);
+}
+
 function _previewOptions(ctx, data, sec){
   if(sec.enabled === false) return [];
   try {
@@ -1753,14 +1800,9 @@ function _previewOptions(ctx, data, sec){
       arr.slice(0, 12).forEach(a => {
         const ctr = parseInt(a.contracts) || 1;
         const dte = a.exp ? Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000) : null;
-        const pIn  = (parseFloat(a.pCredito)||0) * 100;
-        const pAct = a.priceCurrent != null ? parseFloat(a.priceCurrent) * 100 : null;
-        let pnlStr = '';
-        if(pAct != null){
-          const u = (pIn - pAct) * ctr;
-          pnlStr = ` · ${u>=0?'+':''}$${_fnum(Math.abs(u))}`;
-        }
-        const dteStr = dte != null ? ` ${dte}d` : '';
+        const u = _calcUnrealized(a);
+        const pnlStr = u != null ? ` · ${u>=0?'+':''}$${_fnum(Math.abs(u))}` : '';
+        const dteStr = (a.strat === 'ACC') ? '' : (dte != null ? ` ${dte}d` : '');
         const ctrStr = ctr > 1 ? ` x${ctr}` : '';
         out.push(`     • <code>${_esc(a.activo||'?')}</code> ${a.strat||''}${ctrStr}${dteStr}${pnlStr}`);
       });
@@ -1850,12 +1892,13 @@ function _previewTraining(ctx, data, sec){
         out.push(`   📊 Beneficio ${ctx.ftMonthKey}: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
       }
     }
-    // Impagos AGRUPADOS POR CLIENTE
+    // Impagos AGRUPADOS POR CLIENTE — solo MESES CERRADOS (mk <= ftMonthKey)
     if(sec.impagos !== false){
       const cliMap = {};
       (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const byCli = {}; let totalAll = 0; let countAll = 0;
       for(const [mk, mv] of Object.entries(ft.months||{})){
+        if(mk > ctx.ftMonthKey) continue;
         (mv.entries||[]).forEach(e => {
           if(e.paid === 'pagado' || e.paid === true) return;
           const pr = parseFloat(e.price) || 0;
@@ -1893,16 +1936,13 @@ function _previewTraining(ctx, data, sec){
     }
     if(sec.stock_critico === true){
       const critico = (ft.stock||[]).filter(s => {
-        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
+        const t = _stockTotal(s);
         return t > 0 && t <= 2;
       });
       if(critico.length){
         out.push('');
         out.push(`   📦 ${critico.length} con stock ≤2:`);
-        critico.slice(0,3).forEach(s => {
-          const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-          out.push(`     • ${_esc(s.name)} (${t} uds)`);
-        });
+        critico.slice(0,3).forEach(s => out.push(`     • ${_esc(s.name)} (${_stockTotal(s)} uds)`));
       }
     }
     return out.length > 2 ? out : [];
@@ -1978,6 +2018,7 @@ function _previewUrgent(ctx, data){
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const viejos = {}; let cnt = 0; let tot = 0;
       for(const [mk, mv] of Object.entries(ft.months||{})){
+        if(mk > ctx.ftMonthKey) continue; // solo meses cerrados
         const age = ctx.monthsAgo(mk);
         if(age == null || age < 3) continue;
         (mv.entries||[]).forEach(e => {
@@ -1993,10 +2034,7 @@ function _previewUrgent(ctx, data){
         const top = Object.entries(viejos).sort((a,b) => b[1]-a[1])[0];
         out.push(`💪 ${cnt} impago${cnt===1?'':'s'} FT >3m antiguos · €${_fnum(tot)}${top?` (top: ${_esc(top[0])} €${_fnum(top[1])})`:''}`);
       }
-      const agotados = (ft.stock||[]).filter(s => {
-        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-        return t === 0;
-      });
+      const agotados = (ft.stock||[]).filter(s => _stockTotal(s) === 0);
       if(agotados.length){
         const names = agotados.slice(0,2).map(s => s.name).join(', ');
         const more = agotados.length > 2 ? ` +${agotados.length-2}` : '';
