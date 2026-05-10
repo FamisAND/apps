@@ -99,9 +99,8 @@ function generateSummary(data) {
 
   // ── PATRIMONIO ──
   try {
-    const patStr = data?.patrimonio?.pat_v5;
-    if (patStr) {
-      const profiles = JSON.parse(patStr);
+    const profiles = parseMaybe(data?.patrimonio?.pat_v5);
+    if (profiles) {
       if (Array.isArray(profiles) && profiles.length) {
         const p = profiles[0];
         const ents = [...(p.entries || [])].sort((a,b) => (a.year-b.year) || (a.month-b.month));
@@ -129,10 +128,8 @@ function generateSummary(data) {
 
   // ── OPCIONES ──
   try {
-    const actStr = data?.options?.ot_activas;
-    if (actStr) {
-      const arr = JSON.parse(actStr);
-      if (Array.isArray(arr)) {
+    const arr = parseMaybe(data?.options?.ot_activas);
+    if (Array.isArray(arr)) {
         const today = new Date(); today.setHours(0,0,0,0);
         const expiringSoon = arr.filter(a => {
           if (!a.exp) return false;
@@ -149,15 +146,13 @@ function generateSummary(data) {
             lines.push(`     • <code>${escape(a.activo || '?')}</code> ${strat} · ${dte}d`);
           });
         }
-      }
     }
   } catch (e) { console.error('Options:', e.message); }
 
   // ── FULL TRAINING ──
   try {
-    const ftStr = data?.training?.ft_v4;
-    if (ftStr) {
-      const ft = JSON.parse(ftStr);
+    const ft = parseMaybe(data?.training?.ft_v4);
+    if (ft) {
       const activos = (ft.clients || []).filter(c => c.active).length;
       const equipo = (ft.team || []).filter(t => t.active !== false).length;
       lines.push('');
@@ -176,10 +171,8 @@ function generateSummary(data) {
 
   // ── FACTURAS ──
   try {
-    const facStr = data?.facturas?.fac_v1;
-    if (facStr) {
-      const profiles = JSON.parse(facStr);
-      if (Array.isArray(profiles)) {
+    const profiles = parseMaybe(data?.facturas?.fac_v1);
+    if (Array.isArray(profiles)) {
         let pend = 0;
         let venc = 0;
         profiles.forEach(p => {
@@ -203,6 +196,17 @@ function generateSummary(data) {
   lines.push('');
   lines.push('<i>Auto-generado por mis-dashboards</i>');
   return lines.join('\n');
+}
+
+// data.json puede tener los valores como string (vía localStorage en web)
+// o como objetos parseados (más común). Esta helper acepta ambos.
+function parseMaybe(v) {
+  if (v == null) return null;
+  if (typeof v === 'object') return v;
+  if (typeof v === 'string') {
+    try { return JSON.parse(v); } catch (e) { return null; }
+  }
+  return null;
 }
 
 function calcPat(entry) {
