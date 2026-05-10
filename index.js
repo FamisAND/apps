@@ -1309,7 +1309,21 @@ const NOTIF_SECTIONS = [
     { id: 'earnings_days',    label: '↳ N días', default: 14, type: 'number', min: 1, max: 60 },
     { id: 'macro',            label: 'Calendario macro Fed/ECB/CPI (Finnhub)', default: false },
     { id: 'macro_days',       label: '↳ N días', default: 7,  type: 'number', min: 1, max: 30 },
-    { id: 'mercados',         label: 'EUR/USD + BTC/ETH (gratis, sin key)',   default: false },
+    { id: 'mercados_selected', label: 'Mercados (elige 3)', type: 'multi', max: 3,
+      default: ['spy','eurusd','btcusd'],
+      options: [
+        { id: 'spy',    label: 'S&P 500 (SPY)' },
+        { id: 'qqq',    label: 'Nasdaq 100 (QQQ)' },
+        { id: 'dia',    label: 'Dow Jones (DIA)' },
+        { id: 'vixy',   label: 'VIX (VIXY proxy)' },
+        { id: 'eurusd', label: 'EUR / USD' },
+        { id: 'eurchf', label: 'EUR / CHF' },
+        { id: 'btcusd', label: 'BTC / USD' },
+        { id: 'ethusd', label: 'ETH / USD' },
+        { id: 'gld',    label: 'Gold (GLD)' },
+        { id: 'uso',    label: 'WTI Oil (USO)' }
+      ]
+    },
     { id: 'tiempo',           label: 'Tiempo Andorra 3 días (Open-Meteo)',    default: false },
     { id: 'noticias_andorra', label: '3 noticias Andorra (RSS)',              default: false }
   ]}
@@ -1382,6 +1396,50 @@ function _renderNotifSections(savedSections, savedOrder){
           <input type="number" data-sec-item="${sec.id}/${it.id}" value="${val}" min="${it.min||0}" max="${it.max||999}" style="width:70px;background:#0a0e14;border:1px solid #1e3a5f;color:#e0f2fe;padding:3px 6px;border-radius:4px;font-family:DM Mono,monospace;font-size:.78rem;">
         `;
         itemsWrap.appendChild(row);
+      } else if(it.type === 'multi'){
+        // Multi-select con max items. Renderiza grid de checkboxes con contador.
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'padding:4px 0 4px 6px;';
+        const selected = Array.isArray(saved[it.id]) ? saved[it.id] : (it.default || []);
+        const header = document.createElement('div');
+        header.style.cssText = 'font-size:.78rem;color:#67e8f9;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;';
+        const hLabel = document.createElement('span'); hLabel.textContent = it.label;
+        const hCount = document.createElement('span');
+        hCount.style.cssText = 'font-family:DM Mono,monospace;font-size:.7rem;color:#94a3b8;';
+        hCount.textContent = `${selected.length}/${it.max}`;
+        header.append(hLabel, hCount);
+        wrap.appendChild(header);
+        const grid = document.createElement('div');
+        grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;';
+        wrap.appendChild(grid);
+        const inputs = [];
+        const updateState = () => {
+          const checks = inputs.filter(i => i.checked);
+          hCount.textContent = `${checks.length}/${it.max}`;
+          hCount.style.color = checks.length === it.max ? '#22d3ee' : '#94a3b8';
+          inputs.forEach(i => {
+            i.disabled = !i.checked && checks.length >= it.max;
+            i.parentElement.style.opacity = i.disabled ? '.4' : '1';
+          });
+        };
+        it.options.forEach(opt => {
+          const lbl = document.createElement('label');
+          const isChecked = selected.includes(opt.id);
+          lbl.style.cssText = 'display:flex;align-items:center;gap:5px;cursor:pointer;font-size:.74rem;color:#e0f2fe;padding:2px 4px;border-radius:3px;';
+          const inp = document.createElement('input');
+          inp.type = 'checkbox';
+          inp.dataset.multi = `${sec.id}/${it.id}`;
+          inp.dataset.multiId = opt.id;
+          inp.checked = isChecked;
+          inp.style.accentColor = '#22d3ee';
+          inp.addEventListener('change', updateState);
+          inputs.push(inp);
+          lbl.appendChild(inp);
+          lbl.appendChild(document.createTextNode(' ' + opt.label));
+          grid.appendChild(lbl);
+        });
+        updateState();
+        itemsWrap.appendChild(wrap);
       } else {
         const lbl = document.createElement('label');
         lbl.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:.78rem;color:#67e8f9;cursor:pointer;padding-left:6px;';
@@ -1454,6 +1512,14 @@ function _readNotifFormConfig(){
     const enabledInp = document.querySelector(`#notifSections input[data-sec-enabled="${sec.id}"]`);
     sections[sec.id] = { enabled: enabledInp ? enabledInp.checked : true };
     sec.items.forEach(it => {
+      if(it.type === 'multi'){
+        const checked = [];
+        document.querySelectorAll(`#notifSections input[data-multi="${sec.id}/${it.id}"]:checked`).forEach(inp => {
+          checked.push(inp.dataset.multiId);
+        });
+        sections[sec.id][it.id] = checked.slice(0, it.max || checked.length);
+        return;
+      }
       const inp = document.querySelector(`#notifSections [data-sec-item="${sec.id}/${it.id}"]`);
       if(!inp) return;
       sections[sec.id][it.id] = (it.type === 'number') ? (parseInt(inp.value, 10) || it.default) : inp.checked;
@@ -1617,8 +1683,14 @@ function _previewActualidad(ctx, data, sec){
     const days = sec.macro_days || 7;
     out.push(`   📅 Macro ${days}d: <i>(Finnhub /calendar/economic al enviar)</i>`);
   }
-  if(sec.mercados === true){
-    out.push(`   💱 EUR/USD + BTC/ETH: <i>(Frankfurter + Coingecko al enviar)</i>`);
+  if(Array.isArray(sec.mercados_selected) && sec.mercados_selected.length){
+    const labels = {
+      spy:'SPY', qqq:'QQQ', dia:'DIA', vixy:'VIXY',
+      eurusd:'EUR/USD', eurchf:'EUR/CHF',
+      btcusd:'BTC', ethusd:'ETH', gld:'GLD', uso:'USO'
+    };
+    const tickers = sec.mercados_selected.slice(0,3).map(id => labels[id] || id).join(', ');
+    out.push(`   💱 Mercados: <i>(${tickers} — fetch al enviar)</i>`);
   }
   if(sec.tiempo === true){
     out.push(`   🌤 Tiempo Andorra: <i>(Open-Meteo al enviar)</i>`);

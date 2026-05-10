@@ -281,36 +281,21 @@ async function buildActualidad(ctx, data, notif) {
     } catch (e) { console.error('actualidad macro:', e.message); }
   }
 
-  // ── FX EUR/USD + crypto BTC/ETH (Coingecko, sin key) ──
-  if (sec.mercados === true) {
-    const market = [];
-    try {
-      // EUR/USD vía Frankfurter (ECB rates, gratis)
-      const r = await fetch('https://api.frankfurter.app/latest?from=EUR&to=USD');
-      if (r.ok) {
-        const d = await r.json();
-        if (d?.rates?.USD) market.push(`EUR/USD: ${d.rates.USD.toFixed(4)}`);
-      }
-    } catch (e) {}
-    try {
-      // BTC + ETH precio + 24h % vía Coingecko
-      const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
-      if (r.ok) {
-        const d = await r.json();
-        if (d.bitcoin) {
-          const ch = d.bitcoin.usd_24h_change;
-          market.push(`BTC: $${fmt(d.bitcoin.usd)} (${ch>=0?'+':''}${ch.toFixed(1)}%)`);
-        }
-        if (d.ethereum) {
-          const ch = d.ethereum.usd_24h_change;
-          market.push(`ETH: $${fmt(d.ethereum.usd)} (${ch>=0?'+':''}${ch.toFixed(1)}%)`);
-        }
-      }
-    } catch (e) {}
-    if (market.length) {
+  // ── Mercados: el usuario elige hasta 3 de una lista ──
+  if (Array.isArray(sec.mercados_selected) && sec.mercados_selected.length) {
+    const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
+    const finKey = finProv?.key || null;
+    const lines = [];
+    for (const id of sec.mercados_selected.slice(0, 3)) {
+      try {
+        const m = await fetchMarket(id, finKey);
+        if (m) lines.push(`     • ${m.label}: <b>${m.price}</b>${m.change ? ` <i>(${m.change})</i>` : ''}`);
+      } catch (e) { console.error('mercado', id, e.message); }
+    }
+    if (lines.length) {
       out.push('');
       out.push(`   💱 Mercados:`);
-      market.forEach(m => out.push(`     • ${m}`));
+      out.push(...lines);
     }
   }
 
@@ -359,6 +344,74 @@ async function buildActualidad(ctx, data, notif) {
   }
 
   return out.length > 1 ? out : [];
+}
+
+// ───────────────────────────────────────────────────────────
+//  MARKET FETCHERS — Finnhub (ETFs), Frankfurter (FX), Coingecko (crypto)
+//  Cada uno devuelve { label, price, change } o null si falla.
+// ───────────────────────────────────────────────────────────
+async function fetchMarket(id, finKey) {
+  switch (id) {
+    case 'spy':    return finnhubQuote('SPY',  'S&P 500 (SPY)',     finKey);
+    case 'qqq':    return finnhubQuote('QQQ',  'Nasdaq 100 (QQQ)',  finKey);
+    case 'dia':    return finnhubQuote('DIA',  'Dow Jones (DIA)',   finKey);
+    case 'vixy':   return finnhubQuote('VIXY', 'VIX (VIXY proxy)',  finKey);
+    case 'gld':    return finnhubQuote('GLD',  'Gold (GLD)',        finKey);
+    case 'uso':    return finnhubQuote('USO',  'WTI Oil (USO)',     finKey);
+    case 'eurusd': return frankfurterFx('EUR', 'USD', 'EUR / USD');
+    case 'eurchf': return frankfurterFx('EUR', 'CHF', 'EUR / CHF');
+    case 'btcusd': return coingeckoCrypto('bitcoin',  'BTC / USD');
+    case 'ethusd': return coingeckoCrypto('ethereum', 'ETH / USD');
+  }
+  return null;
+}
+
+async function finnhubQuote(symbol, label, key) {
+  if (!key) return { label, price: '—', change: 'requiere Finnhub' };
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(key)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d.c == null || d.c === 0) return null;
+    const change = d.dp != null ? `${d.dp>=0?'+':''}${d.dp.toFixed(2)}%` : null;
+    return { label, price: '$' + d.c.toFixed(2), change };
+  } catch (e) { return null; }
+}
+
+async function frankfurterFx(from, to, label) {
+  try {
+    // Frankfurter da ECB rates (gratis, sin key). Para % cambio, comparamos vs ayer.
+    const today = await (await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`)).json();
+    const rate = today?.rates?.[to];
+    if (rate == null) return null;
+    let change = null;
+    try {
+      const yest = await (await fetch(`https://api.frankfurter.app/${getYesterday()}?from=${from}&to=${to}`)).json();
+      const yRate = yest?.rates?.[to];
+      if (yRate) {
+        const pct = (rate - yRate) / yRate * 100;
+        change = `${pct>=0?'+':''}${pct.toFixed(2)}%`;
+      }
+    } catch (e) {}
+    return { label, price: rate.toFixed(4), change };
+  } catch (e) { return null; }
+}
+
+async function coingeckoCrypto(coinId, label) {
+  try {
+    const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const c = d[coinId];
+    if (!c || c.usd == null) return null;
+    const change = c.usd_24h_change != null ? `${c.usd_24h_change>=0?'+':''}${c.usd_24h_change.toFixed(2)}%` : null;
+    return { label, price: '$' + fmt(c.usd), change };
+  } catch (e) { return null; }
+}
+
+function getYesterday() {
+  const d = new Date(); d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0,10);
 }
 
 // Fetch RSS de medios andorranos. Parser regex simple — Node 20+ tiene fetch nativo.
