@@ -865,30 +865,148 @@ async function notifGateSubmit(){
   }
 }
 
+// ── Esquema de secciones del resumen — single source of truth ──
+const NOTIF_DAYS = [
+  { code: 'mon', label: 'L' },
+  { code: 'tue', label: 'M' },
+  { code: 'wed', label: 'X' },
+  { code: 'thu', label: 'J' },
+  { code: 'fri', label: 'V' },
+  { code: 'sat', label: 'S' },
+  { code: 'sun', label: 'D' }
+];
+const NOTIF_SECTIONS = [
+  { id: 'patrimonio', icon: '💰', label: 'Patrimonio', items: [
+    { id: 'total',         label: 'Total actual',                   default: true  },
+    { id: 'delta',         label: 'Δ vs mes anterior (€ y %)',      default: true  },
+    { id: 'objetivo',      label: '% del objetivo principal',       default: true  },
+    { id: 'distribucion',  label: 'Distribución por sección',       default: false },
+    { id: 'top_mover',     label: 'Top mover del mes (mayor Δ)',    default: false }
+  ]},
+  { id: 'options', icon: '📈', label: 'Opciones', items: [
+    { id: 'count',         label: 'Nº de posiciones activas',       default: true  },
+    { id: 'expiring',      label: 'Posiciones expirando ≤ N días',  default: true  },
+    { id: 'expiring_days', label: '↳ N (días)', default: 7, type: 'number', min: 1, max: 30 },
+    { id: 'pnl_mes',       label: 'P&L del mes en curso',           default: false },
+    { id: 'risk_total',    label: 'Risk total comprometido',        default: false },
+    { id: 'closed_today',  label: 'Operaciones cerradas hoy',       default: false }
+  ]},
+  { id: 'training', icon: '💪', label: 'Full Training', items: [
+    { id: 'clientes',      label: 'Clientes activos',               default: true  },
+    { id: 'equipo',        label: 'Personas en equipo',             default: true  },
+    { id: 'impagos',       label: 'Impagos del mes',                default: true  },
+    { id: 'sesiones_hoy',  label: 'Sesiones programadas hoy',       default: false },
+    { id: 'stock_critico', label: 'Stock crítico (≤2 unidades)',    default: false }
+  ]},
+  { id: 'facturas', icon: '📄', label: 'Facturas', items: [
+    { id: 'pendientes',    label: 'Facturas pendientes',            default: true  },
+    { id: 'vencidas',      label: 'Facturas vencidas',              default: true  },
+    { id: 'total_mes',     label: 'Total facturado este mes',       default: false }
+  ]}
+];
+
+function _renderNotifDays(activeDays){
+  const cont = document.getElementById('notifDays');
+  if(!cont) return;
+  cont.innerHTML = '';
+  NOTIF_DAYS.forEach(d => {
+    const checked = activeDays ? activeDays.includes(d.code) : true;
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#0a1421;border:1px solid #1e2d3d;padding:6px 11px;border-radius:6px;cursor:pointer;font-size:.78rem;color:#67e8f9;font-family:DM Mono,monospace;';
+    lbl.innerHTML = `<input type="checkbox" data-day="${d.code}" ${checked?'checked':''} style="accent-color:#22d3ee;"> ${d.label}`;
+    cont.appendChild(lbl);
+  });
+}
+
+function _renderNotifSections(savedSections){
+  const cont = document.getElementById('notifSections');
+  if(!cont) return;
+  cont.innerHTML = '';
+  NOTIF_SECTIONS.forEach(sec => {
+    const saved = (savedSections && savedSections[sec.id]) || {};
+    const sectionEnabled = saved.enabled !== false;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border:1px solid #06b6d433;border-radius:6px;margin-bottom:10px;background:#020617;';
+    const header = document.createElement('label');
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #06b6d422;font-weight:600;color:#22d3ee;';
+    header.innerHTML = `
+      <input type="checkbox" data-sec-enabled="${sec.id}" ${sectionEnabled?'checked':''} style="accent-color:#22d3ee;width:16px;height:16px;">
+      <span>${sec.icon} ${sec.label}</span>
+    `;
+    wrap.appendChild(header);
+    const itemsWrap = document.createElement('div');
+    itemsWrap.style.cssText = 'padding:6px 18px 10px;display:flex;flex-direction:column;gap:5px;';
+    sec.items.forEach(it => {
+      if(it.type === 'number'){
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:.78rem;color:#67e8f9;padding-left:6px;';
+        const val = saved[it.id] != null ? saved[it.id] : it.default;
+        row.innerHTML = `
+          <span style="flex:1">${it.label}</span>
+          <input type="number" data-sec-item="${sec.id}/${it.id}" value="${val}" min="${it.min||0}" max="${it.max||999}" style="width:70px;background:#0a0e14;border:1px solid #1e3a5f;color:#e0f2fe;padding:3px 6px;border-radius:4px;font-family:DM Mono,monospace;font-size:.78rem;">
+        `;
+        itemsWrap.appendChild(row);
+      } else {
+        const lbl = document.createElement('label');
+        lbl.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:.78rem;color:#67e8f9;cursor:pointer;padding-left:6px;';
+        const checked = saved[it.id] != null ? saved[it.id] : it.default;
+        lbl.innerHTML = `<input type="checkbox" data-sec-item="${sec.id}/${it.id}" ${checked?'checked':''} style="accent-color:#22d3ee;"> ${it.label}`;
+        itemsWrap.appendChild(lbl);
+      }
+    });
+    wrap.appendChild(itemsWrap);
+    cont.appendChild(wrap);
+  });
+}
+
+function _readNotifFormConfig(){
+  const days = [];
+  document.querySelectorAll('#notifDays input[data-day]').forEach(inp => {
+    if(inp.checked) days.push(inp.dataset.day);
+  });
+  const sections = {};
+  NOTIF_SECTIONS.forEach(sec => {
+    const enabledInp = document.querySelector(`#notifSections input[data-sec-enabled="${sec.id}"]`);
+    sections[sec.id] = { enabled: enabledInp ? enabledInp.checked : true };
+    sec.items.forEach(it => {
+      const inp = document.querySelector(`#notifSections [data-sec-item="${sec.id}/${it.id}"]`);
+      if(!inp) return;
+      sections[sec.id][it.id] = (it.type === 'number') ? (parseInt(inp.value, 10) || it.default) : inp.checked;
+    });
+  });
+  return {
+    bot_token: document.getElementById('notifBotToken').value.trim(),
+    chat_id: document.getElementById('notifChatId').value.trim(),
+    time: document.getElementById('notifTime').value || '09:00',
+    enabled: document.getElementById('notifEnabled').checked,
+    days: days,
+    sections: sections,
+    ai_insight: document.getElementById('notifAiInsight').checked,
+    tz: 'Europe/Madrid',
+    updated_at: new Date().toISOString()
+  };
+}
+
 async function _notifShowForm(){
   document.getElementById('notifGate').style.display = 'none';
   document.getElementById('notifForm').style.display = 'block';
-  // Cargar config actual si existe
   let cfg = null;
   try { cfg = await GitHubSync.fetchSection('__notif'); } catch(e){}
   document.getElementById('notifBotToken').value = (cfg && cfg.bot_token) || '';
   document.getElementById('notifChatId').value = (cfg && cfg.chat_id) || '';
   document.getElementById('notifTime').value = (cfg && cfg.time) || '09:00';
   document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
+  document.getElementById('notifAiInsight').checked = cfg ? !!cfg.ai_insight : false;
+  _renderNotifDays(cfg && cfg.days);
+  _renderNotifSections(cfg && cfg.sections);
 }
 
 async function saveNotifConfig(){
-  if(!_notifAuthenticated){ alert('Sesión expirada. Vuelve a entrar.'); return; }
-  const cfg = {
-    bot_token: document.getElementById('notifBotToken').value.trim(),
-    chat_id: document.getElementById('notifChatId').value.trim(),
-    time: document.getElementById('notifTime').value || '09:00',
-    enabled: document.getElementById('notifEnabled').checked,
-    tz: 'Europe/Madrid',
-    updated_at: new Date().toISOString()
-  };
+  if(!_notifAuthenticated){ toast('Sesión expirada. Vuelve a entrar.', 'red'); return; }
+  const cfg = _readNotifFormConfig();
   if(!cfg.bot_token){ _showNotifMsg('⚠ Falta el bot token', '#fca5a5'); return; }
   if(!cfg.chat_id){ _showNotifMsg('⚠ Falta el chat_id', '#fca5a5'); return; }
+  if(!cfg.days.length){ _showNotifMsg('⚠ Selecciona al menos 1 día de envío', '#fca5a5'); return; }
   _showNotifMsg('⏳ Guardando...', '#67e8f9');
   try {
     await GitHubSync.updateSection('__notif', () => cfg);
@@ -897,6 +1015,161 @@ async function saveNotifConfig(){
     _showNotifMsg('✕ Error: ' + err.message, '#fca5a5');
   }
 }
+
+// Preview en pantalla del mensaje que se enviaría con la config actual
+async function previewNotifMessage(){
+  const cfg = _readNotifFormConfig();
+  _showNotifMsg('⏳ Generando preview...', '#67e8f9');
+  try {
+    const fullData = await GitHubSync.fetchFullData();
+    const text = _buildSummaryClient(fullData, cfg);
+    const el = document.getElementById('notifFormMsg');
+    el.style.display = 'block';
+    el.style.color = '#67e8f9';
+    el.style.whiteSpace = 'pre-wrap';
+    el.style.maxHeight = '300px';
+    el.style.overflowY = 'auto';
+    el.style.background = '#0a1421';
+    el.style.border = '1px solid #1e2d3d';
+    el.style.padding = '10px 12px';
+    el.style.borderRadius = '4px';
+    el.textContent = text.replace(/<[^>]+>/g, '');
+  } catch(err){
+    _showNotifMsg('✕ Error preview: ' + err.message, '#fca5a5');
+  }
+}
+
+// Genera el resumen en cliente (replicar lógica de telegram-summary.js)
+function _buildSummaryClient(data, cfg){
+  const lines = [];
+  const dt = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long'
+  }).format(new Date());
+  lines.push(`<b>📊 Resumen — ${dt}</b>`);
+  lines.push('');
+  const S = (cfg && cfg.sections) || {};
+
+  if(S.patrimonio?.enabled !== false){
+    try {
+      const profiles = _pmaybe(data?.patrimonio?.pat_v5);
+      if(Array.isArray(profiles) && profiles.length){
+        const p = profiles[0];
+        const ents = [...(p.entries||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
+        if(ents.length){
+          const last = ents[ents.length-1];
+          const totalNow = _calcPat(last);
+          const sec = S.patrimonio || {};
+          const block = [];
+          if(sec.total !== false) block.push(`💰 <b>Patrimonio</b>: €${_fnum(totalNow)}`);
+          if(sec.delta !== false && ents.length >= 2){
+            const prev = ents[ents.length-2], totalPrev = _calcPat(prev);
+            const diff = totalNow - totalPrev;
+            const pct = totalPrev ? (diff/totalPrev*100) : 0;
+            block.push(`   ${diff>=0?'↑':'↓'} ${diff>=0?'+':''}€${_fnum(Math.abs(diff))} (${pct>=0?'+':''}${pct.toFixed(1)}%) vs mes anterior`);
+          }
+          if(sec.objetivo !== false){
+            const obj = (p.objectives||[]).find(o=>o.type==='patrimonio') || (p.objectives||[])[0];
+            if(obj && obj.target>0){
+              const pct = (totalNow/obj.target*100).toFixed(1);
+              block.push(`   🎯 ${pct}% del objetivo (€${_fnum(obj.target)})`);
+            }
+          }
+          if(block.length) lines.push(...block);
+        }
+      }
+    } catch(e){ console.warn('preview patrimonio:', e); }
+  }
+
+  if(S.options?.enabled !== false){
+    try {
+      const arr = _pmaybe(data?.options?.ot_activas);
+      if(Array.isArray(arr)){
+        const sec = S.options || {};
+        const block = [];
+        if(sec.count !== false) block.push(`📈 <b>Opciones</b>: ${arr.length} activas`);
+        if(sec.expiring !== false){
+          const dteLimit = sec.expiring_days || 7;
+          const today = new Date(); today.setHours(0,0,0,0);
+          const exp = arr.filter(a => {
+            if(!a.exp) return false;
+            const d = Math.round((new Date(a.exp)-today)/86400000);
+            return d>=0 && d<=dteLimit;
+          });
+          if(exp.length){
+            block.push(`   ⚠ ${exp.length} expira/n en ≤${dteLimit} días:`);
+            exp.slice(0,6).forEach(a => {
+              const d = Math.round((new Date(a.exp)-today)/86400000);
+              block.push(`     • ${a.activo||'?'} ${a.strat||''} · ${d}d`);
+            });
+          }
+        }
+        if(block.length){ lines.push(''); lines.push(...block); }
+      }
+    } catch(e){ console.warn('preview options:', e); }
+  }
+
+  if(S.training?.enabled !== false){
+    try {
+      const ft = _pmaybe(data?.training?.ft_v4);
+      if(ft){
+        const sec = S.training || {};
+        const block = [];
+        const activos = (ft.clients||[]).filter(c=>c.active).length;
+        const equipo  = (ft.team||[]).filter(t=>t.active!==false).length;
+        const parts = [];
+        if(sec.clientes !== false) parts.push(`${activos} clientes`);
+        if(sec.equipo !== false)   parts.push(`${equipo} en equipo`);
+        if(parts.length) block.push(`💪 <b>Full Training</b>: ${parts.join(' · ')}`);
+        if(sec.impagos !== false){
+          const monthKeys = Object.keys(ft.months||{}).sort();
+          const lastKey = monthKeys[monthKeys.length-1];
+          if(lastKey){
+            const m = ft.months[lastKey];
+            const imp = (m.entries||[]).filter(e=>e.paid===false).length;
+            if(imp>0) block.push(`   ⚠ ${imp} impagos en ${lastKey}`);
+          }
+        }
+        if(block.length){ lines.push(''); lines.push(...block); }
+      }
+    } catch(e){ console.warn('preview ft:', e); }
+  }
+
+  if(S.facturas?.enabled !== false){
+    try {
+      const profiles = _pmaybe(data?.facturas?.fac_v1);
+      if(Array.isArray(profiles)){
+        const sec = S.facturas || {};
+        let pend=0, venc=0;
+        profiles.forEach(p => (p.facturas||[]).forEach(f => {
+          if(f.estado==='pendiente') pend++;
+          if(f.estado==='vencida')   venc++;
+        }));
+        const parts = [];
+        if(sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
+        if(sec.vencidas   !== false && venc) parts.push(`<b>${venc} vencidas</b>`);
+        if(parts.length){ lines.push(''); lines.push(`📄 <b>Facturas</b>: ` + parts.join(' · ')); }
+      }
+    } catch(e){ console.warn('preview facturas:', e); }
+  }
+
+  lines.push('');
+  lines.push('<i>Auto-generado por mis-dashboards</i>');
+  return lines.join('\n');
+}
+
+function _pmaybe(v){
+  if(v == null) return null;
+  if(typeof v === 'object') return v;
+  if(typeof v === 'string'){ try { return JSON.parse(v); } catch(e){ return null; } }
+  return null;
+}
+function _calcPat(entry){
+  let t = 0;
+  Object.values(entry.assets||{}).forEach(v => { const n = parseFloat(v); if(!isNaN(n)) t += n; });
+  Object.values(entry.debts||{}).forEach(v => { const n = parseFloat(v); if(!isNaN(n)) t -= n; });
+  return t;
+}
+function _fnum(n){ return new Intl.NumberFormat('es-ES',{maximumFractionDigits:0}).format(n); }
 
 async function testNotifBot(){
   const token = document.getElementById('notifBotToken').value.trim();
