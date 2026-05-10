@@ -286,13 +286,13 @@ function renderNewsBlock(out, header, news, topics) {
   out.push('');
   out.push(`   ${header}`);
   if (Array.isArray(topics) && topics.length) {
+    // 1 noticia por tema (la más relevante = mayor score + más reciente)
     topics.slice(0, 3).forEach(topicId => {
       const topic = TOPIC_KEYWORDS[topicId];
       if (!topic) return;
-      const matched = scoreNewsByTopic(news, topic.kw).slice(0, 3);
-      if (matched.length === 0) return;
-      out.push(`     <b>${topic.label}:</b>`);
-      matched.forEach(n => out.push(`       • <a href="${escape(n.link)}">${escape(n.title)}</a> <i>(${escape(n.source)})</i>`));
+      const top = scoreNewsByTopic(news, topic.kw)[0];
+      if (!top) return;
+      out.push(`     ${topic.label}: <a href="${escape(top.link)}">${escape(top.title)}</a> <i>(${escape(top.source)})</i>`);
     });
   } else {
     // sin temas: 3 más recientes diversificadas

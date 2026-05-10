@@ -1322,7 +1322,7 @@ const NOTIF_SECTIONS = [
     },
     { id: 'tiempo',           label: 'Tiempo Andorra 3 días (Open-Meteo)',    default: false },
     { id: 'noticias_andorra', label: 'Noticias Andorra (RSS)',                default: false },
-    { id: 'noticias_andorra_topics', label: '↳ Temas (3 noticias por tema)', type: 'multi', max: 3,
+    { id: 'noticias_andorra_topics', label: '↳ Temas (1 noticia por tema)', type: 'multi', max: 3,
       default: [],
       options: [
         { id: 'politica',     label: '🏛 Política' },
@@ -1336,7 +1336,7 @@ const NOTIF_SECTIONS = [
       ]
     },
     { id: 'noticias_mundo',   label: 'Noticias mundial (RSS)',                default: false },
-    { id: 'noticias_mundo_topics', label: '↳ Temas (3 noticias por tema)', type: 'multi', max: 3,
+    { id: 'noticias_mundo_topics', label: '↳ Temas (1 noticia por tema)', type: 'multi', max: 3,
       default: [],
       options: [
         { id: 'politica',     label: '🏛 Política' },
