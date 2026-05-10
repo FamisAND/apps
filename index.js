@@ -1319,22 +1319,48 @@ function _renderNotifDays(activeDays){
   });
 }
 
-function _renderNotifSections(savedSections){
+// Orden actual editable por el usuario (drag-and-drop). Si no hay savedOrder
+// se usa el orden definido en NOTIF_SECTIONS.
+function _renderNotifSections(savedSections, savedOrder){
   const cont = document.getElementById('notifSections');
   if(!cont) return;
   cont.innerHTML = '';
-  NOTIF_SECTIONS.forEach(sec => {
+
+  // Resolver orden: priorizar savedOrder, completar con secciones nuevas que
+  // no estuvieran guardadas (al final), descartar IDs huérfanos.
+  const validIds = NOTIF_SECTIONS.map(s => s.id);
+  let order = Array.isArray(savedOrder) && savedOrder.length
+    ? savedOrder.filter(id => validIds.includes(id))
+    : validIds.slice();
+  validIds.forEach(id => { if(!order.includes(id)) order.push(id); });
+
+  const hint = document.createElement('div');
+  hint.style.cssText = 'font-size:.72rem;color:#94a3b8;margin-bottom:8px;display:flex;align-items:center;gap:6px;';
+  hint.innerHTML = '<span style="font-size:1rem;">⋮⋮</span> Arrastra para reordenar las secciones en el resumen';
+  cont.appendChild(hint);
+
+  order.forEach(secId => {
+    const sec = NOTIF_SECTIONS.find(s => s.id === secId);
+    if(!sec) return;
     const saved = (savedSections && savedSections[sec.id]) || {};
     const sectionEnabled = saved.enabled !== false;
+
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'border:1px solid #06b6d433;border-radius:6px;margin-bottom:10px;background:#020617;';
-    const header = document.createElement('label');
-    header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-bottom:1px solid #06b6d422;font-weight:600;color:#22d3ee;';
+    wrap.dataset.secId = sec.id;
+    wrap.draggable = true;
+    wrap.style.cssText = 'border:1px solid #06b6d433;border-radius:6px;margin-bottom:10px;background:#020617;transition:opacity .15s,transform .15s;';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #06b6d422;font-weight:600;color:#22d3ee;';
     header.innerHTML = `
-      <input type="checkbox" data-sec-enabled="${sec.id}" ${sectionEnabled?'checked':''} style="accent-color:#22d3ee;width:16px;height:16px;">
-      <span>${sec.icon} ${sec.label}</span>
+      <span class="drag-handle" style="cursor:grab;color:#64748b;font-size:1.1rem;user-select:none;padding:0 4px;" title="Arrastrar">⋮⋮</span>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;">
+        <input type="checkbox" data-sec-enabled="${sec.id}" ${sectionEnabled?'checked':''} style="accent-color:#22d3ee;width:16px;height:16px;">
+        <span>${sec.icon} ${sec.label}</span>
+      </label>
     `;
     wrap.appendChild(header);
+
     const itemsWrap = document.createElement('div');
     itemsWrap.style.cssText = 'padding:6px 18px 10px;display:flex;flex-direction:column;gap:5px;';
     sec.items.forEach(it => {
@@ -1358,6 +1384,55 @@ function _renderNotifSections(savedSections){
     wrap.appendChild(itemsWrap);
     cont.appendChild(wrap);
   });
+
+  _attachNotifDnD(cont);
+}
+
+// Drag-and-drop nativo HTML5 — solo aplica a hijos directos de `cont` con
+// `data-sec-id`. Al soltar, el orden se reescribe por el orden DOM.
+function _attachNotifDnD(cont){
+  let dragEl = null;
+  cont.querySelectorAll('[data-sec-id]').forEach(el => {
+    el.addEventListener('dragstart', (e) => {
+      dragEl = el;
+      el.style.opacity = '.4';
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', el.dataset.secId); } catch(_){}
+    });
+    el.addEventListener('dragend', () => {
+      if(dragEl){ dragEl.style.opacity = ''; }
+      dragEl = null;
+      cont.querySelectorAll('[data-sec-id]').forEach(c => { c.style.borderColor = '#06b6d433'; });
+    });
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if(!dragEl || dragEl === el) return;
+      const rect = el.getBoundingClientRect();
+      const after = (e.clientY - rect.top) > rect.height / 2;
+      el.style.borderColor = after ? '#22d3ee' : '#22d3ee';
+      el.style.borderWidth = '1px';
+      el.style.borderStyle = 'solid';
+      el.style.borderTopColor = after ? '#06b6d433' : '#22d3ee';
+      el.style.borderBottomColor = after ? '#22d3ee' : '#06b6d433';
+    });
+    el.addEventListener('dragleave', () => {
+      el.style.borderColor = '#06b6d433';
+    });
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if(!dragEl || dragEl === el) return;
+      const rect = el.getBoundingClientRect();
+      const after = (e.clientY - rect.top) > rect.height / 2;
+      if(after) el.parentNode.insertBefore(dragEl, el.nextSibling);
+      else      el.parentNode.insertBefore(dragEl, el);
+      el.style.borderColor = '#06b6d433';
+    });
+  });
+}
+
+function _readNotifSectionOrder(){
+  const cont = document.getElementById('notifSections');
+  if(!cont) return null;
+  return [...cont.querySelectorAll('[data-sec-id]')].map(el => el.dataset.secId);
 }
 
 function _readNotifFormConfig(){
@@ -1382,6 +1457,7 @@ function _readNotifFormConfig(){
     enabled: document.getElementById('notifEnabled').checked,
     days: days,
     sections: sections,
+    section_order: _readNotifSectionOrder(),
     ai_insight: document.getElementById('notifAiInsight').checked,
     tz: 'Europe/Madrid',
     updated_at: new Date().toISOString()
@@ -1399,7 +1475,7 @@ async function _notifShowForm(){
   document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
   document.getElementById('notifAiInsight').checked = cfg ? !!cfg.ai_insight : false;
   _renderNotifDays(cfg && cfg.days);
-  _renderNotifSections(cfg && cfg.sections);
+  _renderNotifSections(cfg && cfg.sections, cfg && cfg.section_order);
 }
 
 async function saveNotifConfig(){
@@ -1443,13 +1519,9 @@ async function previewNotifMessage(){
 function _esc(s){ return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]); }
 
 // Genera el resumen en cliente (mirror de telegram-summary.js)
+const _NOTIF_DEFAULT_ORDER = ['patrimonio','options','training','facturas'];
+
 function _buildSummaryClient(data, cfg){
-  const lines = [];
-  const dt = new Intl.DateTimeFormat('es-ES', {
-    timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long'
-  }).format(new Date());
-  lines.push(`<b>📊 Resumen — ${dt}</b>`);
-  lines.push('');
   const S = (cfg && cfg.sections) || {};
   const monthKey = new Intl.DateTimeFormat('en-CA', {
     timeZone:'Europe/Madrid', year:'numeric', month:'2-digit'
@@ -1457,350 +1529,482 @@ function _buildSummaryClient(data, cfg){
   const todayStr = new Intl.DateTimeFormat('en-CA', {
     timeZone:'Europe/Madrid', year:'numeric', month:'2-digit', day:'2-digit'
   }).format(new Date());
-  const today0 = new Date(todayStr + 'T00:00:00Z');
+  const today0 = new Date(todayStr + 'T00:00:00Z'); today0.setUTCHours(0,0,0,0);
+  const [yNow, mNow] = monthKey.split('-').map(n => parseInt(n,10));
+  const dPrev = new Date(Date.UTC(yNow, mNow - 1, 1)); dPrev.setUTCMonth(dPrev.getUTCMonth() - 1);
+  const ftMonthKey = `${dPrev.getUTCFullYear()}-${String(dPrev.getUTCMonth()+1).padStart(2,'0')}`;
+  const monthsAgo = (mk) => {
+    if (!mk || !/^\d{4}-\d{2}$/.test(mk)) return null;
+    const [py, pm] = mk.split('-').map(Number);
+    return (yNow - py) * 12 + (mNow - pm);
+  };
+  const ctx = { monthKey, todayStr, today0, ftMonthKey, monthsAgo };
 
-  // PATRIMONIO
-  const patSec = S.patrimonio || {};
-  if(patSec.enabled !== false){
-    try {
-      const profiles = _pmaybe(data?.patrimonio?.pat_v5);
-      if(Array.isArray(profiles) && profiles.length){
-        const p = profiles[0];
-        const ents = [...(p.entries||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
-        if(ents.length){
-          const last = ents[ents.length-1];
-          const totalNow = _calcPat(last);
-          const block = [];
-          if(patSec.total !== false) block.push(`💰 <b>Patrimonio</b>: €${_fnum(totalNow)}`);
-          if(patSec.delta !== false && ents.length >= 2){
-            const prev = ents[ents.length-2], totalPrev = _calcPat(prev);
-            const diff = totalNow - totalPrev;
-            const pct = totalPrev ? (diff/totalPrev*100) : 0;
-            block.push(`   ${diff>=0?'↑':'↓'} ${diff>=0?'+':''}€${_fnum(Math.abs(diff))} (${pct>=0?'+':''}${pct.toFixed(1)}%) vs mes anterior`);
-          }
-          if(patSec.objetivo !== false){
-            const obj = (p.objectives||[]).find(o=>o.type==='patrimonio') || (p.objectives||[])[0];
-            if(obj && obj.target > 0){
-              const pct = (totalNow/obj.target*100).toFixed(1);
-              block.push(`   🎯 ${pct}% del objetivo (€${_fnum(obj.target)})`);
-            }
-          }
-          if(patSec.ytd_pct === true){
-            const yearStart = ents.find(e => e.year === last.year && e.month === 0)
-                          || ents.find(e => e.year === last.year);
-            if(yearStart){
-              const t0 = _calcPat(yearStart);
-              if(t0){
-                const ytd = ((totalNow - t0) / t0 * 100);
-                block.push(`   📅 YTD: ${ytd>=0?'+':''}${ytd.toFixed(1)}%`);
-              }
-            }
-          }
-          // Patrimonio gastos — fórmula real del dashboard:
-          // solo importe<0, saltar excluido, archivos tipo='comun' = mitad
-          function _patGastosMes(monthMd){
-            if(!monthMd || !monthMd.transacciones) return null;
-            const archMap = {};
-            (monthMd.archivos||[]).forEach(a => archMap[a.id] = a);
-            let total = 0; const porCat = {}; let nReal = 0;
-            (monthMd.transacciones||[]).forEach(t => {
-              if(t.excluido) return;
-              const imp = parseFloat(t.importe);
-              if(!Number.isFinite(imp) || imp >= 0) return;
-              nReal++;
-              const tipo = archMap[t.archivoId]?.tipo || 'individual';
-              const part = (tipo === 'comun') ? Math.abs(imp)/2 : Math.abs(imp);
-              total += part;
-              const cid = t.categoriaId || 'sin_cat';
-              porCat[cid] = (porCat[cid]||0) + part;
-            });
-            return { total, porCat, nReal };
-          }
-          if(patSec.gastos_mes === true){
-            const r = _patGastosMes(p?.gastos?.meses?.[monthKey]);
-            if(r && r.nReal > 0){
-              const cats = p?.gastos?.categorias || [];
-              const catMap = {}; cats.forEach(c => catMap[c.id] = c);
-              catMap['sin_cat'] = { name: 'Sin categorizar' };
-              const top3 = Object.entries(r.porCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
-              block.push(`   💸 Gastos ${monthKey}: €${_fnum(r.total)} (${r.nReal} mov · mi parte)`);
-              top3.forEach(([cid,amt]) => {
-                const cat = catMap[cid] || { name: cid };
-                block.push(`     • ${_esc(cat.name)}: €${_fnum(amt)}`);
-              });
-            }
-          }
-          if(patSec.ingresos_mes === true){
-            const ingSec = (p.sections||[]).find(s => s.id === 's_ingresos' || s.type === 'ingresos');
-            if(ingSec){
-              let total = 0;
-              (ingSec.assets||[]).forEach(a => {
-                const v = parseFloat(last.assets?.[a.id]) || 0;
-                if(v > 0) total += v;
-              });
-              if(total > 0) block.push(`   💵 Ingresos ${monthKey}: €${_fnum(total)}`);
-            }
-          }
-          if(patSec.distribucion === true){
-            block.push(`   📊 Distribución:`);
-            (p.sections||[]).forEach(sec => {
-              if(sec.id === 's_ingresos' || sec.type === 'ingresos') return;
-              let secTotal = 0;
-              (sec.assets||[]).forEach(a => {
-                const v = parseFloat(last.assets?.[a.id]);
-                if(!isNaN(v)) secTotal += v;
-              });
-              if(secTotal > 0 && totalNow > 0){
-                const pct = (secTotal/totalNow*100).toFixed(0);
-                const secName = sec.title || sec.name || sec.id || 'Sección';
-                block.push(`     • ${_esc(secName)}: €${_fnum(secTotal)} (${pct}%)`);
-              }
-            });
-          }
-          if(patSec.top_mover === true && ents.length >= 2){
-            const prev = ents[ents.length-2];
-            let bestDiff = 0, bestName = '';
-            (p.sections||[]).forEach(sec => {
-              (sec.assets||[]).forEach(a => {
-                const cur = parseFloat(last.assets?.[a.id]) || 0;
-                const pre = parseFloat(prev.assets?.[a.id]) || 0;
-                const diff = cur - pre;
-                if(Math.abs(diff) > Math.abs(bestDiff)){
-                  bestDiff = diff; bestName = a.name;
-                }
-              });
-            });
-            if(bestName) block.push(`   ⭐ Top mover: ${_esc(bestName)} ${bestDiff>=0?'+':''}€${_fnum(Math.abs(bestDiff))}`);
-          }
-          if(block.length) lines.push(...block);
-        }
-      }
-    } catch(e){ console.warn('preview patrimonio:', e); }
-  }
+  const sections = {
+    patrimonio: _previewPatrimonio(ctx, data, S.patrimonio || {}),
+    options:    _previewOptions   (ctx, data, S.options    || {}),
+    training:   _previewTraining  (ctx, data, S.training   || {}),
+    facturas:   _previewFacturas  (ctx, data, S.facturas   || {})
+  };
+  const urgent = _previewUrgent(ctx, data);
 
-  // OPCIONES
-  const optSec = S.options || {};
-  if(optSec.enabled !== false){
-    try {
-      const arr = _pmaybe(data?.options?.ot_activas);
-      const hist = _pmaybe(data?.options?.ot_hist);
-      const snaps = _pmaybe(data?.options?.ot_snaps);
-      if(Array.isArray(arr)){
-        const block = [];
-        if(optSec.count !== false) block.push(`📈 <b>Opciones</b>: ${arr.length} activas`);
-        if(optSec.net_liq === true && Array.isArray(snaps) && snaps.length){
-          const sorted = [...snaps].sort((a,b) => (a.date||'').localeCompare(b.date||''));
-          const latest = sorted[sorted.length-1];
-          if(latest) block.push(`   💵 NAV ${latest.date}: $${_fnum(latest.val)}`);
-        }
-        if(optSec.expiring !== false){
-          const dteLimit = optSec.expiring_days || 7;
-          const exp = arr.filter(a => {
-            if(!a.exp) return false;
-            const d = Math.round((new Date(a.exp + 'T00:00:00Z') - today0) / 86400000);
-            return d >= 0 && d <= dteLimit;
-          });
-          if(exp.length){
-            block.push(`   ⚠ ${exp.length} expira/n en ≤${dteLimit}d:`);
-            exp.slice(0,6).forEach(a => {
-              const d = Math.round((new Date(a.exp + 'T00:00:00Z') - today0) / 86400000);
-              block.push(`     • <code>${_esc(a.activo||'?')}</code> ${a.strat||''} · ${d}d`);
-            });
-          }
-        }
-        if(optSec.lista_activas === true && arr.length){
-          block.push(`   📋 Posiciones activas:`);
-          arr.slice(0, 12).forEach(a => {
-            const ctr = parseInt(a.contracts) || 1;
-            const dte = a.exp ? Math.round((new Date(a.exp + 'T00:00:00Z') - today0) / 86400000) : null;
-            const pIn  = (parseFloat(a.pCredito)||0) * 100;
-            const pAct = a.priceCurrent != null ? parseFloat(a.priceCurrent) * 100 : null;
-            let pnlStr = '';
-            if(pAct != null){
-              const unrealized = (pIn - pAct) * ctr;
-              pnlStr = ` · ${unrealized>=0?'+':''}$${_fnum(Math.abs(unrealized))}`;
-            }
-            const dteStr = dte != null ? ` ${dte}d` : '';
-            const ctrStr = ctr > 1 ? ` x${ctr}` : '';
-            block.push(`     • <code>${_esc(a.activo||'?')}</code> ${a.strat||''}${ctrStr}${dteStr}${pnlStr}`);
-          });
-          if(arr.length > 12) block.push(`     ... y ${arr.length-12} más`);
-        }
-        const mesHist = Array.isArray(hist) ? hist.filter(h => (h.cierre||'').startsWith(monthKey)) : [];
-        if(optSec.pnl_mes === true && mesHist.length){
-          const pnl = mesHist.reduce((s,h) => s + (parseFloat(h.totalNeto)||0), 0) * 100;
-          block.push(`   💵 P&L ${monthKey}: ${pnl>=0?'+':''}$${_fnum(pnl)} (${mesHist.length} ops)`);
-        }
-        if(optSec.win_rate_mes === true && mesHist.length){
-          const wins = mesHist.filter(h => (parseFloat(h.totalNeto)||0) > 0).length;
-          const losses = mesHist.length - wins;
-          const wr = (wins/mesHist.length*100).toFixed(0);
-          block.push(`   📊 WR ${monthKey}: ${wr}% (${wins}W / ${losses}L)`);
-        }
-        if(optSec.best_worst === true && mesHist.length){
-          const sorted = [...mesHist].sort((a,b) => (parseFloat(b.totalNeto)||0) - (parseFloat(a.totalNeto)||0));
-          const best = sorted[0], worst = sorted[sorted.length-1];
-          if(best && (parseFloat(best.totalNeto)||0) > 0){
-            const v = (parseFloat(best.totalNeto)||0) * 100;
-            block.push(`   🏆 Best: <code>${_esc(best.activo||'?')}</code> ${best.strat||''} +$${_fnum(v)}`);
-          }
-          if(worst && worst !== best && (parseFloat(worst.totalNeto)||0) < 0){
-            const v = Math.abs((parseFloat(worst.totalNeto)||0) * 100);
-            block.push(`   📉 Worst: <code>${_esc(worst.activo||'?')}</code> ${worst.strat||''} -$${_fnum(v)}`);
-          }
-        }
-        if(optSec.risk_total === true){
-          let riskTot = 0;
-          arr.forEach(a => { riskTot += parseFloat(a.maxRisk)||0; });
-          if(riskTot > 0) block.push(`   💼 Risk total: $${_fnum(riskTot)}`);
-        }
-        if(optSec.closed_today === true && Array.isArray(hist)){
-          const closedToday = hist.filter(h => h.cierre === todayStr);
-          if(closedToday.length){
-            block.push(`   ✔ Cerradas hoy: ${closedToday.length}`);
-            closedToday.slice(0,4).forEach(h => {
-              const pnl = (parseFloat(h.totalNeto)||0) * 100;
-              block.push(`     • ${_esc(h.activo||'?')} ${h.strat||''} ${pnl>=0?'+':''}$${_fnum(pnl)}`);
-            });
-          }
-        }
-        if(block.length){ lines.push(''); lines.push(...block); }
-      }
-    } catch(e){ console.warn('preview options:', e); }
-  }
+  // Render en el mismo orden que el script
+  const lines = [];
+  const dt = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long'
+  }).format(new Date());
+  lines.push(`<b>📊 Resumen — ${dt}</b>`);
 
-  // FT
-  const ftSec = S.training || {};
-  if(ftSec.enabled !== false){
-    try {
-      const ft = _pmaybe(data?.training?.ft_v4);
-      if(ft){
-        const block = [];
-        const activos = (ft.clients||[]).filter(c => c.active).length;
-        const equipo  = (ft.team||[]).filter(t => t.active !== false).length;
-        const parts = [];
-        if(ftSec.clientes !== false) parts.push(`${activos} clientes`);
-        if(ftSec.equipo !== false)   parts.push(`${equipo} en equipo`);
-        if(parts.length) block.push(`💪 <b>Full Training</b>: ${parts.join(' · ')}`);
-        // Mes objetivo = mes anterior (el actual está incompleto)
-        const [yNow, mNow] = monthKey.split('-').map(n => parseInt(n,10));
-        const dPrev = new Date(Date.UTC(yNow, mNow - 1, 1)); dPrev.setUTCMonth(dPrev.getUTCMonth() - 1);
-        const ftMonthKey = `${dPrev.getUTCFullYear()}-${String(dPrev.getUTCMonth()+1).padStart(2,'0')}`;
-        block.push(`   <i>(referido a ${ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
-
-        function _ftMonthMetrics(mv){
-          if(!mv) return null;
-          let fact = 0, cobr = 0;
-          (mv.entries||[]).forEach(e => {
-            const pr = parseFloat(e.price) || 0;
-            fact += pr;
-            if(e.paid === 'pagado' || e.paid === true) cobr += pr;
-          });
-          const gastos = (mv.gastos||[])
-            .filter(g => g.cat !== 'dividendos')
-            .reduce((s,g) => s + (parseFloat(g.amount)||0), 0);
-          return { fact, cobr, gastos, beneficio: fact - gastos };
-        }
-        const mPrev = _ftMonthMetrics(ft.months?.[ftMonthKey]);
-        if(ftSec.ingresos_mes !== false && mPrev){
-          if(mPrev.fact > 0)   block.push(`   💵 Facturación ${ftMonthKey}: €${_fnum(mPrev.fact)}`);
-          if(mPrev.gastos > 0) block.push(`   💸 Gastos ${ftMonthKey}: €${_fnum(mPrev.gastos)}`);
-          if(mPrev.fact > 0 || mPrev.gastos > 0){
-            const sign = mPrev.beneficio >= 0 ? '+' : '-';
-            block.push(`   📊 Beneficio ${ftMonthKey}: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
-          }
-        }
-        // Impagos: TODOS los meses, lista detallada
-        if(ftSec.impagos !== false){
-          const cliMap = {};
-          (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
-          const allImpagos = [];
-          for(const [mk, mv] of Object.entries(ft.months||{})){
-            (mv.entries||[]).forEach(e => {
-              if(e.paid === 'pagado' || e.paid === true) return;
-              const pr = parseFloat(e.price) || 0;
-              if(pr <= 0) return;
-              allImpagos.push({ mes: mk, cliente: cliMap[e.clientId] || e.clientId || '?', price: pr });
-            });
-          }
-          if(allImpagos.length > 0){
-            allImpagos.sort((a,b) => b.mes.localeCompare(a.mes) || a.cliente.localeCompare(b.cliente));
-            const total = allImpagos.reduce((s,x) => s + x.price, 0);
-            block.push(`   ⚠ <b>${allImpagos.length} impagos pendientes</b>: €${_fnum(total)}`);
-            const MAX = 12;
-            allImpagos.slice(0, MAX).forEach(x => {
-              block.push(`     • ${x.mes} · ${_esc(x.cliente)} · €${_fnum(x.price)}`);
-            });
-            if(allImpagos.length > MAX) block.push(`     ... y ${allImpagos.length - MAX} más`);
-          }
-        }
-        if(ftSec.sesiones_hoy === true){
-          const monthM = ft.months?.[monthKey];
-          if(monthM){
-            let sesHoy = 0;
-            (monthM.masajes||[]).forEach(mas => { if(mas.fecha === todayStr) sesHoy++; });
-            (monthM.entries||[]).forEach(e => { if(e.fecha === todayStr) sesHoy++; });
-            if(sesHoy > 0) block.push(`   📅 ${sesHoy} sesion${sesHoy===1?'':'es'} hoy`);
-          }
-        }
-        if(ftSec.stock_critico === true){
-          const critico = (ft.stock||[]).filter(s => {
-            const total = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-            return total > 0 && total <= 2;
-          });
-          if(critico.length){
-            block.push(`   📦 ${critico.length} producto${critico.length===1?'':'s'} con stock ≤2`);
-            critico.slice(0,3).forEach(s => {
-              const total = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
-              block.push(`     • ${_esc(s.name)} (${total} uds)`);
-            });
-          }
-        }
-        if(block.length){ lines.push(''); lines.push(...block); }
-      }
-    } catch(e){ console.warn('preview ft:', e); }
-  }
-
-  // FACTURAS
-  const facSec = S.facturas || {};
-  if(facSec.enabled !== false){
-    try {
-      const profiles = _pmaybe(data?.facturas?.fac_v1);
-      if(Array.isArray(profiles)){
-        let pend=0, venc=0, totalMes=0;
-        const byClienteMes = {};
-        profiles.forEach(p => (p.facturas||[]).forEach(f => {
-          if(f.estado==='pendiente') pend++;
-          if(f.estado==='vencida')   venc++;
-          if(f.fecha && f.fecha.startsWith(monthKey)){
-            const t = parseFloat(f.total)||0;
-            totalMes += t;
-            const cn = f.clienteName || f.clienteId || '?';
-            byClienteMes[cn] = (byClienteMes[cn]||0) + t;
-          }
-        }));
-        const block = [];
-        const parts = [];
-        if(facSec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
-        if(facSec.vencidas   !== false && venc) parts.push(`<b>${venc} vencidas</b>`);
-        if(parts.length) block.push(`📄 <b>Facturas</b>: ${parts.join(' · ')}`);
-        if(facSec.total_mes !== false && totalMes > 0) block.push(`   💶 Facturado ${monthKey}: €${_fnum(totalMes)}`);
-        if(facSec.top_cliente === true){
-          const top = Object.entries(byClienteMes).sort((a,b) => b[1]-a[1])[0];
-          if(top) block.push(`   👤 Top cliente: ${_esc(top[0])} (€${_fnum(top[1])})`);
-        }
-        if(block.length){ lines.push(''); lines.push(...block); }
-      }
-    } catch(e){ console.warn('preview facturas:', e); }
-  }
-
-  if(cfg.ai_insight){
+  if(cfg && cfg.ai_insight){
     lines.push('');
-    lines.push('🤖 <i>(AI insight aparecerá aquí en el envío real, usando tus IA APIs configuradas en el inicio. La preview no llama a la IA.)</i>');
+    lines.push('🎯 <b>HOY</b>');
+    lines.push('   <i>(2-3 acciones generadas por la IA — solo en envío real, no en preview)</i>');
   }
+
+  if(urgent.length){
+    lines.push('');
+    lines.push('━━━━━━━━━━━━━');
+    lines.push('');
+    lines.push('⚠ <b>URGENTE</b>');
+    urgent.forEach(u => lines.push(`   ${u}`));
+  }
+
+  const order = (cfg && Array.isArray(cfg.section_order) && cfg.section_order.length)
+    ? cfg.section_order
+    : _NOTIF_DEFAULT_ORDER;
+
+  let firstBody = true;
+  order.forEach(secId => {
+    const blk = sections[secId];
+    if(!blk || !blk.length) return;
+    lines.push('');
+    if(firstBody){ lines.push('━━━━━━━━━━━━━'); lines.push(''); firstBody = false; }
+    lines.push(...blk);
+  });
+
   lines.push('');
-  lines.push('<i>Auto-generado por mis-dashboards</i>');
+  lines.push('<i>Auto-generado · mis-dashboards</i>');
   return lines.join('\n');
+}
+
+// — PATRIMONIO (preview) —
+function _previewPatrimonio(ctx, data, sec){
+  if(sec.enabled === false) return [];
+  try {
+    const profiles = _pmaybe(data?.patrimonio?.pat_v5);
+    if(!Array.isArray(profiles) || !profiles.length) return [];
+    const p = profiles[0];
+    const ents = [...(p.entries||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
+    if(!ents.length) return [];
+    const last = ents[ents.length-1];
+    const prev = ents.length >= 2 ? ents[ents.length-2] : null;
+    const totalNow = _calcPat(last);
+    const totalPrev = prev ? _calcPat(prev) : null;
+
+    const out = ['💰 <b>Patrimonio</b>'];
+    if(sec.total !== false) out.push(`   Total: €${_fnum(totalNow)}`);
+    if(sec.delta !== false && totalPrev != null){
+      const diff = totalNow - totalPrev;
+      const pct = totalPrev ? (diff/totalPrev*100) : 0;
+      out.push(`   ${diff>=0?'↑':'↓'} ${diff>=0?'+':''}€${_fnum(Math.abs(diff))} (${pct>=0?'+':''}${pct.toFixed(1)}%) vs mes anterior`);
+    }
+    if(sec.objetivo !== false){
+      const obj = (p.objectives||[]).find(o=>o.type==='patrimonio') || (p.objectives||[])[0];
+      if(obj && obj.target > 0){
+        const pct = (totalNow/obj.target*100).toFixed(1);
+        out.push(`   🎯 ${pct}% del objetivo (€${_fnum(obj.target)})`);
+      }
+    }
+    if(sec.ytd_pct === true){
+      const yearStart = ents.find(e => e.year === last.year && e.month === 0)
+                    || ents.find(e => e.year === last.year);
+      if(yearStart){
+        const t0 = _calcPat(yearStart);
+        if(t0){
+          const ytd = ((totalNow - t0) / t0 * 100);
+          out.push(`   📅 YTD: ${ytd>=0?'+':''}${ytd.toFixed(1)}%`);
+        }
+      }
+    }
+    if(sec.gastos_mes === true){
+      const r = _patGastosMes(p?.gastos?.meses?.[ctx.monthKey]);
+      if(r && r.nReal > 0){
+        const cats = p?.gastos?.categorias || [];
+        const catMap = {}; cats.forEach(c => catMap[c.id] = c);
+        catMap['sin_cat'] = { name: 'Sin categorizar' };
+        const top3 = Object.entries(r.porCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
+        out.push('');
+        out.push(`   💸 Gastos ${ctx.monthKey}: €${_fnum(r.total)} <i>(${r.nReal} mov · mi parte)</i>`);
+        top3.forEach(([cid,amt]) => {
+          const cat = catMap[cid] || { name: cid };
+          out.push(`     • ${_esc(cat.name)}: €${_fnum(amt)}`);
+        });
+      }
+    }
+    if(sec.ingresos_mes === true){
+      const ingSec = (p.sections||[]).find(s => s.id === 's_ingresos' || s.type === 'ingresos');
+      if(ingSec){
+        let total = 0;
+        (ingSec.assets||[]).forEach(a => {
+          const v = parseFloat(last.assets?.[a.id]) || 0;
+          if(v > 0) total += v;
+        });
+        if(total > 0){ out.push(''); out.push(`   💵 Ingresos ${ctx.monthKey}: €${_fnum(total)}`); }
+      }
+    }
+    if(sec.distribucion === true){
+      out.push('');
+      out.push(`   📊 Distribución:`);
+      (p.sections||[]).forEach(s => {
+        if(s.id === 's_ingresos' || s.type === 'ingresos') return;
+        let secTotal = 0;
+        (s.assets||[]).forEach(a => {
+          const v = parseFloat(last.assets?.[a.id]);
+          if(!isNaN(v)) secTotal += v;
+        });
+        if(secTotal > 0 && totalNow > 0){
+          const pct = (secTotal/totalNow*100).toFixed(0);
+          const name = s.title || s.name || s.id || 'Sección';
+          out.push(`     • ${_esc(name)}: €${_fnum(secTotal)} (${pct}%)`);
+        }
+      });
+    }
+    if(sec.top_mover === true && prev){
+      let bestDiff = 0, bestName = '';
+      (p.sections||[]).forEach(s => {
+        (s.assets||[]).forEach(a => {
+          const cur = parseFloat(last.assets?.[a.id]) || 0;
+          const pre = parseFloat(prev.assets?.[a.id]) || 0;
+          const diff = cur - pre;
+          if(Math.abs(diff) > Math.abs(bestDiff)){ bestDiff = diff; bestName = a.name; }
+        });
+      });
+      if(bestName) out.push(`   ⭐ Top mover: ${_esc(bestName)} ${bestDiff>=0?'+':''}€${_fnum(Math.abs(bestDiff))}`);
+    }
+    return out.length > 1 ? out : [];
+  } catch(e){ console.warn('preview patrimonio:', e); return []; }
+}
+
+function _patGastosMes(monthMd){
+  if(!monthMd || !monthMd.transacciones) return null;
+  const archMap = {};
+  (monthMd.archivos||[]).forEach(a => archMap[a.id] = a);
+  let total = 0; const porCat = {}; let nReal = 0;
+  (monthMd.transacciones||[]).forEach(t => {
+    if(t.excluido) return;
+    const imp = parseFloat(t.importe);
+    if(!Number.isFinite(imp) || imp >= 0) return;
+    nReal++;
+    const tipo = archMap[t.archivoId]?.tipo || 'individual';
+    const part = (tipo === 'comun') ? Math.abs(imp)/2 : Math.abs(imp);
+    total += part;
+    const cid = t.categoriaId || 'sin_cat';
+    porCat[cid] = (porCat[cid]||0) + part;
+  });
+  return { total, porCat, nReal };
+}
+
+// — OPCIONES (preview) —
+function _previewComputeEntry(e){
+  if(!e) return e;
+  const contracts = e.contracts || 1;
+  const _deb = e.pDebito != null ? Math.abs(e.pDebito) : 0;
+  const _pNetoPerCtr = e.pCredito != null ? (e.pCredito - _deb - (e.pCierre || 0)) * 100 : null;
+  const totalNeto = e.totalNetoOvr != null ? e.totalNetoOvr :
+    (_pNetoPerCtr != null ? _pNetoPerCtr * contracts - (e.comi || 0) / 100 : null);
+  return { ...e, totalNeto };
+}
+const _RISK_STRATS = ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE','PMCC'];
+
+function _previewOptions(ctx, data, sec){
+  if(sec.enabled === false) return [];
+  try {
+    const arr = _pmaybe(data?.options?.ot_activas);
+    const histRaw = _pmaybe(data?.options?.ot_hist);
+    const snaps = _pmaybe(data?.options?.ot_snaps);
+    const hist = Array.isArray(histRaw) ? histRaw.map(_previewComputeEntry) : null;
+    if(!Array.isArray(arr)) return [];
+    const out = ['📈 <b>Opciones</b>'];
+    if(sec.count !== false) out.push(`   ${arr.length} posiciones activas`);
+    if(sec.net_liq === true && Array.isArray(snaps) && snaps.length){
+      const sorted = [...snaps].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+      const latest = sorted[sorted.length-1];
+      if(latest) out.push(`   💵 NAV ${latest.date}: $${_fnum(latest.val)}`);
+    }
+    if(sec.expiring !== false){
+      const dteLimit = sec.expiring_days || 7;
+      const exp = arr.filter(a => {
+        if(!a.exp) return false;
+        const d = Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000);
+        return d >= 0 && d <= dteLimit;
+      });
+      if(exp.length){
+        out.push('');
+        out.push(`   ⚠ ${exp.length} expira/n en ≤${dteLimit}d:`);
+        exp.slice(0,6).forEach(a => {
+          const d = Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000);
+          out.push(`     • <code>${_esc(a.activo||'?')}</code> ${a.strat||''} · ${d}d`);
+        });
+      }
+    }
+    if(sec.lista_activas === true && arr.length){
+      out.push('');
+      out.push(`   📋 Posiciones:`);
+      arr.slice(0, 12).forEach(a => {
+        const ctr = parseInt(a.contracts) || 1;
+        const dte = a.exp ? Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000) : null;
+        const pIn  = (parseFloat(a.pCredito)||0) * 100;
+        const pAct = a.priceCurrent != null ? parseFloat(a.priceCurrent) * 100 : null;
+        let pnlStr = '';
+        if(pAct != null){
+          const u = (pIn - pAct) * ctr;
+          pnlStr = ` · ${u>=0?'+':''}$${_fnum(Math.abs(u))}`;
+        }
+        const dteStr = dte != null ? ` ${dte}d` : '';
+        const ctrStr = ctr > 1 ? ` x${ctr}` : '';
+        out.push(`     • <code>${_esc(a.activo||'?')}</code> ${a.strat||''}${ctrStr}${dteStr}${pnlStr}`);
+      });
+      if(arr.length > 12) out.push(`     ... y ${arr.length-12} más`);
+    }
+    const mesHist = Array.isArray(hist) ? hist.filter(h => (h.cierre||'').startsWith(ctx.monthKey)) : [];
+    if(sec.pnl_mes === true && mesHist.length){
+      const pnl = mesHist.reduce((s,h) => s + (parseFloat(h.totalNeto)||0), 0) * 100;
+      out.push('');
+      out.push(`   💵 P&L ${ctx.monthKey}: ${pnl>=0?'+':''}$${_fnum(pnl)} <i>(${mesHist.length} ops)</i>`);
+    }
+    if(sec.win_rate_mes === true && mesHist.length){
+      const wins = mesHist.filter(h => (parseFloat(h.totalNeto)||0) > 0).length;
+      const losses = mesHist.length - wins;
+      const wr = (wins/mesHist.length*100).toFixed(0);
+      out.push(`   📊 WR ${ctx.monthKey}: ${wr}% <i>(${wins}W / ${losses}L)</i>`);
+    }
+    // Best/Worst — siempre muestra ambos aunque sean del mismo signo
+    if(sec.best_worst === true && mesHist.length){
+      const sorted = [...mesHist].sort((a,b) => (parseFloat(b.totalNeto)||0) - (parseFloat(a.totalNeto)||0));
+      const best = sorted[0], worst = sorted[sorted.length-1];
+      if(best){
+        const v = (parseFloat(best.totalNeto)||0) * 100;
+        out.push(`   🏆 Mejor: <code>${_esc(best.activo||'?')}</code> ${best.strat||''} ${v>=0?'+':''}$${_fnum(Math.abs(v))}`);
+      }
+      if(worst && worst !== best){
+        const v = (parseFloat(worst.totalNeto)||0) * 100;
+        out.push(`   📉 Peor: <code>${_esc(worst.activo||'?')}</code> ${worst.strat||''} ${v>=0?'+':''}$${_fnum(Math.abs(v))}`);
+      }
+    }
+    if(sec.risk_total === true){
+      let riskTot = 0;
+      arr.forEach(a => { if(_RISK_STRATS.includes(a.strat)) riskTot += parseFloat(a.maxRisk)||0; });
+      if(riskTot > 0) out.push(`   💼 Risk total: $${_fnum(riskTot)}`);
+    }
+    if(sec.closed_today === true && Array.isArray(hist)){
+      const closed = hist.filter(h => h.cierre === ctx.todayStr);
+      if(closed.length){
+        out.push('');
+        out.push(`   ✔ Cerradas hoy: ${closed.length}`);
+        closed.slice(0,4).forEach(h => {
+          const pnl = (parseFloat(h.totalNeto)||0) * 100;
+          out.push(`     • ${_esc(h.activo||'?')} ${h.strat||''} ${pnl>=0?'+':''}$${_fnum(pnl)}`);
+        });
+      }
+    }
+    return out.length > 1 ? out : [];
+  } catch(e){ console.warn('preview options:', e); return []; }
+}
+
+// — FT (preview) —
+function _ftMonthMetrics(mv){
+  if(!mv) return null;
+  let fact = 0, cobr = 0;
+  (mv.entries||[]).forEach(e => {
+    const p = parseFloat(e.price) || 0;
+    fact += p;
+    if(e.paid === 'pagado' || e.paid === true) cobr += p;
+  });
+  const gastos = (mv.gastos||[])
+    .filter(g => g.cat !== 'dividendos')
+    .reduce((s,g) => s + (parseFloat(g.amount)||0), 0);
+  return { fact, cobr, gastos, beneficio: fact - gastos };
+}
+
+function _previewTraining(ctx, data, sec){
+  if(sec.enabled === false) return [];
+  try {
+    const ft = _pmaybe(data?.training?.ft_v4);
+    if(!ft) return [];
+    const out = ['💪 <b>Full Training</b>'];
+    const activos = (ft.clients||[]).filter(c => c.active).length;
+    const equipo  = (ft.team||[]).filter(t => t.active !== false).length;
+    const parts = [];
+    if(sec.clientes !== false) parts.push(`${activos} clientes`);
+    if(sec.equipo !== false)   parts.push(`${equipo} en equipo`);
+    if(parts.length) out.push(`   ${parts.join(' · ')}`);
+    out.push(`   <i>(referido a ${ctx.ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
+
+    const mPrev = _ftMonthMetrics(ft.months?.[ctx.ftMonthKey]);
+    if(sec.ingresos_mes !== false && mPrev){
+      out.push('');
+      if(mPrev.fact > 0)   out.push(`   💵 Facturación ${ctx.ftMonthKey}: €${_fnum(mPrev.fact)}`);
+      if(mPrev.gastos > 0) out.push(`   💸 Gastos ${ctx.ftMonthKey}: €${_fnum(mPrev.gastos)}`);
+      if(mPrev.fact > 0 || mPrev.gastos > 0){
+        const sign = mPrev.beneficio >= 0 ? '+' : '-';
+        out.push(`   📊 Beneficio ${ctx.ftMonthKey}: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
+      }
+    }
+    // Impagos AGRUPADOS POR CLIENTE
+    if(sec.impagos !== false){
+      const cliMap = {};
+      (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
+      const byCli = {}; let totalAll = 0; let countAll = 0;
+      for(const [mk, mv] of Object.entries(ft.months||{})){
+        (mv.entries||[]).forEach(e => {
+          if(e.paid === 'pagado' || e.paid === true) return;
+          const pr = parseFloat(e.price) || 0;
+          if(pr <= 0) return;
+          const cli = cliMap[e.clientId] || e.clientId || '?';
+          if(!byCli[cli]) byCli[cli] = { count: 0, total: 0, oldest: null };
+          byCli[cli].count++;
+          byCli[cli].total += pr;
+          if(!byCli[cli].oldest || mk < byCli[cli].oldest) byCli[cli].oldest = mk;
+          totalAll += pr; countAll++;
+        });
+      }
+      const grouped = Object.entries(byCli).sort((a,b) => b[1].total - a[1].total);
+      if(grouped.length){
+        out.push('');
+        out.push(`   ⚠ <b>${countAll} impagos · €${_fnum(totalAll)}</b> <i>(${grouped.length} cliente${grouped.length===1?'':'s'})</i>`);
+        const MAX = 8;
+        grouped.slice(0, MAX).forEach(([cli, d]) => {
+          const facLbl = d.count === 1 ? '1 factura' : `${d.count} facturas`;
+          const old = ctx.monthsAgo(d.oldest);
+          const oldStr = (old != null && old > 0) ? ` · ${old}m antig.` : '';
+          out.push(`     • ${_esc(cli)}: €${_fnum(d.total)} <i>(${facLbl}${oldStr})</i>`);
+        });
+        if(grouped.length > MAX) out.push(`     ... y ${grouped.length - MAX} más`);
+      }
+    }
+    if(sec.sesiones_hoy === true){
+      const monthM = ft.months?.[ctx.monthKey] || ft.months?.[ctx.ftMonthKey];
+      if(monthM){
+        let sesHoy = 0;
+        (monthM.masajes||[]).forEach(mas => { if(mas.fecha === ctx.todayStr) sesHoy++; });
+        (monthM.entries||[]).forEach(e => { if(e.fecha === ctx.todayStr) sesHoy++; });
+        if(sesHoy > 0) out.push(`   📅 ${sesHoy} sesion${sesHoy===1?'':'es'} hoy`);
+      }
+    }
+    if(sec.stock_critico === true){
+      const critico = (ft.stock||[]).filter(s => {
+        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
+        return t > 0 && t <= 2;
+      });
+      if(critico.length){
+        out.push('');
+        out.push(`   📦 ${critico.length} con stock ≤2:`);
+        critico.slice(0,3).forEach(s => {
+          const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
+          out.push(`     • ${_esc(s.name)} (${t} uds)`);
+        });
+      }
+    }
+    return out.length > 2 ? out : [];
+  } catch(e){ console.warn('preview ft:', e); return []; }
+}
+
+// — FACTURAS (preview) —
+function _previewFacturas(ctx, data, sec){
+  if(sec.enabled === false) return [];
+  try {
+    const profiles = _pmaybe(data?.facturas?.fac_v1);
+    if(!Array.isArray(profiles)) return [];
+    let pend=0, venc=0, totalMes=0;
+    const byClienteMes = {};
+    profiles.forEach(p => (p.facturas||[]).forEach(f => {
+      if(f.estado==='pendiente') pend++;
+      if(f.estado==='vencida')   venc++;
+      if(f.fecha && f.fecha.startsWith(ctx.monthKey)){
+        const t = parseFloat(f.total)||0;
+        totalMes += t;
+        const cn = f.clienteName || f.clienteId || '?';
+        byClienteMes[cn] = (byClienteMes[cn]||0) + t;
+      }
+    }));
+    const out = ['📄 <b>Facturas</b>'];
+    const parts = [];
+    if(sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
+    if(sec.vencidas   !== false && venc) parts.push(`<b>${venc} vencidas</b>`);
+    if(parts.length) out.push(`   ${parts.join(' · ')}`);
+    if(sec.total_mes !== false && totalMes > 0) out.push(`   💶 Facturado ${ctx.monthKey}: €${_fnum(totalMes)}`);
+    if(sec.top_cliente === true){
+      const top = Object.entries(byClienteMes).sort((a,b) => b[1]-a[1])[0];
+      if(top) out.push(`   👤 Top: ${_esc(top[0])} (€${_fnum(top[1])})`);
+    }
+    return out.length > 1 ? out : [];
+  } catch(e){ console.warn('preview facturas:', e); return []; }
+}
+
+// — URGENTE (preview) —
+function _previewUrgent(ctx, data){
+  const out = [];
+  try {
+    const profiles = _pmaybe(data?.facturas?.fac_v1);
+    if(Array.isArray(profiles)){
+      const venc = [];
+      profiles.forEach(p => (p.facturas||[]).forEach(f => {
+        if(f.estado === 'vencida') venc.push({ cli: f.clienteName||'?', total: parseFloat(f.total)||0 });
+      }));
+      if(venc.length){
+        const tot = venc.reduce((s,x) => s + x.total, 0);
+        out.push(`📄 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${_fnum(tot)}`);
+      }
+    }
+  } catch(e){}
+  try {
+    const arr = _pmaybe(data?.options?.ot_activas);
+    if(Array.isArray(arr)){
+      const inminentes = arr.filter(a => {
+        if(!a.exp) return false;
+        const d = Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000);
+        return d >= 0 && d <= 1;
+      });
+      if(inminentes.length){
+        const tickers = inminentes.slice(0,3).map(a => a.activo).join(', ');
+        const more = inminentes.length > 3 ? ` +${inminentes.length-3}` : '';
+        out.push(`📈 ${inminentes.length} opci${inminentes.length===1?'ón':'ones'} expira${inminentes.length===1?'':'n'} ≤1d: ${_esc(tickers)}${more}`);
+      }
+    }
+  } catch(e){}
+  try {
+    const ft = _pmaybe(data?.training?.ft_v4);
+    if(ft){
+      const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
+      const viejos = {}; let cnt = 0; let tot = 0;
+      for(const [mk, mv] of Object.entries(ft.months||{})){
+        const age = ctx.monthsAgo(mk);
+        if(age == null || age < 3) continue;
+        (mv.entries||[]).forEach(e => {
+          if(e.paid === 'pagado' || e.paid === true) return;
+          const pr = parseFloat(e.price) || 0;
+          if(pr <= 0) return;
+          const cli = cliMap[e.clientId] || '?';
+          viejos[cli] = (viejos[cli]||0) + pr;
+          cnt++; tot += pr;
+        });
+      }
+      if(cnt){
+        const top = Object.entries(viejos).sort((a,b) => b[1]-a[1])[0];
+        out.push(`💪 ${cnt} impago${cnt===1?'':'s'} FT >3m antiguos · €${_fnum(tot)}${top?` (top: ${_esc(top[0])} €${_fnum(top[1])})`:''}`);
+      }
+      const agotados = (ft.stock||[]).filter(s => {
+        const t = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
+        return t === 0;
+      });
+      if(agotados.length){
+        const names = agotados.slice(0,2).map(s => s.name).join(', ');
+        const more = agotados.length > 2 ? ` +${agotados.length-2}` : '';
+        out.push(`📦 ${agotados.length} producto${agotados.length===1?'':'s'} AGOTADO${agotados.length===1?'':'S'}: ${_esc(names)}${more}`);
+      }
+    }
+  } catch(e){}
+  return out;
 }
 
 function _pmaybe(v){
