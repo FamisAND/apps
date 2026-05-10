@@ -189,7 +189,6 @@ function generateSummary(data) {
           if (venc) line += `<b>${venc} vencidas</b>`;
           lines.push(line);
         }
-      }
     }
   } catch (e) { console.error('Facturas:', e.message); }
 
