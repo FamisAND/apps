@@ -209,11 +209,12 @@ async function buildActualidad(ctx, data, notif) {
   const out = [`🌍 <b>Actualidad</b>`];
 
   // ── Earnings de tickers que tienes activos en options ──
+  // Solo Finnhub (Alpha Vantage / Twelvedata cobran este endpoint).
   if (sec.earnings === true) {
     try {
       const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
       if (!finProv) {
-        out.push(`   <i>(earnings: configura un API Finnhub activo en Configuración → APIs)</i>`);
+        out.push(`   <i>(earnings: requiere Finnhub — Alpha Vantage / Twelvedata cobran este endpoint)</i>`);
       } else {
         const arr = parseMaybe(data?.options?.ot_activas);
         const tickers = Array.isArray(arr)
@@ -253,12 +254,14 @@ async function buildActualidad(ctx, data, notif) {
     } catch (e) { console.error('actualidad earnings:', e.message); }
   }
 
-  // ── Calendario macro (Fed/ECB/CPI/NFP) — Finnhub ──
+  // ── Calendario macro (Fed/ECB/CPI/NFP) — Finnhub PREMIUM ──
+  // Free tier de Finnhub NO incluye /calendar/economic. Avisar para no dar
+  // falsa expectativa: gratis no existe en ningún proveedor mainstream.
   if (sec.macro === true) {
     try {
       const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
       if (!finProv) {
-        out.push(`   <i>(macro: requiere Finnhub activo)</i>`);
+        out.push(`   <i>(macro: requiere Finnhub plan PREMIUM — no disponible gratis)</i>`);
       } else {
         const days = sec.macro_days || 7;
         const from = ctx.todayStr;
@@ -281,14 +284,13 @@ async function buildActualidad(ctx, data, notif) {
     } catch (e) { console.error('actualidad macro:', e.message); }
   }
 
-  // ── Mercados: el usuario elige hasta 3 de una lista ──
+  // ── Mercados: el usuario elige hasta 3. Probamos providers en cascada. ──
   if (Array.isArray(sec.mercados_selected) && sec.mercados_selected.length) {
-    const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
-    const finKey = finProv?.key || null;
+    const activeProviders = (data.__fin?.providers || []).filter(p => p.activa && p.key);
     const lines = [];
     for (const id of sec.mercados_selected.slice(0, 3)) {
       try {
-        const m = await fetchMarket(id, finKey);
+        const m = await fetchMarket(id, activeProviders);
         if (m) lines.push(`     • ${m.label}: <b>${m.price}</b>${m.change ? ` <i>(${m.change})</i>` : ''}`);
       } catch (e) { console.error('mercado', id, e.message); }
     }
@@ -347,17 +349,21 @@ async function buildActualidad(ctx, data, notif) {
 }
 
 // ───────────────────────────────────────────────────────────
-//  MARKET FETCHERS — Finnhub (ETFs), Frankfurter (FX), Coingecko (crypto)
-//  Cada uno devuelve { label, price, change } o null si falla.
+//  MARKET FETCHERS
+//  - Equities/ETFs: Finnhub | Alpha Vantage | Twelvedata (cascada)
+//  - FX: Frankfurter (gratis, ECB, sin key)
+//  - Crypto: Coingecko (gratis, sin key)
+//  Cada función devuelve { label, price, change } o null.
 // ───────────────────────────────────────────────────────────
-async function fetchMarket(id, finKey) {
+async function fetchMarket(id, providers) {
+  // providers = array of { tipo, key, activa, ... } ordenados por preferencia
   switch (id) {
-    case 'spy':    return finnhubQuote('SPY',  'S&P 500 (SPY)',     finKey);
-    case 'qqq':    return finnhubQuote('QQQ',  'Nasdaq 100 (QQQ)',  finKey);
-    case 'dia':    return finnhubQuote('DIA',  'Dow Jones (DIA)',   finKey);
-    case 'vixy':   return finnhubQuote('VIXY', 'VIX (VIXY proxy)',  finKey);
-    case 'gld':    return finnhubQuote('GLD',  'Gold (GLD)',        finKey);
-    case 'uso':    return finnhubQuote('USO',  'WTI Oil (USO)',     finKey);
+    case 'spy':    return equityQuote('SPY',  'S&P 500 (SPY)',     providers);
+    case 'qqq':    return equityQuote('QQQ',  'Nasdaq 100 (QQQ)',  providers);
+    case 'dia':    return equityQuote('DIA',  'Dow Jones (DIA)',   providers);
+    case 'vixy':   return equityQuote('VIXY', 'VIX (VIXY proxy)',  providers);
+    case 'gld':    return equityQuote('GLD',  'Gold (GLD)',        providers);
+    case 'uso':    return equityQuote('USO',  'WTI Oil (USO)',     providers);
     case 'eurusd': return frankfurterFx('EUR', 'USD', 'EUR / USD');
     case 'eurchf': return frankfurterFx('EUR', 'CHF', 'EUR / CHF');
     case 'btcusd': return coingeckoCrypto('bitcoin',  'BTC / USD');
@@ -366,8 +372,25 @@ async function fetchMarket(id, finKey) {
   return null;
 }
 
+// Cascada: prueba providers en orden hasta que uno responde.
+async function equityQuote(symbol, label, providers) {
+  if (!providers || !providers.length) {
+    return { label, price: '—', change: 'sin provider' };
+  }
+  // Orden de preferencia: finnhub > alphavantage > twelvedata
+  const order = ['finnhub','alphavantage','twelvedata'];
+  const sorted = [...providers].sort((a,b) => order.indexOf(a.tipo) - order.indexOf(b.tipo));
+  for (const p of sorted) {
+    let r = null;
+    if (p.tipo === 'finnhub')      r = await finnhubQuote     (symbol, label, p.key);
+    else if (p.tipo === 'alphavantage') r = await alphaVantageQuote(symbol, label, p.key);
+    else if (p.tipo === 'twelvedata')   r = await twelvedataQuote  (symbol, label, p.key);
+    if (r && r.price !== '—') return r;
+  }
+  return { label, price: '—', change: 'todos providers fallaron' };
+}
+
 async function finnhubQuote(symbol, label, key) {
-  if (!key) return { label, price: '—', change: 'requiere Finnhub' };
   try {
     const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(key)}`);
     if (!r.ok) return null;
@@ -375,6 +398,41 @@ async function finnhubQuote(symbol, label, key) {
     if (d.c == null || d.c === 0) return null;
     const change = d.dp != null ? `${d.dp>=0?'+':''}${d.dp.toFixed(2)}%` : null;
     return { label, price: '$' + d.c.toFixed(2), change };
+  } catch (e) { return null; }
+}
+
+async function alphaVantageQuote(symbol, label, key) {
+  try {
+    const r = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(key)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const q = d?.['Global Quote'];
+    if (!q || !q['05. price']) return null;
+    const price = parseFloat(q['05. price']);
+    const pct   = parseFloat((q['10. change percent']||'0').replace('%',''));
+    if (!Number.isFinite(price)) return null;
+    return {
+      label,
+      price: '$' + price.toFixed(2),
+      change: Number.isFinite(pct) ? `${pct>=0?'+':''}${pct.toFixed(2)}%` : null
+    };
+  } catch (e) { return null; }
+}
+
+async function twelvedataQuote(symbol, label, key) {
+  try {
+    const r = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(key)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d?.close) return null;
+    const price = parseFloat(d.close);
+    const pct   = parseFloat(d.percent_change);
+    if (!Number.isFinite(price)) return null;
+    return {
+      label,
+      price: '$' + price.toFixed(2),
+      change: Number.isFinite(pct) ? `${pct>=0?'+':''}${pct.toFixed(2)}%` : null
+    };
   } catch (e) { return null; }
 }
 
