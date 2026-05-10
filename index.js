@@ -906,56 +906,190 @@ async function syncIaToGithub(){
   }
 }
 
-// ── APIs FINANCIERAS ──
-async function _loadFinApisToForm(){
-  let cfg = null;
-  try { cfg = await GitHubSync.fetchSection('__fin'); } catch(e){}
-  document.getElementById('finApiFinnhub').value = (cfg && cfg.finnhub) || '';
-  document.getElementById('finApiAlphaV').value  = (cfg && cfg.alphavantage) || '';
-  document.getElementById('finApiTwelve').value  = (cfg && cfg.twelvedata) || '';
+// ── APIs FINANCIERAS (lista flexible — mismo patrón que IA) ──
+const FIN_PROVIDERS_LOCAL_KEY = 'fin_providers_v1';
+let _editingFinId = null;
+
+function finLoadProviders(){
+  try { return JSON.parse(localStorage.getItem(FIN_PROVIDERS_LOCAL_KEY)) || []; }
+  catch { return []; }
+}
+function finSaveProviders(list){
+  localStorage.setItem(FIN_PROVIDERS_LOCAL_KEY, JSON.stringify(list));
+  // Sync a data.json __fin (para que el script Action las pueda usar)
+  if(window.GitHubSync && GitHubSync.updateSection && GitHubSync.isLoggedIn()){
+    if(typeof toast === 'function') toast('Sincronizando APIs financieras...', 'info');
+    GitHubSync.updateSection('__fin', () => ({
+      providers: list,
+      updated_at: new Date().toISOString()
+    })).then(() => {
+      if(typeof toast === 'function') toast('✓ Financieras sincronizadas');
+    }).catch(err => {
+      console.warn('[__fin sync]', err);
+      if(typeof toast === 'function') toast('⚠ Sync falló: ' + err.message, 'red');
+    });
+  }
 }
 
-async function saveFinApis(){
-  const cfg = {
-    finnhub:      document.getElementById('finApiFinnhub').value.trim(),
-    alphavantage: document.getElementById('finApiAlphaV').value.trim(),
-    twelvedata:   document.getElementById('finApiTwelve').value.trim(),
-    updated_at:   new Date().toISOString()
-  };
-  _showFinMsg('⏳ Guardando...', '#67e8f9');
+async function _loadFinFromGithub(){
+  // Intenta cargar de data.json __fin si en local no hay nada
+  if(finLoadProviders().length) return;
   try {
-    await GitHubSync.updateSection('__fin', () => cfg);
-    _showFinMsg('✓ APIs financieras guardadas en data.json', '#22d3ee');
+    const cfg = await GitHubSync.fetchSection('__fin');
+    if(cfg && Array.isArray(cfg.providers)){
+      localStorage.setItem(FIN_PROVIDERS_LOCAL_KEY, JSON.stringify(cfg.providers));
+    }
+  } catch(e){}
+}
+
+async function _renderFinList(){
+  await _loadFinFromGithub();
+  const list = finLoadProviders();
+  const cont = document.getElementById('finApisList');
+  if(!cont) return;
+  if(!list.length){
+    cont.innerHTML = '<div class="ia-api-empty">No hay APIs financieras todavía.<br>Añade una pulsando "+ Añadir API"</div>';
+    return;
+  }
+  const labels = { finnhub:'FINNHUB', alphavantage:'ALPHA VANTAGE', twelvedata:'TWELVE DATA',
+                   polygon:'POLYGON', marketstack:'MARKETSTACK', iex:'IEX', otra:'OTRA' };
+  cont.innerHTML = list.map((p, idx) => `
+    <div class="ia-api-item" data-id="${p.id}">
+      <div class="ia-api-info">
+        <div class="ia-api-name">${idx+1}. ${escapeHtml(p.nombre || '(sin nombre)')}</div>
+        <div class="ia-api-meta">${labels[p.tipo]||p.tipo} · key ****${(p.key||'').slice(-4)}</div>
+      </div>
+      <div class="ia-api-status ${p.activa ? 'on' : 'off'}">${p.activa ? 'ACTIVA' : 'INACTIVA'}</div>
+      <div class="ia-api-actions">
+        <button class="ia-api-btn" onclick="openFinApiEditor('${p.id}')">EDIT</button>
+        <button class="ia-api-btn danger" onclick="deleteFinApi('${p.id}')">DEL</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openFinApiEditor(id){
+  _editingFinId = id || null;
+  document.getElementById('finApiEditorTitle').textContent = id ? '// EDITAR API FINANCIERA' : '// NUEVA API FINANCIERA';
+  document.getElementById('finApiEditorMsg').style.display = 'none';
+  if(id){
+    const p = finLoadProviders().find(x => x.id === id);
+    if(p){
+      document.getElementById('finApiName').value   = p.nombre || '';
+      document.getElementById('finApiTipo').value   = p.tipo   || 'finnhub';
+      document.getElementById('finApiKey').value    = p.key    || '';
+      document.getElementById('finApiActiva').checked = p.activa !== false;
+    }
+  } else {
+    document.getElementById('finApiName').value = '';
+    document.getElementById('finApiTipo').value = 'finnhub';
+    document.getElementById('finApiKey').value  = '';
+    document.getElementById('finApiActiva').checked = true;
+  }
+  document.getElementById('finApiEditorModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('finApiName').focus(), 50);
+}
+
+function closeFinApiEditor(){
+  document.getElementById('finApiEditorModal').style.display = 'none';
+  _editingFinId = null;
+}
+
+function saveFinApi(){
+  const nombre = document.getElementById('finApiName').value.trim() || 'Sin nombre';
+  const tipo   = document.getElementById('finApiTipo').value;
+  const key    = document.getElementById('finApiKey').value.trim();
+  const activa = document.getElementById('finApiActiva').checked;
+  if(!key){ _showFinEditorMsg('⚠ Falta la API key', '#fca5a5'); return; }
+  const list = finLoadProviders();
+  if(_editingFinId){
+    const idx = list.findIndex(p => p.id === _editingFinId);
+    if(idx >= 0) list[idx] = { ...list[idx], nombre, tipo, key, activa };
+  } else {
+    list.push({ id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), nombre, tipo, key, activa });
+  }
+  finSaveProviders(list);
+  closeFinApiEditor();
+  _renderFinList();
+}
+
+function deleteFinApi(id){
+  if(!confirm('¿Eliminar esta API financiera?')) return;
+  const list = finLoadProviders().filter(p => p.id !== id);
+  finSaveProviders(list);
+  _renderFinList();
+}
+
+async function testFinApi(){
+  const tipo = document.getElementById('finApiTipo').value;
+  const key  = document.getElementById('finApiKey').value.trim();
+  if(!key){ _showFinEditorMsg('⚠ Pega la key primero', '#fca5a5'); return; }
+  _showFinEditorMsg('⏳ Probando...', '#67e8f9');
+  try {
+    let url, parser;
+    switch(tipo){
+      case 'finnhub':
+        url = `https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`;
+        parser = d => d.c != null ? `AAPL = $${d.c.toFixed(2)}` : null;
+        break;
+      case 'alphavantage':
+        url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=${encodeURIComponent(key)}`;
+        parser = d => d['Global Quote']?.['05. price'] ? `AAPL = $${parseFloat(d['Global Quote']['05. price']).toFixed(2)}` : null;
+        break;
+      case 'twelvedata':
+        url = `https://api.twelvedata.com/quote?symbol=AAPL&apikey=${encodeURIComponent(key)}`;
+        parser = d => d.close ? `AAPL = $${parseFloat(d.close).toFixed(2)}` : null;
+        break;
+      case 'polygon':
+        url = `https://api.polygon.io/v2/aggs/ticker/AAPL/prev?apiKey=${encodeURIComponent(key)}`;
+        parser = d => d.results?.[0]?.c ? `AAPL = $${d.results[0].c.toFixed(2)}` : null;
+        break;
+      default:
+        _showFinEditorMsg('? No tengo test para "' + tipo + '" — guarda y úsala desde tu integración', '#fbbf24');
+        return;
+    }
+    const res = await fetch(url);
+    if(!res.ok){ _showFinEditorMsg(`✕ HTTP ${res.status}: ${(await res.text()).slice(0,80)}`, '#fca5a5'); return; }
+    const d = await res.json();
+    const ok = parser(d);
+    if(ok) _showFinEditorMsg(`✓ Funciona. ${ok}`, '#4ade80');
+    else _showFinEditorMsg(`? Respuesta inesperada: ${JSON.stringify(d).slice(0,120)}`, '#fbbf24');
+  } catch(err){
+    _showFinEditorMsg('✕ Error de red: ' + err.message, '#fca5a5');
+  }
+}
+
+function _showFinEditorMsg(text, color){
+  const el = document.getElementById('finApiEditorMsg');
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = text;
+}
+
+function _showFinMsg(text, color){
+  const el = document.getElementById('finApiMsg');
+  if(!el) return;
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = text;
+}
+
+async function syncFinToGithub(){
+  const list = finLoadProviders();
+  if(!list.length){ _showFinMsg('No hay APIs financieras para sincronizar', '#fca5a5'); return; }
+  if(!GitHubSync.isLoggedIn()){ _showFinMsg('No conectado a GitHub', '#fca5a5'); return; }
+  _showFinMsg('⏳ Sincronizando...', '#67e8f9');
+  try {
+    await GitHubSync.updateSection('__fin', () => ({ providers: list, updated_at: new Date().toISOString() }));
+    _showFinMsg('✓ Sincronizadas a GitHub (data.json __fin)', '#22d3ee');
   } catch(err){
     _showFinMsg('✕ Error: ' + err.message, '#fca5a5');
   }
 }
 
-async function testFinnhub(){
-  const key = document.getElementById('finApiFinnhub').value.trim();
-  if(!key){ _showFinMsg('⚠ Pega la key Finnhub primero', '#fca5a5'); return; }
-  _showFinMsg('⏳ Probando Finnhub...', '#67e8f9');
-  try {
-    // Test simple: quote AAPL
-    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`);
-    if(!res.ok){ _showFinMsg('✕ HTTP ' + res.status + ': ' + (await res.text()).slice(0,80), '#fca5a5'); return; }
-    const d = await res.json();
-    if(d.error){ _showFinMsg('✕ Finnhub: ' + d.error, '#fca5a5'); return; }
-    if(d.c != null){
-      _showFinMsg(`✓ Funciona. AAPL = $${d.c.toFixed(2)} (cambio ${d.dp?.toFixed(2) || '?'}%)`, '#4ade80');
-    } else {
-      _showFinMsg('? Respuesta inesperada: ' + JSON.stringify(d).slice(0, 120), '#fbbf24');
-    }
-  } catch(err){
-    _showFinMsg('✕ Error de red: ' + err.message, '#fca5a5');
-  }
-}
-
-function _showFinMsg(text, color){
-  const el = document.getElementById('finApiMsg');
-  el.style.display = 'block';
-  el.style.color = color;
-  el.textContent = text;
+// Reemplazar la carga antigua del form con render de la lista
+async function _loadFinApisToForm(){
+  await _renderFinList();
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1083,7 +1217,6 @@ const NOTIF_SECTIONS = [
     { id: 'total',         label: 'Total actual',                          default: true  },
     { id: 'delta',         label: 'Δ vs mes anterior (€ y %)',             default: true  },
     { id: 'objetivo',      label: '% del objetivo principal',              default: true  },
-    { id: 'sparkline',     label: '📊 Sparkline 12 meses (gráfico ASCII)', default: true  },
     { id: 'gastos_mes',    label: 'Gastos del mes (total + top 3 categorías)', default: true },
     { id: 'gastos_avg',    label: 'Media mensual de gastos (últimos N meses)',  default: false },
     { id: 'gastos_avg_months', label: '↳ N meses', default: 6, type: 'number', min: 2, max: 24 },
@@ -1106,8 +1239,7 @@ const NOTIF_SECTIONS = [
     { id: 'best_worst',    label: 'Mejor / peor trade del mes',            default: true  },
     { id: 'risk_total',    label: 'Risk total comprometido',               default: false },
     { id: 'net_liq',       label: 'NAV (último snapshot)',                 default: true  },
-    { id: 'closed_today',  label: 'Operaciones cerradas hoy',              default: false },
-    { id: 'pnl_sparkline', label: '📊 Sparkline P&L últimos 6 meses',       default: false }
+    { id: 'closed_today',  label: 'Operaciones cerradas hoy',              default: false }
   ]},
   { id: 'training', icon: '💪', label: 'Full Training', items: [
     { id: 'clientes',      label: 'Clientes activos',                      default: true  },
@@ -1206,9 +1338,6 @@ function _readNotifFormConfig(){
     days: days,
     sections: sections,
     ai_insight: document.getElementById('notifAiInsight').checked,
-    weekly_enabled: document.getElementById('notifWeeklyEnabled').checked,
-    weekly_day: document.getElementById('notifWeeklyDay').value || 'mon',
-    weekly_time: document.getElementById('notifWeeklyTime').value || '09:00',
     tz: 'Europe/Madrid',
     updated_at: new Date().toISOString()
   };
@@ -1224,9 +1353,6 @@ async function _notifShowForm(){
   document.getElementById('notifTime').value = (cfg && cfg.time) || '09:00';
   document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
   document.getElementById('notifAiInsight').checked = cfg ? !!cfg.ai_insight : false;
-  document.getElementById('notifWeeklyEnabled').checked = cfg ? !!cfg.weekly_enabled : false;
-  document.getElementById('notifWeeklyDay').value = (cfg && cfg.weekly_day) || 'mon';
-  document.getElementById('notifWeeklyTime').value = (cfg && cfg.weekly_time) || '09:00';
   _renderNotifDays(cfg && cfg.days);
   _renderNotifSections(cfg && cfg.sections);
 }

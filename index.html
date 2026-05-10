@@ -314,34 +314,62 @@
       <div id="iaTestResultV2" style="display:none;background:#020617;border:1px solid #0e7490;padding:14px;font-size:.78rem;color:#67e8f9;font-family:'DM Mono',monospace;line-height:1.6;margin-top:14px;"></div>
     </div>
 
-    <!-- Tab content: Financieras -->
+    <!-- Tab content: Financieras (lista flexible — añade las que quieras) -->
     <div id="apisTabFin" style="padding:20px;display:none;">
       <div style="background:#020617;border:1px solid #06b6d4;padding:16px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
         <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;">
-          APIs para datos de mercado (precios stocks, IV, earnings, dividendos). Por ahora se guardan las keys; se usarán cuando habilitemos auto-precios y earnings/ex-dividend en Telegram.
+          Añade cualquier API de datos financieros. Las que tengan flag <strong>activa</strong> se usarán para auto-precios, earnings, dividendos en futuras sesiones.
           <br><br>
-          <strong>Dónde sacar las keys:</strong>
-          <span style="color:#22d3ee">finnhub.io</span> (gratis, 60 req/min, sin tarjeta) — <em>recomendada para earnings/dividendos</em><br>
-          <span style="color:#22d3ee">alphavantage.co</span> (gratis 25 req/día) — datos históricos<br>
-          <span style="color:#22d3ee">twelvedata.com</span> (gratis 800 req/día) — alternativa
+          <strong>Proveedores comunes (gratis con registro):</strong>
+          <span style="color:#22d3ee">finnhub.io</span> · <span style="color:#22d3ee">alphavantage.co</span> · <span style="color:#22d3ee">twelvedata.com</span> · <span style="color:#22d3ee">polygon.io</span> · <span style="color:#22d3ee">marketstack.com</span>
         </div>
       </div>
 
-      <div class="fld-lbl">Finnhub API key (recomendada)</div>
-      <input type="password" class="inp" id="finApiFinnhub" placeholder="cs..." autocomplete="off">
+      <div id="finApisList" style="margin-bottom:14px;"></div>
 
-      <div class="fld-lbl">Alpha Vantage API key (opcional)</div>
-      <input type="password" class="inp" id="finApiAlphaV" placeholder="ABCDEFGH..." autocomplete="off">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" style="flex:1;min-width:160px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="openFinApiEditor()">+ Añadir API</button>
+        <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="syncFinToGithub()" title="Re-subir financieras a data.json">🔄 Sync a GitHub</button>
+        <button class="btn btn-ghost" style="flex:1;min-width:160px;" onclick="closeApisModal()">Cerrar</button>
+      </div>
 
-      <div class="fld-lbl">Twelve Data API key (opcional)</div>
-      <input type="password" class="inp" id="finApiTwelve" placeholder="..." autocomplete="off">
+      <div id="finApiMsg" style="display:none;margin-top:14px;font-size:.78rem;font-family:'DM Mono',monospace;padding:10px 12px;background:#020617;border:1px solid #1e2d3d;"></div>
+    </div>
 
-      <div id="finApiMsg" style="display:none;margin-top:12px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
+    <!-- Editor de UNA financial API (flotante encima del modal apis) -->
+    <div id="finApiEditorModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:110;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
+      <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:520px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+        <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;" id="finApiEditorTitle">// NUEVA API FINANCIERA</div>
 
-      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
-        <button class="btn btn-ghost" style="flex:1;min-width:140px;" onclick="testFinnhub()">⚡ Probar Finnhub</button>
-        <button class="btn btn-ghost" style="flex:1;min-width:140px;" onclick="closeApisModal()">Cerrar</button>
-        <button class="btn" style="flex:1;min-width:140px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveFinApis()">💾 Guardar</button>
+        <div class="fld-lbl">Nombre identificativo</div>
+        <input type="text" class="inp" id="finApiName" placeholder="Ej: Finnhub principal">
+
+        <div class="fld-lbl">Proveedor</div>
+        <select class="inp" id="finApiTipo">
+          <option value="finnhub">Finnhub</option>
+          <option value="alphavantage">Alpha Vantage</option>
+          <option value="twelvedata">Twelve Data</option>
+          <option value="polygon">Polygon.io</option>
+          <option value="marketstack">Marketstack</option>
+          <option value="iex">IEX Cloud</option>
+          <option value="otra">Otra (genérica)</option>
+        </select>
+
+        <div class="fld-lbl">API key</div>
+        <input type="password" class="inp" id="finApiKey" placeholder="Pega aquí tu key">
+
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;color:#67e8f9;font-size:.85rem;">
+          <input type="checkbox" id="finApiActiva" checked style="accent-color:#22d3ee;">
+          <label for="finApiActiva" style="cursor:pointer;">Activa</label>
+        </div>
+
+        <div id="finApiEditorMsg" style="display:none;margin-top:12px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
+
+        <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+          <button class="btn" style="flex:1;min-width:120px;background:transparent;border:1px solid #0e7490;color:#67e8f9;" onclick="testFinApi()">⚡ Probar</button>
+          <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="closeFinApiEditor()">Cancelar</button>
+          <button class="btn" style="flex:1;min-width:120px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveFinApi()">💾 Guardar</button>
+        </div>
       </div>
     </div>
 
@@ -387,35 +415,9 @@
         <label for="notifEnabled" style="cursor:pointer;">Activado</label>
       </div>
 
-      <!-- ── DÍAS DEL DAILY ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">DÍAS DEL ENVÍO DIARIO</div>
+      <!-- ── DÍAS DE ENVÍO ── -->
+      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">DÍAS DE ENVÍO</div>
       <div id="notifDays" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-
-      <!-- ── RESUMEN SEMANAL (extra) ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">RESUMEN SEMANAL <span style="text-transform:none;letter-spacing:0;color:#3a5468">— mensaje extra con medias y trends</span></div>
-      <div style="display:flex;align-items:center;gap:8px;color:#67e8f9;font-size:.82rem;margin-bottom:8px">
-        <input type="checkbox" id="notifWeeklyEnabled" style="accent-color:#22d3ee;">
-        <label for="notifWeeklyEnabled" style="cursor:pointer;">Activar resumen semanal (mensaje aparte con bloque "Stats semanales")</label>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.78rem;color:#67e8f9">
-        <label>Día:&nbsp;
-          <select class="inp" id="notifWeeklyDay" style="display:inline-block;width:auto;padding:4px 8px;font-size:.78rem">
-            <option value="mon">Lunes</option>
-            <option value="tue">Martes</option>
-            <option value="wed">Miércoles</option>
-            <option value="thu">Jueves</option>
-            <option value="fri">Viernes</option>
-            <option value="sat">Sábado</option>
-            <option value="sun">Domingo</option>
-          </select>
-        </label>
-        <label>Hora:&nbsp;
-          <input type="time" class="inp" id="notifWeeklyTime" value="09:00" style="display:inline-block;width:auto;padding:4px 8px;font-size:.78rem">
-        </label>
-      </div>
-      <div style="font-size:.7rem;color:#3a5468;margin-top:6px;font-family:'DM Mono',monospace">
-        El semanal incluye automáticamente: medias gastos/ingresos · sparkline 12m · top movers · win rate histórico · top servicios YTD
-      </div>
 
       <!-- ── SECCIONES ── -->
       <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">SECCIONES DEL RESUMEN</div>

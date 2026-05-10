@@ -15,13 +15,16 @@ const DAY_CODES = ['sun','mon','tue','wed','thu','fri','sat'];
 async function main() {
   const PAT = process.env.APPDATA_PAT;
   const FORCE = process.env.FORCE === 'true';
-  const FORCE_TYPE = (process.env.FORCE_TYPE || '').trim().toLowerCase(); // 'daily' | 'weekly' | 'both' | ''
   if (!PAT) { console.error('Falta APPDATA_PAT secret'); process.exit(1); }
 
   const data = await fetchAppData(PAT);
   const notif = data.__notif;
   if (!notif || !notif.bot_token || !notif.chat_id) {
     console.log('__notif sin bot_token/chat_id. Salida.');
+    return;
+  }
+  if (notif.enabled === false) {
+    console.log('Notificaciones desactivadas. Salida.');
     return;
   }
 
@@ -37,58 +40,34 @@ async function main() {
   const dow = new Date(madridDateStr + 'T12:00:00Z').getUTCDay();
   const todayCode = DAY_CODES[dow];
 
-  // ── Decidir qué enviar (daily, weekly o ambos) ──
-  let sendDaily = false, sendWeekly = false;
-  if (FORCE && FORCE_TYPE === 'daily')   sendDaily = true;
-  else if (FORCE && FORCE_TYPE === 'weekly') sendWeekly = true;
-  else if (FORCE && (FORCE_TYPE === 'both' || FORCE_TYPE === '')) { sendDaily = true; sendWeekly = !!notif.weekly_enabled; }
-  else {
-    // Schedule normal: comprobar daily y weekly por separado
-    if (notif.enabled !== false) {
-      const dailyHour = parseInt((notif.time || '09:00').split(':')[0], 10);
-      const dailyDays = notif.days || ['mon','tue','wed','thu','fri','sat','sun'];
-      if (madridHour === dailyHour && dailyDays.includes(todayCode)) sendDaily = true;
+  // Schedule check
+  if (!FORCE) {
+    const cfgHour = parseInt((notif.time || '09:00').split(':')[0], 10);
+    const cfgDays = notif.days || ['mon','tue','wed','thu','fri','sat','sun'];
+    if (madridHour !== cfgHour) {
+      console.log(`Madrid ${madridStr} != notif.time ${notif.time}. Salida.`);
+      return;
     }
-    if (notif.weekly_enabled) {
-      const wHour = parseInt((notif.weekly_time || '09:00').split(':')[0], 10);
-      const wDay  = notif.weekly_day || 'mon';
-      if (madridHour === wHour && todayCode === wDay) sendWeekly = true;
+    if (!cfgDays.includes(todayCode)) {
+      console.log(`Hoy es ${todayCode}, no en days=[${cfgDays.join(',')}]. Salida.`);
+      return;
     }
   }
 
-  if (!sendDaily && !sendWeekly) {
-    console.log(`Madrid ${madridStr} ${todayCode}: nada que enviar (daily.time=${notif.time}, days=${notif.days}, weekly_enabled=${!!notif.weekly_enabled} day=${notif.weekly_day} time=${notif.weekly_time})`);
-    return;
-  }
+  let txt = generateSummary(data, notif);
+  txt = await maybeAppendInsight(txt, notif, data);
 
-  // ── Helper para enviar un mensaje ──
-  async function sendMsg(text, label) {
-    const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: notif.chat_id, text,
-        parse_mode: 'HTML', disable_web_page_preview: true
-      })
-    });
-    const d = await res.json();
-    if (!d.ok) { console.error(`Telegram error (${label}):`, d); throw new Error(d.description || 'send failed'); }
-    console.log(`✓ ${label} enviado. message_id:`, d.result.message_id);
-  }
-
-  // ── DAILY ──
-  if (sendDaily) {
-    let txt = generateSummary(data, notif, false);
-    txt = await maybeAppendInsight(txt, notif, data);
-    await sendMsg(txt, 'Daily');
-  }
-
-  // ── WEEKLY ──
-  if (sendWeekly) {
-    let txt = generateSummary(data, notif, true);
-    txt = await maybeAppendInsight(txt, notif, data);
-    await sendMsg(txt, 'Weekly');
-  }
+  const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: notif.chat_id, text: txt,
+      parse_mode: 'HTML', disable_web_page_preview: true
+    })
+  });
+  const d = await res.json();
+  if (!d.ok) { console.error('Telegram error:', d); process.exit(1); }
+  console.log('✓ Resumen enviado. message_id:', d.result.message_id);
 }
 
 // ── AI Insight (pegar al final si está activado) ──
@@ -103,7 +82,17 @@ async function maybeAppendInsight(summary, notif, data) {
     return summary + '\n\n<i>(AI insight pedido pero ningún provider activo en __ia)</i>';
   }
   try {
-    const sysPrompt = 'Eres un analista financiero personal. Da un insight breve y útil en español, máximo 2-3 frases, tono directo, sin markdown ni saltos de línea innecesarios. Identifica tendencias, alertas, próximas acciones.';
+    const sysPrompt = `Eres un asistente que analiza un resumen diario de varios dashboards INDEPENDIENTES.
+
+CONTEXTO IMPORTANTE: el resumen contiene secciones SEPARADAS por dashboard. NO mezcles datos entre secciones:
+- 💰 PATRIMONIO = patrimonio personal, ahorros e inversiones del usuario.
+- 📈 OPCIONES = trading de opciones financieras (P&L, win rate, etc.).
+- 💪 FULL TRAINING = negocio del usuario (gimnasio): facturación, gastos del NEGOCIO, beneficio del NEGOCIO, clientes, impagos.
+- 📄 FACTURAS = facturas emitidas como autónomo.
+
+Cuando hables de "gastos", aclara siempre de qué dashboard ("gastos personales del patrimonio" vs "gastos del gimnasio FT" — son distintos).
+
+Da un insight breve (máximo 2-3 frases) en español, tono directo, sin markdown. Identifica tendencias, alertas, o próximas acciones. Si una sección parece tener un dato anómalo o incompleto, indícalo.`;
     const plain = summary.replace(/<[^>]+>/g, '');
     const insight = await callIA(provider, plain, sysPrompt);
     if (insight && insight.trim()) {
@@ -176,30 +165,6 @@ function sparkline(values) {
   return vals.map(v => blocks[Math.round((v - min) / range * 7)]).join('');
 }
 
-// Override: en weekly todas las opciones interesantes están ON, sin importar la
-// config del user (que es para el daily). NOTAS:
-// - Sparklines (sparkline patrimonio + pnl_sparkline options) excluidas del
-//   weekly auto — el user las consideró feas. Si las quiere, las activa
-//   manualmente desde el toggle del daily.
-// - top_clientes en FT excluido del weekly — daba info poco útil (€0).
-function _weeklyAllSections() {
-  return {
-    patrimonio: { enabled:true, total:true, delta:true, objetivo:true, sparkline:false,
-      gastos_mes:true, gastos_avg:true, gastos_avg_months:6,
-      ingresos_mes:true, ingresos_avg:true, ingresos_avg_months:6,
-      distribucion:true, top_mover:true, ytd_pct:true },
-    options: { enabled:true, count:true, expiring:true, expiring_days:7,
-      lista_activas:true, pnl_mes:true, pnl_avg:true, pnl_avg_months:6,
-      win_rate_mes:true, best_worst:true, risk_total:true, net_liq:true,
-      closed_today:true, pnl_sparkline:false },
-    training: { enabled:true, clientes:true, equipo:true,
-      ingresos_mes:true, ingresos_avg:true, ingresos_avg_months:6,
-      impagos:true, top_servicios:true, top_clientes:false,
-      sesiones_hoy:false, stock_critico:true },
-    facturas: { enabled:true, pendientes:true, vencidas:true, total_mes:true, top_cliente:true }
-  };
-}
-
 // ─── computeEntry: fórmula REAL del dashboard de options ───
 // Replica options.html computeEntry() para tener totalNeto correcto.
 // totalNeto está en "escala prima" ($/100). Para mostrar en $ reales: ×100.
@@ -218,15 +183,15 @@ function computeEntry(e) {
 const RISK_STRATS = ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE','PMCC'];
 
 // ─── Generación principal ───
-function generateSummary(data, notif, isWeekly) {
+function generateSummary(data, notif) {
   const lines = [];
   const dt = new Intl.DateTimeFormat('es-ES', {
     timeZone:'Europe/Madrid', weekday:'long', day:'numeric', month:'long'
   }).format(new Date());
-  lines.push(isWeekly ? `<b>📅 Resumen semanal — ${dt}</b>` : `<b>📊 Resumen — ${dt}</b>`);
+  lines.push(`<b>📊 Resumen — ${dt}</b>`);
   lines.push('');
 
-  const S = isWeekly ? _weeklyAllSections() : (notif.sections || {});
+  const S = notif.sections || {};
   const monthKey = new Intl.DateTimeFormat('en-CA', {
     timeZone:'Europe/Madrid', year:'numeric', month:'2-digit'
   }).format(new Date()).slice(0, 7); // "2026-05"
@@ -531,11 +496,11 @@ function generateSummary(data, notif, isWeekly) {
           const best = sorted[0], worst = sorted[sorted.length-1];
           if (best && (parseFloat(best.totalNeto)||0) > 0) {
             const v = (parseFloat(best.totalNeto)||0) * 100;
-            block.push(`   🏆 Best mes: <code>${escape(best.activo||'?')}</code> ${best.strat||''} +$${fmt(v)}`);
+            block.push(`   🏆 Best activo/strat: <code>${escape(best.activo||'?')}</code> ${best.strat||''} +$${fmt(v)}`);
           }
           if (worst && worst !== best && (parseFloat(worst.totalNeto)||0) < 0) {
             const v = Math.abs((parseFloat(worst.totalNeto)||0) * 100);
-            block.push(`   📉 Worst mes: <code>${escape(worst.activo||'?')}</code> ${worst.strat||''} -$${fmt(v)}`);
+            block.push(`   📉 Worst activo/strat: <code>${escape(worst.activo||'?')}</code> ${worst.strat||''} -$${fmt(v)}`);
           }
         }
 
@@ -611,21 +576,26 @@ function generateSummary(data, notif, isWeekly) {
         block.push(`   <i>(referido a ${ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
 
         // ── Fact + gastos por mes ──
+        // Estructura real (NO `lines[]` — cada entry tiene price directo):
+        //   entries:  [{ id, clientId, serviceId, trainerId, price, paid, recurring }]
+        //   packs:    [{ id, clientId, serviceId, fisioId, totalSessions, sessionsDone, pricePerSession }]
+        //   gastos:   [{ id, desc, amount, cat }]
         function _ftMonthMetrics(mv) {
           if (!mv) return null;
           let fact = 0, cobr = 0;
           (mv.entries||[]).forEach(e => {
-            let et = 0;
-            (e.lines||[]).forEach(l => { et += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-            fact += et;
-            if (e.paid) cobr += et;
+            const p = parseFloat(e.price) || 0;
+            fact += p;
+            // paid puede ser 'pagado' (string), 'pendiente', boolean true/false
+            if (e.paid === 'pagado' || e.paid === true) cobr += p;
           });
-          (mv.masajes||[]).forEach(mas => {
-            const t = (parseFloat(mas.qty)||0) * (parseFloat(mas.price)||0);
-            fact += t;
-            if (mas.paid) cobr += t;
+          // Masajes: packs vendidos. Cada pack vale pricePerSession × totalSessions
+          (mv.packs||[]).forEach(pk => {
+            const total = (parseFloat(pk.pricePerSession)||0) * (parseInt(pk.totalSessions)||0);
+            fact += total;
+            cobr += total; // los packs no tienen paid global; asumir cobrados al vender
           });
-          // Excluye 'dividendos' (no es gasto operativo) — match dashboard
+          // Gastos: excluye 'dividendos' (match dashboard)
           const gastos = (mv.gastos||[])
             .filter(g => g.cat !== 'dividendos')
             .reduce((s,g) => s + (parseFloat(g.amount)||0), 0);
@@ -687,13 +657,12 @@ function generateSummary(data, notif, isWeekly) {
         if (ftSec.impagos !== false) {
           const mvPrev = ft.months?.[ftMonthKey];
           if (mvPrev) {
-            const imps = (mvPrev.entries||[]).filter(e => e.paid === false);
+            // paid puede ser 'pendiente' (string) o false (boolean) — todo lo que NO sea 'pagado'/true es impago
+            const imps = (mvPrev.entries||[]).filter(e =>
+              e.paid !== 'pagado' && e.paid !== true
+            );
             if (imps.length > 0) {
-              const totalImp = imps.reduce((s,e) => {
-                let t = 0;
-                (e.lines||[]).forEach(l => { t += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-                return s + t;
-              }, 0);
+              const totalImp = imps.reduce((s,e) => s + (parseFloat(e.price)||0), 0);
               block.push(`   ⚠ ${imps.length} impagos en ${ftMonthKey}: €${fmt(totalImp)}`);
             }
           }
@@ -706,10 +675,12 @@ function generateSummary(data, notif, isWeekly) {
             const services = ft.services || [];
             const byService = {};
             (mvPrev.entries||[]).forEach(e => {
-              (e.lines||[]).forEach(l => {
-                const lt = (parseFloat(l.qty)||0) * (parseFloat(l.price)||0);
-                byService[l.serviceId] = (byService[l.serviceId]||0) + lt;
-              });
+              const p = parseFloat(e.price) || 0;
+              if (e.serviceId) byService[e.serviceId] = (byService[e.serviceId]||0) + p;
+            });
+            (mvPrev.packs||[]).forEach(pk => {
+              const total = (parseFloat(pk.pricePerSession)||0) * (parseInt(pk.totalSessions)||0);
+              if (pk.serviceId) byService[pk.serviceId] = (byService[pk.serviceId]||0) + total;
             });
             const topSrv = Object.entries(byService).sort((a,b) => b[1]-a[1]).slice(0, 3);
             if (topSrv.length) {
