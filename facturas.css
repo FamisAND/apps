@@ -181,6 +181,7 @@ tr:hover td{background:var(--bg2);}
 .badge.pagada{background:#052e16;color:#86efac;border:1px solid #15803d;}
 .badge.vencida{background:#450a0a;color:#fca5a5;border:1px solid #991b1b;}
 
+/* ════════ TABLET (≤768px) — sidebar arriba, layout apilado ════════ */
 @media (max-width: 768px){
   body{ overflow:auto; font-size:13px; }
   #appScreen{ flex-direction:column; height:auto; min-height:100vh; }
@@ -198,6 +199,87 @@ tr:hover td{background:var(--bg2);}
   .main-scroll{ padding:12px 14px; }
   .row-2,.row-3,.fac-head{ grid-template-columns:1fr !important; }
   .fac-line,.fac-line-head{ grid-template-columns:2fr 1fr 1fr 0.7fr 24px; gap:4px; }
-  input,select,textarea{ font-size:14px !important; }
+  input,select,textarea{ font-size:16px !important; }  /* 16px → iOS no zoom */
   .modal{ max-width:100%; border-radius:0; max-height:100vh; }
+}
+
+/* ════════ MOBILE (≤640px) — más ajustes finos ════════ */
+@media (max-width: 640px){
+  /* Selector de perfil: cards en 2 cols en mobile (no auto-fill que cae a 1) */
+  .p-grid{
+    grid-template-columns:repeat(2,1fr) !important;
+    gap:10px !important;
+    padding:0 12px;
+  }
+  .p-card{padding:18px 12px;}
+  .p-avatar{width:46px;height:46px;font-size:1.4rem;}
+  .p-name{font-size:.88rem;}
+  .psel-logo{margin-bottom:24px;}
+
+  /* PIN screen */
+  .pin-card{padding:24px 20px;max-width:300px;}
+  .pin-pad{gap:8px;}
+  .pin-key{padding:12px;font-size:1rem;}
+
+  /* Sidebar logo + perfil más compactos */
+  .sidebar-top{padding:10px 14px 8px;}
+  .sidebar-icon{width:30px;height:30px;font-size:1rem;}
+  .sidebar-name{font-size:.88rem;}
+  .sidebar-prof{font-size:.62rem;}
+
+  /* Topbar: título smaller, save-badge a la derecha */
+  .topbar{padding:11px 14px;}
+  .topbar-title{font-size:1rem;}
+  .save-badge{font-size:.62rem;}
+
+  /* Cards más compactas */
+  .card{padding:14px;border-radius:10px;}
+  .card-title{font-size:.88rem;}
+
+  /* Tab editor toolbar (Volver / Imprimir / PDF / Borrar / Guardar) */
+  #tab-editor [style*="justify-content:space-between"]{
+    flex-direction:column;
+    align-items:stretch !important;
+  }
+  #tab-editor [style*="justify-content:space-between"] > div{
+    justify-content:flex-end;
+  }
+
+  /* Línea de factura (concepto, qty, precio, igi, x): más legible */
+  .fac-line,.fac-line-head{
+    grid-template-columns:1fr 0.6fr 0.7fr 0.6fr 22px !important;
+    gap:3px !important;
+  }
+  .fac-line .inp{padding:5px 6px;font-size:.78rem;}
+  .fac-line-head{font-size:.6rem;}
+
+  /* Totales */
+  .fac-totals{padding:12px;}
+  .fac-tot-row{font-size:.82rem;}
+  .fac-tot-row.tot{font-size:.95rem;}
+
+  /* Tablas: scroll horizontal */
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  table{font-size:.78rem;}
+  th,td{padding:6px 8px;white-space:nowrap;}
+
+  /* Modal padding */
+  .modal{padding:18px 14px;}
+  .modal-title{font-size:.95rem;margin-bottom:12px;}
+  .btn-row{gap:8px;}
+
+  /* Botones más cómodos al tocar */
+  .btn-primary,.btn-sec,.btn-cancel,.btn-danger{min-height:36px;}
+
+  /* Botón flotante "← inicio" más pequeño */
+  #ghHomeBtn{padding:4px 8px !important;font-size:10px !important;top:6px !important;left:6px !important;}
+}
+
+/* ════════ Mobile pequeño (≤380px) ════════ */
+@media (max-width: 380px){
+  .p-grid{grid-template-columns:1fr !important;}
+  .fac-line,.fac-line-head{
+    grid-template-columns:1.5fr 0.6fr 0.7fr 0.5fr 20px !important;
+  }
+  .topbar-title{font-size:.92rem;}
 }
