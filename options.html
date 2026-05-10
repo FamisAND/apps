@@ -632,7 +632,11 @@
 <!-- ACTIVAS MODAL: Open new / edit position -->
 <div class="cfg-overlay" id="actModal">
   <div class="cfg-modal" style="width:560px">
-    <div class="cfg-title" id="actModalTitle">Nueva posición activa</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+      <div class="cfg-title" id="actModalTitle" style="margin-bottom:0">Nueva posición activa</div>
+      <div id="actModalMicSlot" style="display:flex;gap:6px;align-items:center;"></div>
+    </div>
+    <div id="actModalVoiceStatus" style="display:none;font-size:10px;font-family:'Courier New',monospace;color:#5a7a9a;margin-bottom:10px;padding:6px 10px;background:#0a1421;border:1px solid #1e2d3d;border-radius:4px"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">
       <div class="cfg-field">
         <label>Operativa</label>
@@ -4002,10 +4006,104 @@ function openActModal(idx){
   // Si tiene patas, abrir la sección automáticamente
   const legsSec = document.getElementById('am_legs_section');
   if(legsSec) legsSec.open = !!(a.legs && a.legs.length);
+  // Inyectar botón micrófono (voice input) la primera vez
+  _injectActModalMic();
   document.getElementById('actModal').classList.add('on');
   toggleActModalFields();
 }
 function closeActModal(){ document.getElementById('actModal').classList.remove('on'); }
+
+// ── VOICE INPUT para nueva operación ────────────────────────────
+const ACT_VOICE_SYSTEM = `Eres un parser de operaciones de opciones. Convierte el texto en JSON estricto con estos campos (solo los mencionados):
+{
+  "strat": "NP"|"PCS"|"CC"|"PMCC"|"ACC"|"CCS"|"DPS"|"BWB"|"JL"|"IC"|"0DTE"|"112",
+  "activo": "TICKER",
+  "idOp": number,
+  "contracts": number,
+  "apertura": "YYYY-MM-DD",
+  "exp": "YYYY-MM-DD",
+  "strike": number,
+  "maxRisk": number,
+  "pCredito": number,
+  "delta": number,
+  "iv": number,
+  "ivr": number,
+  "underlying": number,
+  "comi": number,
+  "nota": string
+}
+
+Reglas:
+- "vendí" / "abrí venta" → es venta de prima (operación normal de prima cobrada).
+- "naked put" / "NP" → strat:"NP". "Put credit spread" / "PCS" → "PCS". "Covered call" / "CC" → "CC". "Iron condor" → "IC". Etc.
+- Strike y prima en dólares (la prima se llama "prima cobrada" o "crédito"; en USD por contrato).
+- Fechas: convertir relativas ("la semana que viene", "viernes próximo", "17 enero") a YYYY-MM-DD. Si solo dice mes/día, asume el más cercano FUTURO.
+- Si NO se menciona un campo, NO lo incluyas en el JSON (no inventes valores).
+- Activo: convertir nombres a ticker (Apple→AAPL, Tesla→TSLA, S&P→SPX, etc.). Mayúsculas.
+- Devuelve SOLO el JSON, sin explicación ni markdown.`;
+
+let _actMicInjected = false;
+function _injectActModalMic(){
+  if(_actMicInjected) return;
+  _actMicInjected = true;
+  if(typeof createMicButton !== 'function') return; // utils.js no cargado
+  const slot = document.getElementById('actModalMicSlot');
+  if(!slot) return;
+  const mic = createMicButton({
+    title: 'Pulsa y dicta los datos de la operación',
+    onTranscript: async (text) => {
+      const status = document.getElementById('actModalVoiceStatus');
+      status.style.display = 'block';
+      status.style.color = '#5a7a9a';
+      status.textContent = '⏳ Escuchado: "' + text + '" — interpretando con IA...';
+      try {
+        const json = await parseVoiceJSON(text, ACT_VOICE_SYSTEM);
+        _fillActModalFromJSON(json);
+        const filled = Object.keys(json).filter(k=>json[k]!=null).join(', ');
+        status.style.color = '#3fb68b';
+        status.textContent = '✓ Rellenado: ' + filled + '. Revisa y guarda.';
+        setTimeout(()=>{ status.style.display='none'; }, 8000);
+      } catch(err){
+        status.style.color = '#f04545';
+        status.textContent = '✕ ' + err.message;
+      }
+    }
+  });
+  slot.innerHTML = '';
+  slot.appendChild(mic);
+  // Hint label
+  const hint = document.createElement('span');
+  hint.style.cssText = 'font-size:9px;color:#3a5468;font-family:Courier New,monospace;letter-spacing:.5px';
+  hint.textContent = 'voz';
+  slot.appendChild(hint);
+}
+
+// Rellena los campos del modal a partir del JSON parseado por la IA
+function _fillActModalFromJSON(j){
+  if(!j || typeof j !== 'object') return;
+  const map = {
+    strat:'am_strat', activo:'am_activo', idOp:'am_idop', contracts:'am_contracts',
+    apertura:'am_apertura', exp:'am_exp', strike:'am_strike', maxRisk:'am_maxrisk',
+    delta:'am_delta', iv:'am_iv', ivr:'am_ivr', underlying:'am_underlying',
+    comi:'am_comi', nota:'am_nota', precioCompra:'am_precioCompra'
+  };
+  for(const [k,id] of Object.entries(map)){
+    if(j[k] == null) continue;
+    const el = document.getElementById(id);
+    if(!el) continue;
+    let v = j[k];
+    if(k === 'activo' && typeof v === 'string') v = v.toUpperCase();
+    el.value = v;
+  }
+  // pCredito viene en $/contrato en input (formulario lo divide por 100 al guardar)
+  if(j.pCredito != null){
+    const el = document.getElementById('am_pcred');
+    if(el) el.value = j.pCredito;
+  }
+  // Trigger toggle para que se muestren campos según strat
+  if(j.strat) toggleActModalFields();
+  if(j.contracts != null && typeof updateAccMaxRisk === 'function') updateAccMaxRisk();
+}
 
 // ════════════════════════════════════════════════════════════════════
 // PATAS (legs) — módulo opcional para registrar detalles por pata

@@ -288,6 +288,29 @@ async function updateSecuritySection(updater){
   return updated;
 }
 
+// Updater genérico para CUALQUIER sección de data.json (ej. __notif, __ia_config, etc).
+// El updater recibe la sección actual (objeto) y debe devolver la nueva (objeto entero).
+async function updateSection(sectionName, updater){
+  if(!sectionName || typeof sectionName !== 'string') throw new Error('sectionName requerido');
+  const remote = await pullRaw();
+  setCachedSha(remote.sha || '');
+  if(remote.sha && !remote.content){
+    throw new Error('No pude leer data.json remoto. Recarga la app.');
+  }
+  const current = (remote.content && remote.content[sectionName]) || {};
+  const updated = updater(Object.assign({}, current));
+  const payload = mergeSections(remote.content || {}, { [sectionName]: updated });
+  await pushRaw(payload);
+  return updated;
+}
+
+// Lectura de una sección arbitraria (ej. __notif).
+async function fetchSection(sectionName){
+  const remote = await pullRaw();
+  setCachedSha(remote.sha || '');
+  return (remote.content && remote.content[sectionName]) || null;
+}
+
 function getCachedSecurity(){ return _securityCache; }
 
 // ────────────────────────────────────────────────────────────────────
@@ -468,6 +491,7 @@ window.GitHubSync = {
   setupCredentials, isLoggedIn, clearCredentials, pullAndApplyAll,
   attach, enableAutoPush, setStatusElement, flush,
   fetchSecuritySection, fetchFullData, updateSecuritySection, getCachedSecurity,
+  updateSection, fetchSection,
   getRepo, getBranch,
   hasToken: () => !!getToken(),
 };

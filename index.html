@@ -145,6 +145,8 @@
   <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:780px;">
     <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="reSync()" aria-label="Volver a sincronizar con GitHub">↻ Resync</button>
     <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="openIaApisModal()" aria-label="Configurar APIs de IA">🤖 IA APIs</button>
+    <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="openNotifModal()" aria-label="Configurar notificaciones Telegram">🔔 Notificaciones</button>
+    <button class="btn-ghost btn" style="flex:0 0 auto;margin-top:0;padding:0 14px;" onclick="cycleVoiceLang()" aria-label="Cambiar idioma del voice input" title="Idioma del voice input" id="voiceLangBtn">🌐 —</button>
     <button class="btn-danger btn" style="flex:1;min-width:130px;margin-top:0;" onclick="askLogout()" aria-label="Cerrar sesión">✕ Logout</button>
   </div>
 
@@ -227,6 +229,61 @@
       <button class="btn" style="flex:1;min-width:120px;background:transparent;border:1px solid #0e7490;color:#67e8f9;" onclick="testIaApi()">⚡ Probar</button>
       <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="closeIaApiEditor()">Cancelar</button>
       <button class="btn" style="flex:1;min-width:120px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveIaApi()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ NOTIFICACIONES TELEGRAM (gated por contraseña maestra) ════════ -->
+<div id="notifModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
+  <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:560px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+    <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;">// 🔔 NOTIFICACIONES TELEGRAM</div>
+
+    <!-- Pantalla 1: Password gate (login o setup) -->
+    <div id="notifGate">
+      <div id="notifGateInfo" style="color:#67e8f9;font-size:.78rem;line-height:1.55;margin-bottom:14px;"></div>
+      <div class="fld-lbl">Contraseña maestra</div>
+      <input type="password" class="inp" id="notifPwd" placeholder="••••••" autocomplete="off">
+      <div class="fld-lbl" id="notifPwd2Lbl" style="display:none">Repite la contraseña</div>
+      <input type="password" class="inp" id="notifPwd2" placeholder="••••••" autocomplete="off" style="display:none">
+      <div id="notifGateMsg" style="font-size:.78rem;font-family:'DM Mono',monospace;margin-top:10px;min-height:18px"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-ghost" style="flex:1;" onclick="closeNotifModal()">Cancelar</button>
+        <button class="btn" id="notifGateBtn" style="flex:1;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="notifGateSubmit()">Continuar</button>
+      </div>
+    </div>
+
+    <!-- Pantalla 2: Config form -->
+    <div id="notifForm" style="display:none">
+      <div style="background:#0a1421;border:1px solid #1e2d3d;padding:14px;margin-bottom:14px;font-size:.74rem;line-height:1.6;color:#67e8f9;">
+        <strong>Pasos para activar:</strong><br>
+        1. En Telegram, habla con <span style="color:#22d3ee">@BotFather</span> → <code>/newbot</code> → te da un <strong>token</strong>.<br>
+        2. Habla con <span style="color:#22d3ee">@userinfobot</span> → te da tu <strong>chat_id</strong>.<br>
+        3. Pégalos abajo y guarda.<br>
+        4. En el repo <span style="color:#22d3ee">famisand/apps</span> → Settings → Secrets → añade <code>APPDATA_PAT</code> con tu token de GitHub.<br>
+        5. El bot te enviará resumen diario automáticamente a la hora configurada.
+      </div>
+
+      <div class="fld-lbl">Bot token (de @BotFather)</div>
+      <input type="password" class="inp" id="notifBotToken" placeholder="123456:ABC-DEF..." autocomplete="off">
+
+      <div class="fld-lbl">Chat ID (de @userinfobot)</div>
+      <input type="text" class="inp" id="notifChatId" placeholder="123456789" autocomplete="off">
+
+      <div class="fld-lbl">Hora del resumen diario (Madrid/Andorra)</div>
+      <input type="time" class="inp" id="notifTime" value="09:00">
+
+      <div style="display:flex;align-items:center;gap:8px;margin-top:14px;color:#67e8f9;font-size:.85rem;">
+        <input type="checkbox" id="notifEnabled" checked style="accent-color:#22d3ee;">
+        <label for="notifEnabled" style="cursor:pointer;">Activado</label>
+      </div>
+
+      <div id="notifFormMsg" style="display:none;margin-top:12px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
+
+      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="testNotifBot()">⚡ Probar envío</button>
+        <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="closeNotifModal()">Cerrar</button>
+        <button class="btn" style="flex:1;min-width:120px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveNotifConfig()">💾 Guardar</button>
+      </div>
     </div>
   </div>
 </div>

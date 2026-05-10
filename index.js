@@ -757,6 +757,180 @@ async function testIaApi(){
 // el botón "Probar" — el resto de HTMLs usa iaModule.callLLM() para la
 // cadena con fallback.
 
+// ════════════════════════════════════════════════════════════════════
+// VOICE LANGUAGE TOGGLE (boton 🌐 — afecta a todos los voice inputs)
+// ════════════════════════════════════════════════════════════════════
+const VOICE_LANGS = [
+  { code: 'es-ES', label: 'ES' },
+  { code: 'ca-ES', label: 'CA' },
+  { code: 'en-US', label: 'EN' }
+];
+function _refreshVoiceLangBtn(){
+  const btn = document.getElementById('voiceLangBtn');
+  if(!btn) return;
+  const cur = (typeof getVoiceLang === 'function' ? getVoiceLang() : 'es-ES');
+  const found = VOICE_LANGS.find(l => l.code === cur) || VOICE_LANGS[0];
+  btn.textContent = '🌐 ' + found.label;
+  btn.title = 'Idioma del voice input: ' + found.code;
+}
+function cycleVoiceLang(){
+  const cur = getVoiceLang();
+  const idx = VOICE_LANGS.findIndex(l => l.code === cur);
+  const next = VOICE_LANGS[(idx + 1) % VOICE_LANGS.length];
+  setVoiceLang(next.code);
+  _refreshVoiceLangBtn();
+  if(typeof toast === 'function') toast('Voice input: ' + next.label);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// NOTIFICACIONES (Telegram bot config + master password gate)
+// ════════════════════════════════════════════════════════════════════
+const NOTIF_HASH_SALT = 'notif_master_v1_';
+async function _notifHash(pwd){
+  const enc = new TextEncoder().encode(NOTIF_HASH_SALT + pwd);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+let _notifAuthenticated = false;
+
+async function openNotifModal(){
+  // Reset state
+  _notifAuthenticated = false;
+  document.getElementById('menuScreen').classList.remove('active');
+  document.getElementById('notifModal').style.display = 'flex';
+  document.getElementById('notifGate').style.display = 'block';
+  document.getElementById('notifForm').style.display = 'none';
+  document.getElementById('notifGateMsg').textContent = '';
+  document.getElementById('notifPwd').value = '';
+  document.getElementById('notifPwd2').value = '';
+
+  // Comprobar si ya hay password configurada
+  let sec = null;
+  try {
+    sec = await GitHubSync.fetchSecuritySection();
+  } catch(e){
+    document.getElementById('notifGateMsg').textContent = 'Error al leer __security: ' + e.message;
+    document.getElementById('notifGateMsg').style.color = '#fca5a5';
+    return;
+  }
+  const hasPwd = sec && sec.notif_pwd;
+  const info = document.getElementById('notifGateInfo');
+  const pwd2Lbl = document.getElementById('notifPwd2Lbl');
+  const pwd2 = document.getElementById('notifPwd2');
+  const btn = document.getElementById('notifGateBtn');
+  if(hasPwd){
+    info.textContent = 'Introduce la contraseña maestra para configurar Telegram.';
+    pwd2Lbl.style.display = 'none';
+    pwd2.style.display = 'none';
+    btn.textContent = 'Entrar';
+  } else {
+    info.textContent = 'Primera vez. Crea una contraseña maestra (mínimo 6 caracteres). Solo tú la sabrás. Si la pierdes, la recuperas editando data.json en GitHub.';
+    pwd2Lbl.style.display = 'block';
+    pwd2.style.display = 'block';
+    btn.textContent = 'Crear';
+  }
+  setTimeout(() => document.getElementById('notifPwd').focus(), 50);
+}
+
+function closeNotifModal(){
+  document.getElementById('notifModal').style.display = 'none';
+  document.getElementById('menuScreen').classList.add('active');
+}
+
+async function notifGateSubmit(){
+  const pwd = document.getElementById('notifPwd').value;
+  const pwd2 = document.getElementById('notifPwd2').value;
+  const msg = document.getElementById('notifGateMsg');
+  msg.style.color = '#fca5a5';
+  if(pwd.length < 6){ msg.textContent = 'Mínimo 6 caracteres'; return; }
+  let sec = null;
+  try { sec = await GitHubSync.fetchSecuritySection(); }
+  catch(e){ msg.textContent = 'Error: ' + e.message; return; }
+  const hasPwd = sec && sec.notif_pwd;
+  const hash = await _notifHash(pwd);
+  if(hasPwd){
+    if(hash !== sec.notif_pwd){ msg.textContent = 'Contraseña incorrecta'; return; }
+    _notifAuthenticated = true;
+    await _notifShowForm();
+  } else {
+    if(pwd !== pwd2){ msg.textContent = 'Las contraseñas no coinciden'; return; }
+    try {
+      await GitHubSync.updateSecuritySection(s => { s.notif_pwd = hash; return s; });
+    } catch(e){ msg.textContent = 'Error guardando: ' + e.message; return; }
+    _notifAuthenticated = true;
+    msg.style.color = '#4ade80';
+    msg.textContent = '✓ Contraseña creada';
+    setTimeout(() => _notifShowForm(), 600);
+  }
+}
+
+async function _notifShowForm(){
+  document.getElementById('notifGate').style.display = 'none';
+  document.getElementById('notifForm').style.display = 'block';
+  // Cargar config actual si existe
+  let cfg = null;
+  try { cfg = await GitHubSync.fetchSection('__notif'); } catch(e){}
+  document.getElementById('notifBotToken').value = (cfg && cfg.bot_token) || '';
+  document.getElementById('notifChatId').value = (cfg && cfg.chat_id) || '';
+  document.getElementById('notifTime').value = (cfg && cfg.time) || '09:00';
+  document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
+}
+
+async function saveNotifConfig(){
+  if(!_notifAuthenticated){ alert('Sesión expirada. Vuelve a entrar.'); return; }
+  const cfg = {
+    bot_token: document.getElementById('notifBotToken').value.trim(),
+    chat_id: document.getElementById('notifChatId').value.trim(),
+    time: document.getElementById('notifTime').value || '09:00',
+    enabled: document.getElementById('notifEnabled').checked,
+    tz: 'Europe/Madrid',
+    updated_at: new Date().toISOString()
+  };
+  if(!cfg.bot_token){ _showNotifMsg('⚠ Falta el bot token', '#fca5a5'); return; }
+  if(!cfg.chat_id){ _showNotifMsg('⚠ Falta el chat_id', '#fca5a5'); return; }
+  _showNotifMsg('⏳ Guardando...', '#67e8f9');
+  try {
+    await GitHubSync.updateSection('__notif', () => cfg);
+    _showNotifMsg('✓ Configuración guardada en data.json', '#22d3ee');
+  } catch(err){
+    _showNotifMsg('✕ Error: ' + err.message, '#fca5a5');
+  }
+}
+
+async function testNotifBot(){
+  const token = document.getElementById('notifBotToken').value.trim();
+  const chatId = document.getElementById('notifChatId').value.trim();
+  if(!token || !chatId){ _showNotifMsg('⚠ Pega el token y el chat_id antes de probar', '#fca5a5'); return; }
+  _showNotifMsg('⏳ Enviando mensaje de prueba...', '#67e8f9');
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: '🤖 ¡Funciona! Tu bot de Mis Dashboards está conectado.\n\nA partir de ahora recibirás aquí el resumen diario.',
+        parse_mode: 'HTML'
+      })
+    });
+    const data = await res.json();
+    if(data.ok){
+      _showNotifMsg('✓ Mensaje enviado. Comprueba Telegram.', '#4ade80');
+    } else {
+      _showNotifMsg('✕ Telegram dijo: ' + (data.description || 'error desconocido'), '#fca5a5');
+    }
+  } catch(err){
+    _showNotifMsg('✕ Error de red: ' + err.message, '#fca5a5');
+  }
+}
+
+function _showNotifMsg(text, color){
+  const el = document.getElementById('notifFormMsg');
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = text;
+}
+
 (function init(){
   if(!GitHubSync.isLoggedIn()){
     show('setupScreen');
@@ -764,4 +938,6 @@ async function testIaApi(){
     return;
   }
   goLoading();
+  // Refrescar el botón de idioma al cargar
+  setTimeout(_refreshVoiceLangBtn, 100);
 })();
