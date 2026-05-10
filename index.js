@@ -745,91 +745,17 @@ async function testIaApi(){
   if(!key){ _showApiEditorMsg('⚠ Pega la key primero', '#fca5a5'); return; }
   _showApiEditorMsg('⏳ Probando...', '#67e8f9');
   try {
-    const txt = await iaCallProvider({ tipo, modelo, key }, 'Responde "OK" si me oyes, una sola palabra.');
+    const txt = await iaModule.callSingle({ tipo, modelo, key }, 'Responde "OK" si me oyes, una sola palabra.');
     _showApiEditorMsg(`✓ Respuesta: ${(txt||'').slice(0,80)}`, '#22d3ee');
   } catch(err){
     _showApiEditorMsg(`✕ Error: ${err.message}`, '#fca5a5');
   }
 }
 
-// ════════ EJECUCIÓN: cadena con fallback ════════
-// Esta función la usarán también los otros HTMLs (lo expongo en window)
-async function iaCallProvider(provider, prompt, systemMsg){
-  const messages = [];
-  if(systemMsg) messages.push({ role:'system', content: systemMsg });
-  messages.push({ role:'user', content: prompt });
-
-  if(provider.tipo === 'gemini'){
-    // Formato distinto
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${provider.modelo}:generateContent?key=${encodeURIComponent(provider.key)}`;
-    // En Gemini, el system prompt se pasa como systemInstruction
-    const body = { contents: [{ parts:[{ text: prompt }] }], generationConfig:{ temperature:0.4, maxOutputTokens:2048 } };
-    if(systemMsg) body.systemInstruction = { parts:[{ text: systemMsg }] };
-    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if(!res.ok){
-      const t = await res.text(); let m = `HTTP ${res.status}`;
-      try { const j = JSON.parse(t); m = j.error?.message || m; } catch(_){}
-      throw new Error(m);
-    }
-    const data = await res.json();
-    const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if(!txt) throw new Error('Respuesta vacía de Gemini');
-    return txt;
-  }
-
-  // Groq y OpenRouter usan formato OpenAI-compatible
-  const endpoint = provider.tipo === 'openrouter'
-    ? IA_PROVIDER_DEFAULTS.openrouter.endpoint
-    : IA_PROVIDER_DEFAULTS.groq.endpoint;
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${provider.key}`
-  };
-  // OpenRouter recomienda añadir headers para identificar la app
-  if(provider.tipo === 'openrouter'){
-    headers['HTTP-Referer'] = window.location.origin || 'https://famisand.github.io';
-    headers['X-Title'] = 'Mis Dashboards';
-  }
-  const res = await fetch(endpoint, {
-    method:'POST', headers,
-    body: JSON.stringify({ model: provider.modelo, messages, temperature:0.4, max_tokens:2048 })
-  });
-  if(!res.ok){
-    const t = await res.text(); let m = `HTTP ${res.status}`;
-    try { const j = JSON.parse(t); m = j.error?.message || j.error?.code || m; } catch(_){}
-    throw new Error(m);
-  }
-  const data = await res.json();
-  const txt = data.choices?.[0]?.message?.content;
-  if(!txt) throw new Error('Respuesta vacía del modelo');
-  return txt;
-}
-
-// Función expuesta globalmente para que la usen otros HTMLs
-async function iaCallChain(prompt, systemMsg){
-  const list = iaLoadProviders().filter(p => p.activa);
-  if(!list.length){
-    throw new Error('No hay APIs configuradas. Ve al index → 🤖 IA APIs.');
-  }
-  const errors = [];
-  for(const p of list){
-    try {
-      const result = await iaCallProvider(p, prompt, systemMsg);
-      return { result, providerUsed: p.nombre, providerTipo: p.tipo, errors };
-    } catch(err){
-      errors.push(`[${p.nombre}] ${err.message}`);
-      // continúa con el siguiente
-    }
-  }
-  throw new Error('Todas las APIs fallaron:\n' + errors.join('\n'));
-}
-
-// Exponer globalmente para que otros HTMLs (en pestañas, no aplicable directo,
-// pero también para la consola del usuario y para futura extensión)
-window.iaCallChain = iaCallChain;
-window.iaLoadProviders = iaLoadProviders;
-window.iaCallProvider = iaCallProvider;
-window.IA_PROVIDERS_STORAGE = IA_PROVIDERS_STORAGE;
+// La lógica de llamada a providers vive en ia-module.js (cargado antes que
+// este script en index.html). Aquí solo usamos iaModule.callSingle() para
+// el botón "Probar" — el resto de HTMLs usa iaModule.callLLM() para la
+// cadena con fallback.
 
 (function init(){
   if(!GitHubSync.isLoggedIn()){

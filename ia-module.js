@@ -58,7 +58,7 @@
   }
 
   // ════════ CALL A UN PROVIDER ════════
-  async function _callSingle(provider, prompt, systemMsg){
+  async function callSingle(provider, prompt, systemMsg){
     const messages = [];
     if(systemMsg) messages.push({ role:'system', content: systemMsg });
     messages.push({ role:'user', content: prompt });
@@ -121,7 +121,7 @@
     const errors = [];
     for(const p of list){
       try {
-        const result = await _callSingle(p, prompt, systemMsg);
+        const result = await callSingle(p, prompt, systemMsg);
         console.log(`[IA] Respuesta vía: ${p.nombre} (${p.tipo})`);
         return { result, provider: p };
       } catch(err){
@@ -421,6 +421,7 @@
     saveInstructions: saveInstructionsHandler,
     deleteInstructions: deleteInstructionsHandler,
     callLLM,
+    callSingle,
     loadProviders,
     hasProviders,
     getInstructions
