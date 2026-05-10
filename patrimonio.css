@@ -196,27 +196,95 @@ textarea.inp{resize:vertical;min-height:70px;}
 @media (max-width: 640px) {
   body{font-size:14px;}
 
-  /* Header: que no se corte */
-  header, .header, [class*="topbar"]{padding:10px 12px !important;}
-
-  /* Pestañas: scroll horizontal en lugar de wrap */
-  .tab-btn{padding:6px 10px;font-size:.72rem;flex-shrink:0;}
-
-  /* Cards genéricos */
-  .card{padding:14px 12px !important;border-radius:8px;}
-
-  /* KPIs: 1-2 columnas según ancho */
-  .kpi-grid,.grid-kpi,[class*="kpi-grid"]{grid-template-columns:repeat(2,1fr) !important;gap:8px !important;}
-  @media (max-width:380px){
-    .kpi-grid,.grid-kpi{grid-template-columns:1fr !important;}
+  /* ─── HEADER: 3 filas (logo+badge+actions, tabs scroll, hueco) ─── */
+  .header{padding:0 10px !important;}
+  .header-inner{
+    height:auto !important;
+    flex-wrap:wrap !important;
+    padding:6px 0 !important;
+    gap:6px !important;
+    align-items:center !important;
+  }
+  .logo-btn{flex:0 0 auto;}
+  .logo-icon{width:22px;height:22px;font-size:.72rem;}
+  .logo-txt{font-size:.82rem;}
+  .profile-badge{
+    flex:0 0 auto;
+    font-size:.6rem !important;
+    padding:1px 6px !important;
+  }
+  .save-badge{
+    flex:0 0 auto;
+    font-size:.6rem !important;
+    margin-left:auto;
+  }
+  .btn-sm,.btn-logout{
+    flex:0 0 auto;
+    padding:4px 7px !important;
+    font-size:.66rem !important;
+  }
+  /* Las pestañas ocupan toda una fila propia con scroll horizontal */
+  .tabs{
+    order:99 !important;
+    flex:1 1 100% !important;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    margin:0 -10px !important;
+    padding:4px 10px !important;
+    white-space:nowrap;
+  }
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab-btn{
+    padding:6px 10px;
+    font-size:.72rem;
+    flex-shrink:0;
+    min-height:32px;
   }
 
-  /* Tablas: scroll horizontal y fuente más pequeña */
+  /* ─── MAIN: padding reducido ─── */
+  .main{padding:14px 12px !important;}
+
+  /* ─── CARDS ─── */
+  .card{padding:14px 12px !important;border-radius:8px;}
+
+  /* ─── KPIs y stats ─── */
+  .stats-grid,.kpi-grid,.grid-kpi,[class*="kpi-grid"]{
+    grid-template-columns:repeat(2,1fr) !important;
+    gap:8px !important;
+  }
+  .stat-card{padding:10px 12px;}
+  .stat-lbl{font-size:.58rem;}
+  .stat-val{font-size:.95rem !important;}
+
+  /* ─── INSIGHT cards (resumen) ─── */
+  .resumen-grid{
+    grid-template-columns:repeat(2,1fr) !important;
+    gap:10px !important;
+  }
+  .insight-card{padding:11px 13px;}
+  .insight-val{font-size:.95rem !important;}
+
+  /* ─── CHARTS: forzar 1 columna en filas con 2fr 1fr inline ─── */
+  #chartsWrap > div[style*="grid-template-columns:2fr 1fr"]{
+    grid-template-columns:1fr !important;
+  }
+  canvas{max-height:200px !important;}
+
+  /* ─── TOGGLE ROW ─── */
+  .toggle-row{padding:9px 11px;flex-wrap:wrap;gap:8px;}
+  .tgl-val{margin-left:0 !important;font-size:.66rem !important;}
+
+  /* ─── TABLAS ─── */
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   table{font-size:.75rem !important;}
   th,td{padding:6px 8px !important;white-space:nowrap;}
 
-  /* Modales: ocupan toda la pantalla */
+  /* ─── FORM ─── */
+  .form-card{max-width:100% !important;}
+  .form-sec-hdr{font-size:.58rem;}
+
+  /* ─── MODALES: ocupan toda la pantalla ─── */
   .modal-bg{padding:8px !important;}
   .modal,.modal.wide{
     max-width:100% !important;
@@ -227,36 +295,37 @@ textarea.inp{resize:vertical;min-height:70px;}
     padding:18px 14px !important;
   }
 
-  /* Inputs y textareas: más cómodos al tocar */
+  /* ─── INPUTS: 16px en iOS para evitar zoom ─── */
   input[type="text"],input[type="number"],input[type="date"],input[type="password"],
   input[type="email"],select,textarea{
-    font-size:16px !important; /* iOS evita zoom si es ≥16px */
+    font-size:16px !important;
     padding:9px 11px !important;
   }
 
-  /* Botones genéricos: más altura para tocar */
+  /* ─── BOTONES: target táctil mínimo ─── */
   button.btn-primary,button.btn-ghost,button.btn-sm{
     min-height:36px;
   }
 
-  /* Pestaña IA: tarjetas de modo en columna */
-  #tab-ia [style*="grid-template-columns:1fr 1fr"]{
-    grid-template-columns:1fr !important;
-  }
-  /* Plantillas IA: 1 por fila */
-  #iaPlantillas{
-    grid-template-columns:1fr !important;
-  }
-  /* Modal IA en mobile: padding reducido */
+  /* ─── PESTAÑA IA ─── */
+  #tab-ia [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important;}
+  #iaPlantillas{grid-template-columns:1fr !important;}
   #iaConfigModal .modal{padding:18px 14px !important;}
   #iaInstructionsInput{rows:8;font-size:14px !important;}
-
-  /* Resultado IA: que no se desborde */
   #iaResultadoTxt{padding:12px 14px !important;font-size:.82rem !important;max-height:65vh !important;}
+
+  /* ─── PIN PAD: que no se desborde ─── */
+  .pin-pad{max-width:100% !important;gap:8px !important;}
+  .pin-btn{padding:14px 8px !important;}
 }
 
-/* Mobile pequeño */
+/* ════════ Mobile pequeño (≤380px) ════════ */
 @media (max-width: 380px) {
   .card{padding:12px 10px !important;}
   table{font-size:.7rem !important;}
+  .stats-grid,.kpi-grid,.grid-kpi,.resumen-grid{
+    grid-template-columns:1fr !important;
+  }
+  .logo-txt{font-size:.78rem;}
+  .profile-badge{display:none !important;}
 }
