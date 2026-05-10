@@ -84,4 +84,15 @@
   global.parseNumberSafe = parseNumberSafe;
   global.MONTHS_3        = MONTHS_3;
   global.toast           = toast;
+
+  // ─── SERVICE WORKER (PWA) ──────────────────────────────────
+  // Registra el SW una vez la página termine de cargar.
+  // Para desactivar: ver service-worker.js (cabecera con instrucciones).
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js').catch(err => {
+        console.warn('[SW] No se pudo registrar:', err);
+      });
+    });
+  }
 })(window);
