@@ -2543,7 +2543,33 @@ document.getElementById('hOverlay').addEventListener('click', e=>{ if(e.target==
 histLoad();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+// Chart.js: zoom/pan en eje X + tooltips compartidos al pasar el cursor
+// Doble-click en cualquier chart resetea el zoom.
+if(typeof Chart !== 'undefined' && Chart.defaults && Chart.defaults.plugins){
+  Chart.defaults.plugins.zoom = {
+    pan:  { enabled: true, mode: 'x', threshold: 5 },
+    zoom: {
+      wheel: { enabled: true, modifierKey: 'ctrl' },
+      pinch: { enabled: true },
+      mode: 'x',
+    },
+  };
+  Object.assign(Chart.defaults.plugins.tooltip, {
+    mode: 'index', intersect: false, padding: 10, cornerRadius: 6,
+  });
+  Chart.defaults.interaction = Chart.defaults.interaction || {};
+  Chart.defaults.interaction.mode = 'index';
+  Chart.defaults.interaction.intersect = false;
+  document.addEventListener('dblclick', e => {
+    if(e.target.tagName !== 'CANVAS') return;
+    const c = Chart.getChart(e.target);
+    if(c && typeof c.resetZoom === 'function') c.resetZoom();
+  });
+}
+</script>
 <script>
 
 // ── DASHBOARD ────────────────────────────────────────────────
