@@ -883,13 +883,19 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
 // ══════════════════════════
 // STATE & PERSISTENCE
 // ══════════════════════════
-// Chart.js global dark theme
-if(typeof Chart!=='undefined'){
+// Zoom + pan en eje X (Ctrl+rueda PC, pinch mobile, drag tras zoom).
+// GLOBAL: charts en cualquier función (renderDashboard, renderTrainerOcupChart,
+// renderTeamFichaChart) usan esta misma constante.
+const ZCFG={pan:{enabled:true,mode:'x',threshold:5},zoom:{wheel:{enabled:true,modifierKey:'ctrl'},pinch:{enabled:true},mode:'x'}};
+
+// Chart.js global dark theme — espera a que Chart cargue (defer)
+(function setupChart(){
+  if(typeof Chart==='undefined'){ setTimeout(setupChart,50); return; }
   Chart.defaults.color='#666';
   Chart.defaults.borderColor='rgba(255,255,255,.05)';
   Chart.defaults.font.family='DM Sans,sans-serif';
   Chart.defaults.font.size=11;
-}
+})();
 const SK='ft_v4';
 let HISTORICO_TRABAJADORES={
   "Famis":{"2024-06":{f:5480.00,s:2192.00},"2024-07":{f:5849.00,s:2339.60},"2024-08":{f:5460.00,s:2184.00},"2024-09":{f:5764.50,s:2305.80},"2024-10":{f:7773.50,s:3109.40},"2024-11":{f:7379.00,s:2930.60},"2024-12":{f:7825.00,s:3129.60},"2025-01":{f:7029.00,s:2831.00},"2025-02":{f:7764.50,s:3231.60},"2025-03":{f:7883.50,s:3237.80},"2025-04":{f:8986.50,s:3807.05},"2025-05":{f:8761.00,s:3644.00},"2025-06":{f:8607.00,s:3592.50},"2025-07":{f:9472.50,s:4118.60},"2025-08":{f:9356.00,s:4115.45},"2025-09":{f:8461.00,s:3523.40},"2025-10":{f:9190.00,s:3894.50},"2025-11":{f:9475.00,s:4011.60},"2025-12":{f:9029.50,s:3611.80},"2026-01":{f:8618.00,s:3447.20},"2026-02":{f:9808.00,s:3923.20}},
@@ -1984,8 +1990,6 @@ function renderDashboard(){
     gasByMonth[cat]=last12.map(k=>(db.months[k].gastos||[]).filter(g=>g.cat!=='dividendos'&&(g.cat||'otro')===cat).reduce((s,g)=>s+(parseFloat(g.amount)||0),0));
   });
 
-  // Zoom + pan en eje X (Ctrl+rueda PC, pinch mobile, drag tras zoom)
-  const ZCFG={pan:{enabled:true,mode:'x',threshold:5},zoom:{wheel:{enabled:true,modifierKey:'ctrl'},pinch:{enabled:true},mode:'x'}};
   const CHART_DEFAULTS={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false},zoom:ZCFG},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#777',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#777',font:{size:10},callback:v=>'€'+v.toLocaleString('es-ES')}}}};
 
   document.getElementById('dashCharts').innerHTML=`
@@ -2062,7 +2066,7 @@ function renderDashboard(){
       options:{
         responsive:true,maintainAspectRatio:false,
         interaction:{mode:'index',intersect:false},
-        plugins:{legend:{display:true,position:'top',labels:{font:{size:11}}}},
+        plugins:{legend:{display:true,position:'top',labels:{font:{size:11}}},zoom:ZCFG},
         scales:{
           y:{position:'left',min:0,max:100,title:{display:true,text:'% Ocupación'},ticks:{callback:v=>v+'%'},grid:{color:'rgba(255,255,255,.04)'}},
           y1:{position:'right',min:0,title:{display:true,text:'Horas'},ticks:{callback:v=>Math.round(v)+'h'},grid:{drawOnChartArea:false}},
@@ -2134,7 +2138,7 @@ function renderTrainerOcupChart(){
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:true,position:'top',labels:{font:{size:10},boxWidth:10}},
-        tooltip:{callbacks:{label:(ctx)=>{const v=ctx.parsed.y;if(ctx.dataset.label==='% Ocupación')return ctx.dataset.label+': '+(v==null?'—':v+'%');return ctx.dataset.label+': '+v+'h';}}}
+        tooltip:{callbacks:{label:(ctx)=>{const v=ctx.parsed.y;if(ctx.dataset.label==='% Ocupación')return ctx.dataset.label+': '+(v==null?'—':v+'%');return ctx.dataset.label+': '+v+'h';}}},zoom:ZCFG
       },
       scales:{
         x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10}}},
@@ -2896,7 +2900,7 @@ function renderTeamFichaChart(id,payRows){
         {label:'Beneficio',data:data.ben,borderColor:'#F5C000',backgroundColor:'rgba(245,192,0,.08)',tension:.3,fill:true,pointRadius:2,borderWidth:2}
       ]
     },
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top'}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>'€'+v.toLocaleString('es-ES')}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top'},zoom:ZCFG},scales:{x:{grid:{color:'rgba(255,255,255,.04)'}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>'€'+v.toLocaleString('es-ES')}}}}
   });
   
   // Gráfica de horas: reales + deseadas + % ocupación
@@ -2920,7 +2924,7 @@ function renderTeamFichaChart(id,payRows){
         options:{
           responsive:true,maintainAspectRatio:false,
           interaction:{mode:'index',intersect:false},
-          plugins:{legend:{display:true,position:'top',labels:{font:{size:11}}}},
+          plugins:{legend:{display:true,position:'top',labels:{font:{size:11}}},zoom:ZCFG},
           scales:{
             x:{grid:{color:'rgba(255,255,255,.04)'}},
             y:{position:'left',beginAtZero:true,title:{display:true,text:'Horas/semana'},grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>v+'h'}},

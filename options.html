@@ -3524,7 +3524,8 @@ function renderDash(){
       }]},
       options:{ ...baseOpts,
         plugins:{ legend:{display:false},
-          tooltip:{ callbacks:{ label: ctx=>`${ctx.raw} operativas` }}
+          tooltip:{ callbacks:{ label: ctx=>`${ctx.raw} operativas` }},
+          zoom: ZCFG
         },
         scales:{
           x:{ ticks:{color:C.text,font:{size:7,family:'Courier New'},maxRotation:55}, grid:{color:C.grid} },
@@ -7631,7 +7632,8 @@ function semaphoreClick(key){
           titleColor:'#5a7a9a',bodyColor:'#c9d1d9',
           titleFont:{family:'Courier New',size:9},
           bodyFont:{family:'Courier New',size:10},
-        }
+        },
+        zoom: ZCFG
       },
       scales:{
         x:{ ticks:{color:'#5a7a9a',font:{size:8,family:'Courier New'}}, grid:{color:'#1e2d3d'} },
