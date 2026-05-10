@@ -969,7 +969,7 @@ function renderProjectionChart(p,curPat,avgGrowth){
       {label:"Histórico",data:histFull,borderColor:"#60a5fa",backgroundColor:"rgba(96,165,250,.06)",borderWidth:2.5,pointRadius:2.5,tension:.3,fill:true,spanGaps:false},
       {label:"Proyección",data:projFull,borderColor:"#a78bfa",backgroundColor:"rgba(167,139,250,.04)",borderWidth:2,borderDash:[6,4],pointRadius:2,tension:.3,fill:true,spanGaps:false},
     ]},
-    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:sc("€")}
+    options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}
   });
 }
 
@@ -1095,7 +1095,7 @@ function renderCharts(p){
     if(inInv&&!assetMap[a.id])assetMap[a.id]=a;
   }));
   const bDS=Object.values(assetMap).map(a=>({label:a.name,data:ents.map(e=>{const act=entryActiveAssets(e,p);return act.find(x=>x.id===a.id)?parseFloat((e.assets||{})[a.id])||0:null;}),borderColor:a.color,backgroundColor:"transparent",borderWidth:1.6,pointRadius:2,tension:.3,spanGaps:false}));
-  charts["bloques"]=new Chart(document.getElementById("cBloques"),{type:"line",data:{labels:lbl,datasets:bDS},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:sc("€")}});
+  charts["bloques"]=new Chart(document.getElementById("cBloques"),{type:"line",data:{labels:lbl,datasets:bDS},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
 
   // ── Rentabilidad mensual por cartera ──
   dChart("retornoBloques");
@@ -1221,7 +1221,7 @@ function renderCharts(p){
     const empData=ents.map(e=>calcEmp(e,p));
     charts["empresa"]=new Chart(document.getElementById("cEmpresa"),{type:"line",data:{labels:lbl,datasets:[
       {label:p.empresaSection.title,data:empData,borderColor:"#f472b6",backgroundColor:"rgba(244,114,182,.08)",borderWidth:2,pointRadius:3,tension:.3,fill:true}
-    ]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>`${p.empresaSection.title}: ${fmt(c.parsed.y)}`}}},scales:sc("€")}});
+    ]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>`${p.empresaSection.title}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
   } else {
     empWrap.style.display="none";
   }
@@ -1232,12 +1232,12 @@ function renderCharts(p){
   const bancoMap={};
   ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{if(bancoAssets.find(x=>x.id===a.id)&&!bancoMap[a.id])bancoMap[a.id]=a;}));
   const bancoDSets=Object.values(bancoMap).map(a=>({label:a.name,data:ents.map(e=>{const act=entryActiveAssets(e,p);return act.find(x=>x.id===a.id)?parseFloat((e.assets||{})[a.id])||0:null;}),borderColor:a.color,backgroundColor:a.color+"18",borderWidth:1.8,pointRadius:2,tension:.3,fill:true,spanGaps:false}));
-  charts["banco"]=new Chart(document.getElementById("cBanco"),{type:"line",data:{labels:lbl,datasets:bancoDSets.length?bancoDSets:[{label:"Sin datos",data:[],borderColor:"#334155"}]},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:sc("€")}});
+  charts["banco"]=new Chart(document.getElementById("cBanco"),{type:"line",data:{labels:lbl,datasets:bancoDSets.length?bancoDSets:[{label:"Sin datos",data:[],borderColor:"#334155"}]},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
 
   // ── Variación mensual ──
   dChart("var");
   const vd=ents.map((e,i)=>{if(!i)return null;const c=calcPat(e,p),pv=calcPat(ents[i-1],p);return pv?+((c-pv)/pv*100).toFixed(2):null;});
-  charts["var"]=new Chart(document.getElementById("cVar"),{type:"bar",data:{labels:lbl,datasets:[{label:"Variación %",data:vd,backgroundColor:vd.map(v=>v==null?"transparent":v>=0?"rgba(59,130,246,.75)":"rgba(248,113,113,.75)"),borderRadius:4}]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>fPct(c.parsed.y)}}},scales:sc("%")}});
+  charts["var"]=new Chart(document.getElementById("cVar"),{type:"bar",data:{labels:lbl,datasets:[{label:"Variación %",data:vd,backgroundColor:vd.map(v=>v==null?"transparent":v>=0?"rgba(59,130,246,.75)":"rgba(248,113,113,.75)"),borderRadius:4}]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>fPct(c.parsed.y)}},zoom:ZCFG},scales:sc("%")}});
 
   // ── Ingresos desglosados por tipo + media adaptada al periodo ──
   dChart("ing");
@@ -3179,7 +3179,7 @@ function renderProjections(){
         {label:"Proyección patrimonio",data:chartData,borderColor:"#60a5fa",backgroundColor:"rgba(96,165,250,.08)",borderWidth:2.5,pointRadius:3,tension:.3,fill:true},
         ...objDatasets
       ]},
-      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:sc("€")}
+      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}
     });
   }
 
