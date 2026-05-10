@@ -553,9 +553,70 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
   }
   #iaInstructionsInput{font-size:14px !important;}
   #iaResultadoTxt{padding:12px 14px !important;font-size:.82rem !important;max-height:65vh !important;}
+
+  /* ─── HEADER: brand + tabs compactos ─── */
+  .nav{padding:0 8px !important;position:sticky;top:0;}
+  .nav-brand{
+    font-size:8px !important;
+    letter-spacing:1.5px !important;
+    padding:0 6px 0 0 !important;
+    margin-right:4px !important;
+  }
+  .nav-tabs{gap:0 !important;}
+  .nav-tab{padding:11px 10px !important;font-size:9px !important;}
+
+  /* ─── DASHBOARD KPIs (.d-kpi-grid) ─── */
+  .d-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:6px !important;}
+  .d-kpi{padding:8px 10px;}
+  .d-kpi-val{font-size:13px !important;}
+  .d-kpi-lbl{font-size:7px !important;}
+  .d-kpi-sub{font-size:8px !important;}
+
+  /* ─── HISTORIAL stats (.h-stats: 6 cols → 2 cols) ─── */
+  .h-stats{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:6px !important;}
+  .h-stat{padding:8px 10px;}
+  .h-stat-val{font-size:14px !important;}
+
+  /* ─── CALCULADORA NEW (.nc-*) ─── */
+  .nc-metrics{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:6px !important;}
+  .nc-extra{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:6px !important;}
+  .nc-metric{padding:8px 10px;}
+  .nc-metric-val{font-size:13px !important;}
+  .nc-result{padding:10px 12px !important;flex-direction:column !important;}
+  .nc-verdict{padding:11px 12px;}
+  .nc-verdict-badge{font-size:14px !important;letter-spacing:1.5px !important;}
+
+  /* ─── CALCULADORA antigua (.cc) ─── */
+  .calc-grid{grid-template-columns:1fr !important;gap:10px !important;}
+  .cc{margin-bottom:0;}
+  .cb{padding:9px;}
+  .two{grid-template-columns:1fr 1fr;gap:6px !important;}
+  .mg{grid-template-columns:1fr !important;gap:6px !important;}
+  .mc{padding:7px;}
+  .mv{font-size:14px !important;}
+
+  /* ─── DASHBOARD layout 2 cols → 1 col ─── */
+  .d-grid-2{grid-template-columns:1fr !important;gap:10px !important;}
+
+  /* ─── CFG modal (config de strats: 2 cols → 1) ─── */
+  .cfg-grid{grid-template-columns:1fr !important;gap:10px !important;}
+
+  /* ─── HISTORIAL toolbar (search + filtros) wrap ─── */
+  .h-toolbar{gap:6px !important;}
+  .h-search{width:auto !important;flex:1 1 130px;min-width:0 !important;}
+  .h-filter{flex:0 0 auto;}
+
+  /* ─── COMPARE panel: tabla con scroll-x ─── */
+  .strat-cmp-tbl,.comp-tbl,.nc-cmp-tbl{font-size:10px;}
+  .comp-panel{padding:11px;}
 }
 
 @media (max-width: 380px) {
   table{font-size:9px !important;}
   .nav-tab{font-size:8px !important;padding:6px 8px !important;}
+  /* En pantallas muy pequeñas, los grids van a 1 columna */
+  .d-kpi-grid,.h-stats,.nc-metrics,.nc-extra{
+    grid-template-columns:1fr !important;
+  }
+  .nav-brand{display:none !important;}
 }
