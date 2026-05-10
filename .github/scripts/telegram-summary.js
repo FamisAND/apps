@@ -208,82 +208,6 @@ async function buildActualidad(ctx, data, notif) {
   if (sec.enabled === false) return [];
   const out = [`🌍 <b>Actualidad</b>`];
 
-  // ── Earnings de tickers que tienes activos en options ──
-  // Solo Finnhub (Alpha Vantage / Twelvedata cobran este endpoint).
-  if (sec.earnings === true) {
-    try {
-      const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
-      if (!finProv) {
-        out.push(`   <i>(earnings: requiere Finnhub — Alpha Vantage / Twelvedata cobran este endpoint)</i>`);
-      } else {
-        const arr = parseMaybe(data?.options?.ot_activas);
-        const tickers = Array.isArray(arr)
-          ? [...new Set(arr.map(a => (a.activo||'').trim().toUpperCase()).filter(Boolean))]
-          : [];
-        if (tickers.length === 0) {
-          out.push(`   <i>(earnings: no hay posiciones activas)</i>`);
-        } else {
-          const days = sec.earnings_days || 14;
-          const from = ctx.todayStr;
-          const to = new Date(ctx.today0); to.setUTCDate(to.getUTCDate() + days);
-          const toStr = to.toISOString().slice(0,10);
-          const all = [];
-          // Finnhub permite filtrar por symbol — hacemos llamadas en paralelo (max 8 simultáneas)
-          const calls = tickers.map(t =>
-            fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${toStr}&symbol=${encodeURIComponent(t)}&token=${encodeURIComponent(finProv.key)}`)
-              .then(r => r.ok ? r.json() : null)
-              .then(d => { (d?.earningsCalendar || []).forEach(e => all.push(e)); })
-              .catch(() => {})
-          );
-          await Promise.all(calls);
-          if (all.length === 0) {
-            out.push(`   📅 Sin earnings próximos ${days}d para tus tickers`);
-          } else {
-            all.sort((a,b) => (a.date||'').localeCompare(b.date||''));
-            out.push(`   📅 Earnings próximos ${days}d:`);
-            all.slice(0, 6).forEach(e => {
-              const dte = Math.round((new Date(e.date + 'T00:00:00Z') - ctx.today0) / 86400000);
-              const hora = e.hour === 'bmo' ? 'pre' : e.hour === 'amc' ? 'post' : '';
-              const epsStr = e.epsEstimate != null ? ` · est $${e.epsEstimate.toFixed(2)}` : '';
-              out.push(`     • <code>${escape(e.symbol)}</code> ${e.date} <i>(${dte}d${hora?` ${hora}`:''})</i>${epsStr}`);
-            });
-            if (all.length > 6) out.push(`     ... y ${all.length-6} más`);
-          }
-        }
-      }
-    } catch (e) { console.error('actualidad earnings:', e.message); }
-  }
-
-  // ── Calendario macro (Fed/ECB/CPI/NFP) — Finnhub PREMIUM ──
-  // Free tier de Finnhub NO incluye /calendar/economic. Avisar para no dar
-  // falsa expectativa: gratis no existe en ningún proveedor mainstream.
-  if (sec.macro === true) {
-    try {
-      const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
-      if (!finProv) {
-        out.push(`   <i>(macro: requiere Finnhub plan PREMIUM — no disponible gratis)</i>`);
-      } else {
-        const days = sec.macro_days || 7;
-        const from = ctx.todayStr;
-        const to = new Date(ctx.today0); to.setUTCDate(to.getUTCDate() + days);
-        const toStr = to.toISOString().slice(0,10);
-        const r = await fetch(`https://finnhub.io/api/v1/calendar/economic?from=${from}&to=${toStr}&token=${encodeURIComponent(finProv.key)}`);
-        const d = r.ok ? await r.json() : null;
-        const events = (d?.economicCalendar || [])
-          .filter(e => (e.impact || '').toLowerCase() === 'high' && ['US','EU','EUR','ES','EA'].includes(e.country))
-          .slice(0, 5);
-        if (events.length) {
-          out.push('');
-          out.push(`   📅 Macro alta importancia ${days}d:`);
-          events.forEach(e => {
-            const dte = Math.round((new Date(e.time?.slice(0,10) + 'T00:00:00Z') - ctx.today0) / 86400000);
-            out.push(`     • ${e.time?.slice(0,10)} <i>(${dte}d)</i> · ${escape(e.country||'')} · ${escape(e.event||'')}`);
-          });
-        }
-      }
-    } catch (e) { console.error('actualidad macro:', e.message); }
-  }
-
   // ── Mercados: el usuario elige hasta 3. Probamos providers en cascada. ──
   if (Array.isArray(sec.mercados_selected) && sec.mercados_selected.length) {
     const activeProviders = (data.__fin?.providers || []).filter(p => p.activa && p.key);
@@ -329,23 +253,69 @@ async function buildActualidad(ctx, data, notif) {
     } catch (e) { console.error('actualidad tiempo:', e.message); }
   }
 
-  // ── Noticias Andorra — RSS BonDia + Altaveu + Diari ──
+  // ── Noticias Andorra ──
   if (sec.noticias_andorra === true) {
     try {
-      const news = await fetchAndorraNews();
+      const news = await fetchFeeds(ANDORRA_FEEDS);
       if (news.length) {
-        out.push('');
-        out.push(`   📰 Andorra hoy:`);
-        news.slice(0, 3).forEach(n => {
-          out.push(`     • <a href="${escape(n.link)}">${escape(n.title)}</a> <i>(${escape(n.source)})</i>`);
-        });
+        renderNewsBlock(out, '📰 Andorra hoy:', news, sec.noticias_andorra_topics);
       } else {
-        out.push(`   <i>(noticias: feeds RSS no respondieron)</i>`);
+        out.push(`   <i>(noticias Andorra: feeds RSS no respondieron)</i>`);
       }
-    } catch (e) { console.error('actualidad noticias:', e.message); }
+    } catch (e) { console.error('actualidad noticias andorra:', e.message); }
+  }
+
+  // ── Noticias mundial ──
+  if (sec.noticias_mundo === true) {
+    try {
+      const news = await fetchFeeds(WORLD_FEEDS);
+      if (news.length) {
+        renderNewsBlock(out, '🌐 Mundial hoy:', news, sec.noticias_mundo_topics);
+      } else {
+        out.push(`   <i>(noticias mundial: feeds RSS no respondieron)</i>`);
+      }
+    } catch (e) { console.error('actualidad noticias mundo:', e.message); }
   }
 
   return out.length > 1 ? out : [];
+}
+
+// Render del bloque de noticias: si hay temas seleccionados, agrupa por tema
+// con 3 noticias cada uno; si no, muestra 3 más recientes mezcladas.
+function renderNewsBlock(out, header, news, topics) {
+  out.push('');
+  out.push(`   ${header}`);
+  if (Array.isArray(topics) && topics.length) {
+    topics.slice(0, 3).forEach(topicId => {
+      const topic = TOPIC_KEYWORDS[topicId];
+      if (!topic) return;
+      const matched = scoreNewsByTopic(news, topic.kw).slice(0, 3);
+      if (matched.length === 0) return;
+      out.push(`     <b>${topic.label}:</b>`);
+      matched.forEach(n => out.push(`       • <a href="${escape(n.link)}">${escape(n.title)}</a> <i>(${escape(n.source)})</i>`));
+    });
+  } else {
+    // sin temas: 3 más recientes diversificadas
+    news.slice(0, 3).forEach(n => {
+      out.push(`     • <a href="${escape(n.link)}">${escape(n.title)}</a> <i>(${escape(n.source)})</i>`);
+    });
+  }
+}
+
+// Puntúa noticias por número de coincidencias de keywords (case-insensitive,
+// substring). Devuelve sólo las que tienen score > 0, ordenadas por score desc
+// y luego fecha desc.
+function scoreNewsByTopic(news, keywords) {
+  const lcKw = keywords.map(k => k.toLowerCase());
+  const scored = [];
+  news.forEach(n => {
+    const text = ((n.title||'') + ' ' + (n.desc||'')).toLowerCase();
+    let score = 0;
+    for (const kw of lcKw) if (text.includes(kw)) score++;
+    if (score > 0) scored.push({ ...n, _score: score });
+  });
+  scored.sort((a,b) => (b._score - a._score) || ((b.date?.getTime()||0) - (a.date?.getTime()||0)));
+  return scored;
 }
 
 // ───────────────────────────────────────────────────────────
@@ -472,32 +442,101 @@ function getYesterday() {
   return d.toISOString().slice(0,10);
 }
 
-// Fetch RSS de medios andorranos. Parser regex simple — Node 20+ tiene fetch nativo.
-async function fetchAndorraNews() {
-  // Probados 2026-05-10: estos 3 sí responden y devuelven RSS válido.
-  // Altaveu y Diari d'Andorra no tienen feeds públicos accesibles.
-  const FEEDS = [
-    { url: 'https://www.bondia.ad/rss.xml', source: 'BonDia'      },
-    { url: 'https://www.forum.ad/rss',      source: 'Forum.ad'    },
-    { url: 'https://elperiodic.ad/rss',     source: 'El Periòdic' },
-  ];
+// ── Feeds RSS probados 2026-05-10 ──
+const ANDORRA_FEEDS = [
+  { url: 'https://www.bondia.ad/rss.xml', source: 'BonDia'      },
+  { url: 'https://www.forum.ad/rss',      source: 'Forum.ad'    },
+  { url: 'https://elperiodic.ad/rss',     source: 'El Periòdic' },
+];
+const WORLD_FEEDS = [
+  { url: 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada', source: 'El País'        },
+  { url: 'https://www.lavanguardia.com/rss/home.xml',                        source: 'La Vanguardia'  },
+  { url: 'https://rss.dw.com/rdf/rss-sp-all',                                source: 'DW'             },
+  { url: 'https://feeds.bbci.co.uk/news/world/rss.xml',                      source: 'BBC'            },
+  { url: 'https://www.theguardian.com/world/rss',                            source: 'The Guardian'   },
+];
+
+// Keywords por tema (multilingüe ca/es/en). Match por substring lowercase
+// sobre title+description. No es perfecto pero filtra razonablemente bien.
+const TOPIC_KEYWORDS = {
+  politica: {
+    label: '🏛 Política',
+    kw: ['govern','consell general','parlament','política','elecci','partit','ministr','cap de govern',
+         'gobierno','presidente','congreso','senado','diputado','política','elección',
+         'parliament','election','government','minister','president','congress']
+  },
+  economia: {
+    label: '💼 Economía',
+    kw: ['econom','pressupost','impost','fiscal','sou','salari','banc','borsa','inflació','pib','empresa','comerç',
+         'economía','presupuesto','impuesto','salario','banco','bolsa','inflación','empresa','mercado','inversión',
+         'economy','budget','tax','salary','bank','market','inflation','gdp','company','finance','trade']
+  },
+  sociedad: {
+    label: '👥 Sociedad',
+    kw: ['social','salut','educació','habitatge','pensions','famili','jove','gent gran',
+         'sociedad','salud','educación','vivienda','familia','jóvenes','mayores',
+         'society','social','health','education','housing','family','youth']
+  },
+  deporte: {
+    label: '⚽ Deporte',
+    kw: ['esport','futbol','esquí','partit','lliga','jugador','entrenador','olímpic','medalla',
+         'deporte','fútbol','tenis','baloncesto','liga','partido','olímpico',
+         'sport','football','tennis','basketball','league','match','olympic','medal','champions']
+  },
+  cultura: {
+    label: '🎭 Cultura',
+    kw: ['cultura','concert','música','cinema','art','museu','literatura','teatre','festival','llibre',
+         'concierto','música','cine','arte','museo','literatura','teatro','festival','libro',
+         'culture','concert','music','film','movie','art','museum','book','theater','festival']
+  },
+  tecnologia: {
+    label: '💻 Tecnología',
+    kw: ['tecnologia','digital','internet','app','intel·ligència artificial','ia','web','ciber','dades',
+         'tecnología','inteligencia artificial','datos','startup',
+         'tech','technology','ai','artificial intelligence','cyber','data','startup','software','app']
+  },
+  internacional: {
+    label: '🌐 Internacional',
+    kw: ['internacional','unió europea','fronteres','rússia','estats units','xina','guerra','conflicte',
+         'internacional','rusia','china','estados unidos','oriente medio','eeuu','guerra','conflicto',
+         'world','europe','russia','china','usa','war','conflict','middle east','ukraine','israel','gaza']
+  },
+  ciencia: {
+    label: '🔬 Ciencia',
+    kw: ['ciència','recerca','investigació','estudi','astron','biolog','físic','químic','clima','espai',
+         'ciencia','investigación','estudio','clima','espacio','descubr',
+         'science','research','study','climate','space','discovery']
+  }
+};
+
+// Fetch + parse de varios feeds en paralelo. Devuelve array sorteado por fecha
+// desc, con diversificación por fuente al principio.
+async function fetchFeeds(feeds) {
   const all = [];
-  await Promise.all(FEEDS.map(async f => {
+  await Promise.all(feeds.map(async f => {
     try {
-      const res = await fetch(f.url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 mis-dashboards-bot' }
-      });
+      const res = await fetch(f.url, { headers: { 'User-Agent': 'Mozilla/5.0 mis-dashboards-bot' } });
       if (!res.ok) return;
       const xml = await res.text();
-      const items = [...xml.matchAll(/<item[\s\S]*?<\/item>/g)].slice(0, 5);
+      // Soporta tanto <item> (RSS) como <entry> (Atom)
+      const items = [
+        ...xml.matchAll(/<item[\s\S]*?<\/item>/g),
+        ...xml.matchAll(/<entry[\s\S]*?<\/entry>/g)
+      ].slice(0, 12);
       items.forEach(it => {
         const block = it[0];
-        const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1];
-        const link  = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1];
-        const date  = (block.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1];
+        const title = (block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1];
+        const link  = (block.match(/<link[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/)
+                    || block.match(/<link[^>]*href=["']([^"']+)/) || [])[1];
+        const date  = (block.match(/<pubDate>([\s\S]*?)<\/pubDate>/) ||
+                       block.match(/<published>([\s\S]*?)<\/published>/) ||
+                       block.match(/<dc:date>([\s\S]*?)<\/dc:date>/) || [])[1];
+        const desc  = (block.match(/<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) ||
+                       block.match(/<summary[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/summary>/) || [])[1];
         if (title && link) {
           all.push({
-            title: title.trim().replace(/\s+/g, ' ').slice(0, 90),
+            title: title.trim().replace(/<[^>]+>/g,'').replace(/\s+/g, ' ').slice(0, 90),
+            desc: (desc||'').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').slice(0, 200),
             link: link.trim(),
             source: f.source,
             date: date ? new Date(date.trim()) : null
@@ -506,9 +545,8 @@ async function fetchAndorraNews() {
       });
     } catch (e) { /* feed individual falla, seguimos */ }
   }));
-  // ordenar por fecha desc, distintas fuentes en el top
   all.sort((a,b) => (b.date?.getTime()||0) - (a.date?.getTime()||0));
-  // diversificar: 1 de cada fuente primero, luego rellenar
+  // diversificación: 1 de cada fuente al principio
   const seen = new Set();
   const top = []; const rest = [];
   all.forEach(n => { if (!seen.has(n.source)) { seen.add(n.source); top.push(n); } else { rest.push(n); } });

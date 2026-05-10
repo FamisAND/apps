@@ -1305,10 +1305,6 @@ const NOTIF_SECTIONS = [
     { id: 'top_cliente',   label: 'Top cliente del mes',                   default: false }
   ]},
   { id: 'actualidad', icon: '🌍', label: 'Actualidad', items: [
-    { id: 'earnings',         label: 'Earnings de tus tickers (Finnhub)',     default: false },
-    { id: 'earnings_days',    label: '↳ N días', default: 14, type: 'number', min: 1, max: 60 },
-    { id: 'macro',            label: 'Calendario macro Fed/ECB/CPI (Finnhub)', default: false },
-    { id: 'macro_days',       label: '↳ N días', default: 7,  type: 'number', min: 1, max: 30 },
     { id: 'mercados_selected', label: 'Mercados (elige 3)', type: 'multi', max: 3,
       default: ['spy','eurusd','btcusd'],
       options: [
@@ -1325,7 +1321,34 @@ const NOTIF_SECTIONS = [
       ]
     },
     { id: 'tiempo',           label: 'Tiempo Andorra 3 días (Open-Meteo)',    default: false },
-    { id: 'noticias_andorra', label: '3 noticias Andorra (RSS)',              default: false }
+    { id: 'noticias_andorra', label: 'Noticias Andorra (RSS)',                default: false },
+    { id: 'noticias_andorra_topics', label: '↳ Temas (3 noticias por tema)', type: 'multi', max: 3,
+      default: [],
+      options: [
+        { id: 'politica',     label: '🏛 Política' },
+        { id: 'economia',     label: '💼 Economía' },
+        { id: 'sociedad',     label: '👥 Sociedad' },
+        { id: 'deporte',      label: '⚽ Deporte' },
+        { id: 'cultura',      label: '🎭 Cultura' },
+        { id: 'tecnologia',   label: '💻 Tecnología' },
+        { id: 'internacional',label: '🌐 Internacional' },
+        { id: 'ciencia',      label: '🔬 Ciencia' }
+      ]
+    },
+    { id: 'noticias_mundo',   label: 'Noticias mundial (RSS)',                default: false },
+    { id: 'noticias_mundo_topics', label: '↳ Temas (3 noticias por tema)', type: 'multi', max: 3,
+      default: [],
+      options: [
+        { id: 'politica',     label: '🏛 Política' },
+        { id: 'economia',     label: '💼 Economía' },
+        { id: 'sociedad',     label: '👥 Sociedad' },
+        { id: 'deporte',      label: '⚽ Deporte' },
+        { id: 'cultura',      label: '🎭 Cultura' },
+        { id: 'tecnologia',   label: '💻 Tecnología' },
+        { id: 'internacional',label: '🌐 Internacional' },
+        { id: 'ciencia',      label: '🔬 Ciencia' }
+      ]
+    }
   ]}
 ];
 
@@ -1670,19 +1693,6 @@ function _buildSummaryClient(data, cfg){
 function _previewActualidad(ctx, data, sec){
   if(sec.enabled === false) return [];
   const out = ['🌍 <b>Actualidad</b>'];
-  if(sec.earnings === true){
-    const arr = _pmaybe(data?.options?.ot_activas);
-    const tickers = Array.isArray(arr)
-      ? [...new Set(arr.map(a => (a.activo||'').trim().toUpperCase()).filter(Boolean))]
-      : [];
-    const days = sec.earnings_days || 14;
-    if(!tickers.length) out.push(`   <i>(earnings: no hay posiciones activas)</i>`);
-    else out.push(`   📅 Earnings ${days}d: <i>(Finnhub al enviar — ${tickers.length} tickers)</i>`);
-  }
-  if(sec.macro === true){
-    const days = sec.macro_days || 7;
-    out.push(`   📅 Macro ${days}d: <i>(Finnhub /calendar/economic al enviar)</i>`);
-  }
   if(Array.isArray(sec.mercados_selected) && sec.mercados_selected.length){
     const labels = {
       spy:'SPY', qqq:'QQQ', dia:'DIA', vixy:'VIXY',
@@ -1696,7 +1706,14 @@ function _previewActualidad(ctx, data, sec){
     out.push(`   🌤 Tiempo Andorra: <i>(Open-Meteo al enviar)</i>`);
   }
   if(sec.noticias_andorra === true){
-    out.push(`   📰 Andorra: <i>(RSS BonDia/Altaveu/Diari al enviar)</i>`);
+    const t = Array.isArray(sec.noticias_andorra_topics) ? sec.noticias_andorra_topics : [];
+    const tStr = t.length ? `temas: ${t.join(', ')}` : 'sin filtro';
+    out.push(`   📰 Andorra: <i>(${tStr} — RSS BonDia/Forum/Periòdic al enviar)</i>`);
+  }
+  if(sec.noticias_mundo === true){
+    const t = Array.isArray(sec.noticias_mundo_topics) ? sec.noticias_mundo_topics : [];
+    const tStr = t.length ? `temas: ${t.join(', ')}` : 'sin filtro';
+    out.push(`   🌐 Mundial: <i>(${tStr} — El País/DW/Vanguardia/BBC/Guardian al enviar)</i>`);
   }
   return out.length > 1 ? out : [];
 }
