@@ -1305,9 +1305,13 @@ const NOTIF_SECTIONS = [
     { id: 'top_cliente',   label: 'Top cliente del mes',                   default: false }
   ]},
   { id: 'actualidad', icon: '🌍', label: 'Actualidad', items: [
-    { id: 'earnings',         label: 'Earnings de tus tickers (Finnhub)', default: false },
+    { id: 'earnings',         label: 'Earnings de tus tickers (Finnhub)',     default: false },
     { id: 'earnings_days',    label: '↳ N días', default: 14, type: 'number', min: 1, max: 60 },
-    { id: 'noticias_andorra', label: '3 noticias Andorra (RSS)',          default: false }
+    { id: 'macro',            label: 'Calendario macro Fed/ECB/CPI (Finnhub)', default: false },
+    { id: 'macro_days',       label: '↳ N días', default: 7,  type: 'number', min: 1, max: 30 },
+    { id: 'mercados',         label: 'EUR/USD + BTC/ETH (gratis, sin key)',   default: false },
+    { id: 'tiempo',           label: 'Tiempo Andorra 3 días (Open-Meteo)',    default: false },
+    { id: 'noticias_andorra', label: '3 noticias Andorra (RSS)',              default: false }
   ]}
 ];
 
@@ -1606,14 +1610,21 @@ function _previewActualidad(ctx, data, sec){
       ? [...new Set(arr.map(a => (a.activo||'').trim().toUpperCase()).filter(Boolean))]
       : [];
     const days = sec.earnings_days || 14;
-    if(!tickers.length){
-      out.push(`   <i>(earnings: no hay posiciones activas)</i>`);
-    } else {
-      out.push(`   📅 Earnings próximos ${days}d: <i>(se consulta Finnhub al enviar — ${tickers.length} tickers)</i>`);
-    }
+    if(!tickers.length) out.push(`   <i>(earnings: no hay posiciones activas)</i>`);
+    else out.push(`   📅 Earnings ${days}d: <i>(Finnhub al enviar — ${tickers.length} tickers)</i>`);
+  }
+  if(sec.macro === true){
+    const days = sec.macro_days || 7;
+    out.push(`   📅 Macro ${days}d: <i>(Finnhub /calendar/economic al enviar)</i>`);
+  }
+  if(sec.mercados === true){
+    out.push(`   💱 EUR/USD + BTC/ETH: <i>(Frankfurter + Coingecko al enviar)</i>`);
+  }
+  if(sec.tiempo === true){
+    out.push(`   🌤 Tiempo Andorra: <i>(Open-Meteo al enviar)</i>`);
   }
   if(sec.noticias_andorra === true){
-    out.push(`   📰 Andorra: <i>(se consulta RSS BonDia/Altaveu/Diari al enviar)</i>`);
+    out.push(`   📰 Andorra: <i>(RSS BonDia/Altaveu/Diari al enviar)</i>`);
   }
   return out.length > 1 ? out : [];
 }
@@ -1881,16 +1892,25 @@ function _previewTraining(ctx, data, sec){
     if(sec.clientes !== false) parts.push(`${activos} clientes`);
     if(sec.equipo !== false)   parts.push(`${equipo} en equipo`);
     if(parts.length) out.push(`   ${parts.join(' · ')}`);
-    out.push(`   <i>(referido a ${ctx.ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
+
+    // Pendiente del mes actual en rojo
+    const mNow = _ftMonthMetrics(ft.months?.[ctx.monthKey]);
+    if(mNow){
+      const pendNow = mNow.fact - mNow.cobr;
+      if(pendNow > 0){
+        out.push(`   🔴 <b>Pendiente ${ctx.monthKey}: €${_fnum(pendNow)}</b> <i>(de €${_fnum(mNow.fact)} facturados)</i>`);
+      }
+    }
 
     const mPrev = _ftMonthMetrics(ft.months?.[ctx.ftMonthKey]);
     if(sec.ingresos_mes !== false && mPrev){
       out.push('');
-      if(mPrev.fact > 0)   out.push(`   💵 Facturación ${ctx.ftMonthKey}: €${_fnum(mPrev.fact)}`);
-      if(mPrev.gastos > 0) out.push(`   💸 Gastos ${ctx.ftMonthKey}: €${_fnum(mPrev.gastos)}`);
+      out.push(`   <i>Métricas del mes cerrado anterior (${ctx.ftMonthKey}):</i>`);
+      if(mPrev.fact > 0)   out.push(`   💵 Facturación: €${_fnum(mPrev.fact)}`);
+      if(mPrev.gastos > 0) out.push(`   💸 Gastos: €${_fnum(mPrev.gastos)}`);
       if(mPrev.fact > 0 || mPrev.gastos > 0){
         const sign = mPrev.beneficio >= 0 ? '+' : '-';
-        out.push(`   📊 Beneficio ${ctx.ftMonthKey}: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
+        out.push(`   📊 Beneficio: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
       }
     }
     // Impagos — solo MESES CERRADOS (mk <= ftMonthKey).
@@ -1900,7 +1920,7 @@ function _previewTraining(ctx, data, sec){
       (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const byCli = {}; let totalAll = 0; let countAll = 0;
       for(const [mk, mv] of Object.entries(ft.months||{})){
-        if(mk > ctx.ftMonthKey) continue;
+        if(mk > ctx.monthKey) continue; // incluir mes actual, excluir futuros
         (mv.entries||[]).forEach(e => {
           if(e.paid === 'pagado' || e.paid === true) return;
           const pr = parseFloat(e.price) || 0;
@@ -2016,7 +2036,7 @@ function _previewUrgent(ctx, data){
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const viejos = {}; let cnt = 0; let tot = 0;
       for(const [mk, mv] of Object.entries(ft.months||{})){
-        if(mk > ctx.ftMonthKey) continue; // solo meses cerrados
+        if(mk > ctx.monthKey) continue; // incluir mes actual, excluir futuros // solo meses cerrados
         const age = ctx.monthsAgo(mk);
         if(age == null || age < 3) continue;
         (mv.entries||[]).forEach(e => {

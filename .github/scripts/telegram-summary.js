@@ -253,7 +253,96 @@ async function buildActualidad(ctx, data, notif) {
     } catch (e) { console.error('actualidad earnings:', e.message); }
   }
 
-  // ── Noticias Andorra — RSS BonDia + Altaveu ──
+  // ── Calendario macro (Fed/ECB/CPI/NFP) — Finnhub ──
+  if (sec.macro === true) {
+    try {
+      const finProv = (data.__fin?.providers || []).find(p => p.tipo === 'finnhub' && p.activa);
+      if (!finProv) {
+        out.push(`   <i>(macro: requiere Finnhub activo)</i>`);
+      } else {
+        const days = sec.macro_days || 7;
+        const from = ctx.todayStr;
+        const to = new Date(ctx.today0); to.setUTCDate(to.getUTCDate() + days);
+        const toStr = to.toISOString().slice(0,10);
+        const r = await fetch(`https://finnhub.io/api/v1/calendar/economic?from=${from}&to=${toStr}&token=${encodeURIComponent(finProv.key)}`);
+        const d = r.ok ? await r.json() : null;
+        const events = (d?.economicCalendar || [])
+          .filter(e => (e.impact || '').toLowerCase() === 'high' && ['US','EU','EUR','ES','EA'].includes(e.country))
+          .slice(0, 5);
+        if (events.length) {
+          out.push('');
+          out.push(`   📅 Macro alta importancia ${days}d:`);
+          events.forEach(e => {
+            const dte = Math.round((new Date(e.time?.slice(0,10) + 'T00:00:00Z') - ctx.today0) / 86400000);
+            out.push(`     • ${e.time?.slice(0,10)} <i>(${dte}d)</i> · ${escape(e.country||'')} · ${escape(e.event||'')}`);
+          });
+        }
+      }
+    } catch (e) { console.error('actualidad macro:', e.message); }
+  }
+
+  // ── FX EUR/USD + crypto BTC/ETH (Coingecko, sin key) ──
+  if (sec.mercados === true) {
+    const market = [];
+    try {
+      // EUR/USD vía Frankfurter (ECB rates, gratis)
+      const r = await fetch('https://api.frankfurter.app/latest?from=EUR&to=USD');
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.rates?.USD) market.push(`EUR/USD: ${d.rates.USD.toFixed(4)}`);
+      }
+    } catch (e) {}
+    try {
+      // BTC + ETH precio + 24h % vía Coingecko
+      const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
+      if (r.ok) {
+        const d = await r.json();
+        if (d.bitcoin) {
+          const ch = d.bitcoin.usd_24h_change;
+          market.push(`BTC: $${fmt(d.bitcoin.usd)} (${ch>=0?'+':''}${ch.toFixed(1)}%)`);
+        }
+        if (d.ethereum) {
+          const ch = d.ethereum.usd_24h_change;
+          market.push(`ETH: $${fmt(d.ethereum.usd)} (${ch>=0?'+':''}${ch.toFixed(1)}%)`);
+        }
+      }
+    } catch (e) {}
+    if (market.length) {
+      out.push('');
+      out.push(`   💱 Mercados:`);
+      market.forEach(m => out.push(`     • ${m}`));
+    }
+  }
+
+  // ── Tiempo Andorra (Open-Meteo, sin key) ──
+  if (sec.tiempo === true) {
+    try {
+      // Andorra la Vella: 42.5063 N, 1.5218 E
+      const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=42.5063&longitude=1.5218&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode&timezone=Europe%2FMadrid&forecast_days=3');
+      const d = r.ok ? await r.json() : null;
+      if (d?.daily) {
+        out.push('');
+        out.push(`   🌤 Tiempo Andorra:`);
+        const codes = { 0:'☀ despejado', 1:'🌤 mayormente sol', 2:'⛅ nubes', 3:'☁ nublado',
+                        45:'🌫 niebla', 48:'🌫 niebla', 51:'🌦 llovizna', 53:'🌦 llovizna', 55:'🌦 llovizna',
+                        61:'🌧 lluvia', 63:'🌧 lluvia', 65:'🌧 lluvia fuerte',
+                        71:'🌨 nieve', 73:'🌨 nieve', 75:'🌨 nieve fuerte',
+                        80:'🌦 chubasco', 81:'🌧 chubasco', 82:'🌧 tormenta',
+                        95:'⛈ tormenta', 96:'⛈ tormenta', 99:'⛈ tormenta' };
+        const labels = ['Hoy', 'Mañana', 'Pasado'];
+        for (let i = 0; i < 3 && i < d.daily.time.length; i++) {
+          const desc = codes[d.daily.weathercode[i]] || '·';
+          const min = Math.round(d.daily.temperature_2m_min[i]);
+          const max = Math.round(d.daily.temperature_2m_max[i]);
+          const prec = d.daily.precipitation_sum[i] || 0;
+          const precStr = prec >= 1 ? ` · ${prec.toFixed(0)}mm` : '';
+          out.push(`     • ${labels[i]}: ${desc} ${min}°/${max}°${precStr}`);
+        }
+      }
+    } catch (e) { console.error('actualidad tiempo:', e.message); }
+  }
+
+  // ── Noticias Andorra — RSS BonDia + Altaveu + Diari ──
   if (sec.noticias_andorra === true) {
     try {
       const news = await fetchAndorraNews();
@@ -264,7 +353,7 @@ async function buildActualidad(ctx, data, notif) {
           out.push(`     • <a href="${escape(n.link)}">${escape(n.title)}</a> <i>(${escape(n.source)})</i>`);
         });
       } else {
-        out.push(`   <i>(noticias: feeds RSS no disponibles ahora)</i>`);
+        out.push(`   <i>(noticias: feeds RSS no respondieron)</i>`);
       }
     } catch (e) { console.error('actualidad noticias:', e.message); }
   }
@@ -672,7 +761,15 @@ function buildTraining(ctx, data, notif) {
     if (sec.clientes !== false) parts.push(`${activos} clientes`);
     if (sec.equipo   !== false) parts.push(`${equipo} en equipo`);
     if (parts.length) out.push(`   ${parts.join(' · ')}`);
-    out.push(`   <i>(referido a ${ctx.ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
+
+    // Pendiente del mes actual (KPI del dashboard, en rojo si > 0)
+    const mNow = ftMonthMetrics(ft.months?.[ctx.monthKey]);
+    if (mNow) {
+      const pendNow = mNow.fact - mNow.cobr;
+      if (pendNow > 0) {
+        out.push(`   🔴 <b>Pendiente ${ctx.monthKey}: €${fmt(pendNow)}</b> <i>(de €${fmt(mNow.fact)} facturados)</i>`);
+      }
+    }
 
     const metricsByMonth = {};
     for (const [mk, mv] of Object.entries(ft.months || {})) {
@@ -691,11 +788,12 @@ function buildTraining(ctx, data, notif) {
 
     if (sec.ingresos_mes !== false && mPrev) {
       out.push('');
-      if (mPrev.fact > 0)   out.push(`   💵 Facturación ${ctx.ftMonthKey}: €${fmt(mPrev.fact)}${deltaStr(mPrev.fact, mPrev2?.fact)}`);
-      if (mPrev.gastos > 0) out.push(`   💸 Gastos ${ctx.ftMonthKey}: €${fmt(mPrev.gastos)}${deltaStr(mPrev.gastos, mPrev2?.gastos)}`);
+      out.push(`   <i>Métricas del mes cerrado anterior (${ctx.ftMonthKey}):</i>`);
+      if (mPrev.fact > 0)   out.push(`   💵 Facturación: €${fmt(mPrev.fact)}${deltaStr(mPrev.fact, mPrev2?.fact)}`);
+      if (mPrev.gastos > 0) out.push(`   💸 Gastos: €${fmt(mPrev.gastos)}${deltaStr(mPrev.gastos, mPrev2?.gastos)}`);
       if (mPrev.fact > 0 || mPrev.gastos > 0) {
         const sign = mPrev.beneficio >= 0 ? '+' : '-';
-        out.push(`   📊 Beneficio ${ctx.ftMonthKey}: ${sign}€${fmt(Math.abs(mPrev.beneficio))}${deltaStr(mPrev.beneficio, mPrev2?.beneficio)}`);
+        out.push(`   📊 Beneficio: ${sign}€${fmt(Math.abs(mPrev.beneficio))}${deltaStr(mPrev.beneficio, mPrev2?.beneficio)}`);
       }
     }
 
@@ -718,7 +816,7 @@ function buildTraining(ctx, data, notif) {
       // byCliente: { [name]: { total, byMonth: { [mk]: amount } } }
       const byCliente = {}; let totalAll = 0; let countAll = 0;
       for (const [mk, mv] of Object.entries(ft.months||{})) {
-        if (mk > ctx.ftMonthKey) continue;
+        if (mk > ctx.monthKey) continue; // incluir mes actual, excluir futuros
         (mv.entries||[]).forEach(e => {
           if (e.paid === 'pagado' || e.paid === true) return;
           const pr = parseFloat(e.price) || 0;
@@ -863,7 +961,7 @@ function collectUrgent(ctx, data, notif) {
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const viejos = {}; let viejosCount = 0; let viejosTotal = 0;
       for (const [mk, mv] of Object.entries(ft.months||{})) {
-        if (mk > ctx.ftMonthKey) continue; // descartar mes en curso (no cerrado)
+        if (mk > ctx.monthKey) continue; // incluir mes actual, excluir futuros // descartar mes en curso (no cerrado)
         const age = ctx.monthsAgo(mk);
         if (age == null || age < 3) continue;
         (mv.entries||[]).forEach(e => {
@@ -965,7 +1063,7 @@ function buildSignals(ctx, data, notif, urgent) {
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
       const byCli = {};
       for (const [mk, mv] of Object.entries(ft.months||{})) {
-        if (mk > ctx.ftMonthKey) continue; // solo meses cerrados
+        if (mk > ctx.monthKey) continue; // incluir mes actual, excluir futuros // solo meses cerrados
         (mv.entries||[]).forEach(e => {
           if (e.paid === 'pagado' || e.paid === true) return;
           const pr = parseFloat(e.price) || 0;
