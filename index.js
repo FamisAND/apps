@@ -723,10 +723,10 @@ function importIaConfig(event){
         setTimeout(() => { resBox.style.display = 'none'; }, 4000);
       }
     } catch(err){
-      alert('Error al leer el archivo: ' + err.message);
+      toast('Error al leer el archivo: ' + err.message, 'red');
     }
   };
-  reader.onerror = () => alert('No se pudo leer el archivo');
+  reader.onerror = () => toast('No se pudo leer el archivo', 'red');
   reader.readAsText(file);
 }
 
