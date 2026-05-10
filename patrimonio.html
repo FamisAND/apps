@@ -234,9 +234,9 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
         <div style="font-weight:700;font-size:1rem">💰 Gastos</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:4px;background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:2px">
-            <button onclick="navGastosMonth(-1)" title="Mes anterior" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:.9rem;border-radius:5px" onmouseover="this.style.background='#1e2d3d'" onmouseout="this.style.background='transparent'">‹</button>
+            <button onclick="navGastosMonth(1)" title="Mes anterior" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:.9rem;border-radius:5px" onmouseover="this.style.background='#1e2d3d'" onmouseout="this.style.background='transparent'">‹</button>
             <select id="gastosMonth" onchange="renderGastos()" style="background:transparent;border:none;color:#e2e8f0;font-family:'Inter',sans-serif;font-size:.82rem;font-weight:600;padding:5px 4px;outline:none;cursor:pointer;min-width:130px;text-align:center;text-align-last:center"></select>
-            <button onclick="navGastosMonth(1)" title="Mes siguiente" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:.9rem;border-radius:5px" onmouseover="this.style.background='#1e2d3d'" onmouseout="this.style.background='transparent'">›</button>
+            <button onclick="navGastosMonth(-1)" title="Mes siguiente" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:.9rem;border-radius:5px" onmouseover="this.style.background='#1e2d3d'" onmouseout="this.style.background='transparent'">›</button>
           </div>
           <button class="btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="openCategoriasConfig()">⚙ Categorías</button>
           <button class="btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="openSinCategorizarModal()" title="Lista global de gastos sin categoría">🏷️ Sin categorizar</button>

@@ -299,7 +299,7 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 .d-kpi{background:#0d1117;border:1px solid #1e2d3d;border-radius:5px;padding:10px 12px}
 .d-kpi-lbl{color:#5a7a9a;font-size:7px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px}
 .d-kpi-val{font-size:16px;font-weight:700;color:#c9d1d9}
-.d-kpi-val.dg{color:#3fb68b}.d-kpi-val.dr{color:#f04545}.d-kpi-val.db{color:#4a9eff}.d-kpi-val.da{color:#f0a500}
+.d-kpi-val.dg{color:#3fb68b !important}.d-kpi-val.dr{color:#f04545 !important}.d-kpi-val.db{color:#4a9eff !important}.d-kpi-val.da{color:#f0a500 !important}
 .d-kpi-sub{font-size:8px;color:#5a7a9a;margin-top:2px}
 .d-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .d-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
