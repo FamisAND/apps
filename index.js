@@ -364,6 +364,10 @@ function computeFacKpi(){
 
 function askLogout(){
   if(!confirm('Esto borra el token de ESTE dispositivo. Tus datos en GitHub no se tocan. ¿Continuar?')) return;
+  // Reset flags de autenticación
+  _configAuthenticated = false;
+  _notifAuthenticated = false;
+  _authPendingCallback = null;
   GitHubSync.clearCredentials();
   location.reload();
 }
@@ -777,15 +781,70 @@ async function testIaApi(){
 
 // ════════════════════════════════════════════════════════════════════
 // MENÚ CONFIGURACIÓN (agrupa: notificaciones, APIs, idioma, resync)
+// La contraseña maestra (antes solo de Notificaciones) ahora protege
+// TODO el menú: una sola autenticación, todo lo de dentro accesible.
 // ════════════════════════════════════════════════════════════════════
+let _configAuthenticated = false;
+let _authPendingCallback = null;
+
 function openConfigMenu(){
+  _requireAuth(() => _showConfigMenuPanel());
+}
+
+function _showConfigMenuPanel(){
   document.getElementById('menuScreen').classList.remove('active');
   document.getElementById('configMenuModal').style.display = 'flex';
   _refreshCfgVoiceLangSub();
 }
+
 function closeConfigMenu(){
   document.getElementById('configMenuModal').style.display = 'none';
   document.getElementById('menuScreen').classList.add('active');
+}
+
+// Wrapper de autenticación: pide password si aún no está autenticado.
+// Tras OK ejecuta el callback. Si ya auth, ejecuta directo.
+async function _requireAuth(callback){
+  if (_configAuthenticated){
+    callback();
+    return;
+  }
+  _authPendingCallback = callback;
+  // Reusa el modal de gate de Notificaciones (notifModal)
+  document.getElementById('menuScreen').classList.remove('active');
+  document.getElementById('notifModal').style.display = 'flex';
+  document.getElementById('notifGate').style.display = 'block';
+  document.getElementById('notifForm').style.display = 'none';
+  document.getElementById('notifGateMsg').textContent = '';
+  document.getElementById('notifPwd').value = '';
+  document.getElementById('notifPwd2').value = '';
+
+  // ¿Existe ya password configurada en __security?
+  let sec = null;
+  try {
+    sec = await GitHubSync.fetchSecuritySection();
+  } catch(e){
+    document.getElementById('notifGateMsg').textContent = 'Error: ' + e.message;
+    document.getElementById('notifGateMsg').style.color = '#fca5a5';
+    return;
+  }
+  const hasPwd = sec && sec.notif_pwd;
+  const info = document.getElementById('notifGateInfo');
+  const pwd2Lbl = document.getElementById('notifPwd2Lbl');
+  const pwd2 = document.getElementById('notifPwd2');
+  const btn = document.getElementById('notifGateBtn');
+  if(hasPwd){
+    info.textContent = 'Introduce la contraseña maestra para acceder a Configuración (Notificaciones, APIs, etc.).';
+    pwd2Lbl.style.display = 'none';
+    pwd2.style.display = 'none';
+    btn.textContent = 'Entrar';
+  } else {
+    info.textContent = 'Primera vez. Crea una contraseña maestra (mínimo 6 caracteres). Protegerá toda la Configuración. Si la pierdes, la recuperas editando data.json en GitHub.';
+    pwd2Lbl.style.display = 'block';
+    pwd2.style.display = 'block';
+    btn.textContent = 'Crear';
+  }
+  setTimeout(() => document.getElementById('notifPwd').focus(), 50);
 }
 function _refreshCfgVoiceLangSub(){
   const el = document.getElementById('cfgVoiceLangSub');
@@ -799,6 +858,7 @@ function _refreshCfgVoiceLangSub(){
 // MODAL APIs (sub-pestañas IA y Financieras)
 // ════════════════════════════════════════════════════════════════════
 function openApisModal(){
+  closeConfigMenu(); // cerrar el panel del menú config (estábamos ahí)
   document.getElementById('apisModal').style.display = 'flex';
   switchApisTab('ia');
   // Re-render IA list dentro del nuevo modal
@@ -809,8 +869,12 @@ function openApisModal(){
 }
 function closeApisModal(){
   document.getElementById('apisModal').style.display = 'none';
-  // Si venimos del menú config, no volver al config — vuelve al menú
-  document.getElementById('menuScreen').classList.add('active');
+  // Volver al menú Configuración si seguimos autenticados; si no, al principal
+  if(_configAuthenticated){
+    _showConfigMenuPanel();
+  } else {
+    document.getElementById('menuScreen').classList.add('active');
+  }
 }
 function switchApisTab(tab){
   ['ia','fin'].forEach(t => {
@@ -1131,48 +1195,24 @@ async function _notifHash(pwd){
 
 let _notifAuthenticated = false;
 
+// Abrir directo el form de Notificaciones desde el menú Config
+// (ya estamos autenticados, no se vuelve a pedir password).
 async function openNotifModal(){
-  // Reset state
-  _notifAuthenticated = false;
-  document.getElementById('menuScreen').classList.remove('active');
+  _notifAuthenticated = true; // ya pasamos el gate de config
+  closeConfigMenu();
   document.getElementById('notifModal').style.display = 'flex';
-  document.getElementById('notifGate').style.display = 'block';
-  document.getElementById('notifForm').style.display = 'none';
-  document.getElementById('notifGateMsg').textContent = '';
-  document.getElementById('notifPwd').value = '';
-  document.getElementById('notifPwd2').value = '';
-
-  // Comprobar si ya hay password configurada
-  let sec = null;
-  try {
-    sec = await GitHubSync.fetchSecuritySection();
-  } catch(e){
-    document.getElementById('notifGateMsg').textContent = 'Error al leer __security: ' + e.message;
-    document.getElementById('notifGateMsg').style.color = '#fca5a5';
-    return;
-  }
-  const hasPwd = sec && sec.notif_pwd;
-  const info = document.getElementById('notifGateInfo');
-  const pwd2Lbl = document.getElementById('notifPwd2Lbl');
-  const pwd2 = document.getElementById('notifPwd2');
-  const btn = document.getElementById('notifGateBtn');
-  if(hasPwd){
-    info.textContent = 'Introduce la contraseña maestra para configurar Telegram.';
-    pwd2Lbl.style.display = 'none';
-    pwd2.style.display = 'none';
-    btn.textContent = 'Entrar';
-  } else {
-    info.textContent = 'Primera vez. Crea una contraseña maestra (mínimo 6 caracteres). Solo tú la sabrás. Si la pierdes, la recuperas editando data.json en GitHub.';
-    pwd2Lbl.style.display = 'block';
-    pwd2.style.display = 'block';
-    btn.textContent = 'Crear';
-  }
-  setTimeout(() => document.getElementById('notifPwd').focus(), 50);
+  document.getElementById('notifGate').style.display = 'none';
+  await _notifShowForm();
 }
 
 function closeNotifModal(){
   document.getElementById('notifModal').style.display = 'none';
-  document.getElementById('menuScreen').classList.add('active');
+  // Si venimos del menú Configuración, volver allí; si no, al menú principal
+  if(_configAuthenticated){
+    _showConfigMenuPanel();
+  } else {
+    document.getElementById('menuScreen').classList.add('active');
+  }
 }
 
 async function notifGateSubmit(){
@@ -1188,17 +1228,23 @@ async function notifGateSubmit(){
   const hash = await _notifHash(pwd);
   if(hasPwd){
     if(hash !== sec.notif_pwd){ msg.textContent = 'Contraseña incorrecta'; return; }
-    _notifAuthenticated = true;
-    await _notifShowForm();
   } else {
     if(pwd !== pwd2){ msg.textContent = 'Las contraseñas no coinciden'; return; }
     try {
       await GitHubSync.updateSecuritySection(s => { s.notif_pwd = hash; return s; });
     } catch(e){ msg.textContent = 'Error guardando: ' + e.message; return; }
-    _notifAuthenticated = true;
-    msg.style.color = '#4ade80';
-    msg.textContent = '✓ Contraseña creada';
-    setTimeout(() => _notifShowForm(), 600);
+  }
+  // Autenticado correctamente
+  _configAuthenticated = true;
+  _notifAuthenticated = true;
+  document.getElementById('notifModal').style.display = 'none';
+  // Ejecutar callback pendiente (típicamente abrir menú config)
+  if(_authPendingCallback){
+    const cb = _authPendingCallback;
+    _authPendingCallback = null;
+    cb();
+  } else {
+    _showConfigMenuPanel();
   }
 }
 
