@@ -474,13 +474,19 @@ function iaLoadProviders(){
 function iaSaveProviders(list){
   localStorage.setItem(IA_PROVIDERS_STORAGE, JSON.stringify(list));
   // Sync a data.json __ia para que el GitHub Action de Telegram pueda
-  // usar tus mismas keys (para AI insight). Se hace en background, sin
-  // bloquear; si falla, los providers siguen guardados localmente.
+  // usar tus mismas keys (para AI insight). Se hace en background con
+  // feedback visible.
   if(window.GitHubSync && GitHubSync.updateSection && GitHubSync.isLoggedIn()){
+    if(typeof toast === 'function') toast('Sincronizando IA APIs a GitHub...', 'info');
     GitHubSync.updateSection('__ia', () => ({
       providers: list,
       updated_at: new Date().toISOString()
-    })).catch(err => console.warn('[__ia sync]', err.message));
+    })).then(() => {
+      if(typeof toast === 'function') toast('✓ IA APIs sincronizadas (Telegram puede usarlas)');
+    }).catch(err => {
+      console.warn('[__ia sync]', err);
+      if(typeof toast === 'function') toast('⚠ IA sync falló: ' + err.message, 'red');
+    });
   }
 }
 function _uid(){ return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }

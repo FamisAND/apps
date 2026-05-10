@@ -177,25 +177,45 @@ function sparkline(values) {
 }
 
 // Override: en weekly todas las opciones interesantes están ON, sin importar la
-// config del user (que es para el daily). Esto permite que el weekly sea
-// siempre comprehensive sin que el user toque nada extra.
+// config del user (que es para el daily). NOTAS:
+// - Sparklines (sparkline patrimonio + pnl_sparkline options) excluidas del
+//   weekly auto — el user las consideró feas. Si las quiere, las activa
+//   manualmente desde el toggle del daily.
+// - top_clientes en FT excluido del weekly — daba info poco útil (€0).
 function _weeklyAllSections() {
   return {
-    patrimonio: { enabled:true, total:true, delta:true, objetivo:true, sparkline:true,
+    patrimonio: { enabled:true, total:true, delta:true, objetivo:true, sparkline:false,
       gastos_mes:true, gastos_avg:true, gastos_avg_months:6,
       ingresos_mes:true, ingresos_avg:true, ingresos_avg_months:6,
       distribucion:true, top_mover:true, ytd_pct:true },
     options: { enabled:true, count:true, expiring:true, expiring_days:7,
       lista_activas:true, pnl_mes:true, pnl_avg:true, pnl_avg_months:6,
       win_rate_mes:true, best_worst:true, risk_total:true, net_liq:true,
-      closed_today:true, pnl_sparkline:true },
+      closed_today:true, pnl_sparkline:false },
     training: { enabled:true, clientes:true, equipo:true,
       ingresos_mes:true, ingresos_avg:true, ingresos_avg_months:6,
-      impagos:true, top_servicios:true, top_clientes:true,
-      sesiones_hoy:true, stock_critico:true },
+      impagos:true, top_servicios:true, top_clientes:false,
+      sesiones_hoy:false, stock_critico:true },
     facturas: { enabled:true, pendientes:true, vencidas:true, total_mes:true, top_cliente:true }
   };
 }
+
+// ─── computeEntry: fórmula REAL del dashboard de options ───
+// Replica options.html computeEntry() para tener totalNeto correcto.
+// totalNeto está en "escala prima" ($/100). Para mostrar en $ reales: ×100.
+function computeEntry(e) {
+  if (!e) return e;
+  const contracts = e.contracts || 1;
+  const _deb = e.pDebito != null ? Math.abs(e.pDebito) : 0;
+  const _pNetoPerCtr = e.pCredito != null ? (e.pCredito - _deb - (e.pCierre || 0)) * 100 : null;
+  const totalNeto = e.totalNetoOvr != null ? e.totalNetoOvr :
+    (_pNetoPerCtr != null ? _pNetoPerCtr * contracts - (e.comi || 0) / 100 : null);
+  return { ...e, totalNeto };
+}
+
+// Strats de OPTIONS que se cuentan como "risk total" (excluye ACC = acciones).
+// Match con options.html line ~3733 (default si no hay config user).
+const RISK_STRATS = ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE','PMCC'];
 
 // ─── Generación principal ───
 function generateSummary(data, notif, isWeekly) {
@@ -264,49 +284,76 @@ function generateSummary(data, notif, isWeekly) {
             }
           }
 
-          // Computar totales mensuales de gastos para reuso (mes + media)
-          let gastosTotalMes = 0;
-          const gastosByMonth = {}; // { 'YYYY-MM': total }
+          // ── GASTOS de patrimonio ──
+          // Replicar fórmula real del dashboard:
+          //   - Solo importe < 0 (positivos son ingresos/transferencias entrantes)
+          //   - Saltar excluido === true
+          //   - Para archivos tipo='comun' contar mitad ("mi parte")
+          //   - Para individual contar completo
+          //   - id de categoría sin asignar = 'sin_cat'
+          function _patGastosResumenMes(monthMd) {
+            if (!monthMd || !monthMd.transacciones) return null;
+            const archivos = monthMd.archivos || [];
+            const archMap = {};
+            archivos.forEach(a => archMap[a.id] = a);
+            let totalMiParte = 0;
+            const porCat = {};
+            let nReal = 0;
+            (monthMd.transacciones||[]).forEach(t => {
+              if (t.excluido) return;
+              const imp = parseFloat(t.importe);
+              if (!Number.isFinite(imp) || imp >= 0) return; // solo gastos
+              nReal++;
+              const arch = archMap[t.archivoId];
+              const tipo = arch?.tipo || 'individual';
+              const importeAbs = Math.abs(imp);
+              const miParte = (tipo === 'comun') ? importeAbs / 2 : importeAbs;
+              totalMiParte += miParte;
+              const catId = t.categoriaId || 'sin_cat';
+              porCat[catId] = (porCat[catId]||0) + miParte;
+            });
+            return { totalMiParte, porCat, nReal };
+          }
+
+          const gastosByMonth = {}; // { 'YYYY-MM': totalMiParte }
+          let gastosResumenActual = null;
           if (p?.gastos?.meses) {
             for (const [mk, md] of Object.entries(p.gastos.meses)) {
-              const sum = (md.transacciones||[]).reduce((s,t) => s + Math.abs(parseFloat(t.importe)||0), 0);
-              gastosByMonth[mk] = sum;
-              if (mk === monthKey) gastosTotalMes = sum;
+              const r = _patGastosResumenMes(md);
+              if (r) {
+                gastosByMonth[mk] = r.totalMiParte;
+                if (mk === monthKey) gastosResumenActual = r;
+              }
             }
           }
 
-          if (patSec.gastos_mes === true) {
-            const txs = p?.gastos?.meses?.[monthKey]?.transacciones || [];
-            if (txs.length) {
-              const byCat = {};
-              txs.forEach(t => {
-                const cid = t.categoriaId || '_sin';
-                byCat[cid] = (byCat[cid]||0) + Math.abs(parseFloat(t.importe)||0);
-              });
-              const cats = p?.gastos?.categorias || [];
-              const top3 = Object.entries(byCat).sort((a,b) => b[1]-a[1]).slice(0, 3);
-              block.push(`   💸 Gastos ${monthKey}: €${fmt(gastosTotalMes)} (${txs.length} mov)`);
-              top3.forEach(([cid, amt]) => {
-                const cat = cats.find(c => c.id === cid);
-                block.push(`     • ${escape(cat ? cat.name : 'Sin categoría')}: €${fmt(amt)}`);
-              });
-            }
+          if (patSec.gastos_mes === true && gastosResumenActual && gastosResumenActual.nReal > 0) {
+            const cats = p?.gastos?.categorias || [];
+            const catMap = {}; cats.forEach(c => catMap[c.id] = c);
+            catMap['sin_cat'] = { name: 'Sin categorizar' };
+            const top3 = Object.entries(gastosResumenActual.porCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
+            block.push(`   💸 Gastos ${monthKey}: €${fmt(gastosResumenActual.totalMiParte)} (${gastosResumenActual.nReal} mov · mi parte)`);
+            top3.forEach(([cid, amt]) => {
+              const cat = catMap[cid] || { name: cid };
+              block.push(`     • ${escape(cat.name)}: €${fmt(amt)}`);
+            });
           }
 
           if (patSec.gastos_avg === true) {
             const N = patSec.gastos_avg_months || 6;
-            // Tomar últimos N meses anteriores al actual (excluir mes en curso para no sesgar)
             const monthsSorted = Object.keys(gastosByMonth).sort();
             const idxNow = monthsSorted.indexOf(monthKey);
             const window = idxNow >= 0
               ? monthsSorted.slice(Math.max(0, idxNow - N), idxNow)
               : monthsSorted.slice(-N);
-            if (window.length) {
-              const avg = window.reduce((s,k) => s + gastosByMonth[k], 0) / window.length;
-              const cmpStr = gastosTotalMes > 0
-                ? ` (este mes €${fmt(gastosTotalMes)}, ${gastosTotalMes>=avg?'+':'-'}${Math.abs(((gastosTotalMes-avg)/avg)*100).toFixed(0)}%)`
+            const positive = window.filter(k => gastosByMonth[k] > 0);
+            if (positive.length) {
+              const avg = positive.reduce((s,k) => s + gastosByMonth[k], 0) / positive.length;
+              const tNow = gastosResumenActual?.totalMiParte || 0;
+              const cmpStr = tNow > 0
+                ? ` (este mes €${fmt(tNow)}, ${tNow>=avg?'+':'-'}${Math.abs(((tNow-avg)/avg)*100).toFixed(0)}%)`
                 : '';
-              block.push(`   📈 Gastos media ${window.length}m: €${fmt(avg)}/mes${cmpStr}`);
+              block.push(`   📈 Gastos media ${positive.length}m: €${fmt(avg)}/mes${cmpStr}`);
             }
           }
 
@@ -349,6 +396,7 @@ function generateSummary(data, notif, isWeekly) {
           }
 
           if (patSec.distribucion === true) {
+            block.push(`   📊 Distribución:`);
             (p.sections||[]).forEach(sec => {
               if (sec.id === 's_ingresos' || sec.type === 'ingresos') return;
               let secTotal = 0;
@@ -358,7 +406,9 @@ function generateSummary(data, notif, isWeekly) {
               });
               if (secTotal > 0 && totalNow > 0) {
                 const pct = (secTotal/totalNow*100).toFixed(0);
-                block.push(`     ${escape(sec.name)}: €${fmt(secTotal)} (${pct}%)`);
+                // patrimonio guarda nombre de sección en `title`, no `name`
+                const secName = sec.title || sec.name || sec.id || 'Sección';
+                block.push(`     • ${escape(secName)}: €${fmt(secTotal)} (${pct}%)`);
               }
             });
           }
@@ -390,8 +440,10 @@ function generateSummary(data, notif, isWeekly) {
   if (optSec.enabled !== false) {
     try {
       const arr = parseMaybe(data?.options?.ot_activas);
-      const hist = parseMaybe(data?.options?.ot_hist);
+      const histRaw = parseMaybe(data?.options?.ot_hist);
       const snaps = parseMaybe(data?.options?.ot_snaps);
+      // ── ENRIQUECER hist con totalNeto (campo computado, no almacenado) ──
+      const hist = Array.isArray(histRaw) ? histRaw.map(computeEntry) : null;
       if (Array.isArray(arr)) {
         const block = [];
 
@@ -488,9 +540,16 @@ function generateSummary(data, notif, isWeekly) {
         }
 
         if (optSec.risk_total === true) {
+          // Replicar dashboard: solo cuentan risk las strats de opciones
+          // (NP/PCS/CC/CCS/DPS/IC/BWB/JL/112/0DTE/PMCC). ACC = acciones,
+          // capital invertido pero no "risk en juego" en el sentido del dashboard.
           let riskTot = 0;
-          arr.forEach(a => { riskTot += parseFloat(a.maxRisk)||0; });
-          if (riskTot > 0) block.push(`   💼 Risk total: $${fmt(riskTot)}`);
+          arr.forEach(a => {
+            if (RISK_STRATS.includes(a.strat)) {
+              riskTot += parseFloat(a.maxRisk) || 0;
+            }
+          });
+          if (riskTot > 0) block.push(`   💼 Risk total (opciones): $${fmt(riskTot)}`);
         }
 
         if (optSec.closed_today === true && Array.isArray(hist)) {
@@ -525,106 +584,147 @@ function generateSummary(data, notif, isWeekly) {
   }
 
   // ─── FULL TRAINING ───
+  // Lógica especial: el "mes en curso" suele estar incompleto (gastos/remesas
+  // todavía sin meter), así que las métricas se refieren al MES ANTERIOR
+  // y se comparan contra el anterior anterior. Las medias también
+  // excluyen el mes en curso.
   const ftSec = S.training || {};
   if (ftSec.enabled !== false) {
     try {
       const ft = parseMaybe(data?.training?.ft_v4);
       if (ft) {
         const block = [];
+
+        // Mes objetivo = mes anterior al actual
+        const [yNow, mNow] = monthKey.split('-').map(n => parseInt(n,10));
+        const dPrev = new Date(Date.UTC(yNow, mNow - 1, 1)); dPrev.setUTCMonth(dPrev.getUTCMonth() - 1);
+        const ftMonthKey = `${dPrev.getUTCFullYear()}-${String(dPrev.getUTCMonth()+1).padStart(2,'0')}`;
+        const dPrev2 = new Date(dPrev); dPrev2.setUTCMonth(dPrev2.getUTCMonth() - 1);
+        const ftPrevMonthKey = `${dPrev2.getUTCFullYear()}-${String(dPrev2.getUTCMonth()+1).padStart(2,'0')}`;
+
         const activos = (ft.clients||[]).filter(c => c.active).length;
         const equipo  = (ft.team||[]).filter(t => t.active !== false).length;
         const parts = [];
         if (ftSec.clientes !== false) parts.push(`${activos} clientes`);
         if (ftSec.equipo !== false)   parts.push(`${equipo} en equipo`);
         if (parts.length) block.push(`💪 <b>Full Training</b>: ${parts.join(' · ')}`);
+        block.push(`   <i>(referido a ${ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
 
-        const m = ft.months?.[monthKey];
-
-        // Computar facturación por mes (todos los meses de ft.months)
-        const factByMonth = {}; // { 'YYYY-MM': { fact, cobr } }
-        for (const [mk, mv] of Object.entries(ft.months || {})) {
-          let f = 0, c = 0;
+        // ── Fact + gastos por mes ──
+        function _ftMonthMetrics(mv) {
+          if (!mv) return null;
+          let fact = 0, cobr = 0;
           (mv.entries||[]).forEach(e => {
             let et = 0;
             (e.lines||[]).forEach(l => { et += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-            f += et;
-            if (e.paid) c += et;
+            fact += et;
+            if (e.paid) cobr += et;
           });
           (mv.masajes||[]).forEach(mas => {
             const t = (parseFloat(mas.qty)||0) * (parseFloat(mas.price)||0);
-            f += t;
-            if (mas.paid) c += t;
+            fact += t;
+            if (mas.paid) cobr += t;
           });
-          factByMonth[mk] = { fact: f, cobr: c };
+          // Excluye 'dividendos' (no es gasto operativo) — match dashboard
+          const gastos = (mv.gastos||[])
+            .filter(g => g.cat !== 'dividendos')
+            .reduce((s,g) => s + (parseFloat(g.amount)||0), 0);
+          const beneficio = fact - gastos;
+          return { fact, cobr, gastos, beneficio };
         }
-        const factMes = factByMonth[monthKey] || { fact: 0, cobr: 0 };
 
-        if (ftSec.ingresos_mes === true && factMes.fact > 0) {
-          const pctCobr = factMes.fact ? (factMes.cobr / factMes.fact * 100).toFixed(0) : 0;
-          block.push(`   💵 Facturado ${monthKey}: €${fmt(factMes.fact)} (€${fmt(factMes.cobr)} cobrado · ${pctCobr}%)`);
+        const metricsByMonth = {};
+        for (const [mk, mv] of Object.entries(ft.months || {})) {
+          const r = _ftMonthMetrics(mv);
+          if (r) metricsByMonth[mk] = r;
+        }
+        const mPrev  = metricsByMonth[ftMonthKey];
+        const mPrev2 = metricsByMonth[ftPrevMonthKey];
+
+        // Δ helper: porcentaje vs mes anterior anterior
+        function _deltaStr(now, prev) {
+          if (prev == null || prev === 0) return '';
+          const diff = now - prev;
+          const pct = (diff / Math.abs(prev) * 100);
+          return ` (${diff>=0?'+':''}${pct.toFixed(0)}% vs ${ftPrevMonthKey})`;
         }
 
+        // ── Las 3 métricas del mes anterior con Δ vs anterior anterior ──
+        if (ftSec.ingresos_mes !== false && mPrev) {
+          if (mPrev.fact > 0) {
+            block.push(`   💵 Facturación ${ftMonthKey}: €${fmt(mPrev.fact)}${_deltaStr(mPrev.fact, mPrev2?.fact)}`);
+          }
+          if (mPrev.gastos > 0) {
+            block.push(`   💸 Gastos ${ftMonthKey}: €${fmt(mPrev.gastos)}${_deltaStr(mPrev.gastos, mPrev2?.gastos)}`);
+          }
+          if (mPrev.fact > 0 || mPrev.gastos > 0) {
+            const sign = mPrev.beneficio >= 0 ? '+' : '-';
+            block.push(`   📊 Beneficio ${ftMonthKey}: ${sign}€${fmt(Math.abs(mPrev.beneficio))}${_deltaStr(mPrev.beneficio, mPrev2?.beneficio)}`);
+          }
+        }
+
+        // ── Beneficio medio últimos N meses (excluyendo mes actual) ──
         if (ftSec.ingresos_avg === true) {
           const N = ftSec.ingresos_avg_months || 6;
-          const monthsSorted = Object.keys(factByMonth).sort();
+          const monthsSorted = Object.keys(metricsByMonth).sort();
           const idxNow = monthsSorted.indexOf(monthKey);
           const window = idxNow >= 0
             ? monthsSorted.slice(Math.max(0, idxNow - N), idxNow)
             : monthsSorted.slice(-N);
-          const positive = window.map(k => factByMonth[k].fact).filter(v => v > 0);
-          if (positive.length) {
-            const avg = positive.reduce((s,v) => s+v, 0) / positive.length;
-            const cmpStr = factMes.fact > 0
-              ? ` (este mes €${fmt(factMes.fact)}, ${factMes.fact>=avg?'+':'-'}${Math.abs(((factMes.fact-avg)/avg)*100).toFixed(0)}%)`
-              : '';
-            block.push(`   📈 Facturación media ${positive.length}m: €${fmt(avg)}/mes${cmpStr}`);
+          if (window.length) {
+            const benValues = window.map(k => metricsByMonth[k].beneficio);
+            const avgBen = benValues.reduce((s,v) => s+v, 0) / benValues.length;
+            block.push(`   📈 Beneficio medio ${window.length}m: ${avgBen>=0?'+':'-'}€${fmt(Math.abs(avgBen))}/mes`);
+            const factPos = window.map(k => metricsByMonth[k].fact).filter(v => v > 0);
+            if (factPos.length) {
+              const avgFact = factPos.reduce((s,v) => s+v, 0) / factPos.length;
+              block.push(`   📈 Facturación media ${factPos.length}m: €${fmt(avgFact)}/mes`);
+            }
           }
         }
 
-        if (ftSec.impagos !== false && m) {
-          const imp = (m.entries||[]).filter(e => e.paid === false).length;
-          if (imp > 0) block.push(`   ⚠ ${imp} impagos en ${monthKey}`);
-        }
-
-        if (ftSec.top_servicios === true && m) {
-          const services = ft.services || [];
-          const byService = {};
-          (m.entries||[]).forEach(e => {
-            (e.lines||[]).forEach(l => {
-              const lt = (parseFloat(l.qty)||0) * (parseFloat(l.price)||0);
-              byService[l.serviceId] = (byService[l.serviceId]||0) + lt;
-            });
-          });
-          const topSrv = Object.entries(byService).sort((a,b) => b[1]-a[1]).slice(0, 3);
-          if (topSrv.length) {
-            block.push(`   🏆 Top servicios:`);
-            topSrv.forEach(([sid, total]) => {
-              const svc = services.find(s => s.id === sid);
-              block.push(`     • ${escape(svc ? svc.name : sid)}: €${fmt(total)}`);
-            });
+        // ── Impagos del mes anterior + cantidad ──
+        if (ftSec.impagos !== false) {
+          const mvPrev = ft.months?.[ftMonthKey];
+          if (mvPrev) {
+            const imps = (mvPrev.entries||[]).filter(e => e.paid === false);
+            if (imps.length > 0) {
+              const totalImp = imps.reduce((s,e) => {
+                let t = 0;
+                (e.lines||[]).forEach(l => { t += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
+                return s + t;
+              }, 0);
+              block.push(`   ⚠ ${imps.length} impagos en ${ftMonthKey}: €${fmt(totalImp)}`);
+            }
           }
         }
 
-        if (ftSec.top_clientes === true && m) {
-          const clients = ft.clients || [];
-          const byClient = {};
-          (m.entries||[]).forEach(e => {
-            let entryTotal = 0;
-            (e.lines||[]).forEach(l => { entryTotal += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-            byClient[e.clientId] = (byClient[e.clientId]||0) + entryTotal;
-          });
-          const top = Object.entries(byClient).sort((a,b) => b[1]-a[1]).slice(0, 3);
-          if (top.length) {
-            block.push(`   👥 Top clientes:`);
-            top.forEach(([cid, total]) => {
-              const cli = clients.find(c => c.id === cid);
-              block.push(`     • ${escape(cli ? cli.name : cid)}: €${fmt(total)}`);
+        // ── Top servicios del mes anterior ──
+        if (ftSec.top_servicios === true) {
+          const mvPrev = ft.months?.[ftMonthKey];
+          if (mvPrev) {
+            const services = ft.services || [];
+            const byService = {};
+            (mvPrev.entries||[]).forEach(e => {
+              (e.lines||[]).forEach(l => {
+                const lt = (parseFloat(l.qty)||0) * (parseFloat(l.price)||0);
+                byService[l.serviceId] = (byService[l.serviceId]||0) + lt;
+              });
             });
+            const topSrv = Object.entries(byService).sort((a,b) => b[1]-a[1]).slice(0, 3);
+            if (topSrv.length) {
+              block.push(`   🏆 Top servicios ${ftMonthKey}:`);
+              topSrv.forEach(([sid, total]) => {
+                const svc = services.find(s => s.id === sid);
+                block.push(`     • ${escape(svc ? svc.name : sid)}: €${fmt(total)}`);
+              });
+            }
           }
         }
 
+        // ── Sesiones HOY (real time) ──
         if (ftSec.sesiones_hoy === true) {
-          const monthM = ft.months?.[monthKey];
+          const monthM = ft.months?.[monthKey] || ft.months?.[ftMonthKey];
           if (monthM) {
             let sesHoy = 0;
             (monthM.masajes||[]).forEach(mas => { if (mas.fecha === todayStr) sesHoy++; });
@@ -633,6 +733,7 @@ function generateSummary(data, notif, isWeekly) {
           }
         }
 
+        // ── Stock crítico (real time) ──
         if (ftSec.stock_critico === true) {
           const critico = (ft.stock||[]).filter(s => {
             const total = Object.values(s.sizes||{}).reduce((sum,n) => sum + (parseInt(n)||0), 0);
@@ -646,6 +747,9 @@ function generateSummary(data, notif, isWeekly) {
             });
           }
         }
+
+        // top_clientes desactivado: el campo clientId en lines no es fiable.
+        // Si lo necesitamos algún día, refactorizar siguiendo lógica del dashboard.
 
         if (block.length) { lines.push(''); lines.push(...block); }
       }
