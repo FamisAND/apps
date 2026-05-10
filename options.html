@@ -5883,7 +5883,7 @@ function _renderIvScatter(canvasId, data, mode){
         x:{title:{display:true,text:xLabel,color:C.text,font:{size:8,family:'Courier New'}},
            ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid},min:0},
         y:{title:{display:true,text:'TP% obtenido',color:C.text,font:{size:8,family:'Courier New'}},
-           ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>v+'%'},grid:{color:C.grid},min:-100,max:100}
+           ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>v+'%'},grid:{color:C.grid}}
       }
     }
   });
@@ -5941,7 +5941,7 @@ function _renderTimeScatter(canvasId, data){
         x:{title:{display:true,text:'Días en posición',color:C.text,font:{size:8,family:'Courier New'}},
            ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid},min:0},
         y:{title:{display:true,text:'ProfitOp%',color:C.text,font:{size:8,family:'Courier New'}},
-           ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>v+'%'},grid:{color:C.grid},min:-100,max:100}
+           ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>v+'%'},grid:{color:C.grid}}
       }
     }
   });
@@ -6360,7 +6360,7 @@ function renderStratScatter(){
         return [` ${p._sg}`,` ${p._n} ops · WR: ${p._wr.toFixed(0)}%`,` DTE: ${ctx.parsed.x}d`,` PO%: ${ctx.parsed.y.toFixed(1)}%`,` P&L: $${(p._pnl*100).toFixed(0)}`]; }}}
     }, scales:{
       x:{title:{display:true,text:'DTE medio',color:C.text,font:{size:8,family:'Courier New'}},ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid},min:0},
-      y:{title:{display:true,text:'ProfitOp% medio',color:C.text,font:{size:8,family:'Courier New'}},ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>v+'%'},grid:{color:C.grid},min:-100,max:100}
+      y:{title:{display:true,text:'ProfitOp% medio',color:C.text,font:{size:8,family:'Courier New'}},ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>v+'%'},grid:{color:C.grid}}
     }}});
 }
 
