@@ -532,8 +532,11 @@ function closeIaApisModal(){
 }
 
 function iaRenderApisList(){
+  // También refresca el nuevo panel (apisModal) si existe
+  if(typeof _renderIaListV2 === 'function') _renderIaListV2();
   const list = iaLoadProviders();
   const cont = document.getElementById('iaApisList');
+  if(!cont) return; // ya no existe el modal viejo si se quitó
   if(!list.length){
     cont.innerHTML = '<div class="ia-api-empty">No hay APIs configuradas todavía.<br>Añade una pulsando "+ Añadir API"</div>';
     return;
@@ -773,6 +776,189 @@ async function testIaApi(){
 // cadena con fallback.
 
 // ════════════════════════════════════════════════════════════════════
+// MENÚ CONFIGURACIÓN (agrupa: notificaciones, APIs, idioma, resync)
+// ════════════════════════════════════════════════════════════════════
+function openConfigMenu(){
+  document.getElementById('menuScreen').classList.remove('active');
+  document.getElementById('configMenuModal').style.display = 'flex';
+  _refreshCfgVoiceLangSub();
+}
+function closeConfigMenu(){
+  document.getElementById('configMenuModal').style.display = 'none';
+  document.getElementById('menuScreen').classList.add('active');
+}
+function _refreshCfgVoiceLangSub(){
+  const el = document.getElementById('cfgVoiceLangSub');
+  if(!el) return;
+  const cur = (typeof getVoiceLang === 'function') ? getVoiceLang() : 'es-ES';
+  const found = (VOICE_LANGS||[]).find(l => l.code === cur);
+  el.textContent = 'Actual: ' + (found ? found.label + ' (' + found.code + ')' : cur);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MODAL APIs (sub-pestañas IA y Financieras)
+// ════════════════════════════════════════════════════════════════════
+function openApisModal(){
+  document.getElementById('apisModal').style.display = 'flex';
+  switchApisTab('ia');
+  // Re-render IA list dentro del nuevo modal
+  iaMigrateLegacyKeys();
+  _renderIaListV2();
+  // Cargar Financieras
+  _loadFinApisToForm();
+}
+function closeApisModal(){
+  document.getElementById('apisModal').style.display = 'none';
+  // Si venimos del menú config, no volver al config — vuelve al menú
+  document.getElementById('menuScreen').classList.add('active');
+}
+function switchApisTab(tab){
+  ['ia','fin'].forEach(t => {
+    const btn = document.querySelector(`.apis-tab[data-apis-tab="${t}"]`);
+    const panel = document.getElementById('apisTab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if(btn){
+      const active = (t === tab);
+      btn.style.color = active ? '#22d3ee' : '#0e7490';
+      btn.style.borderBottomColor = active ? '#22d3ee' : 'transparent';
+      btn.classList.toggle('active', active);
+    }
+    if(panel) panel.style.display = (t === tab) ? 'block' : 'none';
+  });
+}
+
+// Re-render lista IA en el panel embebido (mismo contenido que iaApisModal antiguo)
+function _renderIaListV2(){
+  const list = iaLoadProviders();
+  const cont = document.getElementById('iaApisListV2');
+  if(!cont) return;
+  if(!list.length){
+    cont.innerHTML = '<div class="ia-api-empty">No hay APIs configuradas todavía.<br>Añade una pulsando "+ Añadir API"</div>';
+    return;
+  }
+  const tipoLabels = { groq:'GROQ', openrouter:'OPENROUTER', gemini:'GEMINI' };
+  cont.innerHTML = list.map((p, idx) => `
+    <div class="ia-api-item" draggable="true" data-id="${p.id}">
+      <div class="ia-api-handle" title="Arrastra para reordenar">⋮⋮</div>
+      <div class="ia-api-info">
+        <div class="ia-api-name">${idx+1}. ${escapeHtml(p.nombre || '(sin nombre)')}</div>
+        <div class="ia-api-meta">${tipoLabels[p.tipo]||p.tipo} · ${escapeHtml(p.modelo||'')} · key ****${(p.key||'').slice(-4)}</div>
+      </div>
+      <div class="ia-api-status ${p.activa ? 'on' : 'off'}">${p.activa ? 'ACTIVA' : 'INACTIVA'}</div>
+      <div class="ia-api-actions">
+        <button class="ia-api-btn" onclick="openIaApiEditor('${p.id}')">EDIT</button>
+        <button class="ia-api-btn danger" onclick="deleteIaApi('${p.id}'); _renderIaListV2()">DEL</button>
+      </div>
+    </div>
+  `).join('');
+  iaSetupDragDropV2();
+}
+
+function iaSetupDragDropV2(){
+  const items = document.querySelectorAll('#iaApisListV2 .ia-api-item');
+  let dragSrc = null;
+  items.forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrc = item; item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', item.dataset.id);
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      document.querySelectorAll('.ia-api-item').forEach(i => i.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      if(item !== dragSrc) item.classList.add('drag-over');
+    });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', e => {
+      e.preventDefault(); item.classList.remove('drag-over');
+      if(!dragSrc || dragSrc === item) return;
+      const list = iaLoadProviders();
+      const fromIdx = list.findIndex(p => p.id === dragSrc.dataset.id);
+      const toIdx   = list.findIndex(p => p.id === item.dataset.id);
+      if(fromIdx < 0 || toIdx < 0) return;
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      iaSaveProviders(list);
+      _renderIaListV2();
+    });
+  });
+}
+
+// Botón explícito "Sync a GitHub" — fuerza el sync de IA a __ia
+async function syncIaToGithub(){
+  const list = iaLoadProviders();
+  if(!list.length){
+    if(typeof toast === 'function') toast('No hay APIs IA para sincronizar', 'red');
+    return;
+  }
+  if(!GitHubSync.isLoggedIn()){
+    if(typeof toast === 'function') toast('No conectado a GitHub', 'red');
+    return;
+  }
+  try {
+    if(typeof toast === 'function') toast('Sincronizando IA a GitHub...', 'info');
+    await GitHubSync.updateSection('__ia', () => ({ providers: list, updated_at: new Date().toISOString() }));
+    if(typeof toast === 'function') toast('✓ IA sincronizadas — Telegram puede usarlas');
+  } catch(err){
+    if(typeof toast === 'function') toast('✕ Error: ' + err.message, 'red');
+  }
+}
+
+// ── APIs FINANCIERAS ──
+async function _loadFinApisToForm(){
+  let cfg = null;
+  try { cfg = await GitHubSync.fetchSection('__fin'); } catch(e){}
+  document.getElementById('finApiFinnhub').value = (cfg && cfg.finnhub) || '';
+  document.getElementById('finApiAlphaV').value  = (cfg && cfg.alphavantage) || '';
+  document.getElementById('finApiTwelve').value  = (cfg && cfg.twelvedata) || '';
+}
+
+async function saveFinApis(){
+  const cfg = {
+    finnhub:      document.getElementById('finApiFinnhub').value.trim(),
+    alphavantage: document.getElementById('finApiAlphaV').value.trim(),
+    twelvedata:   document.getElementById('finApiTwelve').value.trim(),
+    updated_at:   new Date().toISOString()
+  };
+  _showFinMsg('⏳ Guardando...', '#67e8f9');
+  try {
+    await GitHubSync.updateSection('__fin', () => cfg);
+    _showFinMsg('✓ APIs financieras guardadas en data.json', '#22d3ee');
+  } catch(err){
+    _showFinMsg('✕ Error: ' + err.message, '#fca5a5');
+  }
+}
+
+async function testFinnhub(){
+  const key = document.getElementById('finApiFinnhub').value.trim();
+  if(!key){ _showFinMsg('⚠ Pega la key Finnhub primero', '#fca5a5'); return; }
+  _showFinMsg('⏳ Probando Finnhub...', '#67e8f9');
+  try {
+    // Test simple: quote AAPL
+    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(key)}`);
+    if(!res.ok){ _showFinMsg('✕ HTTP ' + res.status + ': ' + (await res.text()).slice(0,80), '#fca5a5'); return; }
+    const d = await res.json();
+    if(d.error){ _showFinMsg('✕ Finnhub: ' + d.error, '#fca5a5'); return; }
+    if(d.c != null){
+      _showFinMsg(`✓ Funciona. AAPL = $${d.c.toFixed(2)} (cambio ${d.dp?.toFixed(2) || '?'}%)`, '#4ade80');
+    } else {
+      _showFinMsg('? Respuesta inesperada: ' + JSON.stringify(d).slice(0, 120), '#fbbf24');
+    }
+  } catch(err){
+    _showFinMsg('✕ Error de red: ' + err.message, '#fca5a5');
+  }
+}
+
+function _showFinMsg(text, color){
+  const el = document.getElementById('finApiMsg');
+  el.style.display = 'block';
+  el.style.color = color;
+  el.textContent = text;
+}
+
+// ════════════════════════════════════════════════════════════════════
 // VOICE LANGUAGE TOGGLE (boton 🌐 — afecta a todos los voice inputs)
 // ════════════════════════════════════════════════════════════════════
 const VOICE_LANGS = [
@@ -782,11 +968,13 @@ const VOICE_LANGS = [
 ];
 function _refreshVoiceLangBtn(){
   const btn = document.getElementById('voiceLangBtn');
-  if(!btn) return;
   const cur = (typeof getVoiceLang === 'function' ? getVoiceLang() : 'es-ES');
   const found = VOICE_LANGS.find(l => l.code === cur) || VOICE_LANGS[0];
-  btn.textContent = '🌐 ' + found.label;
-  btn.title = 'Idioma del voice input: ' + found.code;
+  if(btn){
+    btn.textContent = '🌐 ' + found.label;
+    btn.title = 'Idioma del voice input: ' + found.code;
+  }
+  if(typeof _refreshCfgVoiceLangSub === 'function') _refreshCfgVoiceLangSub();
 }
 function cycleVoiceLang(){
   const cur = getVoiceLang();

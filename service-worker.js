@@ -21,7 +21,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v12';
+const CACHE_VERSION = 'mis-dashboards-v13';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).
@@ -46,6 +46,9 @@ const PRECACHE_URLS = [
   './utils.js',
   './manifest.json',
 ];
+
+// CSS de los modales del nuevo menú Configuración (.cfg-row hover)
+// Inline, no requiere CSS adicional.
 
 // Hosts externos que NO se cachean (datos dinámicos o llamadas a APIs).
 const NO_CACHE_HOSTS = [

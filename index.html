@@ -143,11 +143,8 @@
   </div>
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;max-width:780px;">
-    <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="reSync()" aria-label="Volver a sincronizar con GitHub">↻ Resync</button>
-    <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="openIaApisModal()" aria-label="Configurar APIs de IA">🤖 IA APIs</button>
-    <button class="btn-ghost btn" style="flex:1;min-width:130px;margin-top:0;" onclick="openNotifModal()" aria-label="Configurar notificaciones Telegram">🔔 Notificaciones</button>
-    <button class="btn-ghost btn" style="flex:0 0 auto;margin-top:0;padding:0 14px;" onclick="cycleVoiceLang()" aria-label="Cambiar idioma del voice input" title="Idioma del voice input" id="voiceLangBtn">🌐 —</button>
-    <button class="btn-danger btn" style="flex:1;min-width:130px;margin-top:0;" onclick="askLogout()" aria-label="Cerrar sesión">✕ Logout</button>
+    <button class="btn-ghost btn" style="flex:1;min-width:160px;margin-top:0;" onclick="openConfigMenu()" aria-label="Abrir configuración">⚙ Configuración</button>
+    <button class="btn-danger btn" style="flex:1;min-width:160px;margin-top:0;" onclick="askLogout()" aria-label="Cerrar sesión">✕ Logout</button>
   </div>
 
   <div class="footer">
@@ -230,6 +227,124 @@
       <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="closeIaApiEditor()">Cancelar</button>
       <button class="btn" style="flex:1;min-width:120px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveIaApi()">💾 Guardar</button>
     </div>
+  </div>
+</div>
+
+<!-- ════════ MENÚ DE CONFIGURACIÓN (agrupa todo) ════════ -->
+<div id="configMenuModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:90;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
+  <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:480px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+    <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;">// ⚙ CONFIGURACIÓN</div>
+
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); openNotifModal();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
+        <span style="margin-right:10px">🔔</span>
+        <div style="flex:1">
+          <div style="font-weight:600;color:#67e8f9">Notificaciones</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Telegram daily + weekly · password</div>
+        </div>
+        <span style="color:#0e7490">→</span>
+      </button>
+
+      <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); openApisModal();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
+        <span style="margin-right:10px">🔌</span>
+        <div style="flex:1">
+          <div style="font-weight:600;color:#67e8f9">APIs</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">IA + financieras (Finnhub, etc.)</div>
+        </div>
+        <span style="color:#0e7490">→</span>
+      </button>
+
+      <button class="btn btn-ghost cfg-row" onclick="cycleVoiceLang();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
+        <span style="margin-right:10px">🌐</span>
+        <div style="flex:1">
+          <div style="font-weight:600;color:#67e8f9">Idioma del voice input</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace" id="cfgVoiceLangSub">—</div>
+        </div>
+        <span style="color:#0e7490">↻</span>
+      </button>
+
+      <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); reSync();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
+        <span style="margin-right:10px">↻</span>
+        <div style="flex:1">
+          <div style="font-weight:600;color:#67e8f9">Resync con GitHub</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Bajar última versión de data.json</div>
+        </div>
+      </button>
+    </div>
+
+    <button class="btn btn-ghost" style="width:100%;margin-top:14px;" onclick="closeConfigMenu()">Cerrar</button>
+  </div>
+</div>
+
+<!-- ════════ APIs (sub-pestañas: IA y Financieras) ════════ -->
+<div id="apisModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:90;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
+  <div style="background:#020617;border:1px solid #22d3ee;padding:0;width:100%;max-width:760px;box-shadow:0 0 40px rgba(34,211,238,.3);">
+    <!-- Tabs -->
+    <div style="display:flex;border-bottom:1px solid #06b6d433;">
+      <button class="apis-tab active" data-apis-tab="ia" onclick="switchApisTab('ia')" style="flex:1;padding:14px;background:transparent;border:none;color:#22d3ee;cursor:pointer;font-family:'DM Mono',monospace;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid #22d3ee">🤖 IA</button>
+      <button class="apis-tab" data-apis-tab="fin" onclick="switchApisTab('fin')" style="flex:1;padding:14px;background:transparent;border:none;color:#0e7490;cursor:pointer;font-family:'DM Mono',monospace;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid transparent">💹 Financieras</button>
+      <button onclick="closeApisModal()" style="padding:14px 20px;background:transparent;border:none;color:#475569;cursor:pointer;font-size:1rem">✕</button>
+    </div>
+
+    <!-- Tab content: IA (re-usa el flujo de iaApisModal pero embedded) -->
+    <div id="apisTabIa" style="padding:20px;">
+      <div style="background:#020617;border:1px solid #06b6d4;padding:16px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+        <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;">
+          Las APIs IA se prueban <strong>en orden</strong>. Si la primera falla, va a la siguiente. Arrastra <span style="color:#22d3ee">⋮⋮</span> para reordenar.
+          <br><br>
+          <strong>Dónde sacar la key:</strong>
+          <span style="color:#22d3ee">console.groq.com/keys</span> (Groq, gratis sin tarjeta) ·
+          <span style="color:#22d3ee">openrouter.ai/keys</span> (modelos :free) ·
+          <span style="color:#22d3ee">aistudio.google.com/apikey</span> (Gemini)
+        </div>
+      </div>
+
+      <div id="iaApisListV2" style="margin-bottom:14px;"></div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn" style="flex:1;min-width:160px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="openIaApiEditor()">+ Añadir API</button>
+        <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="exportIaConfig()" title="Descargar todas las APIs y instrucciones como archivo JSON">📤 Exportar config</button>
+        <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="document.getElementById('iaImportFileV2').click()" title="Cargar un archivo JSON exportado previamente">📥 Importar config</button>
+        <input type="file" id="iaImportFileV2" accept=".json,application/json" style="display:none" onchange="importIaConfig(event)">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" style="flex:1;min-width:200px;font-size:.78rem;" onclick="syncIaToGithub()" title="Re-subir las APIs IA a data.json (para Telegram bot)">🔄 Sync a GitHub (para Telegram)</button>
+      </div>
+
+      <div id="iaTestResultV2" style="display:none;background:#020617;border:1px solid #0e7490;padding:14px;font-size:.78rem;color:#67e8f9;font-family:'DM Mono',monospace;line-height:1.6;margin-top:14px;"></div>
+    </div>
+
+    <!-- Tab content: Financieras -->
+    <div id="apisTabFin" style="padding:20px;display:none;">
+      <div style="background:#020617;border:1px solid #06b6d4;padding:16px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+        <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;">
+          APIs para datos de mercado (precios stocks, IV, earnings, dividendos). Por ahora se guardan las keys; se usarán cuando habilitemos auto-precios y earnings/ex-dividend en Telegram.
+          <br><br>
+          <strong>Dónde sacar las keys:</strong>
+          <span style="color:#22d3ee">finnhub.io</span> (gratis, 60 req/min, sin tarjeta) — <em>recomendada para earnings/dividendos</em><br>
+          <span style="color:#22d3ee">alphavantage.co</span> (gratis 25 req/día) — datos históricos<br>
+          <span style="color:#22d3ee">twelvedata.com</span> (gratis 800 req/día) — alternativa
+        </div>
+      </div>
+
+      <div class="fld-lbl">Finnhub API key (recomendada)</div>
+      <input type="password" class="inp" id="finApiFinnhub" placeholder="cs..." autocomplete="off">
+
+      <div class="fld-lbl">Alpha Vantage API key (opcional)</div>
+      <input type="password" class="inp" id="finApiAlphaV" placeholder="ABCDEFGH..." autocomplete="off">
+
+      <div class="fld-lbl">Twelve Data API key (opcional)</div>
+      <input type="password" class="inp" id="finApiTwelve" placeholder="..." autocomplete="off">
+
+      <div id="finApiMsg" style="display:none;margin-top:12px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
+
+      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" style="flex:1;min-width:140px;" onclick="testFinnhub()">⚡ Probar Finnhub</button>
+        <button class="btn btn-ghost" style="flex:1;min-width:140px;" onclick="closeApisModal()">Cerrar</button>
+        <button class="btn" style="flex:1;min-width:140px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveFinApis()">💾 Guardar</button>
+      </div>
+    </div>
+
   </div>
 </div>
 
