@@ -2544,6 +2544,8 @@ document.getElementById('hOverlay').addEventListener('click', e=>{ if(e.target==
 histLoad();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 
@@ -2959,10 +2961,13 @@ function renderSnapList(){ /* no-op: inline list removed */ }
 const C = { blue:'#4a9eff', green:'#3fb68b', red:'#f04545', amber:'#f0a500', purple:'#c084fc',
             blue2:'#4a9eff33', green2:'#3fb68b33', red2:'#f0454533', grid:'#1e2d3d', text:'#5a7a9a' };
 
+// Zoom + pan en eje X (Ctrl+rueda PC, pinch mobile, drag tras zoom)
+const ZCFG = { pan:{enabled:true, mode:'x', threshold:5}, zoom:{wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x'} };
+
 const baseOpts = {
   responsive:true, maintainAspectRatio:false,
   animation:{ duration:400 },
-  plugins:{ legend:{ labels:{ color:C.text, font:{size:9, family:'Courier New'}, boxWidth:10, padding:8 } } },
+  plugins:{ legend:{ labels:{ color:C.text, font:{size:9, family:'Courier New'}, boxWidth:10, padding:8 } }, zoom: ZCFG },
   scales:{
     x:{ ticks:{ color:C.text, font:{size:8, family:'Courier New'}, maxRotation:45 }, grid:{ color:C.grid } },
     y:{ ticks:{ color:C.text, font:{size:8, family:'Courier New'} }, grid:{ color:C.grid } }
@@ -3548,7 +3553,7 @@ function renderDash(){
       backgroundColor:C.blue2, borderColor:C.blue, borderWidth:1
     }]},
     options:{ ...baseOpts, indexAxis:'y',
-      plugins:{ legend:{display:false} },
+      plugins:{ legend:{display:false}, zoom: ZCFG },
       scales:{
         x:{ ticks:{color:C.text,font:{size:8,family:'Courier New'}}, grid:{color:C.grid} },
         y:{ ticks:{color:C.text,font:{size:8,family:'Courier New'}}, grid:{display:false} }
@@ -3569,7 +3574,7 @@ function renderDash(){
       borderWidth:1
     }]},
     options:{ ...baseOpts, indexAxis:'y',
-      plugins:{ legend:{display:false} },
+      plugins:{ legend:{display:false}, zoom: ZCFG },
       scales:{
         x:{ ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>'$'+v.toFixed(0)}, grid:{color:C.grid} },
         y:{ ticks:{color:C.text,font:{size:8,family:'Courier New'}}, grid:{display:false} }
@@ -3590,7 +3595,7 @@ function renderDash(){
         backgroundColor:C.amber+'33', borderColor:C.amber, borderWidth:1
       }]},
       options:{ ...baseOpts,
-        plugins:{ legend:{display:false} },
+        plugins:{ legend:{display:false}, zoom: ZCFG },
         scales:{
           x:{ ticks:{color:C.text,font:{size:8,family:'Courier New'},maxRotation:45}, grid:{color:C.grid} },
           y:{ ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>'$'+Math.round(v/1000)+'k'}, grid:{color:C.grid} }
@@ -6289,7 +6294,7 @@ function renderStratDash(){
   mkStratChart('sDist',{ type:'bar', data:{ labels:binLabels, datasets:[{
     data:counts, backgroundColor:binLabels.map(l=>parseFloat(l)>=0?C.green2:C.red2),
     borderColor:binLabels.map(l=>parseFloat(l)>=0?C.green:C.red), borderWidth:1
-  }]}, options:{ ...baseOpts, plugins:{legend:{display:false}}, scales:{ x:{ticks:{color:C.text,font:{size:7,family:'Courier New'},maxTicksLimit:10},grid:{color:C.grid}}, y:{ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid}} }}});
+  }]}, options:{ ...baseOpts, plugins:{legend:{display:false},zoom:ZCFG}, scales:{ x:{ticks:{color:C.text,font:{size:7,family:'Courier New'},maxTicksLimit:10},grid:{color:C.grid}}, y:{ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid}} }}});
 
   // Always render scatter with filter
   renderStratScatter();

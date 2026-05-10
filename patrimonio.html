@@ -1207,7 +1207,7 @@ function renderCharts(p){
             chart.update();
           }
         },
-        tooltip:{...TT,callbacks:{label:c=>fPct(c.parsed.y)}}
+        tooltip:{...TT,callbacks:{label:c=>fPct(c.parsed.y)}},zoom:ZCFG
       },
       scales:{...sc("%"),y:{...sc("%").y,beginAtZero:true,ticks:{callback:v=>`${v}%`}}}
     }
@@ -1286,7 +1286,7 @@ function renderCharts(p){
   charts["ing"]=new Chart(document.getElementById("cIng"),{type:"bar",data:{labels:lblIng,datasets:[
     ...ingDatasets,
     {label:`Media ${periodLabel} (${fmt(avgPeriod)})`,data:Array(lblIng.length).fill(avgPeriod),type:"line",borderColor:"#f472b6",borderWidth:1.5,borderDash:[5,4],pointRadius:0,fill:false,order:0},
-  ]},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,mode:"index",callbacks:{label:c=>c.dataset.type==="line"?`${c.dataset.label.split("(")[0].trim()}: ${fmt(c.parsed.y)}`:`${c.dataset.label}: ${fmt(c.parsed.y)}`}}},scales:{...sc("€"),x:{...sc("€").x,stacked:true},y:{...sc("€").y,stacked:true}}}})
+  ]},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,mode:"index",callbacks:{label:c=>c.dataset.type==="line"?`${c.dataset.label.split("(")[0].trim()}: ${fmt(c.parsed.y)}`:`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:{...sc("€"),x:{...sc("€").x,stacked:true},y:{...sc("€").y,stacked:true}}}})
 
   // ── Comparativa interanual ──
   renderInteranual(p);
@@ -2483,7 +2483,7 @@ function renderDashGastosCharts(){
               return `${c.dataset.label}: ${fmt(c.parsed.y)}`;
             }
           }
-        }
+        }, zoom: ZCFG
       },
       scales: {
         x: { ticks:{color:'#475569', font:{size:10}}, grid:{color:'#0f1d2e'} },

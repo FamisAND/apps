@@ -95,4 +95,15 @@
       });
     });
   }
+
+  // ─── RESET ZOOM en charts: doble-click sobre el canvas ──────
+  // Funciona con cualquier chart de Chart.js que tenga zoom habilitado.
+  document.addEventListener('dblclick', e => {
+    if (e.target.tagName !== 'CANVAS') return;
+    if (typeof Chart === 'undefined' || !Chart.getChart) return;
+    const chart = Chart.getChart(e.target);
+    if (chart && typeof chart.resetZoom === 'function') {
+      chart.resetZoom();
+    }
+  });
 })(window);
