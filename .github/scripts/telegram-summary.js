@@ -15,77 +15,105 @@ const DAY_CODES = ['sun','mon','tue','wed','thu','fri','sat'];
 async function main() {
   const PAT = process.env.APPDATA_PAT;
   const FORCE = process.env.FORCE === 'true';
+  const FORCE_TYPE = (process.env.FORCE_TYPE || '').trim().toLowerCase(); // 'daily' | 'weekly' | 'both' | ''
   if (!PAT) { console.error('Falta APPDATA_PAT secret'); process.exit(1); }
 
   const data = await fetchAppData(PAT);
   const notif = data.__notif;
-  if (!notif || !notif.enabled || !notif.bot_token || !notif.chat_id) {
-    console.log('__notif no configurado o desactivado. Salida.');
+  if (!notif || !notif.bot_token || !notif.chat_id) {
+    console.log('__notif sin bot_token/chat_id. Salida.');
     return;
   }
 
-  if (!FORCE) {
-    const now = new Date();
-    const madridStr = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false
-    }).format(now);
-    const madridHour = parseInt(madridStr.split(':')[0], 10);
-    const cfgHour = parseInt((notif.time || '09:00').split(':')[0], 10);
-    if (madridHour !== cfgHour) {
-      console.log(`Hora Madrid ${madridStr} != notif.time ${notif.time}. Salida.`);
-      return;
-    }
-    const days = notif.days || ['mon','tue','wed','thu','fri','sat','sun'];
-    const madridDateStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit'
-    }).format(now);
-    const dow = new Date(madridDateStr + 'T12:00:00Z').getUTCDay();
-    const todayCode = DAY_CODES[dow];
-    if (!days.includes(todayCode)) {
-      console.log(`Hoy es ${todayCode}, no en days. Salida.`);
-      return;
-    }
-  }
+  // ── Tiempo / día actual de Madrid ──
+  const now = new Date();
+  const madridStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false
+  }).format(now);
+  const madridHour = parseInt(madridStr.split(':')[0], 10);
+  const madridDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(now);
+  const dow = new Date(madridDateStr + 'T12:00:00Z').getUTCDay();
+  const todayCode = DAY_CODES[dow];
 
-  let summary = generateSummary(data, notif);
-
-  // ── AI INSIGHT (al final, opcional) ──
-  if (notif.ai_insight) {
-    const ia = data.__ia;
-    if (ia && Array.isArray(ia.providers) && ia.providers.length) {
-      const provider = ia.providers.find(p => p.activa);
-      if (provider) {
-        try {
-          const sysPrompt = 'Eres un analista financiero personal. Da un insight breve y útil en español, máximo 2-3 frases, tono directo, sin markdown ni saltos de línea innecesarios. Identifica tendencias, alertas, próximas acciones.';
-          const plain = summary.replace(/<[^>]+>/g, '');
-          const insight = await callIA(provider, plain, sysPrompt);
-          if (insight && insight.trim()) {
-            summary += '\n\n🤖 <i>' + escape(insight.trim()) + '</i>';
-          }
-        } catch (err) {
-          console.error('AI insight error:', err.message);
-          summary += '\n\n<i>(AI insight no disponible: ' + escape(err.message) + ')</i>';
-        }
-      } else {
-        summary += '\n\n<i>(AI insight pedido pero ningún provider activo en __ia)</i>';
-      }
-    } else {
-      summary += '\n\n<i>(AI insight pedido pero __ia no configurado — guarda tus IA APIs en la web)</i>';
+  // ── Decidir qué enviar (daily, weekly o ambos) ──
+  let sendDaily = false, sendWeekly = false;
+  if (FORCE && FORCE_TYPE === 'daily')   sendDaily = true;
+  else if (FORCE && FORCE_TYPE === 'weekly') sendWeekly = true;
+  else if (FORCE && (FORCE_TYPE === 'both' || FORCE_TYPE === '')) { sendDaily = true; sendWeekly = !!notif.weekly_enabled; }
+  else {
+    // Schedule normal: comprobar daily y weekly por separado
+    if (notif.enabled !== false) {
+      const dailyHour = parseInt((notif.time || '09:00').split(':')[0], 10);
+      const dailyDays = notif.days || ['mon','tue','wed','thu','fri','sat','sun'];
+      if (madridHour === dailyHour && dailyDays.includes(todayCode)) sendDaily = true;
+    }
+    if (notif.weekly_enabled) {
+      const wHour = parseInt((notif.weekly_time || '09:00').split(':')[0], 10);
+      const wDay  = notif.weekly_day || 'mon';
+      if (madridHour === wHour && todayCode === wDay) sendWeekly = true;
     }
   }
 
-  // ── ENVIAR ──
-  const sendRes = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: notif.chat_id, text: summary,
-      parse_mode: 'HTML', disable_web_page_preview: true
-    })
-  });
-  const sendData = await sendRes.json();
-  if (!sendData.ok) { console.error('Telegram error:', sendData); process.exit(1); }
-  console.log('✓ Resumen enviado. message_id:', sendData.result.message_id);
+  if (!sendDaily && !sendWeekly) {
+    console.log(`Madrid ${madridStr} ${todayCode}: nada que enviar (daily.time=${notif.time}, days=${notif.days}, weekly_enabled=${!!notif.weekly_enabled} day=${notif.weekly_day} time=${notif.weekly_time})`);
+    return;
+  }
+
+  // ── Helper para enviar un mensaje ──
+  async function sendMsg(text, label) {
+    const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: notif.chat_id, text,
+        parse_mode: 'HTML', disable_web_page_preview: true
+      })
+    });
+    const d = await res.json();
+    if (!d.ok) { console.error(`Telegram error (${label}):`, d); throw new Error(d.description || 'send failed'); }
+    console.log(`✓ ${label} enviado. message_id:`, d.result.message_id);
+  }
+
+  // ── DAILY ──
+  if (sendDaily) {
+    let txt = generateSummary(data, notif, false);
+    txt = await maybeAppendInsight(txt, notif, data);
+    await sendMsg(txt, 'Daily');
+  }
+
+  // ── WEEKLY ──
+  if (sendWeekly) {
+    let txt = generateSummary(data, notif, true);
+    txt = await maybeAppendInsight(txt, notif, data);
+    await sendMsg(txt, 'Weekly');
+  }
+}
+
+// ── AI Insight (pegar al final si está activado) ──
+async function maybeAppendInsight(summary, notif, data) {
+  if (!notif.ai_insight) return summary;
+  const ia = data.__ia;
+  if (!ia || !Array.isArray(ia.providers) || !ia.providers.length) {
+    return summary + '\n\n<i>(AI insight pedido pero __ia no configurado — guarda tus IA APIs en la web una vez)</i>';
+  }
+  const provider = ia.providers.find(p => p.activa);
+  if (!provider) {
+    return summary + '\n\n<i>(AI insight pedido pero ningún provider activo en __ia)</i>';
+  }
+  try {
+    const sysPrompt = 'Eres un analista financiero personal. Da un insight breve y útil en español, máximo 2-3 frases, tono directo, sin markdown ni saltos de línea innecesarios. Identifica tendencias, alertas, próximas acciones.';
+    const plain = summary.replace(/<[^>]+>/g, '');
+    const insight = await callIA(provider, plain, sysPrompt);
+    if (insight && insight.trim()) {
+      return summary + '\n\n🤖 <i>' + escape(insight.trim()) + '</i>';
+    }
+    return summary;
+  } catch (err) {
+    console.error('AI insight error:', err.message);
+    return summary + '\n\n<i>(AI insight no disponible: ' + escape(err.message) + ')</i>';
+  }
 }
 
 // ─── Fetch data.json desde appdata ───
@@ -148,16 +176,37 @@ function sparkline(values) {
   return vals.map(v => blocks[Math.round((v - min) / range * 7)]).join('');
 }
 
+// Override: en weekly todas las opciones interesantes están ON, sin importar la
+// config del user (que es para el daily). Esto permite que el weekly sea
+// siempre comprehensive sin que el user toque nada extra.
+function _weeklyAllSections() {
+  return {
+    patrimonio: { enabled:true, total:true, delta:true, objetivo:true, sparkline:true,
+      gastos_mes:true, gastos_avg:true, gastos_avg_months:6,
+      ingresos_mes:true, ingresos_avg:true, ingresos_avg_months:6,
+      distribucion:true, top_mover:true, ytd_pct:true },
+    options: { enabled:true, count:true, expiring:true, expiring_days:7,
+      lista_activas:true, pnl_mes:true, pnl_avg:true, pnl_avg_months:6,
+      win_rate_mes:true, best_worst:true, risk_total:true, net_liq:true,
+      closed_today:true, pnl_sparkline:true },
+    training: { enabled:true, clientes:true, equipo:true,
+      ingresos_mes:true, ingresos_avg:true, ingresos_avg_months:6,
+      impagos:true, top_servicios:true, top_clientes:true,
+      sesiones_hoy:true, stock_critico:true },
+    facturas: { enabled:true, pendientes:true, vencidas:true, total_mes:true, top_cliente:true }
+  };
+}
+
 // ─── Generación principal ───
-function generateSummary(data, notif) {
+function generateSummary(data, notif, isWeekly) {
   const lines = [];
   const dt = new Intl.DateTimeFormat('es-ES', {
     timeZone:'Europe/Madrid', weekday:'long', day:'numeric', month:'long'
   }).format(new Date());
-  lines.push(`<b>📊 Resumen — ${dt}</b>`);
+  lines.push(isWeekly ? `<b>📅 Resumen semanal — ${dt}</b>` : `<b>📊 Resumen — ${dt}</b>`);
   lines.push('');
 
-  const S = notif.sections || {};
+  const S = isWeekly ? _weeklyAllSections() : (notif.sections || {});
   const monthKey = new Intl.DateTimeFormat('en-CA', {
     timeZone:'Europe/Madrid', year:'numeric', month:'2-digit'
   }).format(new Date()).slice(0, 7); // "2026-05"
@@ -215,10 +264,20 @@ function generateSummary(data, notif) {
             }
           }
 
+          // Computar totales mensuales de gastos para reuso (mes + media)
+          let gastosTotalMes = 0;
+          const gastosByMonth = {}; // { 'YYYY-MM': total }
+          if (p?.gastos?.meses) {
+            for (const [mk, md] of Object.entries(p.gastos.meses)) {
+              const sum = (md.transacciones||[]).reduce((s,t) => s + Math.abs(parseFloat(t.importe)||0), 0);
+              gastosByMonth[mk] = sum;
+              if (mk === monthKey) gastosTotalMes = sum;
+            }
+          }
+
           if (patSec.gastos_mes === true) {
             const txs = p?.gastos?.meses?.[monthKey]?.transacciones || [];
             if (txs.length) {
-              const total = txs.reduce((s,t) => s + Math.abs(parseFloat(t.importe)||0), 0);
               const byCat = {};
               txs.forEach(t => {
                 const cid = t.categoriaId || '_sin';
@@ -226,7 +285,7 @@ function generateSummary(data, notif) {
               });
               const cats = p?.gastos?.categorias || [];
               const top3 = Object.entries(byCat).sort((a,b) => b[1]-a[1]).slice(0, 3);
-              block.push(`   💸 Gastos ${monthKey}: €${fmt(total)} (${txs.length} mov)`);
+              block.push(`   💸 Gastos ${monthKey}: €${fmt(gastosTotalMes)} (${txs.length} mov)`);
               top3.forEach(([cid, amt]) => {
                 const cat = cats.find(c => c.id === cid);
                 block.push(`     • ${escape(cat ? cat.name : 'Sin categoría')}: €${fmt(amt)}`);
@@ -234,15 +293,58 @@ function generateSummary(data, notif) {
             }
           }
 
-          if (patSec.ingresos_mes === true) {
-            const ingSec = (p.sections||[]).find(s => s.id === 's_ingresos' || s.type === 'ingresos');
-            if (ingSec) {
+          if (patSec.gastos_avg === true) {
+            const N = patSec.gastos_avg_months || 6;
+            // Tomar últimos N meses anteriores al actual (excluir mes en curso para no sesgar)
+            const monthsSorted = Object.keys(gastosByMonth).sort();
+            const idxNow = monthsSorted.indexOf(monthKey);
+            const window = idxNow >= 0
+              ? monthsSorted.slice(Math.max(0, idxNow - N), idxNow)
+              : monthsSorted.slice(-N);
+            if (window.length) {
+              const avg = window.reduce((s,k) => s + gastosByMonth[k], 0) / window.length;
+              const cmpStr = gastosTotalMes > 0
+                ? ` (este mes €${fmt(gastosTotalMes)}, ${gastosTotalMes>=avg?'+':'-'}${Math.abs(((gastosTotalMes-avg)/avg)*100).toFixed(0)}%)`
+                : '';
+              block.push(`   📈 Gastos media ${window.length}m: €${fmt(avg)}/mes${cmpStr}`);
+            }
+          }
+
+          // Computar ingresos por mes para reuso
+          const ingSec = (p.sections||[]).find(s => s.id === 's_ingresos' || s.type === 'ingresos');
+          let ingresosTotalMes = 0;
+          const ingresosByMonth = {}; // { 'YYYY-MM': total }
+          if (ingSec) {
+            ents.forEach(e => {
+              const k = `${e.year}-${String(e.month+1).padStart(2,'0')}`;
               let total = 0;
               (ingSec.assets||[]).forEach(a => {
-                const v = parseFloat(last.assets?.[a.id]) || 0;
+                const v = parseFloat(e.assets?.[a.id]) || 0;
                 if (v > 0) total += v;
               });
-              if (total > 0) block.push(`   💵 Ingresos ${monthKey}: €${fmt(total)}`);
+              ingresosByMonth[k] = total;
+              if (k === monthKey) ingresosTotalMes = total;
+            });
+          }
+
+          if (patSec.ingresos_mes === true && ingresosTotalMes > 0) {
+            block.push(`   💵 Ingresos ${monthKey}: €${fmt(ingresosTotalMes)}`);
+          }
+
+          if (patSec.ingresos_avg === true && ingSec) {
+            const N = patSec.ingresos_avg_months || 6;
+            const monthsSorted = Object.keys(ingresosByMonth).sort();
+            const idxNow = monthsSorted.indexOf(monthKey);
+            const window = idxNow >= 0
+              ? monthsSorted.slice(Math.max(0, idxNow - N), idxNow)
+              : monthsSorted.slice(-N);
+            const positive = window.map(k => ingresosByMonth[k]).filter(v => v > 0);
+            if (positive.length) {
+              const avg = positive.reduce((s,v) => s+v, 0) / positive.length;
+              const cmpStr = ingresosTotalMes > 0
+                ? ` (este mes €${fmt(ingresosTotalMes)}, ${ingresosTotalMes>=avg?'+':'-'}${Math.abs(((ingresosTotalMes-avg)/avg)*100).toFixed(0)}%)`
+                : '';
+              block.push(`   📈 Ingresos media ${positive.length}m: €${fmt(avg)}/mes${cmpStr}`);
             }
           }
 
@@ -345,6 +447,26 @@ function generateSummary(data, notif) {
           block.push(`   💵 P&L ${monthKey}: ${pnl>=0?'+':''}$${fmt(pnl)} (${mesHist.length} ops)`);
         }
 
+        if (optSec.pnl_avg === true && Array.isArray(hist)) {
+          const N = optSec.pnl_avg_months || 6;
+          const pnlByMonth = {};
+          hist.forEach(h => {
+            const k = (h.cierre||'').slice(0,7);
+            if (!k) return;
+            pnlByMonth[k] = (pnlByMonth[k]||0) + (parseFloat(h.totalNeto)||0);
+          });
+          const monthsSorted = Object.keys(pnlByMonth).sort();
+          const idxNow = monthsSorted.indexOf(monthKey);
+          const window = idxNow >= 0
+            ? monthsSorted.slice(Math.max(0, idxNow - N), idxNow)
+            : monthsSorted.slice(-N);
+          if (window.length) {
+            const sumPnl = window.reduce((s,k) => s + pnlByMonth[k], 0) * 100;
+            const avg = sumPnl / window.length;
+            block.push(`   📈 P&L medio ${window.length}m: ${avg>=0?'+':''}$${fmt(avg)}/mes`);
+          }
+        }
+
         if (optSec.win_rate_mes === true && mesHist.length) {
           const wins = mesHist.filter(h => (parseFloat(h.totalNeto)||0) > 0).length;
           const losses = mesHist.length - wins;
@@ -418,23 +540,44 @@ function generateSummary(data, notif) {
 
         const m = ft.months?.[monthKey];
 
-        if (ftSec.ingresos_mes === true && m) {
-          let totalFact = 0, totalCobr = 0;
-          (m.entries||[]).forEach(e => {
-            let entryTotal = 0;
-            (e.lines||[]).forEach(l => { entryTotal += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-            (m.masajes||[]).forEach(mas => {});  // masajes go separate
-            totalFact += entryTotal;
-            if (e.paid) totalCobr += entryTotal;
+        // Computar facturación por mes (todos los meses de ft.months)
+        const factByMonth = {}; // { 'YYYY-MM': { fact, cobr } }
+        for (const [mk, mv] of Object.entries(ft.months || {})) {
+          let f = 0, c = 0;
+          (mv.entries||[]).forEach(e => {
+            let et = 0;
+            (e.lines||[]).forEach(l => { et += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
+            f += et;
+            if (e.paid) c += et;
           });
-          (m.masajes||[]).forEach(mas => {
+          (mv.masajes||[]).forEach(mas => {
             const t = (parseFloat(mas.qty)||0) * (parseFloat(mas.price)||0);
-            totalFact += t;
-            if (mas.paid) totalCobr += t;
+            f += t;
+            if (mas.paid) c += t;
           });
-          if (totalFact > 0) {
-            const pctCobr = totalFact ? (totalCobr/totalFact*100).toFixed(0) : 0;
-            block.push(`   💵 Facturado ${monthKey}: €${fmt(totalFact)} (€${fmt(totalCobr)} cobrado · ${pctCobr}%)`);
+          factByMonth[mk] = { fact: f, cobr: c };
+        }
+        const factMes = factByMonth[monthKey] || { fact: 0, cobr: 0 };
+
+        if (ftSec.ingresos_mes === true && factMes.fact > 0) {
+          const pctCobr = factMes.fact ? (factMes.cobr / factMes.fact * 100).toFixed(0) : 0;
+          block.push(`   💵 Facturado ${monthKey}: €${fmt(factMes.fact)} (€${fmt(factMes.cobr)} cobrado · ${pctCobr}%)`);
+        }
+
+        if (ftSec.ingresos_avg === true) {
+          const N = ftSec.ingresos_avg_months || 6;
+          const monthsSorted = Object.keys(factByMonth).sort();
+          const idxNow = monthsSorted.indexOf(monthKey);
+          const window = idxNow >= 0
+            ? monthsSorted.slice(Math.max(0, idxNow - N), idxNow)
+            : monthsSorted.slice(-N);
+          const positive = window.map(k => factByMonth[k].fact).filter(v => v > 0);
+          if (positive.length) {
+            const avg = positive.reduce((s,v) => s+v, 0) / positive.length;
+            const cmpStr = factMes.fact > 0
+              ? ` (este mes €${fmt(factMes.fact)}, ${factMes.fact>=avg?'+':'-'}${Math.abs(((factMes.fact-avg)/avg)*100).toFixed(0)}%)`
+              : '';
+            block.push(`   📈 Facturación media ${positive.length}m: €${fmt(avg)}/mes${cmpStr}`);
           }
         }
 

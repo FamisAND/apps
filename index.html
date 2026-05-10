@@ -272,9 +272,35 @@
         <label for="notifEnabled" style="cursor:pointer;">Activado</label>
       </div>
 
-      <!-- ── DÍAS ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">DÍAS DE ENVÍO</div>
+      <!-- ── DÍAS DEL DAILY ── -->
+      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">DÍAS DEL ENVÍO DIARIO</div>
       <div id="notifDays" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+
+      <!-- ── RESUMEN SEMANAL (extra) ── -->
+      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">RESUMEN SEMANAL <span style="text-transform:none;letter-spacing:0;color:#3a5468">— mensaje extra con medias y trends</span></div>
+      <div style="display:flex;align-items:center;gap:8px;color:#67e8f9;font-size:.82rem;margin-bottom:8px">
+        <input type="checkbox" id="notifWeeklyEnabled" style="accent-color:#22d3ee;">
+        <label for="notifWeeklyEnabled" style="cursor:pointer;">Activar resumen semanal (mensaje aparte con bloque "Stats semanales")</label>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.78rem;color:#67e8f9">
+        <label>Día:&nbsp;
+          <select class="inp" id="notifWeeklyDay" style="display:inline-block;width:auto;padding:4px 8px;font-size:.78rem">
+            <option value="mon">Lunes</option>
+            <option value="tue">Martes</option>
+            <option value="wed">Miércoles</option>
+            <option value="thu">Jueves</option>
+            <option value="fri">Viernes</option>
+            <option value="sat">Sábado</option>
+            <option value="sun">Domingo</option>
+          </select>
+        </label>
+        <label>Hora:&nbsp;
+          <input type="time" class="inp" id="notifWeeklyTime" value="09:00" style="display:inline-block;width:auto;padding:4px 8px;font-size:.78rem">
+        </label>
+      </div>
+      <div style="font-size:.7rem;color:#3a5468;margin-top:6px;font-family:'DM Mono',monospace">
+        El semanal incluye automáticamente: medias gastos/ingresos · sparkline 12m · top movers · win rate histórico · top servicios YTD
+      </div>
 
       <!-- ── SECCIONES ── -->
       <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">SECCIONES DEL RESUMEN</div>

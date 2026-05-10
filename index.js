@@ -891,7 +891,11 @@ const NOTIF_SECTIONS = [
     { id: 'objetivo',      label: '% del objetivo principal',              default: true  },
     { id: 'sparkline',     label: '📊 Sparkline 12 meses (gráfico ASCII)', default: true  },
     { id: 'gastos_mes',    label: 'Gastos del mes (total + top 3 categorías)', default: true },
+    { id: 'gastos_avg',    label: 'Media mensual de gastos (últimos N meses)',  default: false },
+    { id: 'gastos_avg_months', label: '↳ N meses', default: 6, type: 'number', min: 2, max: 24 },
     { id: 'ingresos_mes',  label: 'Ingresos del mes',                      default: false },
+    { id: 'ingresos_avg',  label: 'Media mensual de ingresos',             default: false },
+    { id: 'ingresos_avg_months', label: '↳ N meses', default: 6, type: 'number', min: 2, max: 24 },
     { id: 'distribucion',  label: 'Distribución por sección',              default: false },
     { id: 'top_mover',     label: 'Top mover del mes (mayor Δ asset)',     default: false },
     { id: 'ytd_pct',       label: 'Variación YTD (%)',                     default: false }
@@ -902,6 +906,8 @@ const NOTIF_SECTIONS = [
     { id: 'expiring_days', label: '↳ N (días)', default: 7, type: 'number', min: 1, max: 30 },
     { id: 'lista_activas', label: 'Lista de TODAS activas con P&L unrealized', default: false },
     { id: 'pnl_mes',       label: 'P&L del mes en curso',                  default: true  },
+    { id: 'pnl_avg',       label: 'P&L medio mensual (últimos N meses)',   default: false },
+    { id: 'pnl_avg_months',label: '↳ N meses', default: 6, type: 'number', min: 2, max: 24 },
     { id: 'win_rate_mes',  label: 'Win rate del mes (W/L)',                default: true  },
     { id: 'best_worst',    label: 'Mejor / peor trade del mes',            default: true  },
     { id: 'risk_total',    label: 'Risk total comprometido',               default: false },
@@ -913,6 +919,8 @@ const NOTIF_SECTIONS = [
     { id: 'clientes',      label: 'Clientes activos',                      default: true  },
     { id: 'equipo',        label: 'Personas en equipo',                    default: true  },
     { id: 'ingresos_mes',  label: 'Facturado vs cobrado del mes',          default: true  },
+    { id: 'ingresos_avg',  label: 'Media facturación mensual (últimos N meses)', default: false },
+    { id: 'ingresos_avg_months', label: '↳ N meses', default: 6, type: 'number', min: 2, max: 24 },
     { id: 'impagos',       label: 'Impagos del mes',                       default: true  },
     { id: 'top_servicios', label: 'Top 3 servicios más vendidos',          default: false },
     { id: 'top_clientes',  label: 'Top 3 clientes (más facturación)',      default: false },
@@ -1004,6 +1012,9 @@ function _readNotifFormConfig(){
     days: days,
     sections: sections,
     ai_insight: document.getElementById('notifAiInsight').checked,
+    weekly_enabled: document.getElementById('notifWeeklyEnabled').checked,
+    weekly_day: document.getElementById('notifWeeklyDay').value || 'mon',
+    weekly_time: document.getElementById('notifWeeklyTime').value || '09:00',
     tz: 'Europe/Madrid',
     updated_at: new Date().toISOString()
   };
@@ -1019,6 +1030,9 @@ async function _notifShowForm(){
   document.getElementById('notifTime').value = (cfg && cfg.time) || '09:00';
   document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
   document.getElementById('notifAiInsight').checked = cfg ? !!cfg.ai_insight : false;
+  document.getElementById('notifWeeklyEnabled').checked = cfg ? !!cfg.weekly_enabled : false;
+  document.getElementById('notifWeeklyDay').value = (cfg && cfg.weekly_day) || 'mon';
+  document.getElementById('notifWeeklyTime').value = (cfg && cfg.weekly_time) || '09:00';
   _renderNotifDays(cfg && cfg.days);
   _renderNotifSections(cfg && cfg.sections);
 }

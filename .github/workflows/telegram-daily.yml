@@ -15,6 +15,10 @@ on:
         description: 'Forzar envío aunque no toque por hora'
         required: false
         default: 'false'
+      type:
+        description: 'Tipo a forzar: daily | weekly | both (vacío = ambos según schedule)'
+        required: false
+        default: ''
 
 jobs:
   send:
@@ -25,4 +29,5 @@ jobs:
         env:
           APPDATA_PAT: ${{ secrets.APPDATA_PAT }}
           FORCE: ${{ github.event.inputs.force }}
+          FORCE_TYPE: ${{ github.event.inputs.type }}
         run: node .github/scripts/telegram-summary.js
