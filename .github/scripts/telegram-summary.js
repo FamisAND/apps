@@ -154,17 +154,6 @@ async function callIA(provider, prompt, systemMsg) {
   return d.choices?.[0]?.message?.content || '';
 }
 
-// ─── Sparkline ASCII (8 niveles) ───
-function sparkline(values) {
-  const vals = values.filter(v => v != null && !isNaN(v));
-  if (vals.length < 2) return '';
-  const blocks = '▁▂▃▄▅▆▇█';
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const range = max - min || 1;
-  return vals.map(v => blocks[Math.round((v - min) / range * 7)]).join('');
-}
-
 // ─── computeEntry: fórmula REAL del dashboard de options ───
 // Replica options.html computeEntry() para tener totalNeto correcto.
 // totalNeto está en "escala prima" ($/100). Para mostrar en $ reales: ×100.
@@ -229,12 +218,6 @@ function generateSummary(data, notif) {
               const pct = (totalNow / obj.target * 100).toFixed(1);
               block.push(`   🎯 ${pct}% del objetivo (€${fmt(obj.target)})`);
             }
-          }
-
-          if (patSec.sparkline === true && ents.length >= 2) {
-            const last12 = ents.slice(-12).map(e => calcPat(e));
-            const spark = sparkline(last12);
-            if (spark) block.push(`   <code>${spark}</code> últimos ${last12.length}m`);
           }
 
           if (patSec.ytd_pct === true) {
@@ -528,21 +511,6 @@ function generateSummary(data, notif) {
           }
         }
 
-        if (optSec.pnl_sparkline === true && Array.isArray(hist)) {
-          // últimos 6 meses, sumar P&L por mes
-          const pnlByMonth = {};
-          hist.forEach(h => {
-            const k = (h.cierre||'').slice(0, 7);
-            if (!k) return;
-            pnlByMonth[k] = (pnlByMonth[k]||0) + (parseFloat(h.totalNeto)||0);
-          });
-          const last6 = Object.keys(pnlByMonth).sort().slice(-6).map(k => pnlByMonth[k] * 100);
-          if (last6.length >= 2) {
-            const spark = sparkline(last6);
-            if (spark) block.push(`   <code>${spark}</code> P&L últimos ${last6.length}m`);
-          }
-        }
-
         if (block.length) { lines.push(''); lines.push(...block); }
       }
     } catch (e) { console.error('Options:', e.message); }
@@ -575,27 +543,19 @@ function generateSummary(data, notif) {
         if (parts.length) block.push(`💪 <b>Full Training</b>: ${parts.join(' · ')}`);
         block.push(`   <i>(referido a ${ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
 
-        // ── Fact + gastos por mes ──
-        // Estructura real (NO `lines[]` — cada entry tiene price directo):
+        // ── Fact + gastos por mes (match EXACTO con dashboard FT) ──
         //   entries:  [{ id, clientId, serviceId, trainerId, price, paid, recurring }]
-        //   packs:    [{ id, clientId, serviceId, fisioId, totalSessions, sessionsDone, pricePerSession }]
         //   gastos:   [{ id, desc, amount, cat }]
+        // El dashboard NO cuenta packs/masajes en facturación principal — solo entries.price.
+        // Mantener consistencia con el dashboard.
         function _ftMonthMetrics(mv) {
           if (!mv) return null;
           let fact = 0, cobr = 0;
           (mv.entries||[]).forEach(e => {
             const p = parseFloat(e.price) || 0;
             fact += p;
-            // paid puede ser 'pagado' (string), 'pendiente', boolean true/false
             if (e.paid === 'pagado' || e.paid === true) cobr += p;
           });
-          // Masajes: packs vendidos. Cada pack vale pricePerSession × totalSessions
-          (mv.packs||[]).forEach(pk => {
-            const total = (parseFloat(pk.pricePerSession)||0) * (parseInt(pk.totalSessions)||0);
-            fact += total;
-            cobr += total; // los packs no tienen paid global; asumir cobrados al vender
-          });
-          // Gastos: excluye 'dividendos' (match dashboard)
           const gastos = (mv.gastos||[])
             .filter(g => g.cat !== 'dividendos')
             .reduce((s,g) => s + (parseFloat(g.amount)||0), 0);
@@ -653,45 +613,41 @@ function generateSummary(data, notif) {
           }
         }
 
-        // ── Impagos del mes anterior + cantidad ──
+        // ── Impagos: TODOS los pendientes acumulados (todos los meses) ──
+        // Lista detallada con cliente y mes para que sepas a quién perseguir.
         if (ftSec.impagos !== false) {
-          const mvPrev = ft.months?.[ftMonthKey];
-          if (mvPrev) {
-            // paid puede ser 'pendiente' (string) o false (boolean) — todo lo que NO sea 'pagado'/true es impago
-            const imps = (mvPrev.entries||[]).filter(e =>
-              e.paid !== 'pagado' && e.paid !== true
-            );
-            if (imps.length > 0) {
-              const totalImp = imps.reduce((s,e) => s + (parseFloat(e.price)||0), 0);
-              block.push(`   ⚠ ${imps.length} impagos en ${ftMonthKey}: €${fmt(totalImp)}`);
+          const clients = ft.clients || [];
+          const cliMap = {};
+          clients.forEach(c => cliMap[c.id] = c.name);
+          const allImpagos = []; // { mes, clientName, price }
+          for (const [mk, mv] of Object.entries(ft.months || {})) {
+            (mv.entries||[]).forEach(e => {
+              if (e.paid === 'pagado' || e.paid === true) return;
+              const price = parseFloat(e.price) || 0;
+              if (price <= 0) return;
+              allImpagos.push({
+                mes: mk,
+                cliente: cliMap[e.clientId] || e.clientId || '?',
+                price: price
+              });
+            });
+          }
+          if (allImpagos.length > 0) {
+            // Orden: más reciente primero
+            allImpagos.sort((a,b) => b.mes.localeCompare(a.mes) || a.cliente.localeCompare(b.cliente));
+            const total = allImpagos.reduce((s,x) => s + x.price, 0);
+            block.push(`   ⚠ <b>${allImpagos.length} impagos pendientes</b>: €${fmt(total)}`);
+            const MAX = 12;
+            allImpagos.slice(0, MAX).forEach(x => {
+              block.push(`     • ${x.mes} · ${escape(x.cliente)} · €${fmt(x.price)}`);
+            });
+            if (allImpagos.length > MAX) {
+              block.push(`     ... y ${allImpagos.length - MAX} más`);
             }
           }
         }
 
-        // ── Top servicios del mes anterior ──
-        if (ftSec.top_servicios === true) {
-          const mvPrev = ft.months?.[ftMonthKey];
-          if (mvPrev) {
-            const services = ft.services || [];
-            const byService = {};
-            (mvPrev.entries||[]).forEach(e => {
-              const p = parseFloat(e.price) || 0;
-              if (e.serviceId) byService[e.serviceId] = (byService[e.serviceId]||0) + p;
-            });
-            (mvPrev.packs||[]).forEach(pk => {
-              const total = (parseFloat(pk.pricePerSession)||0) * (parseInt(pk.totalSessions)||0);
-              if (pk.serviceId) byService[pk.serviceId] = (byService[pk.serviceId]||0) + total;
-            });
-            const topSrv = Object.entries(byService).sort((a,b) => b[1]-a[1]).slice(0, 3);
-            if (topSrv.length) {
-              block.push(`   🏆 Top servicios ${ftMonthKey}:`);
-              topSrv.forEach(([sid, total]) => {
-                const svc = services.find(s => s.id === sid);
-                block.push(`     • ${escape(svc ? svc.name : sid)}: €${fmt(total)}`);
-              });
-            }
-          }
-        }
+        // top_servicios eliminado por petición del user.
 
         // ── Sesiones HOY (real time) ──
         if (ftSec.sesiones_hoy === true) {

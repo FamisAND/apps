@@ -1293,8 +1293,7 @@ const NOTIF_SECTIONS = [
     { id: 'ingresos_mes',  label: 'Facturado vs cobrado del mes',          default: true  },
     { id: 'ingresos_avg',  label: 'Media facturación mensual (últimos N meses)', default: false },
     { id: 'ingresos_avg_months', label: '↳ N meses', default: 6, type: 'number', min: 2, max: 24 },
-    { id: 'impagos',       label: 'Impagos del mes',                       default: true  },
-    { id: 'top_servicios', label: 'Top 3 servicios más vendidos',          default: false },
+    { id: 'impagos',       label: 'Impagos pendientes (todos los meses)',  default: true  },
     { id: 'top_clientes',  label: 'Top 3 clientes (más facturación)',      default: false },
     { id: 'sesiones_hoy',  label: 'Sesiones programadas hoy',              default: false },
     { id: 'stock_critico', label: 'Stock crítico (≤2 unidades)',           default: false }
@@ -1441,14 +1440,6 @@ async function previewNotifMessage(){
   }
 }
 
-// Sparkline ASCII (8 niveles)
-function _spark(values){
-  const v = values.filter(x => x!=null && !isNaN(x));
-  if(v.length < 2) return '';
-  const blocks = '▁▂▃▄▅▆▇█';
-  const min = Math.min(...v), max = Math.max(...v), range = max - min || 1;
-  return v.map(x => blocks[Math.round((x-min)/range*7)]).join('');
-}
 function _esc(s){ return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]); }
 
 // Genera el resumen en cliente (mirror de telegram-summary.js)
@@ -1494,11 +1485,6 @@ function _buildSummaryClient(data, cfg){
               block.push(`   🎯 ${pct}% del objetivo (€${_fnum(obj.target)})`);
             }
           }
-          if(patSec.sparkline === true && ents.length >= 2){
-            const last12 = ents.slice(-12).map(e => _calcPat(e));
-            const spark = _spark(last12);
-            if(spark) block.push(`   <code>${spark}</code> últimos ${last12.length}m`);
-          }
           if(patSec.ytd_pct === true){
             const yearStart = ents.find(e => e.year === last.year && e.month === 0)
                           || ents.find(e => e.year === last.year);
@@ -1510,21 +1496,37 @@ function _buildSummaryClient(data, cfg){
               }
             }
           }
+          // Patrimonio gastos — fórmula real del dashboard:
+          // solo importe<0, saltar excluido, archivos tipo='comun' = mitad
+          function _patGastosMes(monthMd){
+            if(!monthMd || !monthMd.transacciones) return null;
+            const archMap = {};
+            (monthMd.archivos||[]).forEach(a => archMap[a.id] = a);
+            let total = 0; const porCat = {}; let nReal = 0;
+            (monthMd.transacciones||[]).forEach(t => {
+              if(t.excluido) return;
+              const imp = parseFloat(t.importe);
+              if(!Number.isFinite(imp) || imp >= 0) return;
+              nReal++;
+              const tipo = archMap[t.archivoId]?.tipo || 'individual';
+              const part = (tipo === 'comun') ? Math.abs(imp)/2 : Math.abs(imp);
+              total += part;
+              const cid = t.categoriaId || 'sin_cat';
+              porCat[cid] = (porCat[cid]||0) + part;
+            });
+            return { total, porCat, nReal };
+          }
           if(patSec.gastos_mes === true){
-            const txs = p?.gastos?.meses?.[monthKey]?.transacciones || [];
-            if(txs.length){
-              const total = txs.reduce((s,t) => s + Math.abs(parseFloat(t.importe)||0), 0);
-              const byCat = {};
-              txs.forEach(t => {
-                const cid = t.categoriaId || '_sin';
-                byCat[cid] = (byCat[cid]||0) + Math.abs(parseFloat(t.importe)||0);
-              });
+            const r = _patGastosMes(p?.gastos?.meses?.[monthKey]);
+            if(r && r.nReal > 0){
               const cats = p?.gastos?.categorias || [];
-              const top3 = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
-              block.push(`   💸 Gastos ${monthKey}: €${_fnum(total)} (${txs.length} mov)`);
+              const catMap = {}; cats.forEach(c => catMap[c.id] = c);
+              catMap['sin_cat'] = { name: 'Sin categorizar' };
+              const top3 = Object.entries(r.porCat).sort((a,b)=>b[1]-a[1]).slice(0,3);
+              block.push(`   💸 Gastos ${monthKey}: €${_fnum(r.total)} (${r.nReal} mov · mi parte)`);
               top3.forEach(([cid,amt]) => {
-                const cat = cats.find(c => c.id === cid);
-                block.push(`     • ${_esc(cat?cat.name:'Sin categoría')}: €${_fnum(amt)}`);
+                const cat = catMap[cid] || { name: cid };
+                block.push(`     • ${_esc(cat.name)}: €${_fnum(amt)}`);
               });
             }
           }
@@ -1540,6 +1542,7 @@ function _buildSummaryClient(data, cfg){
             }
           }
           if(patSec.distribucion === true){
+            block.push(`   📊 Distribución:`);
             (p.sections||[]).forEach(sec => {
               if(sec.id === 's_ingresos' || sec.type === 'ingresos') return;
               let secTotal = 0;
@@ -1549,7 +1552,8 @@ function _buildSummaryClient(data, cfg){
               });
               if(secTotal > 0 && totalNow > 0){
                 const pct = (secTotal/totalNow*100).toFixed(0);
-                block.push(`     ${_esc(sec.name)}: €${_fnum(secTotal)} (${pct}%)`);
+                const secName = sec.title || sec.name || sec.id || 'Sección';
+                block.push(`     • ${_esc(secName)}: €${_fnum(secTotal)} (${pct}%)`);
               }
             });
           }
@@ -1660,19 +1664,6 @@ function _buildSummaryClient(data, cfg){
             });
           }
         }
-        if(optSec.pnl_sparkline === true && Array.isArray(hist)){
-          const pnlByMonth = {};
-          hist.forEach(h => {
-            const k = (h.cierre||'').slice(0,7);
-            if(!k) return;
-            pnlByMonth[k] = (pnlByMonth[k]||0) + (parseFloat(h.totalNeto)||0);
-          });
-          const last6 = Object.keys(pnlByMonth).sort().slice(-6).map(k => pnlByMonth[k] * 100);
-          if(last6.length >= 2){
-            const spark = _spark(last6);
-            if(spark) block.push(`   <code>${spark}</code> P&L últimos ${last6.length}m`);
-          }
-        }
         if(block.length){ lines.push(''); lines.push(...block); }
       }
     } catch(e){ console.warn('preview options:', e); }
@@ -1691,62 +1682,56 @@ function _buildSummaryClient(data, cfg){
         if(ftSec.clientes !== false) parts.push(`${activos} clientes`);
         if(ftSec.equipo !== false)   parts.push(`${equipo} en equipo`);
         if(parts.length) block.push(`💪 <b>Full Training</b>: ${parts.join(' · ')}`);
-        const m = ft.months?.[monthKey];
-        if(ftSec.ingresos_mes === true && m){
-          let totalFact = 0, totalCobr = 0;
-          (m.entries||[]).forEach(e => {
-            let entryTotal = 0;
-            (e.lines||[]).forEach(l => { entryTotal += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-            totalFact += entryTotal;
-            if(e.paid) totalCobr += entryTotal;
+        // Mes objetivo = mes anterior (el actual está incompleto)
+        const [yNow, mNow] = monthKey.split('-').map(n => parseInt(n,10));
+        const dPrev = new Date(Date.UTC(yNow, mNow - 1, 1)); dPrev.setUTCMonth(dPrev.getUTCMonth() - 1);
+        const ftMonthKey = `${dPrev.getUTCFullYear()}-${String(dPrev.getUTCMonth()+1).padStart(2,'0')}`;
+        block.push(`   <i>(referido a ${ftMonthKey} — el mes en curso suele estar incompleto)</i>`);
+
+        function _ftMonthMetrics(mv){
+          if(!mv) return null;
+          let fact = 0, cobr = 0;
+          (mv.entries||[]).forEach(e => {
+            const pr = parseFloat(e.price) || 0;
+            fact += pr;
+            if(e.paid === 'pagado' || e.paid === true) cobr += pr;
           });
-          (m.masajes||[]).forEach(mas => {
-            const t = (parseFloat(mas.qty)||0) * (parseFloat(mas.price)||0);
-            totalFact += t;
-            if(mas.paid) totalCobr += t;
-          });
-          if(totalFact > 0){
-            const pctCobr = totalFact ? (totalCobr/totalFact*100).toFixed(0) : 0;
-            block.push(`   💵 Facturado ${monthKey}: €${_fnum(totalFact)} (€${_fnum(totalCobr)} cobrado · ${pctCobr}%)`);
+          const gastos = (mv.gastos||[])
+            .filter(g => g.cat !== 'dividendos')
+            .reduce((s,g) => s + (parseFloat(g.amount)||0), 0);
+          return { fact, cobr, gastos, beneficio: fact - gastos };
+        }
+        const mPrev = _ftMonthMetrics(ft.months?.[ftMonthKey]);
+        if(ftSec.ingresos_mes !== false && mPrev){
+          if(mPrev.fact > 0)   block.push(`   💵 Facturación ${ftMonthKey}: €${_fnum(mPrev.fact)}`);
+          if(mPrev.gastos > 0) block.push(`   💸 Gastos ${ftMonthKey}: €${_fnum(mPrev.gastos)}`);
+          if(mPrev.fact > 0 || mPrev.gastos > 0){
+            const sign = mPrev.beneficio >= 0 ? '+' : '-';
+            block.push(`   📊 Beneficio ${ftMonthKey}: ${sign}€${_fnum(Math.abs(mPrev.beneficio))}`);
           }
         }
-        if(ftSec.impagos !== false && m){
-          const imp = (m.entries||[]).filter(e => e.paid === false).length;
-          if(imp > 0) block.push(`   ⚠ ${imp} impagos en ${monthKey}`);
-        }
-        if(ftSec.top_servicios === true && m){
-          const services = ft.services || [];
-          const byService = {};
-          (m.entries||[]).forEach(e => {
-            (e.lines||[]).forEach(l => {
-              const lt = (parseFloat(l.qty)||0) * (parseFloat(l.price)||0);
-              byService[l.serviceId] = (byService[l.serviceId]||0) + lt;
-            });
-          });
-          const topSrv = Object.entries(byService).sort((a,b) => b[1]-a[1]).slice(0,3);
-          if(topSrv.length){
-            block.push(`   🏆 Top servicios:`);
-            topSrv.forEach(([sid,total]) => {
-              const svc = services.find(s => s.id === sid);
-              block.push(`     • ${_esc(svc?svc.name:sid)}: €${_fnum(total)}`);
+        // Impagos: TODOS los meses, lista detallada
+        if(ftSec.impagos !== false){
+          const cliMap = {};
+          (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
+          const allImpagos = [];
+          for(const [mk, mv] of Object.entries(ft.months||{})){
+            (mv.entries||[]).forEach(e => {
+              if(e.paid === 'pagado' || e.paid === true) return;
+              const pr = parseFloat(e.price) || 0;
+              if(pr <= 0) return;
+              allImpagos.push({ mes: mk, cliente: cliMap[e.clientId] || e.clientId || '?', price: pr });
             });
           }
-        }
-        if(ftSec.top_clientes === true && m){
-          const clients = ft.clients || [];
-          const byClient = {};
-          (m.entries||[]).forEach(e => {
-            let entryTotal = 0;
-            (e.lines||[]).forEach(l => { entryTotal += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0); });
-            byClient[e.clientId] = (byClient[e.clientId]||0) + entryTotal;
-          });
-          const top = Object.entries(byClient).sort((a,b) => b[1]-a[1]).slice(0,3);
-          if(top.length){
-            block.push(`   👥 Top clientes:`);
-            top.forEach(([cid,total]) => {
-              const cli = clients.find(c => c.id === cid);
-              block.push(`     • ${_esc(cli?cli.name:cid)}: €${_fnum(total)}`);
+          if(allImpagos.length > 0){
+            allImpagos.sort((a,b) => b.mes.localeCompare(a.mes) || a.cliente.localeCompare(b.cliente));
+            const total = allImpagos.reduce((s,x) => s + x.price, 0);
+            block.push(`   ⚠ <b>${allImpagos.length} impagos pendientes</b>: €${_fnum(total)}`);
+            const MAX = 12;
+            allImpagos.slice(0, MAX).forEach(x => {
+              block.push(`     • ${x.mes} · ${_esc(x.cliente)} · €${_fnum(x.price)}`);
             });
+            if(allImpagos.length > MAX) block.push(`     ... y ${allImpagos.length - MAX} más`);
           }
         }
         if(ftSec.sesiones_hoy === true){
