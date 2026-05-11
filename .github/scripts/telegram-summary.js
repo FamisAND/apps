@@ -1025,6 +1025,17 @@ function buildTraining(ctx, data, notif) {
 // ───────────────────────────────────────────────────────────
 //  FACTURAS
 // ───────────────────────────────────────────────────────────
+// Igual que facturas.js getEstado(): si está marcada 'pagada' está pagada;
+// si está 'pendiente' y han pasado >30 días desde fecha → vencida.
+function getEstadoFactura(f) {
+  if (f.estado === 'pagada') return 'pagada';
+  if (f.fecha) {
+    const dias = Math.round((Date.now() - new Date(f.fecha).getTime()) / 86400000);
+    if (dias > 30) return 'vencida';
+  }
+  return 'pendiente';
+}
+
 function buildFacturas(ctx, data, notif) {
   const sec = (notif.sections || {}).facturas || {};
   if (sec.enabled === false) return [];
@@ -1033,17 +1044,24 @@ function buildFacturas(ctx, data, notif) {
     const profiles = parseMaybe(data?.facturas?.fac_v1);
     if (!Array.isArray(profiles)) return [];
 
-    let pend = 0, venc = 0, totalMes = 0;
+    let pend = 0, venc = 0, pag = 0, totalMes = 0, pendMes = 0;
     const byClienteMes = {};
+    const vencidasDetail = [];
     profiles.forEach(p => {
       (p.facturas||[]).forEach(f => {
-        if (f.estado === 'pendiente') pend++;
-        if (f.estado === 'vencida')   venc++;
+        const estado = getEstadoFactura(f);
+        const total = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+        if (estado === 'pendiente') pend++;
+        if (estado === 'vencida') {
+          venc++;
+          vencidasDetail.push({ cli: f.clienteName || f.cliente?.name || '?', total, fecha: f.fecha });
+        }
+        if (estado === 'pagada') pag++;
         if (f.fecha && f.fecha.startsWith(ctx.monthKey)) {
-          const t = parseFloat(f.total)||0;
-          totalMes += t;
-          const cn = f.clienteName || f.clienteId || '?';
-          byClienteMes[cn] = (byClienteMes[cn]||0) + t;
+          totalMes += total;
+          if (estado !== 'pagada') pendMes += total;
+          const cn = f.clienteName || f.cliente?.name || f.clienteId || '?';
+          byClienteMes[cn] = (byClienteMes[cn]||0) + total;
         }
       });
     });
@@ -1053,7 +1071,16 @@ function buildFacturas(ctx, data, notif) {
     if (sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
     if (sec.vencidas   !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
     if (parts.length) out.push(`   ${parts.join(' · ')}`);
-    if (sec.total_mes !== false && totalMes > 0) out.push(`   💶 Facturado ${ctx.monthKey}: €${fmt(totalMes)}`);
+    if (sec.vencidas !== false && vencidasDetail.length) {
+      vencidasDetail.slice(0, 4).forEach(v => {
+        out.push(`     • ${escape(v.cli)} · €${fmt(v.total)} <i>(${v.fecha})</i>`);
+      });
+      if (vencidasDetail.length > 4) out.push(`     ... y ${vencidasDetail.length-4} más`);
+    }
+    if (sec.total_mes !== false && totalMes > 0) {
+      out.push(`   💶 Facturado ${ctx.monthKey}: €${fmt(totalMes)}`);
+      if (pendMes > 0) out.push(`   🔴 Pendiente de ese mes: €${fmt(pendMes)}`);
+    }
     if (sec.top_cliente === true) {
       const top = Object.entries(byClienteMes).sort((a,b) => b[1]-a[1])[0];
       if (top) out.push(`   👤 Top: ${escape(top[0])} (€${fmt(top[1])})`);
@@ -1071,14 +1098,15 @@ function buildFacturas(ctx, data, notif) {
 function collectUrgent(ctx, data, notif) {
   const out = [];
 
-  // Facturas vencidas
+  // Facturas vencidas (computado: pendiente + >30d)
   try {
     const profiles = parseMaybe(data?.facturas?.fac_v1);
     if (Array.isArray(profiles)) {
       const venc = [];
       profiles.forEach(p => (p.facturas||[]).forEach(f => {
-        if (f.estado === 'vencida') {
-          venc.push({ cli: f.clienteName || '?', total: parseFloat(f.total)||0 });
+        if (getEstadoFactura(f) === 'vencida') {
+          const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+          venc.push({ cli: f.clienteName || f.cliente?.name || '?', total: t });
         }
       }));
       if (venc.length) {
@@ -1260,11 +1288,14 @@ function buildSignals(ctx, data, notif, urgent) {
 
 async function generateInsight(data, signals) {
   const ia = data.__ia;
+  console.log('[AI] providers count:', (ia?.providers||[]).length);
   if (!ia || !Array.isArray(ia.providers) || !ia.providers.length) {
     return '<i>(IA pedida pero __ia sin configurar)</i>';
   }
   const provider = ia.providers.find(p => p.activa);
   if (!provider) return '<i>(IA pedida pero ningún provider activo)</i>';
+  console.log('[AI] provider:', provider.tipo, 'model:', provider.modelo);
+  console.log('[AI] signals count:', signals.length);
 
   const sysPrompt = [
     'Eres el asistente personal de Sergio. Recibes SEÑALES literales extraídas de sus dashboards.',
@@ -1298,7 +1329,8 @@ async function generateInsight(data, signals) {
   const userMsg = 'SEÑALES:\n' + signals.map(s => '- ' + s).join('\n');
 
   const text = await callIA(provider, userMsg, sysPrompt);
-  if (!text || !text.trim()) return null;
+  console.log('[AI] response length:', text?.length || 0);
+  if (!text || !text.trim()) return '<i>(IA devolvió respuesta vacía — modelo: ' + escape(provider.modelo||'?') + ')</i>';
   // Asegurar que cada bullet vaya indentado para que case con el resto del mensaje
   return text.trim().split('\n').filter(l => l.trim()).map(l => '   ' + escape(l.trim())).join('\n');
 }
@@ -1331,9 +1363,15 @@ async function callIA(provider, prompt, systemMsg) {
     method:'POST', headers,
     body: JSON.stringify({ model: provider.modelo, messages, temperature:0.4, max_tokens:512 })
   });
-  if (!res.ok) throw new Error(`${provider.tipo} ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error('[AI] HTTP', res.status, 'body:', body.slice(0, 300));
+    throw new Error(`${provider.tipo} HTTP ${res.status}: ${body.slice(0,100)}`);
+  }
   const d = await res.json();
-  return d.choices?.[0]?.message?.content || '';
+  const content = d.choices?.[0]?.message?.content || '';
+  if (!content) console.error('[AI] response has no content:', JSON.stringify(d).slice(0,300));
+  return content;
 }
 
 // ───────────────────────────────────────────────────────────

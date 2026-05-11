@@ -2057,20 +2057,31 @@ function _previewTraining(ctx, data, sec){
 }
 
 // — FACTURAS (preview) —
+function _getEstadoFactura(f){
+  if(f.estado === 'pagada') return 'pagada';
+  if(f.fecha){
+    const dias = Math.round((Date.now() - new Date(f.fecha).getTime()) / 86400000);
+    if(dias > 30) return 'vencida';
+  }
+  return 'pendiente';
+}
+
 function _previewFacturas(ctx, data, sec){
   if(sec.enabled === false) return [];
   try {
     const profiles = _pmaybe(data?.facturas?.fac_v1);
     if(!Array.isArray(profiles)) return [];
-    let pend=0, venc=0, totalMes=0;
-    const byClienteMes = {};
+    let pend=0, venc=0, totalMes=0, pendMes=0;
+    const byClienteMes = {}; const vencDet = [];
     profiles.forEach(p => (p.facturas||[]).forEach(f => {
-      if(f.estado==='pendiente') pend++;
-      if(f.estado==='vencida')   venc++;
+      const estado = _getEstadoFactura(f);
+      const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+      if(estado === 'pendiente') pend++;
+      if(estado === 'vencida'){ venc++; vencDet.push({ cli: f.clienteName || f.cliente?.name || '?', total: t, fecha: f.fecha }); }
       if(f.fecha && f.fecha.startsWith(ctx.monthKey)){
-        const t = parseFloat(f.total)||0;
         totalMes += t;
-        const cn = f.clienteName || f.clienteId || '?';
+        if(estado !== 'pagada') pendMes += t;
+        const cn = f.clienteName || f.cliente?.name || f.clienteId || '?';
         byClienteMes[cn] = (byClienteMes[cn]||0) + t;
       }
     }));
@@ -2079,7 +2090,14 @@ function _previewFacturas(ctx, data, sec){
     if(sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
     if(sec.vencidas   !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
     if(parts.length) out.push(`   ${parts.join(' · ')}`);
-    if(sec.total_mes !== false && totalMes > 0) out.push(`   💶 Facturado ${ctx.monthKey}: €${_fnum(totalMes)}`);
+    if(sec.vencidas !== false && vencDet.length){
+      vencDet.slice(0,4).forEach(v => out.push(`     • ${_esc(v.cli)} · €${_fnum(v.total)} <i>(${v.fecha})</i>`));
+      if(vencDet.length > 4) out.push(`     ... y ${vencDet.length-4} más`);
+    }
+    if(sec.total_mes !== false && totalMes > 0){
+      out.push(`   💶 Facturado ${ctx.monthKey}: €${_fnum(totalMes)}`);
+      if(pendMes > 0) out.push(`   🔴 Pendiente de ese mes: €${_fnum(pendMes)}`);
+    }
     if(sec.top_cliente === true){
       const top = Object.entries(byClienteMes).sort((a,b) => b[1]-a[1])[0];
       if(top) out.push(`   👤 Top: ${_esc(top[0])} (€${_fnum(top[1])})`);
@@ -2096,7 +2114,10 @@ function _previewUrgent(ctx, data){
     if(Array.isArray(profiles)){
       const venc = [];
       profiles.forEach(p => (p.facturas||[]).forEach(f => {
-        if(f.estado === 'vencida') venc.push({ cli: f.clienteName||'?', total: parseFloat(f.total)||0 });
+        if(_getEstadoFactura(f) === 'vencida'){
+          const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+          venc.push({ cli: f.clienteName || f.cliente?.name || '?', total: t });
+        }
       }));
       if(venc.length){
         const tot = venc.reduce((s,x) => s + x.total, 0);
