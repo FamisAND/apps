@@ -170,7 +170,7 @@
     btn.className = 'voice-mic-btn ' + (opts.className || '');
     btn.title = opts.title || 'Pulsa y dicta';
     btn.innerHTML = '🎤';
-    btn.style.cssText = 'background:transparent;border:1px solid #1e3a5f;color:#94a3b8;cursor:pointer;padding:6px 11px;border-radius:6px;font-size:1rem;transition:all .15s;display:inline-flex;align-items:center;gap:4px;';
+    btn.style.cssText = 'background:transparent;border:1px solid #1e3a5f;color:#94a3b8;cursor:pointer;padding:3px 7px;border-radius:5px;font-size:.82rem;transition:all .15s;display:inline-flex;align-items:center;gap:3px;line-height:1.1;';
     btn.onmouseover = () => { if(!btn._listening){ btn.style.borderColor='#60a5fa';btn.style.color='#60a5fa'; } };
     btn.onmouseout  = () => { if(!btn._listening){ btn.style.borderColor='#1e3a5f';btn.style.color='#94a3b8'; } };
     btn._listening = false;
@@ -185,7 +185,7 @@
           onStart: () => {
             btn._listening = true;
             btn.style.background='#dc2626';btn.style.borderColor='#dc2626';btn.style.color='#fff';
-            btn.innerHTML='⏺ grabando...';
+            btn.innerHTML='⏺ rec';
           },
           onEnd: () => {
             btn._listening = false;
