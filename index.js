@@ -1305,7 +1305,7 @@ const NOTIF_SECTIONS = [
     { id: 'top_cliente',   label: 'Top cliente del mes',                   default: false }
   ]},
   { id: 'actualidad', icon: '🌍', label: 'Actualidad', items: [
-    { id: 'mercados_selected', label: 'Mercados (elige 3)', type: 'multi', max: 3,
+    { id: 'mercados_selected', label: 'Mercados (los que quieras)', type: 'multi', max: 10,
       default: ['spy','eurusd','btcusd'],
       options: [
         { id: 'spy',    label: 'S&P 500 (SPY)' },
@@ -1699,7 +1699,7 @@ function _previewActualidad(ctx, data, sec){
       eurusd:'EUR/USD', eurchf:'EUR/CHF',
       btcusd:'BTC', ethusd:'ETH', gld:'GLD', uso:'USO'
     };
-    const tickers = sec.mercados_selected.slice(0,3).map(id => labels[id] || id).join(', ');
+    const tickers = sec.mercados_selected.map(id => labels[id] || id).join(', ');
     out.push(`   💱 Mercados: <i>(${tickers} — fetch al enviar)</i>`);
   }
   if(sec.tiempo === true){
@@ -2071,38 +2071,54 @@ function _previewFacturas(ctx, data, sec){
   try {
     const profiles = _pmaybe(data?.facturas?.fac_v1);
     if(!Array.isArray(profiles)) return [];
-    let pend=0, venc=0, totalMes=0, pendMes=0;
-    const byClienteMes = {}; const vencDet = [];
-    profiles.forEach(p => (p.facturas||[]).forEach(f => {
-      const estado = _getEstadoFactura(f);
-      const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
-      if(estado === 'pendiente') pend++;
-      if(estado === 'vencida'){ venc++; vencDet.push({ cli: f.clienteName || f.cliente?.name || '?', total: t, fecha: f.fecha }); }
-      if(f.fecha && f.fecha.startsWith(ctx.monthKey)){
-        totalMes += t;
-        if(estado !== 'pagada') pendMes += t;
-        const cn = f.clienteName || f.cliente?.name || f.clienteId || '?';
-        byClienteMes[cn] = (byClienteMes[cn]||0) + t;
-      }
-    }));
+    let pend=0, venc=0, totalMes=0, pendMes=0, totalAll=0;
+    const byClienteMes = {}; const vencDet = []; let lastFac = null;
+    profiles.forEach(p => {
+      const cliMap = {}; (p.clientes||[]).forEach(c => cliMap[c.id] = c.name);
+      (p.facturas||[]).forEach(f => {
+        totalAll++;
+        const estado = _getEstadoFactura(f);
+        const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+        const cliName = cliMap[f.clienteId] || f.clienteName || '?';
+        if(estado === 'pendiente') pend++;
+        if(estado === 'vencida'){ venc++; vencDet.push({ cli: cliName, total: t, fecha: f.fecha }); }
+        if(f.fecha && f.fecha.startsWith(ctx.monthKey)){
+          totalMes += t;
+          if(estado !== 'pagada') pendMes += t;
+          byClienteMes[cliName] = (byClienteMes[cliName]||0) + t;
+        }
+        if(!lastFac || (f.fecha||'') > (lastFac.fecha||'')){
+          lastFac = { ...f, cliName, total: t, estado };
+        }
+      });
+    });
+    if(totalAll === 0) return [];
     const out = ['📄 <b>Facturas</b>'];
     const parts = [];
-    if(sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
+    if(sec.pendientes !== false) parts.push(pend ? `${pend} pendiente${pend===1?'':'s'}` : `0 pendientes ✓`);
     if(sec.vencidas   !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
     if(parts.length) out.push(`   ${parts.join(' · ')}`);
     if(sec.vencidas !== false && vencDet.length){
       vencDet.slice(0,4).forEach(v => out.push(`     • ${_esc(v.cli)} · €${_fnum(v.total)} <i>(${v.fecha})</i>`));
       if(vencDet.length > 4) out.push(`     ... y ${vencDet.length-4} más`);
     }
-    if(sec.total_mes !== false && totalMes > 0){
-      out.push(`   💶 Facturado ${ctx.monthKey}: €${_fnum(totalMes)}`);
-      if(pendMes > 0) out.push(`   🔴 Pendiente de ese mes: €${_fnum(pendMes)}`);
+    if(sec.total_mes !== false){
+      if(totalMes > 0){
+        out.push(`   💶 Facturado ${ctx.monthKey}: €${_fnum(totalMes)}`);
+        if(pendMes > 0) out.push(`   🔴 Pendiente de ese mes: €${_fnum(pendMes)}`);
+      } else {
+        out.push(`   <i>Sin facturas emitidas en ${ctx.monthKey}</i>`);
+      }
     }
     if(sec.top_cliente === true){
       const top = Object.entries(byClienteMes).sort((a,b) => b[1]-a[1])[0];
-      if(top) out.push(`   👤 Top: ${_esc(top[0])} (€${_fnum(top[1])})`);
+      if(top) out.push(`   👤 Top del mes: ${_esc(top[0])} (€${_fnum(top[1])})`);
     }
-    return out.length > 1 ? out : [];
+    if(lastFac){
+      const e = lastFac.estado === 'pagada' ? '✓' : lastFac.estado === 'vencida' ? '🔴' : '🟡';
+      out.push(`   📅 Última: ${lastFac.fecha} · ${_esc(lastFac.cliName)} · €${_fnum(lastFac.total)} ${e}`);
+    }
+    return out;
   } catch(e){ console.warn('preview facturas:', e); return []; }
 }
 

@@ -212,7 +212,7 @@ async function buildActualidad(ctx, data, notif) {
   if (Array.isArray(sec.mercados_selected) && sec.mercados_selected.length) {
     const activeProviders = (data.__fin?.providers || []).filter(p => p.activa && p.key);
     const lines = [];
-    for (const id of sec.mercados_selected.slice(0, 3)) {
+    for (const id of sec.mercados_selected) {
       try {
         const m = await fetchMarket(id, activeProviders);
         if (m) lines.push(`     • ${m.label}: <b>${m.price}</b>${m.change ? ` <i>(${m.change})</i>` : ''}`);
@@ -1044,48 +1044,73 @@ function buildFacturas(ctx, data, notif) {
     const profiles = parseMaybe(data?.facturas?.fac_v1);
     if (!Array.isArray(profiles)) return [];
 
-    let pend = 0, venc = 0, pag = 0, totalMes = 0, pendMes = 0;
+    let pend = 0, venc = 0, pag = 0, totalMes = 0, pendMes = 0, totalAll = 0;
     const byClienteMes = {};
     const vencidasDetail = [];
+    let lastFactura = null;
     profiles.forEach(p => {
+      // mapa de clientes del perfil
+      const cliMap = {};
+      (p.clientes||[]).forEach(c => cliMap[c.id] = c.name);
       (p.facturas||[]).forEach(f => {
+        totalAll++;
         const estado = getEstadoFactura(f);
         const total = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+        const cliName = cliMap[f.clienteId] || f.clienteName || f.cliente?.name || '?';
         if (estado === 'pendiente') pend++;
         if (estado === 'vencida') {
           venc++;
-          vencidasDetail.push({ cli: f.clienteName || f.cliente?.name || '?', total, fecha: f.fecha });
+          vencidasDetail.push({ cli: cliName, total, fecha: f.fecha });
         }
         if (estado === 'pagada') pag++;
         if (f.fecha && f.fecha.startsWith(ctx.monthKey)) {
           totalMes += total;
           if (estado !== 'pagada') pendMes += total;
-          const cn = f.clienteName || f.cliente?.name || f.clienteId || '?';
-          byClienteMes[cn] = (byClienteMes[cn]||0) + total;
+          byClienteMes[cliName] = (byClienteMes[cliName]||0) + total;
+        }
+        if (!lastFactura || (f.fecha||'') > (lastFactura.fecha||'')) {
+          lastFactura = { ...f, cliName, total, estado };
         }
       });
     });
 
+    // Si no hay nada que reportar (perfil sin facturas), no rendereamos
+    if (totalAll === 0) return [];
+
     const out = [`📄 <b>Facturas</b>`];
     const parts = [];
-    if (sec.pendientes !== false && pend) parts.push(`${pend} pendientes`);
-    if (sec.vencidas   !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
+    if (sec.pendientes !== false) parts.push(pend ? `${pend} pendiente${pend===1?'':'s'}` : `0 pendientes ✓`);
+    if (sec.vencidas !== false && venc) parts.push(`🔴 <b>${venc} vencidas</b>`);
     if (parts.length) out.push(`   ${parts.join(' · ')}`);
+
     if (sec.vencidas !== false && vencidasDetail.length) {
       vencidasDetail.slice(0, 4).forEach(v => {
         out.push(`     • ${escape(v.cli)} · €${fmt(v.total)} <i>(${v.fecha})</i>`);
       });
       if (vencidasDetail.length > 4) out.push(`     ... y ${vencidasDetail.length-4} más`);
     }
-    if (sec.total_mes !== false && totalMes > 0) {
-      out.push(`   💶 Facturado ${ctx.monthKey}: €${fmt(totalMes)}`);
-      if (pendMes > 0) out.push(`   🔴 Pendiente de ese mes: €${fmt(pendMes)}`);
+
+    if (sec.total_mes !== false) {
+      if (totalMes > 0) {
+        out.push(`   💶 Facturado ${ctx.monthKey}: €${fmt(totalMes)}`);
+        if (pendMes > 0) out.push(`   🔴 Pendiente de ese mes: €${fmt(pendMes)}`);
+      } else {
+        out.push(`   <i>Sin facturas emitidas en ${ctx.monthKey}</i>`);
+      }
     }
+
     if (sec.top_cliente === true) {
       const top = Object.entries(byClienteMes).sort((a,b) => b[1]-a[1])[0];
-      if (top) out.push(`   👤 Top: ${escape(top[0])} (€${fmt(top[1])})`);
+      if (top) out.push(`   👤 Top del mes: ${escape(top[0])} (€${fmt(top[1])})`);
     }
-    return out.length > 1 ? out : [];
+
+    // Última factura (siempre útil saber cuándo fue la última)
+    if (lastFactura) {
+      const estadoEmoji = lastFactura.estado === 'pagada' ? '✓' : lastFactura.estado === 'vencida' ? '🔴' : '🟡';
+      out.push(`   📅 Última: ${lastFactura.fecha} · ${escape(lastFactura.cliName)} · €${fmt(lastFactura.total)} ${estadoEmoji}`);
+    }
+
+    return out;
   } catch (e) {
     console.error('Facturas:', e.message);
     return [];
@@ -1330,9 +1355,12 @@ async function generateInsight(data, signals) {
 
   const text = await callIA(provider, userMsg, sysPrompt);
   console.log('[AI] response length:', text?.length || 0);
+  console.log('[AI] response text:', JSON.stringify(text||''));
   if (!text || !text.trim()) return '<i>(IA devolvió respuesta vacía — modelo: ' + escape(provider.modelo||'?') + ')</i>';
   // Asegurar que cada bullet vaya indentado para que case con el resto del mensaje
-  return text.trim().split('\n').filter(l => l.trim()).map(l => '   ' + escape(l.trim())).join('\n');
+  const formatted = text.trim().split('\n').filter(l => l.trim()).map(l => '   ' + escape(l.trim())).join('\n');
+  console.log('[AI] formatted length:', formatted.length);
+  return formatted || '<i>(IA respondió pero el formato quedó vacío)</i>';
 }
 
 // ───────────────────────────────────────────────────────────
