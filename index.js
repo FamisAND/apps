@@ -457,7 +457,56 @@ const _isMobile = window.matchMedia('(max-width: 640px)').matches;
   });
 })();
 
-// ── APIs FINANCIERAS (lista flexible — mismo patrón que IA) ──
+// ════════ MENÚ DE CONFIGURACIÓN (puerta única) ════════
+// Cuando el user pulsa "⚙ Configuración" en menuScreen.
+// Si ya hay sesión autenticada (_configAuthenticated) abre directo.
+// Si no, pasa por el gate de contraseña, y al pasar muestra el panel.
+let _configAuthenticated = false;
+let _authPendingCallback = null;
+
+function openConfigMenu(){
+  _requireAuth(() => _showConfigMenuPanel());
+}
+function closeConfigMenu(){
+  document.getElementById('configMenuModal').style.display = 'none';
+  document.getElementById('menuScreen').classList.add('active');
+}
+function _showConfigMenuPanel(){
+  document.getElementById('menuScreen').classList.remove('active');
+  document.getElementById('configMenuModal').style.display = 'flex';
+}
+// Si ya autenticado abre directo; si no, dispara el gate de Notificaciones
+// (que actúa como password maestro). Tras pasar el gate, el callback abre lo
+// que tocaba (panel config, modal de notif, etc.).
+function _requireAuth(callback){
+  if(_configAuthenticated){ callback(); return; }
+  _authPendingCallback = callback;
+  document.getElementById('menuScreen').classList.remove('active');
+  const m = document.getElementById('notifModal');
+  m.style.display = 'flex';
+  document.getElementById('notifGate').style.display = 'block';
+  document.getElementById('notifForm').style.display = 'none';
+  document.getElementById('notifGateMsg').textContent = '';
+  document.getElementById('notifPwd').value = '';
+  document.getElementById('notifPwd2').value = '';
+}
+
+// ── Modal de APIs (solo Financieras ya, IA fuera) ──
+function openApisModal(){
+  closeConfigMenu();
+  document.getElementById('apisModal').style.display = 'flex';
+  _loadFinApisToForm();
+}
+function closeApisModal(){
+  document.getElementById('apisModal').style.display = 'none';
+  if(_configAuthenticated){
+    _showConfigMenuPanel();
+  } else {
+    document.getElementById('menuScreen').classList.add('active');
+  }
+}
+
+// ── APIs FINANCIERAS (lista flexible) ──
 const FIN_PROVIDERS_LOCAL_KEY = 'fin_providers_v1';
 let _editingFinId = null;
 
