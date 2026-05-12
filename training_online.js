@@ -1,45 +1,76 @@
 /**
- * training_online.js — Gestor de entrenamientos BIIO System
+ * training_online.js — BIIO System (formato Full Training, 6 microciclos)
  *
- * Modelo de datos (localStorage 'tob_online_v1'):
- *   {
- *     clientes:    [{id, nombre, sexo, contacto, alta, asignaciones:[asig...], mediciones:[]}],
- *     plantillas:  [{id, nombre, categoria, sexo, microciclos:[], entrenos:[], ejercicios:[]}]
- *   }
+ * Modelo de datos en localStorage 'tob_online_v2':
  *
- *   asig:       {id, plantillaId, fechaInicio, estado, notas,
- *                rutina: <copia de plantilla editable>,
- *                completados: {[microId]:{[entId]:{fecha,peso,cond,calidad,nota,ejs:{[ejId]:{series:[{kg,reps}]}}}}}}
+ *   { clientes: [...], plantillas: [...] }
  *
- *   plantilla:
- *     id, nombre, categoria, sexo: 'H'|'M'|'U',
- *     microciclos: [{id, nombre}, ...],
- *     entrenos:    [{id, letra, nombre}, ...],
- *     ejercicios:  [{id, entrenoId, orden, nombre, planMicro:{[microId]:{series:N, reps:'20', pct:null}}, pausa, notas}]
+ * plantilla = {
+ *   id, nombre, categoria, sexo: 'H'|'M'|'U',
+ *   entrenos: [
+ *     { id:'A', letra:'A', ejercicios: [
+ *         { id, orden, nombre, subtitle,
+ *           tipo: 'normal' | 'circuito',
+ *           // Para 'circuito':
+ *           circuitoLineas: ['EJ1','EJ2','EJ3'],
+ *           // Plan común a todos los microciclos. Si distinto por micro, plan[microNum] override:
+ *           planBase: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
+ *           planByMicro: { 1:{...}, 2:{...}, ... 6:{...} }  // opcional, override
+ *         }
+ *     ]}, { id:'B', ... }
+ *   ]
+ * }
  *
- * Sincroniza a data.json via GitHubSync.attach con section 'training_online'.
+ * asignacion = {
+ *   id, plantillaId, fechaInicio, estado, notas,
+ *   rutina: <copia editable>,
+ *   iteraciones: [
+ *     { id, numero:1,
+ *       sesiones: {
+ *         <microNum>: { <entrenoId>: {
+ *             fecha, aerobica: { tipo, tiempo, intensidad },
+ *             ejs: { <ejId>: { series:[{kg,reps}], lineas:[{kg,reps}] }}
+ *         }}
+ *       }
+ *     }
+ *   ]
+ * }
+ *
+ * Microciclos siempre numerados 1..6 (formato Full Training).
  */
 
-const TOB_KEY = 'tob_online_v1';
+const TOB_KEY = 'tob_online_v2';
+const TOB_NUM_MICRO = 6;
+const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
+
 let tobDB = { clientes: [], plantillas: [] };
 let tobCurrentAsig = null;     // {clienteId, asigId}
-let tobCurrentMicroId = null;
+let tobCurrentItId = null;
 let tobCurrentEntrenoId = null;
-let tobProgChart = null;
+let tobCharts = {};             // {ejId: Chart instance}
 
 function tobUid(prefix){ return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7); }
+function tobEsc(s){ return String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
 
 function tobLoad(){
   try {
     const raw = localStorage.getItem(TOB_KEY);
     if(raw){
       tobDB = JSON.parse(raw);
-      // backfill
       if(!tobDB.clientes) tobDB.clientes = [];
       if(!tobDB.plantillas) tobDB.plantillas = [];
     }
   } catch(e){ console.warn('tobLoad:', e); }
-  // Seed inicial si no hay plantillas
+
+  // Migrar de v1 si existía (estructura distinta)
+  try {
+    const v1 = localStorage.getItem('tob_online_v1');
+    if(v1 && !tobDB.plantillas.length){
+      // No migramos automáticamente — solo limpiamos
+      localStorage.removeItem('tob_online_v1');
+    }
+  } catch(e){}
+
   if(!tobDB.plantillas.length){
     tobDB.plantillas = tobBuildSeedPlantillas();
     tobSave(true);
@@ -51,66 +82,69 @@ function tobLoad(){
 function tobSave(silent){
   try { localStorage.setItem(TOB_KEY, JSON.stringify(tobDB)); }
   catch(e){ console.error('tobSave:', e); }
-  if(!silent && typeof GitHubSync !== 'undefined' && GitHubSync.markDirty){
-    GitHubSync.markDirty();
-  }
+  if(!silent && typeof GitHubSync !== 'undefined' && GitHubSync.markDirty){ GitHubSync.markDirty(); }
   tobBadge('💾 guardado');
 }
 
 function tobBadge(text){
-  const el = document.getElementById('tobSaveBadge');
-  if(!el) return;
+  const el = document.getElementById('tobSaveBadge'); if(!el) return;
   el.textContent = text;
   clearTimeout(tobBadge._t);
   tobBadge._t = setTimeout(() => el.textContent = '', 2000);
 }
 
 function tobToast(msg, type){
-  const t = document.getElementById('tobToast');
-  if(!t) return;
+  const t = document.getElementById('tobToast'); if(!t) return;
   t.textContent = msg;
   t.className = 'tob-toast show ' + (type || '');
   clearTimeout(tobToast._t);
   tobToast._t = setTimeout(() => t.className = 'tob-toast', 2500);
 }
 
-// ════════════════════════════════════════════════════════════════════
-// NAVEGACIÓN DE TABS
-// ════════════════════════════════════════════════════════════════════
+// ═══ NAVEGACIÓN ═══
 function tobShowTab(name, btn){
   document.querySelectorAll('.tob-page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tob-tab').forEach(b => b.classList.remove('active'));
   document.getElementById('tob-' + name).classList.add('active');
   if(btn) btn.classList.add('active');
-  else {
-    const tabs = document.querySelectorAll('.tob-tab');
-    tabs.forEach(t => { if(t.getAttribute('onclick')?.includes(`'${name}'`)) t.classList.add('active'); });
-  }
+  else document.querySelectorAll('.tob-tab').forEach(t => {
+    if(t.getAttribute('onclick')?.includes(`'${name}'`)) t.classList.add('active');
+  });
 }
 
-// ════════════════════════════════════════════════════════════════════
-// CLIENTES
-// ════════════════════════════════════════════════════════════════════
+// ═══ HELPERS PLAN ═══
+function tobPlanFor(ej, microNum){
+  if(ej.planByMicro && ej.planByMicro[microNum]) return ej.planByMicro[microNum];
+  return ej.planBase || { series:3, repsTarget:[10], pausa:'' };
+}
+function tobPlanLabel(plan){
+  const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
+  return `${plan.series}×${reps}`;
+}
+
+// ═══ CLIENTES ═══
 function tobRenderClientes(){
   const tbody = document.getElementById('tobClientesBody');
   const empty = document.getElementById('tobClientesEmpty');
-  if(!tobDB.clientes.length){
-    tbody.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
+  if(!tobDB.clientes.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display = 'none';
   tbody.innerHTML = tobDB.clientes.map(c => {
     const last = (c.asignaciones||[]).slice(-1)[0];
-    const lastInfo = last ? tobPlantillaName(last.plantillaId) + ` <span class="tob-badge ${last.estado}">${last.estado}</span>` : '<span style="color:var(--mute2)">—</span>';
+    const lastInfo = last
+      ? tobPlantillaName(last.plantillaId) + ` <span class="tob-badge ${last.estado}">${last.estado}</span>`
+      : '<span style="color:var(--mute2)">—</span>';
+    const sexoCls = c.sexo==='M'?'m':c.sexo==='H'?'h':'u';
+    const sexoTxt = c.sexo==='M'?'♀':c.sexo==='H'?'♂':'U';
     return `<tr>
       <td><strong>${tobEsc(c.nombre)}</strong></td>
       <td><span style="color:var(--mute);font-family:DM Mono,monospace;font-size:.78rem;">${tobEsc(c.contacto||'—')}</span></td>
-      <td><span class="tob-badge ${c.sexo==='M'?'m':'h'}">${c.sexo==='M'?'♀ Mujer':'♂ Hombre'}</span></td>
+      <td><span class="tob-badge ${sexoCls}">${sexoTxt}</span></td>
       <td class="num">${(c.asignaciones||[]).length}</td>
       <td>${lastInfo}</td>
       <td class="actions">
         <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobAbrirCliente('${c.id}')">📂 Abrir</button>
+        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobEditCliente('${c.id}')">✏️</button>
+        <button class="tob-action danger" style="padding:5px 10px;" onclick="tobDelCliente('${c.id}')">🗑</button>
       </td>
     </tr>`;
   }).join('');
@@ -118,7 +152,7 @@ function tobRenderClientes(){
 
 function tobPlantillaName(plantId){
   const p = tobDB.plantillas.find(p => p.id === plantId);
-  return p ? tobEsc(p.nombre) + (p.sexo==='M'?' ♀':p.sexo==='H'?' ♂':'') : '(sin plantilla)';
+  return p ? tobEsc(p.nombre) : '(plantilla eliminada)';
 }
 
 function tobOpenClienteModal(cli){
@@ -128,8 +162,8 @@ function tobOpenClienteModal(cli){
   document.getElementById('tobCliContacto').value = cli?.contacto || '';
   document.getElementById('tobCliAlta').value = cli?.alta || new Date().toISOString().slice(0,10);
   const sel = document.getElementById('tobCliPlantilla');
-  sel.innerHTML = '<option value="">— Ninguna por ahora —</option>' +
-    tobDB.plantillas.map(p => `<option value="${p.id}">${tobEsc(p.nombre)} (${p.sexo==='M'?'♀':p.sexo==='H'?'♂':'U'})</option>`).join('');
+  sel.innerHTML = '<option value="">— Ninguna —</option>' +
+    tobDB.plantillas.map(p => `<option value="${p.id}">${tobEsc(p.nombre)}</option>`).join('');
   sel.value = '';
   document.getElementById('tobClienteModalBg').dataset.editId = cli?.id || '';
   document.getElementById('tobClienteModalBg').classList.add('on');
@@ -139,23 +173,42 @@ function tobCloseClienteModal(){ document.getElementById('tobClienteModalBg').cl
 function tobSaveCliente(){
   const nombre = document.getElementById('tobCliNombre').value.trim();
   if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
-  const sexo = document.getElementById('tobCliSexo').value;
-  const contacto = document.getElementById('tobCliContacto').value.trim();
-  const alta = document.getElementById('tobCliAlta').value;
-  const plantId = document.getElementById('tobCliPlantilla').value;
+  const cli = {
+    nombre,
+    sexo: document.getElementById('tobCliSexo').value,
+    contacto: document.getElementById('tobCliContacto').value.trim(),
+    alta: document.getElementById('tobCliAlta').value
+  };
   const editId = document.getElementById('tobClienteModalBg').dataset.editId;
   if(editId){
     const c = tobDB.clientes.find(c => c.id === editId);
-    if(c){ Object.assign(c, {nombre, sexo, contacto, alta}); }
+    if(c) Object.assign(c, cli);
   } else {
-    const c = { id: tobUid('cli'), nombre, sexo, contacto, alta, asignaciones: [], mediciones: [] };
-    if(plantId) c.asignaciones.push(tobCreateAsignacion(plantId));
-    tobDB.clientes.push(c);
+    cli.id = tobUid('cli');
+    cli.asignaciones = [];
+    const plantId = document.getElementById('tobCliPlantilla').value;
+    if(plantId){ const a = tobCreateAsignacion(plantId); if(a) cli.asignaciones.push(a); }
+    tobDB.clientes.push(cli);
   }
   tobSave();
   tobCloseClienteModal();
   tobRenderClientes();
   tobToast('✓ Cliente guardado', 'green');
+}
+
+function tobEditCliente(id){
+  const c = tobDB.clientes.find(c => c.id === id);
+  if(c) tobOpenClienteModal(c);
+}
+function tobDelCliente(id){
+  const c = tobDB.clientes.find(c => c.id === id);
+  if(!c) return;
+  tobConfirm(`Eliminar a ${c.nombre}?`, 'Se borran todas sus rutinas e iteraciones. No se puede deshacer.', () => {
+    tobDB.clientes = tobDB.clientes.filter(x => x.id !== id);
+    tobSave();
+    tobRenderClientes();
+    tobToast('Eliminado', 'green');
+  });
 }
 
 function tobCreateAsignacion(plantId){
@@ -167,53 +220,48 @@ function tobCreateAsignacion(plantId){
     fechaInicio: new Date().toISOString().slice(0,10),
     estado: 'en_curso',
     notas: '',
-    // Copia profunda de la plantilla, editable solo para este cliente
-    rutina: JSON.parse(JSON.stringify({
-      microciclos: pl.microciclos,
-      entrenos: pl.entrenos,
-      ejercicios: pl.ejercicios
-    })),
-    completados: {}
+    rutina: JSON.parse(JSON.stringify({ entrenos: pl.entrenos })),
+    iteraciones: [
+      { id: tobUid('it'), numero: 1, sesiones: {} }
+    ]
   };
 }
 
 function tobAbrirCliente(cliId){
   const c = tobDB.clientes.find(c => c.id === cliId);
   if(!c) return;
-  // Si tiene asignaciones, abrir la última. Si no, lanzar selector de plantilla.
   if(!c.asignaciones || !c.asignaciones.length){
     tobOpenAsignarModal(c);
     return;
   }
-  // Si tiene varias, mostrar lista; si una, abrirla
   if(c.asignaciones.length === 1){
     tobOpenAsignacion(c.id, c.asignaciones[0].id);
   } else {
-    tobOpenAsignarModal(c, true);
+    tobOpenAsignarModal(c);
   }
 }
 
-// Modal rápido para elegir/crear asignación
-function tobOpenAsignarModal(cli, hasExisting){
+function tobOpenAsignarModal(cli){
   const existing = (cli.asignaciones||[]).map(a => {
     const p = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    return `<button class="tob-action ghost" style="margin:4px;text-align:left;width:100%;" onclick="tobOpenAsignacion('${cli.id}','${a.id}');tobCloseConfirm()">
-      <strong>${p ? tobEsc(p.nombre) : '(sin plantilla)'}</strong>
+    return `<button class="tob-action ghost" style="margin:4px 0;text-align:left;width:100%;display:block;" onclick="tobCloseConfirm();tobOpenAsignacion('${cli.id}','${a.id}')">
+      <strong>${p ? tobEsc(p.nombre) : '(plantilla eliminada)'}</strong>
       <span style="color:var(--mute);font-size:.72rem;float:right;">${a.estado} · ${a.fechaInicio||''}</span>
     </button>`;
   }).join('');
   const newOptions = tobDB.plantillas.map(p =>
-    `<option value="${p.id}">${tobEsc(p.nombre)} (${p.sexo==='M'?'♀':p.sexo==='H'?'♂':'U'})</option>`
+    `<option value="${p.id}">${tobEsc(p.nombre)}</option>`
   ).join('');
-  document.getElementById('tobConfirmTitle').textContent = 'Asignaciones de ' + tobEsc(cli.nombre);
+  document.getElementById('tobConfirmTitle').textContent = tobEsc(cli.nombre);
   document.getElementById('tobConfirmMsg').innerHTML = `
-    ${existing ? '<div style="margin-bottom:14px;"><div class="tob-lbl">Asignaciones existentes:</div>' + existing + '</div>' : ''}
-    <div class="tob-lbl">Crear nueva asignación con plantilla:</div>
+    ${existing ? '<div style="margin-bottom:14px;"><div class="tob-lbl">Rutinas existentes:</div>' + existing + '</div>' : ''}
+    <div class="tob-lbl">Crear nueva rutina con plantilla:</div>
     <select class="tob-select" id="tobAsigNewPlant">${newOptions}</select>
   `;
-  document.getElementById('tobConfirmOk').textContent = '+ Crear asignación';
-  document.getElementById('tobConfirmOk').classList.remove('danger');
-  document.getElementById('tobConfirmOk').onclick = function(){
+  const ok = document.getElementById('tobConfirmOk');
+  ok.textContent = '+ Crear rutina';
+  ok.classList.remove('danger');
+  ok.onclick = function(){
     const plId = document.getElementById('tobAsigNewPlant').value;
     const a = tobCreateAsignacion(plId);
     if(!a){ tobToast('Plantilla no encontrada', 'red'); return; }
@@ -221,30 +269,26 @@ function tobOpenAsignarModal(cli, hasExisting){
     tobSave();
     tobCloseConfirm();
     tobOpenAsignacion(cli.id, a.id);
-    tobToast('✓ Asignación creada', 'green');
+    tobToast('✓ Rutina creada', 'green');
   };
   document.getElementById('tobConfirmBg').classList.add('on');
 }
 
-// ════════════════════════════════════════════════════════════════════
-// PLANTILLAS
-// ════════════════════════════════════════════════════════════════════
+// ═══ PLANTILLAS ═══
 function tobRenderPlantillas(){
   const tbody = document.getElementById('tobPlantillasBody');
   const empty = document.getElementById('tobPlantillasEmpty');
   if(!tobDB.plantillas.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display = 'none';
   tbody.innerHTML = tobDB.plantillas.map(p => {
-    const sexoBadge = p.sexo==='M' ? '<span class="tob-badge m">♀ Mujer</span>' :
-                      p.sexo==='H' ? '<span class="tob-badge h">♂ Hombre</span>' :
-                      '<span class="tob-badge">U</span>';
+    const sexoBadge = `<span class="tob-badge ${p.sexo==='M'?'m':p.sexo==='H'?'h':'u'}">${p.sexo==='M'?'♀':p.sexo==='H'?'♂':'U'}</span>`;
+    const nEj = (p.entrenos||[]).reduce((s,e) => s + (e.ejercicios||[]).length, 0);
     return `<tr>
       <td><strong>${tobEsc(p.nombre)}</strong></td>
       <td><span style="color:var(--mute);font-size:.78rem;">${tobEsc(p.categoria||'—')}</span></td>
       <td>${sexoBadge}</td>
-      <td class="num">${(p.microciclos||[]).length}</td>
       <td class="num">${(p.entrenos||[]).length}</td>
-      <td class="num">${(p.ejercicios||[]).length}</td>
+      <td class="num">${nEj}</td>
       <td class="actions">
         <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobEditarPlantilla('${p.id}')">✏️</button>
         <button class="tob-action danger" style="padding:4px 9px;" onclick="tobDelPlantilla('${p.id}')">🗑</button>
@@ -258,435 +302,616 @@ function tobOpenPlantillaModal(pl){
   document.getElementById('tobPlNombre').value = pl?.nombre || '';
   document.getElementById('tobPlCategoria').value = pl?.categoria || 'Reacondicionamiento';
   document.getElementById('tobPlSexo').value = pl?.sexo || 'H';
-  document.getElementById('tobPlMicros').value = (pl?.microciclos||[]).map(m => m.nombre).join('\n');
-  document.getElementById('tobPlEntrenos').value = (pl?.entrenos||[]).map(e => `${e.letra} | ${e.nombre||''}`).join('\n');
-  document.getElementById('tobPlEjercicios').value = (pl?.ejercicios||[]).map(ej => {
-    const e = (pl.entrenos.find(en=>en.id===ej.entrenoId)||{}).letra || '?';
-    const firstM = Object.keys(ej.planMicro||{})[0];
-    const plan = firstM ? `${ej.planMicro[firstM].series}x${ej.planMicro[firstM].reps}` : '';
-    return `${e} | ${ej.nombre} | ${plan} | ${ej.pausa||''}`;
-  }).join('\n');
+  document.getElementById('tobPlDef').value = pl ? tobPlantillaToText(pl) : '';
   document.getElementById('tobPlantillaModalBg').dataset.editId = pl?.id || '';
   document.getElementById('tobPlantillaModalBg').classList.add('on');
 }
 function tobClosePlantillaModal(){ document.getElementById('tobPlantillaModalBg').classList.remove('on'); }
+
+function tobPlantillaToText(pl){
+  const lines = [];
+  (pl.entrenos||[]).forEach(en => {
+    (en.ejercicios||[]).forEach(ej => {
+      const plan = ej.planBase || tobPlanFor(ej, 1);
+      const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
+      let line = `${en.letra} | ${ej.nombre} | ${ej.tipo||'normal'} | ${ej.subtitle||''} | ${plan.series} | ${reps} | ${plan.pausa||''}`;
+      if(ej.tipo === 'circuito' && Array.isArray(ej.circuitoLineas)) line += ` | ${ej.circuitoLineas.join(';')}`;
+      lines.push(line);
+    });
+  });
+  return lines.join('\n');
+}
+
+function tobParsePlantillaDef(text){
+  const entrenosMap = {};
+  text.split('\n').forEach(raw => {
+    const l = raw.trim();
+    if(!l || l.startsWith('#')) return;
+    const parts = l.split('|').map(s => s.trim());
+    if(parts.length < 6) return;
+    const [letra, nombre, tipo, subtitle, seriesStr, repsStr, pausa, circLineas] = parts;
+    if(!entrenosMap[letra]){
+      entrenosMap[letra] = { id: letra, letra, nombre: 'Entreno ' + letra, ejercicios: [] };
+    }
+    const series = parseInt(seriesStr) || 3;
+    const repsTarget = String(repsStr||'').split('/').map(x => x.trim()).filter(Boolean);
+    const ej = {
+      id: tobUid('ej'),
+      orden: entrenosMap[letra].ejercicios.length,
+      nombre,
+      subtitle: subtitle || '',
+      tipo: tipo === 'circuito' ? 'circuito' : 'normal',
+      planBase: { series, repsTarget, pausa: pausa || '' }
+    };
+    if(ej.tipo === 'circuito' && circLineas){
+      ej.circuitoLineas = circLineas.split(';').map(x => x.trim()).filter(Boolean);
+    }
+    entrenosMap[letra].ejercicios.push(ej);
+  });
+  return Object.values(entrenosMap);
+}
 
 function tobSavePlantilla(){
   const nombre = document.getElementById('tobPlNombre').value.trim();
   if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
   const categoria = document.getElementById('tobPlCategoria').value;
   const sexo = document.getElementById('tobPlSexo').value;
-  const microsRaw = document.getElementById('tobPlMicros').value.split('\n').map(l => l.trim()).filter(Boolean);
-  const entrenosRaw = document.getElementById('tobPlEntrenos').value.split('\n').map(l => l.trim()).filter(Boolean);
-  const ejsRaw = document.getElementById('tobPlEjercicios').value.split('\n').map(l => l.trim()).filter(Boolean);
-  if(!microsRaw.length){ tobToast('Mete al menos 1 microciclo', 'red'); return; }
-  if(!entrenosRaw.length){ tobToast('Mete al menos 1 entreno', 'red'); return; }
-
-  const microciclos = microsRaw.map((nombre, i) => ({ id: 'm' + (i+1), nombre }));
-  const entrenos = entrenosRaw.map(l => {
-    const [letra, nombreEnt] = l.split('|').map(x => x.trim());
-    return { id: letra || ('e' + Math.random().toString(36).slice(2,5)), letra: letra||'?', nombre: nombreEnt||'' };
-  });
-  const ejercicios = ejsRaw.map((l, i) => {
-    const parts = l.split('|').map(x => x.trim());
-    const [eletra, ejnom, plan, pausa] = parts;
-    const ent = entrenos.find(e => e.letra === eletra);
-    const planMicro = {};
-    // Parse "2x20" o "3x20-15-12"
-    let series = 3, reps = '';
-    if(plan){
-      const m = plan.match(/(\d+)\s*x\s*(.+)/i);
-      if(m){ series = parseInt(m[1]); reps = m[2].trim(); }
-    }
-    microciclos.forEach(mc => {
-      planMicro[mc.id] = { series, reps, pct: null, active: true };
-    });
-    return {
-      id: tobUid('ej'),
-      entrenoId: ent?.id || (entrenos[0]?.id || 'A'),
-      orden: i,
-      nombre: ejnom || '(ejercicio)',
-      planMicro,
-      pausa: pausa || '',
-      notas: ''
-    };
-  });
-
+  const entrenos = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
+  if(!entrenos.length){ tobToast('Define al menos un ejercicio', 'red'); return; }
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
   if(editId){
     const p = tobDB.plantillas.find(p => p.id === editId);
-    if(p) Object.assign(p, { nombre, categoria, sexo, microciclos, entrenos, ejercicios });
+    if(p) Object.assign(p, { nombre, categoria, sexo, entrenos });
   } else {
-    tobDB.plantillas.push({ id: tobUid('pl'), nombre, categoria, sexo, microciclos, entrenos, ejercicios });
+    tobDB.plantillas.push({ id: tobUid('pl'), nombre, categoria, sexo, entrenos });
   }
   tobSave();
   tobClosePlantillaModal();
   tobRenderPlantillas();
-  tobToast('✓ Plantilla guardada', 'green');
+  tobToast('✓ Guardado', 'green');
 }
 
 function tobEditarPlantilla(id){
   const p = tobDB.plantillas.find(p => p.id === id);
   if(p) tobOpenPlantillaModal(p);
 }
-
 function tobDelPlantilla(id){
   const p = tobDB.plantillas.find(p => p.id === id);
   if(!p) return;
-  tobConfirm(`Eliminar plantilla "${p.nombre}"?`, 'Esto NO afecta a asignaciones existentes (mantienen su copia editable). Solo la quita del catálogo.', () => {
+  tobConfirm(`Eliminar plantilla "${p.nombre}"?`, 'Las asignaciones existentes mantienen su copia. Solo se quita del catálogo.', () => {
     tobDB.plantillas = tobDB.plantillas.filter(x => x.id !== id);
     tobSave();
     tobRenderPlantillas();
-    tobToast('✓ Plantilla eliminada', 'green');
+    tobToast('Eliminada', 'green');
   });
 }
 
-// ════════════════════════════════════════════════════════════════════
-// VISTA ASIGNACIÓN (registrar pesos/reps)
-// ════════════════════════════════════════════════════════════════════
+// ═══ ASIGNACIÓN (rutina del cliente) ═══
+function tobAsig(){
+  if(!tobCurrentAsig) return null;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
+  return cli?.asignaciones.find(a => a.id === tobCurrentAsig.asigId);
+}
+
 function tobOpenAsignacion(cliId, asigId){
   tobCurrentAsig = { clienteId: cliId, asigId };
   const cli = tobDB.clientes.find(c => c.id === cliId);
   const asig = cli?.asignaciones.find(a => a.id === asigId);
-  if(!cli || !asig){ tobToast('Asignación no encontrada', 'red'); return; }
+  if(!cli || !asig){ tobToast('No encontrado', 'red'); return; }
   const pl = tobDB.plantillas.find(p => p.id === asig.plantillaId);
+
+  // Garantizar estructura
+  if(!asig.iteraciones || !asig.iteraciones.length){
+    asig.iteraciones = [{ id: tobUid('it'), numero: 1, sesiones: {} }];
+  }
+  tobCurrentItId = asig.iteraciones[asig.iteraciones.length-1].id;
+  tobCurrentEntrenoId = asig.rutina?.entrenos?.[0]?.id || 'A';
 
   document.getElementById('tobTabAsig').style.display = '';
   tobShowTab('asignacion');
   document.querySelectorAll('.tob-tab').forEach(b => b.classList.remove('active'));
   document.getElementById('tobTabAsig').classList.add('active');
 
-  document.getElementById('tobAsigTitulo').textContent = `${cli.nombre} — ${pl ? pl.nombre : asig.rutina ? '(plantilla eliminada — rutina conservada)' : '(sin rutina)'}`;
+  document.getElementById('tobAsigTitulo').textContent = `${cli.nombre} — ${pl?.nombre || '(plantilla eliminada)'}`;
   document.getElementById('tobAsigSubtitulo').textContent = (pl?.categoria || '') + (pl?.sexo === 'M' ? ' · ♀' : pl?.sexo === 'H' ? ' · ♂' : '');
 
   document.getElementById('tobAsigEstado').value = asig.estado;
-  document.getElementById('tobAsigFecha').value = asig.fechaInicio || '';
   document.getElementById('tobAsigNotas').value = asig.notas || '';
 
-  // Default micro/entreno
-  const micros = asig.rutina?.microciclos || [];
-  const entrenos = asig.rutina?.entrenos || [];
-  tobCurrentMicroId = micros[0]?.id || null;
-  tobCurrentEntrenoId = entrenos[0]?.id || null;
-
-  tobRenderMicroTabs();
-  tobRenderEntrenoTabs();
-  tobRenderSesion();
-  tobPopulateProgEj();
-  tobRenderProgreso();
+  tobRenderItTabs();
+  tobRenderEntTabs();
+  tobRenderEntreno();
+  tobRenderCharts();
 }
 
 function tobCloseAsignacion(){
   tobCurrentAsig = null;
+  // Destruir charts para liberar memoria
+  Object.values(tobCharts).forEach(c => { try { c.destroy(); } catch(e){} });
+  tobCharts = {};
   document.getElementById('tobTabAsig').style.display = 'none';
   tobShowTab('clientes');
   document.querySelectorAll('.tob-tab').forEach(b => b.classList.remove('active'));
-  document.querySelector('.tob-tab[onclick*=\'clientes\']')?.classList.add('active');
+  document.querySelector(".tob-tab[onclick*='clientes']")?.classList.add('active');
 }
 
-function tobAsig(){ // helper para obtener asig actual
-  if(!tobCurrentAsig) return null;
-  const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
-  return cli?.asignaciones.find(a => a.id === tobCurrentAsig.asigId);
-}
-
-function tobAsigUpdateEstado(v){ const a = tobAsig(); if(a){ a.estado = v; tobSave(); } }
-function tobAsigUpdateFecha(v){ const a = tobAsig(); if(a){ a.fechaInicio = v; tobSave(); } }
-function tobAsigUpdateNotas(v){ const a = tobAsig(); if(a){ a.notas = v; tobSave(); } }
+function tobAsigUpdateEstado(v){ const a=tobAsig(); if(a){a.estado=v;tobSave();tobRenderClientes();} }
+function tobAsigUpdateNotas(v){ const a=tobAsig(); if(a){a.notas=v;tobSave();} }
 
 function tobDeleteAsignacion(){
   if(!tobCurrentAsig) return;
-  tobConfirm('¿Eliminar esta asignación?', 'Se borra todo el progreso registrado de esta rutina para este cliente.', () => {
+  tobConfirm('¿Eliminar esta rutina?', 'Se borra TODO el progreso de TODAS las iteraciones.', () => {
     const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
     if(cli){
       cli.asignaciones = cli.asignaciones.filter(a => a.id !== tobCurrentAsig.asigId);
       tobSave();
-      tobToast('Asignación eliminada', 'green');
       tobCloseAsignacion();
       tobRenderClientes();
+      tobToast('Rutina eliminada', 'green');
     }
   });
 }
 
-function tobRenderMicroTabs(){
+function tobRenderItTabs(){
   const a = tobAsig(); if(!a) return;
-  const cont = document.getElementById('tobMicroTabs');
-  cont.innerHTML = (a.rutina?.microciclos||[]).map(mc => {
-    const completedCount = Object.keys((a.completados[mc.id])||{}).length;
-    const isComp = completedCount >= (a.rutina?.entrenos?.length||1);
-    return `<button class="tob-micro-tab ${tobCurrentMicroId===mc.id?'active':''} ${isComp?'completed':''}"
-      onclick="tobSetMicro('${mc.id}')">${tobEsc(mc.nombre)} ${isComp?'✓':''}</button>`;
-  }).join('');
+  const cont = document.getElementById('tobItTabs');
+  cont.innerHTML = a.iteraciones.map((it, i) => {
+    const color = TOB_IT_COLORS[i % TOB_IT_COLORS.length];
+    const active = it.id === tobCurrentItId ? 'active' : '';
+    const borderStyle = it.id === tobCurrentItId ? `style="border-color:${color};color:${color};"` : '';
+    return `<button class="tob-it-tab ${active}" ${borderStyle} onclick="tobSetIt('${it.id}')">
+      <span class="dot" style="background:${color}"></span> Iteración ${it.numero}
+    </button>`;
+  }).join('') + `
+    <button class="tob-action ghost" style="padding:5px 12px;font-size:.75rem;" onclick="tobAddIteracion()">+ Nueva iteración</button>
+    ${a.iteraciones.length > 1 ? `<button class="tob-action danger" style="padding:5px 12px;font-size:.75rem;" onclick="tobDelIteracion()">🗑 Esta iteración</button>` : ''}
+  `;
 }
 
-function tobSetMicro(id){
-  tobCurrentMicroId = id;
-  tobRenderMicroTabs();
-  tobRenderSesion();
-}
+function tobSetIt(id){ tobCurrentItId = id; tobRenderItTabs(); tobRenderEntreno(); tobRenderCharts(); }
 
-function tobRenderEntrenoTabs(){
+function tobAddIteracion(){
   const a = tobAsig(); if(!a) return;
-  const cont = document.getElementById('tobEntrenoTabs');
-  cont.innerHTML = (a.rutina?.entrenos||[]).map(e => {
-    return `<button class="tob-entreno-tab ${tobCurrentEntrenoId===e.id?'active':''}"
-      onclick="tobSetEntreno('${e.id}')">${tobEsc(e.letra)}${e.nombre?' · '+tobEsc(e.nombre):''}</button>`;
-  }).join('');
-}
-
-function tobSetEntreno(id){
-  tobCurrentEntrenoId = id;
-  tobRenderEntrenoTabs();
-  tobRenderSesion();
-}
-
-function tobGetSesion(){
-  const a = tobAsig();
-  if(!a || !tobCurrentMicroId || !tobCurrentEntrenoId) return null;
-  if(!a.completados[tobCurrentMicroId]) a.completados[tobCurrentMicroId] = {};
-  if(!a.completados[tobCurrentMicroId][tobCurrentEntrenoId]){
-    a.completados[tobCurrentMicroId][tobCurrentEntrenoId] = { fecha:'', peso:null, cond:null, calidad:null, nota:'', ejs:{} };
-  }
-  return a.completados[tobCurrentMicroId][tobCurrentEntrenoId];
-}
-
-function tobRenderSesion(){
-  const a = tobAsig(); if(!a) return;
-  const s = tobGetSesion(); if(!s) return;
-  document.getElementById('tobSesFecha').value = s.fecha || '';
-  document.getElementById('tobSesPeso').value = s.peso == null ? '' : s.peso;
-  document.getElementById('tobSesCond').value = s.cond == null ? '' : s.cond;
-  document.getElementById('tobSesCalidad').value = s.calidad == null ? '' : s.calidad;
-  tobRenderEjercicios();
-}
-
-function tobSaveSesionMeta(){
-  const s = tobGetSesion(); if(!s) return;
-  s.fecha = document.getElementById('tobSesFecha').value;
-  const p = parseFloat(document.getElementById('tobSesPeso').value);
-  s.peso = isNaN(p) ? null : p;
-  const c = parseInt(document.getElementById('tobSesCond').value);
-  s.cond = isNaN(c) ? null : c;
-  const q = parseInt(document.getElementById('tobSesCalidad').value);
-  s.calidad = isNaN(q) ? null : q;
+  const num = Math.max(...a.iteraciones.map(i => i.numero)) + 1;
+  const it = { id: tobUid('it'), numero: num, sesiones: {} };
+  a.iteraciones.push(it);
+  tobCurrentItId = it.id;
   tobSave();
-  tobRenderMicroTabs();
+  tobRenderItTabs(); tobRenderEntreno(); tobRenderCharts();
+  tobToast(`✓ Iteración ${num} creada`, 'green');
 }
 
-function tobRenderEjercicios(){
+function tobDelIteracion(){
+  const a = tobAsig(); if(!a || a.iteraciones.length < 2) return;
+  const it = a.iteraciones.find(i => i.id === tobCurrentItId);
+  tobConfirm(`Eliminar iteración ${it.numero}?`, 'Se borran todos los kg/reps de esta iteración.', () => {
+    a.iteraciones = a.iteraciones.filter(i => i.id !== tobCurrentItId);
+    // Renumerar
+    a.iteraciones.forEach((x,i) => x.numero = i+1);
+    tobCurrentItId = a.iteraciones[a.iteraciones.length-1].id;
+    tobSave();
+    tobRenderItTabs(); tobRenderEntreno(); tobRenderCharts();
+  });
+}
+
+function tobIt(){ const a=tobAsig(); return a?.iteraciones.find(i => i.id === tobCurrentItId); }
+
+function tobRenderEntTabs(){
   const a = tobAsig(); if(!a) return;
-  const s = tobGetSesion(); if(!s) return;
-  const ejs = (a.rutina?.ejercicios||[]).filter(e => e.entrenoId === tobCurrentEntrenoId);
-  ejs.sort((x,y) => (x.orden||0) - (y.orden||0));
-  const cont = document.getElementById('tobEjerciciosCont');
-  if(!ejs.length){
-    cont.innerHTML = '<div class="tob-card" style="text-align:center;color:var(--mute2);">Este entreno no tiene ejercicios definidos. Edita la plantilla.</div>';
-    return;
+  const cont = document.getElementById('tobEntTabs');
+  cont.innerHTML = (a.rutina?.entrenos||[]).map(en =>
+    `<button class="tob-ent-tab ${tobCurrentEntrenoId===en.id?'active':''}" onclick="tobSetEntreno('${en.id}')">
+      Entreno ${en.letra}
+    </button>`
+  ).join('');
+}
+
+function tobSetEntreno(id){ tobCurrentEntrenoId = id; tobRenderEntTabs(); tobRenderEntreno(); }
+
+function tobGetSesion(microNum, entId){
+  const it = tobIt(); if(!it) return null;
+  if(!it.sesiones[microNum]) it.sesiones[microNum] = {};
+  if(!it.sesiones[microNum][entId]){
+    it.sesiones[microNum][entId] = { fecha:'', aerobica:{tipo:'',tiempo:'',intensidad:''}, ejs:{} };
   }
-  cont.innerHTML = ejs.map(ej => {
-    const plan = ej.planMicro?.[tobCurrentMicroId];
-    if(!plan || plan.active === false) return ''; // ejercicio no aplica en este microciclo
-    const seriesN = plan.series || 1;
-    const reps = plan.reps || '';
-    const pct = plan.pct ? ` · ${plan.pct}%RM` : '';
-    if(!s.ejs[ej.id]) s.ejs[ej.id] = { series: Array.from({length: seriesN}, () => ({ kg:null, reps:null })) };
-    // Asegurar tamaño correcto
-    while(s.ejs[ej.id].series.length < seriesN) s.ejs[ej.id].series.push({kg:null,reps:null});
-    const seriesRows = Array.from({length: seriesN}, (_,i) => {
-      const sr = s.ejs[ej.id].series[i] || {kg:null,reps:null};
-      return `<div class="tob-series-grid">
-        <span class="lbl">${i+1}ª</span>
-        <input class="tob-input" type="number" step="0.5" placeholder="kg" value="${sr.kg==null?'':sr.kg}" oninput="tobSaveSerie('${ej.id}',${i},'kg',this.value)">
-        <input class="tob-input" type="number" placeholder="reps" value="${sr.reps==null?'':sr.reps}" oninput="tobSaveSerie('${ej.id}',${i},'reps',this.value)">
-      </div>`;
+  return it.sesiones[microNum][entId];
+}
+
+function tobRenderEntreno(){
+  const a = tobAsig(); if(!a) return;
+  const en = a.rutina?.entrenos.find(e => e.id === tobCurrentEntrenoId);
+  if(!en){ document.getElementById('tobEntContent').innerHTML = '<div class="tob-card">Selecciona un entreno</div>'; return; }
+
+  const it = tobIt();
+  const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i) => i+1);
+  const micros = microHeaders.map(n => `${n}º`);
+
+  const ejercicios = (en.ejercicios||[]).sort((x,y) => (x.orden||0)-(y.orden||0));
+
+  // Fila de fechas en cabecera de la sección
+  const fechasRow = microHeaders.map(mn => {
+    const s = it ? (it.sesiones[mn]?.[en.id]) : null;
+    return `<td class="micro-col"><input class="fecha" type="date" value="${s?.fecha||''}"
+      onchange="tobSetFecha(${mn},'${en.id}',this.value)"></td>`;
+  }).join('');
+
+  let html = `<div class="tob-card">
+    <table class="tob-ej-grid">
+      <thead><tr>
+        <th class="row-lbl" style="width:170px;">Fecha</th>
+        ${microHeaders.map(n => `<th class="micro-col">µ${n}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        <tr class="fecha-row"><td class="row-lbl">Fecha sesión</td>${fechasRow}</tr>
+      </tbody>
+    </table>
+  </div>`;
+
+  ejercicios.forEach(ej => {
+    html += tobRenderEjBlock(ej, en, microHeaders, it);
+  });
+
+  // Aeróbica
+  html += `<div class="tob-card">
+    <div class="tob-card-title">Eventual actividad aeróbica</div>
+    <table class="tob-ej-grid">
+      <tbody>
+        ${['tipo','tiempo','intensidad'].map(field => {
+          const lblMap = {tipo:'Tipo',tiempo:'Tiempo',intensidad:'Intensidad'};
+          return `<tr><td class="row-lbl" style="width:170px;">${lblMap[field]}</td>${microHeaders.map(mn => {
+            const s = it ? (it.sesiones[mn]?.[en.id]) : null;
+            const v = s?.aerobica?.[field] || '';
+            return `<td class="micro-col"><input class="cell" style="width:90%;" value="${tobEsc(v)}" onchange="tobSetAerobica(${mn},'${en.id}','${field}',this.value)"></td>`;
+          }).join('')}</tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+  document.getElementById('tobEntContent').innerHTML = html;
+}
+
+function tobRenderEjBlock(ej, en, microHeaders, it){
+  // Plan por microciclo (fila plan)
+  const planRow = microHeaders.map(mn => {
+    const plan = tobPlanFor(ej, mn);
+    return `<td class="micro-col">${tobEsc(tobPlanLabel(plan))}</td>`;
+  }).join('');
+
+  // Reps target por microciclo (filas — una por cada repsTarget index)
+  // Estilo Full Training: muestra 3 valores apilados de reps target (15/12/10 → 15, 12, 10 en celdas separadas?
+  // Mejor: ponerlos en una sola celda como "15 / 12 / 10" en plan row. Ya está.
+
+  const seriesN = Math.max(...microHeaders.map(mn => tobPlanFor(ej, mn).series || 3));
+  const rows = [];
+
+  // Filas de series (kg + rep por columna)
+  for(let s = 0; s < seriesN; s++){
+    const cells = microHeaders.map(mn => {
+      const plan = tobPlanFor(ej, mn);
+      if(s >= plan.series) return `<td class="micro-col" style="color:var(--mute2)">—</td>`;
+      const ses = it ? (it.sesiones[mn]?.[en.id]) : null;
+      const sr = ses?.ejs?.[ej.id]?.series?.[s] || { kg:null, reps:null };
+      const repsTarget = Array.isArray(plan.repsTarget) ? (plan.repsTarget[s] || plan.repsTarget[0]) : plan.repsTarget;
+      return `<td class="micro-col">
+        <span class="tob-kgrp">
+          <input class="cell" type="number" step="0.5" placeholder="kg" value="${sr.kg==null?'':sr.kg}"
+            onchange="tobSetSerieKg('${ej.id}','${en.id}',${mn},${s},this.value)">
+          <input class="cell" type="number" placeholder="${repsTarget||'rep'}" value="${sr.reps==null?'':sr.reps}"
+            onchange="tobSetSerieReps('${ej.id}','${en.id}',${mn},${s},this.value)">
+        </span>
+      </td>`;
     }).join('');
-    return `<div class="tob-ej">
-      <div class="tob-ej-hdr">
-        <span class="tob-ej-name">${tobEsc(ej.nombre)}</span>
-        <span class="tob-ej-plan">${seriesN}×${tobEsc(reps)}${pct} ${ej.pausa?'· pausa '+tobEsc(ej.pausa):''}</span>
-      </div>
-      <div class="tob-series-grid"><span class="head"></span><span class="head">Kg</span><span class="head">Reps</span></div>
-      ${seriesRows}
-      <div style="margin-top:8px;">
-        <input class="tob-input" placeholder="Notas del ejercicio (opcional)" value="${tobEsc(s.ejs[ej.id].nota||'')}" oninput="tobSaveSerieNota('${ej.id}',this.value)" style="font-size:.78rem;">
-      </div>
-    </div>`;
+    rows.push(`<tr><td class="row-lbl">${s+1}ª Serie</td>${cells}</tr>`);
+  }
+
+  // Para circuito, las "series" son en realidad "ejercicios alternados"
+  let bodyRows;
+  if(ej.tipo === 'circuito' && Array.isArray(ej.circuitoLineas) && ej.circuitoLineas.length){
+    // Una fila por ejercicio del circuito
+    bodyRows = ej.circuitoLineas.map((lineaName, i) => {
+      const cells = microHeaders.map(mn => {
+        const ses = it ? (it.sesiones[mn]?.[en.id]) : null;
+        const sr = ses?.ejs?.[ej.id]?.lineas?.[i] || { kg:null, reps:null };
+        return `<td class="micro-col">
+          <span class="tob-kgrp">
+            <input class="cell" type="number" step="0.5" placeholder="kg" value="${sr.kg==null?'':sr.kg}"
+              onchange="tobSetLineaKg('${ej.id}','${en.id}',${mn},${i},this.value)">
+            <input class="cell" type="number" placeholder="rep" value="${sr.reps==null?'':sr.reps}"
+              onchange="tobSetLineaReps('${ej.id}','${en.id}',${mn},${i},this.value)">
+          </span>
+        </td>`;
+      }).join('');
+      return `<tr><td class="row-lbl">${tobEsc(lineaName)}</td>${cells}</tr>`;
+    }).join('');
+  } else {
+    bodyRows = rows.join('');
+  }
+
+  // Plan label row con detalles de reps target
+  const planDetail = microHeaders.map(mn => {
+    const plan = tobPlanFor(ej, mn);
+    const repsArr = Array.isArray(plan.repsTarget) ? plan.repsTarget : [plan.repsTarget];
+    return `<td class="micro-col">${plan.series}×${tobEsc(repsArr.join('/'))}</td>`;
   }).join('');
+
+  // Pausa row
+  const pausaRow = microHeaders.map(mn => {
+    const plan = tobPlanFor(ej, mn);
+    return `<td class="micro-col">${tobEsc(plan.pausa||'—')}</td>`;
+  }).join('');
+
+  const subTitle = ej.subtitle ? `<span class="tob-ej-sub">${tobEsc(ej.subtitle)}</span>` : '';
+  const tipoLabel = ej.tipo === 'circuito' ? '<span class="tob-ej-sub" style="color:var(--acc2);">· circuito ·</span>' : '';
+
+  return `<div class="tob-ej-block">
+    <div class="tob-ej-head">
+      <span class="tob-ej-name">${tobEsc(ej.nombre)}</span>
+      ${tipoLabel}
+      ${subTitle}
+    </div>
+    <table class="tob-ej-grid">
+      <thead><tr>
+        <th class="row-lbl" style="width:170px;">SERIES × REPS</th>
+        ${arrayHeaders()}
+      </tr></thead>
+      <tbody>
+        <tr class="plan-row"><td class="row-lbl">Plan</td>${planDetail}</tr>
+        ${bodyRows}
+        <tr class="pausa-row"><td class="row-lbl">Pausa series</td>${pausaRow}</tr>
+      </tbody>
+    </table>
+  </div>`;
+  function arrayHeaders(){
+    return microHeaders.map(n => `<th class="micro-col">µ${n}</th>`).join('');
+  }
 }
 
-function tobSaveSerie(ejId, idx, field, val){
-  const s = tobGetSesion(); if(!s) return;
-  if(!s.ejs[ejId]) s.ejs[ejId] = { series: [] };
-  while(s.ejs[ejId].series.length <= idx) s.ejs[ejId].series.push({kg:null,reps:null});
+function tobSetFecha(microNum, entId, val){
+  const s = tobGetSesion(microNum, entId); if(s){ s.fecha = val; tobSave(); tobRenderCharts(); }
+}
+function tobSetAerobica(microNum, entId, field, val){
+  const s = tobGetSesion(microNum, entId); if(s){ s.aerobica[field] = val; tobSave(); }
+}
+function tobSetSerieKg(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'kg', val, 'series'); }
+function tobSetSerieReps(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'reps', val, 'series'); }
+function tobSetLineaKg(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'kg', val, 'lineas'); }
+function tobSetLineaReps(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'reps', val, 'lineas'); }
+function tobSetEjVal(ejId, entId, microNum, idx, field, val, arrName){
+  const s = tobGetSesion(microNum, entId); if(!s) return;
+  if(!s.ejs[ejId]) s.ejs[ejId] = {};
+  if(!s.ejs[ejId][arrName]) s.ejs[ejId][arrName] = [];
+  while(s.ejs[ejId][arrName].length <= idx) s.ejs[ejId][arrName].push({kg:null,reps:null});
   const v = val === '' ? null : parseFloat(val);
-  s.ejs[ejId].series[idx][field] = isNaN(v) ? null : v;
+  s.ejs[ejId][arrName][idx][field] = isNaN(v) ? null : v;
   tobSave();
+  tobRenderCharts();
 }
 
-function tobSaveSerieNota(ejId, val){
-  const s = tobGetSesion(); if(!s) return;
-  if(!s.ejs[ejId]) s.ejs[ejId] = { series: [] };
-  s.ejs[ejId].nota = val;
-  tobSave();
-}
-
-// ════════════════════════════════════════════════════════════════════
-// PROGRESO (gráfica)
-// ════════════════════════════════════════════════════════════════════
-function tobPopulateProgEj(){
+// ═══ CHARTS ═══
+function tobRenderCharts(){
   const a = tobAsig(); if(!a) return;
-  const sel = document.getElementById('tobProgEj');
-  const ejs = a.rutina?.ejercicios || [];
-  sel.innerHTML = ejs.map(ej => `<option value="${ej.id}">${tobEsc(ej.nombre)}</option>`).join('');
-}
+  const grid = document.getElementById('tobChartsGrid');
+  // Destruir charts previos
+  Object.values(tobCharts).forEach(c => { try { c.destroy(); } catch(e){} });
+  tobCharts = {};
 
-function tobRenderProgreso(){
-  const a = tobAsig(); if(!a) return;
-  const ejId = document.getElementById('tobProgEj').value;
-  const metric = document.getElementById('tobProgMetric').value;
-  if(!ejId) return;
-  // Recolectar todos los registros de este ejercicio a través de microciclos
-  const points = [];
-  (a.rutina?.microciclos||[]).forEach(mc => {
-    const ses = a.completados[mc.id];
-    if(!ses) return;
-    Object.entries(ses).forEach(([entId, s]) => {
-      const er = s.ejs?.[ejId];
-      if(!er || !er.series?.length) return;
-      const series = er.series.filter(x => x.kg != null || x.reps != null);
-      if(!series.length) return;
-      let val;
-      if(metric === 'max') val = Math.max(...series.map(x => x.kg || 0));
-      else if(metric === 'avg'){ const ks = series.filter(x=>x.kg!=null).map(x=>x.kg); val = ks.length ? ks.reduce((a,b)=>a+b,0)/ks.length : 0; }
-      else if(metric === 'vol') val = series.reduce((sum,x) => sum + (x.kg||0) * (x.reps||0), 0);
-      else if(metric === 'reps') val = series.reduce((sum,x) => sum + (x.reps||0), 0);
-      points.push({ label: mc.nombre + ' / ' + entId, fecha: s.fecha || '', val });
+  // Recolectar TODOS los ejercicios principales (tipo normal) de TODOS los entrenos
+  const mainEjs = [];
+  (a.rutina?.entrenos||[]).forEach(en => {
+    (en.ejercicios||[]).forEach(ej => {
+      if(ej.tipo !== 'circuito') mainEjs.push({ej, entId: en.id});
     });
   });
-  points.sort((x,y) => (x.fecha||'').localeCompare(y.fecha||''));
 
-  const ctx = document.getElementById('tobProgChart').getContext('2d');
-  if(tobProgChart) tobProgChart.destroy();
-  tobProgChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: points.map(p => p.label + (p.fecha?` (${p.fecha})`:'')),
-      datasets: [{
-        label: { max:'Kg máx', avg:'Kg medio', vol:'Volumen', reps:'Reps totales' }[metric],
-        data: points.map(p => p.val),
-        borderColor: '#a78bfa',
-        backgroundColor: 'rgba(167,139,250,.15)',
-        fill: true,
-        tension: 0.2,
-        pointRadius: 4,
-        pointBackgroundColor: '#a78bfa'
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#cbd5e1' } } },
-      scales: {
-        x: { ticks: { color: '#7a96b8', font: { size: 10 } }, grid: { color: '#1e2d3d' } },
-        y: { ticks: { color: '#7a96b8' }, grid: { color: '#1e2d3d' } }
+  if(!mainEjs.length){
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mute2);padding:30px;">Aún no hay ejercicios principales con datos.</div>';
+    return;
+  }
+
+  grid.innerHTML = mainEjs.map(({ej}) =>
+    `<div class="tob-chart-card">
+      <div class="hdr">${tobEsc(ej.nombre)}</div>
+      <div class="body"><canvas id="tobChart_${ej.id}"></canvas></div>
+    </div>`
+  ).join('');
+
+  // Plot — una línea por iteración
+  if(window.ChartDataLabels && Chart.register){
+    try { Chart.register(ChartDataLabels); } catch(e){}
+  }
+
+  mainEjs.forEach(({ej, entId}) => {
+    const canvas = document.getElementById('tobChart_' + ej.id);
+    if(!canvas) return;
+    const datasets = [];
+    a.iteraciones.forEach((it, idx) => {
+      const color = TOB_IT_COLORS[idx % TOB_IT_COLORS.length];
+      const points = [];
+      const labels = [];
+      for(let mn = 1; mn <= TOB_NUM_MICRO; mn++){
+        const ses = it.sesiones[mn]?.[entId];
+        if(!ses) continue;
+        const series = ses.ejs?.[ej.id]?.series;
+        if(!series || !series.length) continue;
+        const volume = series.reduce((sum, sr) => sum + (sr.kg||0) * (sr.reps||0), 0);
+        if(volume <= 0) continue;
+        points.push(volume);
+        labels.push(ses.fecha || `µ${mn}`);
       }
+      if(!points.length) return;
+      datasets.push({
+        label: 'It. ' + it.numero,
+        data: points,
+        _labels: labels,
+        borderColor: color,
+        backgroundColor: color + '22',
+        pointBackgroundColor: color,
+        pointBorderColor: color,
+        pointStyle: 'crossRot',
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0.05,
+        fill: false,
+        borderWidth: 2
+      });
+    });
+
+    // Combinar todas las labels en una secuencia única (ordenadas por fecha si posible)
+    const allLabels = new Set();
+    datasets.forEach(ds => ds._labels.forEach(l => allLabels.add(l)));
+    let labels = [...allLabels];
+    // Si parecen fechas YYYY-MM-DD, ordenar como fechas; si no, dejar como están
+    if(labels.every(l => /^\d{4}-\d{2}-\d{2}/.test(l))){
+      labels.sort();
+      labels = labels.map(l => l.split('-').reverse().join('/'));
     }
+
+    // Re-alinear cada dataset a esos labels (con null para huecos)
+    datasets.forEach(ds => {
+      const map = {};
+      ds._labels.forEach((l, i) => {
+        const key = /^\d{4}-\d{2}-\d{2}/.test(l) ? l.split('-').reverse().join('/') : l;
+        map[key] = ds.data[i];
+      });
+      ds.data = labels.map(l => map[l] != null ? map[l] : null);
+      delete ds._labels;
+      ds.spanGaps = true;
+    });
+
+    if(!datasets.length){
+      canvas.getContext('2d').fillStyle = '#5a5240';
+      canvas.getContext('2d').font = '12px DM Mono';
+      canvas.getContext('2d').textAlign = 'center';
+      canvas.getContext('2d').fillText('Sin datos aún', canvas.width/2, canvas.height/2);
+      return;
+    }
+
+    tobCharts[ej.id] = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color:'#cbd5e1', font:{size:10}, boxWidth:12 }, position:'top', align:'end' },
+          tooltip: { mode:'index', intersect:false },
+          datalabels: {
+            color: ctx => ctx.dataset.borderColor,
+            font: { size: 9, weight:'600' },
+            align: 'top',
+            offset: 4,
+            formatter: v => v == null ? '' : v
+          }
+        },
+        scales: {
+          x: { ticks:{ color:'#7a96b8', font:{size:9}, maxRotation:60, minRotation:45 },
+               grid:{ color:'#1e1810' } },
+          y: { ticks:{ color:'#7a96b8', font:{size:9} },
+               grid:{ color:'#1e1810' }, beginAtZero:true }
+        },
+        interaction: { mode:'nearest', intersect:false }
+      }
+    });
   });
 }
 
-// ════════════════════════════════════════════════════════════════════
-// PDF: GENERAR y PARSEAR
-// ════════════════════════════════════════════════════════════════════
-
-// Genera un PDF rellenable con la rutina actual. Cada serie tiene 2 campos
-// con nombre estable: ej_<ejId>_<microId>_<entId>_s<i>_kg / _reps
-// Más metadatos: meta_<microId>_<entId>_fecha / _peso / _cond / _calidad
+// ═══ PDF (igual que antes, simplificado) ═══
 async function tobGeneratePdf(){
-  const a = tobAsig(); if(!a){ tobToast('Sin asignación abierta', 'red'); return; }
+  const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
   const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-  if(!window.PDFLib){ tobToast('pdf-lib no cargada', 'red'); return; }
+  const it = tobIt();
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
   const form = doc.getForm();
 
-  const W = 595, H = 842, MARGIN = 36;
-  const newPage = () => doc.addPage([W, H]);
-  let page = newPage();
-  let y = H - MARGIN;
+  const W = 842, H = 595; // landscape
+  let page = doc.addPage([W,H]);
+  let y = H - 30;
+  const MX = 24;
 
-  function drawText(text, opts){
-    const o = opts || {};
-    page.drawText(text, {
-      x: o.x || MARGIN, y: y, size: o.size || 9,
-      font: o.bold ? fontB : font,
-      color: o.color || rgb(0.1,0.1,0.1)
-    });
+  function text(t, opts){
+    page.drawText(t, { x: opts?.x||MX, y, size: opts?.size||9, font: opts?.bold?fontB:font, color: opts?.color||rgb(0.1,0.1,0.1) });
   }
-  function lineGap(n){ y -= n; if(y < MARGIN + 30){ page = newPage(); y = H - MARGIN; } }
+  function gap(n){ y -= n; if(y < 60){ page = doc.addPage([W,H]); y = H - 30; } }
 
-  // Cabecera
-  drawText(`Cliente: ${cli?.nombre||''} — ${pl?.nombre||'Rutina'}`, { size: 13, bold: true });
-  lineGap(18);
-  drawText(`Plantilla: ${pl?.categoria||''} · ${pl?.sexo==='M'?'Mujer':pl?.sexo==='H'?'Hombre':'Unisex'}  ·  Inicio: ${a.fechaInicio||''}`, { size: 9, color: rgb(0.3,0.3,0.3) });
-  lineGap(20);
+  text(`${cli?.nombre||''} — ${pl?.nombre||''}  ·  Iteración ${it?.numero||1}`, { bold:true, size:13 });
+  gap(20);
 
-  (a.rutina?.microciclos||[]).forEach(mc => {
-    if(y < MARGIN + 120){ page = newPage(); y = H - MARGIN; }
-    drawText('MICROCICLO: ' + mc.nombre, { size: 11, bold: true, color: rgb(0.4,0.2,0.7) });
-    lineGap(16);
+  const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i)=>i+1);
 
-    (a.rutina?.entrenos||[]).forEach(en => {
-      if(y < MARGIN + 80){ page = newPage(); y = H - MARGIN; }
-      drawText(`Entreno ${en.letra}${en.nombre?' — '+en.nombre:''}`, { size: 10, bold: true });
-      lineGap(14);
+  (a.rutina?.entrenos||[]).forEach(en => {
+    if(y < 200){ page = doc.addPage([W,H]); y = H - 30; }
+    text(`ENTRENO ${en.letra}`, { bold:true, size:11, color: rgb(0.96,0.65,0.13) });
+    gap(15);
 
-      // Meta fields
-      ['fecha','peso','cond','calidad'].forEach((field, i) => {
-        const x = MARGIN + i*130;
-        page.drawText({fecha:'Fecha',peso:'Peso ayunas',cond:'Cond 1-5',calidad:'Calidad 1-10'}[field],
-          { x, y, size: 7, font, color: rgb(0.45,0.45,0.45) });
-        const tf = form.createTextField(`meta_${mc.id}_${en.id}_${field}`);
-        const exist = a.completados[mc.id]?.[en.id]?.[field];
-        if(exist != null) tf.setText(String(exist));
-        tf.addToPage(page, { x, y: y - 12, width: 90, height: 12,
-          borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
-      });
-      lineGap(30);
-
-      const ejs = (a.rutina?.ejercicios||[]).filter(e => e.entrenoId === en.id).sort((x,y)=>(x.orden||0)-(y.orden||0));
-      ejs.forEach(ej => {
-        const plan = ej.planMicro?.[mc.id];
-        if(!plan || plan.active === false) return;
-        if(y < MARGIN + 60){ page = newPage(); y = H - MARGIN; }
-        const seriesN = plan.series || 1;
-        const reps = plan.reps || '';
-        drawText(`${ej.nombre}  ·  ${seriesN}×${reps}${plan.pct?' @'+plan.pct+'%':''}${ej.pausa?'  pausa '+ej.pausa:''}`, { size: 9, bold: true });
-        lineGap(13);
-        // Tabla de series
-        for(let i=0; i<seriesN; i++){
-          const xKg = MARGIN + 30, xRp = MARGIN + 130;
-          page.drawText(`S${i+1}`, { x: MARGIN, y, size: 8, font, color: rgb(0.3,0.3,0.3) });
-          page.drawText('kg', { x: xKg - 14, y, size: 7, font, color: rgb(0.5,0.5,0.5) });
-          page.drawText('reps', { x: xRp - 22, y, size: 7, font, color: rgb(0.5,0.5,0.5) });
-
-          const kgF = form.createTextField(`ej_${ej.id}_${mc.id}_${en.id}_s${i}_kg`);
-          const rpF = form.createTextField(`ej_${ej.id}_${mc.id}_${en.id}_s${i}_reps`);
-          const exist = a.completados[mc.id]?.[en.id]?.ejs?.[ej.id]?.series?.[i];
-          if(exist){
-            if(exist.kg != null) kgF.setText(String(exist.kg));
-            if(exist.reps != null) rpF.setText(String(exist.reps));
-          }
-          kgF.addToPage(page, { x: xKg, y: y - 2, width: 75, height: 11, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
-          rpF.addToPage(page, { x: xRp, y: y - 2, width: 75, height: 11, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
-          lineGap(14);
-        }
-        lineGap(6);
-      });
-      lineGap(10);
+    // Fila fechas
+    text('Fecha:', { size: 8 });
+    microHeaders.forEach((mn, i) => {
+      const x = MX + 80 + i*120;
+      const tf = form.createTextField(`fecha_${mn}_${en.id}`);
+      const ses = it?.sesiones[mn]?.[en.id];
+      if(ses?.fecha) tf.setText(ses.fecha);
+      tf.addToPage(page, { x, y: y-3, width: 100, height: 12, borderColor: rgb(0.6,0.6,0.6), borderWidth: 0.5 });
     });
-    lineGap(10);
+    gap(20);
+
+    (en.ejercicios||[]).sort((a,b)=>(a.orden||0)-(b.orden||0)).forEach(ej => {
+      if(y < 100){ page = doc.addPage([W,H]); y = H - 30; }
+      text(ej.nombre + (ej.subtitle ? ' — ' + ej.subtitle : ''), { bold:true, size:9 });
+      gap(13);
+      // Plan
+      text('Plan:', { size: 7, color: rgb(0.4,0.4,0.4) });
+      microHeaders.forEach((mn, i) => {
+        const x = MX + 80 + i*120;
+        const plan = tobPlanFor(ej, mn);
+        const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
+        page.drawText(`${plan.series}×${reps}`, { x, y, size: 8, font, color: rgb(0.4,0.4,0.4) });
+      });
+      gap(12);
+
+      const isCirc = ej.tipo === 'circuito';
+      const linesN = isCirc ? (ej.circuitoLineas?.length || 3) : Math.max(...microHeaders.map(mn => tobPlanFor(ej, mn).series));
+      const arrName = isCirc ? 'lineas' : 'series';
+
+      for(let s=0; s<linesN; s++){
+        if(y < 30){ page = doc.addPage([W,H]); y = H - 30; }
+        const lbl = isCirc ? (ej.circuitoLineas?.[s] || `${s+1}º Ej.`) : `${s+1}ª Serie`;
+        page.drawText(lbl, { x: MX, y, size: 8, font, color: rgb(0.3,0.3,0.3) });
+        microHeaders.forEach((mn, i) => {
+          const x = MX + 80 + i*120;
+          const ses = it?.sesiones[mn]?.[en.id];
+          const sr = ses?.ejs?.[ej.id]?.[arrName]?.[s];
+          const kgF = form.createTextField(`ej_${ej.id}_${mn}_${en.id}_${arrName}_${s}_kg`);
+          const rpF = form.createTextField(`ej_${ej.id}_${mn}_${en.id}_${arrName}_${s}_reps`);
+          if(sr?.kg != null) kgF.setText(String(sr.kg));
+          if(sr?.reps != null) rpF.setText(String(sr.reps));
+          kgF.addToPage(page, { x, y: y-3, width: 48, height: 11, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
+          rpF.addToPage(page, { x: x+50, y: y-3, width: 48, height: 11, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
+        });
+        gap(14);
+      }
+      gap(6);
+    });
+
+    // Aeróbica
+    ['tipo','tiempo','intensidad'].forEach(field => {
+      if(y < 30){ page = doc.addPage([W,H]); y = H - 30; }
+      const lblMap = {tipo:'Aeróbica tipo',tiempo:'  tiempo',intensidad:'  intensidad'};
+      text(lblMap[field], { size:7, color: rgb(0.4,0.4,0.4) });
+      microHeaders.forEach((mn, i) => {
+        const x = MX + 80 + i*120;
+        const tf = form.createTextField(`aer_${mn}_${en.id}_${field}`);
+        const ses = it?.sesiones[mn]?.[en.id];
+        if(ses?.aerobica?.[field]) tf.setText(ses.aerobica[field]);
+        tf.addToPage(page, { x, y: y-3, width: 100, height: 11, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
+      });
+      gap(13);
+    });
+    gap(20);
   });
 
   const bytes = await doc.save();
@@ -694,23 +919,18 @@ async function tobGeneratePdf(){
   const url = URL.createObjectURL(blob);
   const a2 = document.createElement('a');
   a2.href = url;
-  a2.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${pl?.nombre.replace(/[^a-zA-Z0-9]/g,'_')||'rutina'}.pdf`;
+  a2.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${(pl?.nombre||'rutina').replace(/[^a-zA-Z0-9]/g,'_')}_it${it?.numero}.pdf`;
   a2.click();
   URL.revokeObjectURL(url);
-  tobToast('✓ PDF generado y descargado', 'green');
+  tobToast('✓ PDF descargado', 'green');
 }
 
-// Parse PDF rellenado — extrae los form fields y rellena `completados`
-function tobHandlePdfDrop(ev){
-  const f = ev.dataTransfer.files[0];
-  if(f) tobReadPdfFile(f);
-}
-function tobHandlePdfFile(ev){
-  const f = ev.target.files[0];
-  if(f) tobReadPdfFile(f);
-}
+function tobHandlePdfDrop(ev){ const f=ev.dataTransfer.files[0]; if(f) tobReadPdfFile(f); }
+function tobHandlePdfFile(ev){ const f=ev.target.files[0]; if(f) tobReadPdfFile(f); }
+
 async function tobReadPdfFile(file){
-  const a = tobAsig(); if(!a){ tobToast('Abre una asignación antes', 'red'); return; }
+  const a = tobAsig(); if(!a){ tobToast('Abre una rutina antes', 'red'); return; }
+  const it = tobIt(); if(!it){ tobToast('Sin iteración activa', 'red'); return; }
   const status = document.getElementById('tobPdfStatus');
   status.textContent = '⏳ Leyendo ' + file.name + '...';
   try {
@@ -723,326 +943,302 @@ async function tobReadPdfFile(file){
       const name = f.getName();
       let val = '';
       try { val = f.getText ? f.getText() : ''; } catch(e){}
-      if(val === undefined || val === null || val === '') return;
-      // Meta
-      let parts = name.match(/^meta_(m\d+)_([^_]+)_(\w+)$/);
+      if(!val) return;
+
+      // fecha_<microNum>_<entId>
+      let parts = name.match(/^fecha_(\d+)_(\w+)$/);
       if(parts){
-        const [, microId, entId, field] = parts;
-        if(!a.completados[microId]) a.completados[microId] = {};
-        if(!a.completados[microId][entId]) a.completados[microId][entId] = { fecha:'',peso:null,cond:null,calidad:null,nota:'',ejs:{} };
-        if(field === 'fecha') a.completados[microId][entId].fecha = val;
-        else a.completados[microId][entId][field] = parseFloat(val) || null;
-        m++;
-        return;
+        const [, microNum, entId] = parts;
+        const s = tobGetSesionIt(it, parseInt(microNum), entId);
+        s.fecha = val; m++; return;
       }
-      // Ejercicio: ej_<ejId>_<microId>_<entId>_s<i>_<kg|reps>
-      parts = name.match(/^ej_([^_]+(?:_[^_]+)*)_m(\d+)_([^_]+)_s(\d+)_(kg|reps)$/);
+      // aer_<microNum>_<entId>_<field>
+      parts = name.match(/^aer_(\d+)_(\w+)_(\w+)$/);
       if(parts){
-        const [, ejIdRaw, microNum, entId, sIdx, field] = parts;
-        // ejId puede contener underscores. Como construimos con `ej_<ejId>_m<n>_...`,
-        // la regex hace que ejIdRaw = el segmento antes de m<n>. Resolver con cuidado:
-        const microId = 'm' + microNum;
-        const ejId = ejIdRaw; // ya capturado
-        if(!a.completados[microId]) a.completados[microId] = {};
-        if(!a.completados[microId][entId]) a.completados[microId][entId] = { fecha:'',peso:null,cond:null,calidad:null,nota:'',ejs:{} };
-        if(!a.completados[microId][entId].ejs[ejId]) a.completados[microId][entId].ejs[ejId] = { series: [] };
-        const i = parseInt(sIdx);
-        while(a.completados[microId][entId].ejs[ejId].series.length <= i) a.completados[microId][entId].ejs[ejId].series.push({kg:null,reps:null});
+        const [, microNum, entId, field] = parts;
+        const s = tobGetSesionIt(it, parseInt(microNum), entId);
+        s.aerobica[field] = val; m++; return;
+      }
+      // ej_<ejId>_<microNum>_<entId>_<series|lineas>_<idx>_<kg|reps>
+      parts = name.match(/^ej_(.+?)_(\d+)_(\w+?)_(series|lineas)_(\d+)_(kg|reps)$/);
+      if(parts){
+        const [, ejId, microNum, entId, arrName, idx, field] = parts;
+        const s = tobGetSesionIt(it, parseInt(microNum), entId);
+        if(!s.ejs[ejId]) s.ejs[ejId] = {};
+        if(!s.ejs[ejId][arrName]) s.ejs[ejId][arrName] = [];
+        const i = parseInt(idx);
+        while(s.ejs[ejId][arrName].length <= i) s.ejs[ejId][arrName].push({kg:null,reps:null});
         const v = parseFloat(val);
-        if(!isNaN(v)) a.completados[microId][entId].ejs[ejId].series[i][field] = v;
+        if(!isNaN(v)) s.ejs[ejId][arrName][i][field] = v;
         n++;
       }
     });
     tobSave();
-    status.innerHTML = `<span style="color:var(--green);">✓ ${n} valores de ejercicios + ${m} metadatos importados de "${tobEsc(file.name)}". Revisa abajo y ajusta si falta algo.</span>`;
-    tobRenderMicroTabs();
-    tobRenderSesion();
-    tobRenderProgreso();
+    status.innerHTML = `<span style="color:var(--green);">✓ ${n} valores + ${m} metadatos importados de "${tobEsc(file.name)}"</span>`;
+    tobRenderEntreno();
+    tobRenderCharts();
     tobToast(`✓ ${n} valores importados`, 'green');
   } catch(e){
     console.error(e);
-    status.innerHTML = `<span style="color:var(--red);">✕ Error: ${tobEsc(e.message)}. El PDF puede no ser rellenable o estar corrupto.</span>`;
-    tobToast('Error al leer PDF', 'red');
+    status.innerHTML = `<span style="color:var(--red);">✕ Error: ${tobEsc(e.message)}</span>`;
+    tobToast('Error', 'red');
   }
 }
 
-// ════════════════════════════════════════════════════════════════════
-// EXPORT / IMPORT JSON
-// ════════════════════════════════════════════════════════════════════
+function tobGetSesionIt(it, microNum, entId){
+  if(!it.sesiones[microNum]) it.sesiones[microNum] = {};
+  if(!it.sesiones[microNum][entId]){
+    it.sesiones[microNum][entId] = { fecha:'', aerobica:{tipo:'',tiempo:'',intensidad:''}, ejs:{} };
+  }
+  return it.sesiones[microNum][entId];
+}
+
+// ═══ EDITAR rutina (la copia editable del cliente) ═══
+function tobOpenEditPlantilla(){
+  const a = tobAsig(); if(!a) return;
+  // Hacemos modal de edición usando el mismo modal de plantilla pero con identificador especial
+  // que indica que es rutina del cliente, no plantilla maestra
+  const fakeP = { nombre: 'Rutina (editable solo para este cliente)', categoria: '—', sexo: '—', entrenos: a.rutina.entrenos };
+  document.getElementById('tobPlantillaModalTitle').textContent = 'Editar ejercicios de esta rutina';
+  document.getElementById('tobPlNombre').value = fakeP.nombre;
+  document.getElementById('tobPlNombre').disabled = true;
+  document.getElementById('tobPlCategoria').disabled = true;
+  document.getElementById('tobPlSexo').disabled = true;
+  document.getElementById('tobPlDef').value = tobPlantillaToText(fakeP);
+  document.getElementById('tobPlantillaModalBg').dataset.editId = '__asig__';
+  document.getElementById('tobPlantillaModalBg').classList.add('on');
+}
+
+// Hook tobSavePlantilla para detectar el caso __asig__
+const _origSavePl = tobSavePlantilla;
+tobSavePlantilla = function(){
+  const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
+  if(editId === '__asig__'){
+    const a = tobAsig(); if(!a){ tobClosePlantillaModal(); return; }
+    const entrenos = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
+    if(!entrenos.length){ tobToast('Sin ejercicios', 'red'); return; }
+    a.rutina.entrenos = entrenos;
+    // Re-asegurar entreno actual válido
+    if(!entrenos.find(e => e.id === tobCurrentEntrenoId)) tobCurrentEntrenoId = entrenos[0].id;
+    document.getElementById('tobPlNombre').disabled = false;
+    document.getElementById('tobPlCategoria').disabled = false;
+    document.getElementById('tobPlSexo').disabled = false;
+    tobSave();
+    tobClosePlantillaModal();
+    tobRenderEntTabs(); tobRenderEntreno(); tobRenderCharts();
+    tobToast('✓ Rutina actualizada', 'green');
+    return;
+  }
+  _origSavePl();
+};
+
+const _origClosePl = tobClosePlantillaModal;
+tobClosePlantillaModal = function(){
+  document.getElementById('tobPlNombre').disabled = false;
+  document.getElementById('tobPlCategoria').disabled = false;
+  document.getElementById('tobPlSexo').disabled = false;
+  _origClosePl();
+};
+
+// ═══ EXPORT/IMPORT ═══
 function tobExport(){
   const blob = new Blob([JSON.stringify(tobDB, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `training_online_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  a.href = url; a.download = `training_online_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
   tobToast('✓ Exportado', 'green');
 }
 
 function tobImport(ev){
-  const f = ev.target.files[0];
-  if(!f) return;
-  const reader = new FileReader();
-  reader.onload = function(){
+  const f = ev.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = function(){
     try {
-      const d = JSON.parse(reader.result);
+      const d = JSON.parse(r.result);
       if(!d.clientes || !d.plantillas){ tobToast('JSON inválido', 'red'); return; }
-      tobConfirm('Reemplazar datos actuales?', 'Se sobrescriben clientes y plantillas con el contenido del archivo. Esto NO se puede deshacer.', () => {
-        tobDB = d;
-        tobSave();
-        tobRenderClientes();
-        tobRenderPlantillas();
+      tobConfirm('Reemplazar datos?', 'Sobrescribe todo. No se puede deshacer.', () => {
+        tobDB = d; tobSave();
+        tobRenderClientes(); tobRenderPlantillas();
         tobToast('✓ Importado', 'green');
       });
-    } catch(e){ tobToast('Error parseando JSON', 'red'); }
+    } catch(e){ tobToast('Error parseando', 'red'); }
   };
-  reader.readAsText(f);
+  r.readAsText(f);
 }
 
-// ════════════════════════════════════════════════════════════════════
-// CONFIRM modal genérico
-// ════════════════════════════════════════════════════════════════════
+// ═══ CONFIRM ═══
 function tobConfirm(title, msg, cb){
   document.getElementById('tobConfirmTitle').textContent = title;
   document.getElementById('tobConfirmMsg').textContent = msg;
   const ok = document.getElementById('tobConfirmOk');
-  ok.textContent = 'Aceptar';
-  ok.classList.add('danger');
+  ok.textContent = 'Aceptar'; ok.classList.add('danger');
   ok.onclick = function(){ tobCloseConfirm(); cb(); };
   document.getElementById('tobConfirmBg').classList.add('on');
 }
 function tobCloseConfirm(){ document.getElementById('tobConfirmBg').classList.remove('on'); }
 
-// ════════════════════════════════════════════════════════════════════
-// Helpers
-// ════════════════════════════════════════════════════════════════════
-function tobEsc(s){ return String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
-
-// ════════════════════════════════════════════════════════════════════
-// SEED PLANTILLAS — 16 mesociclos BIIO (8 categorías x 2 sexos)
-// Estructura simplificada. Cada plantilla usa 4 microciclos típicos.
-// ════════════════════════════════════════════════════════════════════
+// ═══ SEED PLANTILLAS — 16 mesociclos con estructura BIIO real ═══
 function tobBuildSeedPlantillas(){
-  // Microciclos comunes (la mayoría de mesociclos BIIO usan 3-4 + descarga)
-  const mc4 = [
-    {id:'m1', nombre:'1º microciclo'},
-    {id:'m2', nombre:'2º microciclo'},
-    {id:'m3', nombre:'3º microciclo'},
-    {id:'m4', nombre:'Descarga'}
-  ];
-  const mc5 = [
-    {id:'m1', nombre:'1º microciclo'},
-    {id:'m2', nombre:'2º microciclo'},
-    {id:'m3', nombre:'3º microciclo'},
-    {id:'m4', nombre:'4º microciclo'},
-    {id:'m5', nombre:'Descarga'}
-  ];
-  const ent3 = [
-    {id:'A', letra:'A', nombre:'Entreno A'},
-    {id:'B', letra:'B', nombre:'Entreno B'},
-    {id:'C', letra:'C', nombre:'Entreno C'}
-  ];
-  // Helper para construir ejercicios con plan común a todos los microciclos
-  function ej(entrenoId, nombre, series, reps, pausa, micros, pct){
-    const planMicro = {};
-    micros.forEach(mc => {
-      planMicro[mc.id] = { series, reps, pct: pct||null, active: true };
-    });
-    return { id: tobUid('ej'), entrenoId, orden: 0, nombre, planMicro, pausa: pausa||'', notas: '' };
+  // Helper para construir un ejercicio normal con plan distinto por microciclo
+  function ej(nombre, subtitle, planByMicro){
+    return {
+      id: tobUid('ej'),
+      nombre, subtitle: subtitle||'',
+      tipo: 'normal',
+      planByMicro
+    };
   }
-  // Genera plantilla H/M para una categoría con ejercicios distintos
-  function pl(nombre, categoria, sexo, micros, entrenos, ejercicios){
-    return { id: tobUid('pl'), nombre, categoria, sexo, microciclos: micros, entrenos, ejercicios };
+  function ejBase(nombre, subtitle, planBase){
+    return { id: tobUid('ej'), nombre, subtitle: subtitle||'', tipo: 'normal', planBase };
+  }
+  function ejCirc(nombre, subtitle, lineas, planBase){
+    return { id: tobUid('ej'), nombre, subtitle: subtitle||'', tipo: 'circuito', circuitoLineas: lineas, planBase };
+  }
+  // Plan típico Full Training Reacondicionamiento: 3x15/12/10 → 3x12/10/8 → 3x10/8/6 (en pares)
+  const planRea = {
+    1: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
+    2: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
+    3: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
+    4: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
+    5: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" },
+    6: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" }
+  };
+  const planCircRea = {
+    1: { series:2, repsTarget:[12], pausa:'30"' },
+    2: { series:3, repsTarget:[12], pausa:'30"' },
+    3: { series:3, repsTarget:[12], pausa:'30"' },
+    4: { series:3, repsTarget:[12], pausa:'30"' },
+    5: { series:3, repsTarget:[12], pausa:'30"' },
+    6: { series:3, repsTarget:[12], pausa:'30"' }
+  };
+
+  function entA_rea(){
+    const ejs = [
+      { ...ej('BOX SQUAT', '1" Pausa en Box', planRea), orden: 0 },
+      { ...ej('PRESS BANCA', '1" Pausa al Pecho', planRea), orden: 1 },
+      { ...ej('REMO o SEAL ROW', 'Espalda Recta', planRea), orden: 2 },
+      { ...ejCirc('CURL + HIPEREXT + CALF', 'Alternados', ['CURL con BARRA','HIPEREXTENSION','CALF MACHINE'], { series:3, repsTarget:[12], pausa:'30"' }), planByMicro: planCircRea, orden: 3 }
+    ];
+    // Aplicar planByMicro al circuit
+    ejs[3].planByMicro = planCircRea; delete ejs[3].planBase;
+    return { id:'A', letra:'A', nombre:'Entreno A', ejercicios: ejs };
+  }
+  function entB_rea(){
+    const ejs = [
+      { ...ej('PESO MUERTO', 'Espalda Neutra', planRea), orden: 0 },
+      { ...ej('PRESS MILITAR', 'Hasta las Claviculas', planRea), orden: 1 },
+      { ...ej('DOMINADAS o LAT MACHINE', 'Tocando el Pecho (peso + lastre)', planRea), orden: 2 },
+      { ...ejCirc('PRENSA 45º + CRUNCH + FONDOS', 'Alternados', ['PRENSA 45º','CRUNCH INVERSO','FONDOS TRICEPS'], { series:3, repsTarget:[12], pausa:'30"' }), orden: 3 }
+    ];
+    ejs[3].planByMicro = planCircRea; delete ejs[3].planBase;
+    return { id:'B', letra:'B', nombre:'Entreno B', ejercicios: ejs };
+  }
+
+  // ═══ Resto de categorías ═══
+  // Cada categoría con plan distinto. Sólo Reacondicionamiento con datos exactos
+  // del PDF; las demás con plan razonable. Sergio puede editar.
+
+  // Preparación fuerza (2º meso): series altas, %RM, ondas
+  const planPF = {
+    1: { series:3, repsTarget:[5,5,5], pausa:"2'00''" },
+    2: { series:3, repsTarget:[5,5,5], pausa:"2'00''" },
+    3: { series:3, repsTarget:[5,5,5], pausa:"2'30''" },
+    4: { series:3, repsTarget:[5,5,5], pausa:"2'30''" },
+    5: { series:3, repsTarget:[3,3,3], pausa:"3'00''" },
+    6: { series:3, repsTarget:[3,3,3], pausa:"3'00''" }
+  };
+  // Especialización (3º): pausas y técnica
+  const planEsp = {
+    1: { series:4, repsTarget:[6,6,6,6], pausa:"2'00''" },
+    2: { series:4, repsTarget:[6,6,6,6], pausa:"2'00''" },
+    3: { series:4, repsTarget:[5,5,5,5], pausa:"2'30''" },
+    4: { series:4, repsTarget:[5,5,5,5], pausa:"2'30''" },
+    5: { series:4, repsTarget:[4,4,4,4], pausa:"3'00''" },
+    6: { series:4, repsTarget:[4,4,4,4], pausa:"3'00''" }
+  };
+  // Fuerza 1 (4º): isométrico
+  const planF1 = {
+    1: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
+    2: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
+    3: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
+    4: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
+    5: { series:4, repsTarget:[2,2,2,2], pausa:"3'00''" },
+    6: { series:4, repsTarget:[2,2,2,2], pausa:"3'00''" }
+  };
+  // Fuerza 2 (5º): 20/20
+  const planF2 = {
+    1: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
+    2: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
+    3: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
+    4: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
+    5: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
+    6: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" }
+  };
+  // Híbrido (7º): clusters
+  const planHib = {
+    1: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
+    2: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
+    3: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
+    4: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
+    5: { series:4, repsTarget:[6,6,6,6], pausa:"3'00''" },
+    6: { series:4, repsTarget:[6,6,6,6], pausa:"3'00''" }
+  };
+  // Hipertrofia (10º): volumen
+  const planHip = {
+    1: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
+    2: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
+    3: { series:4, repsTarget:[8,8,8,8], pausa:"1'30''" },
+    4: { series:4, repsTarget:[8,8,8,8], pausa:"1'30''" },
+    5: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" },
+    6: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" }
+  };
+  // Calidad muscular (11º): pump alto
+  const planCM = {
+    1: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    2: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    3: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    4: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    5: { series:4, repsTarget:[20,20,20,20], pausa:"45''" },
+    6: { series:4, repsTarget:[20,20,20,20], pausa:"45''" }
+  };
+
+  function makeStandard(catName, planBase){
+    const A = { id:'A', letra:'A', nombre:'Entreno A', ejercicios: [
+      { id: tobUid('ej'), orden:0, nombre:'BOX SQUAT',       subtitle:'', tipo:'normal', planByMicro: planBase },
+      { id: tobUid('ej'), orden:1, nombre:'PRESS BANCA',     subtitle:'', tipo:'normal', planByMicro: planBase },
+      { id: tobUid('ej'), orden:2, nombre:'REMO',            subtitle:'', tipo:'normal', planByMicro: planBase },
+      { id: tobUid('ej'), orden:3, nombre:'CURL + HIPEREXT + CALF', subtitle:'Alternados', tipo:'circuito',
+        circuitoLineas:['CURL con BARRA','HIPEREXTENSION','CALF MACHINE'], planByMicro: planCircRea }
+    ]};
+    const B = { id:'B', letra:'B', nombre:'Entreno B', ejercicios: [
+      { id: tobUid('ej'), orden:0, nombre:'PESO MUERTO',     subtitle:'', tipo:'normal', planByMicro: planBase },
+      { id: tobUid('ej'), orden:1, nombre:'PRESS MILITAR',   subtitle:'', tipo:'normal', planByMicro: planBase },
+      { id: tobUid('ej'), orden:2, nombre:'DOMINADAS',       subtitle:'', tipo:'normal', planByMicro: planBase },
+      { id: tobUid('ej'), orden:3, nombre:'PRENSA + CRUNCH + FONDOS', subtitle:'Alternados', tipo:'circuito',
+        circuitoLineas:['PRENSA 45º','CRUNCH INVERSO','FONDOS TRICEPS'], planByMicro: planCircRea }
+    ]};
+    return [A, B];
   }
 
   const out = [];
-
-  // ═══ 1. REACONDICIONAMIENTO (1º meso Spanish Full Body) ═══
-  // Hombre y Mujer — mismos ejercicios (no había variante GIRL en el original)
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Prensa 45º', 2, '20', "60''"],
-      ['A', 'Press Banca o Flexiones', 2, '15', "60''"],
-      ['A', 'Hiperextensión o Quadra Bench', 2, '20', "60''"],
-      ['A', 'Jalones agarre ancho', 2, '15', "60''"],
-      ['A', 'Crunch inverso o Calf machine', 2, '20', "60''"],
-      ['B', 'Sentadilla Goblet', 2, '20', "60''"],
-      ['B', 'Press hombro mancuernas', 2, '15', "60''"],
-      ['B', 'Peso muerto rumano', 2, '20', "60''"],
-      ['B', 'Remo mancuerna', 2, '15', "60''"],
-      ['B', 'Plancha abdominal', 2, '30s', "60''"],
-      ['C', 'Zancadas', 2, '20', "60''"],
-      ['C', 'Fondos pecho/triceps', 2, '15', "60''"],
-      ['C', 'Hip thrust', 2, '20', "60''"],
-      ['C', 'Curl bíceps barra', 2, '15', "60''"],
-      ['C', 'Crunch + Calf', 2, '20', "60''"]
-    ].forEach(row => { const [e,n,s,r,p] = row; const x = ej(e,n,s,r,p,mc4); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Reacondicionamiento — ${sx==='H'?'Hombre':'Mujer'}`, 'Reacondicionamiento', sx, mc4, ent3, ejs));
+  // 1. Reacondicionamiento (exacto del PDF)
+  out.push({ id: tobUid('pl'), nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', entrenos:[entA_rea(), entB_rea()] });
+  // 2-8
+  [
+    ['Preparación fuerza',     planPF],
+    ['Especialización técnica',planEsp],
+    ['Fuerza 1',                planF1],
+    ['Fuerza 2',                planF2],
+    ['Hibrido',                 planHib],
+    ['Hipertrofia',             planHip],
+    ['Calidad muscular',        planCM]
+  ].forEach(([cat, plan]) => {
+    ['H','M'].forEach(sx => {
+      out.push({ id: tobUid('pl'), nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, entrenos: makeStandard(cat, plan) });
+    });
   });
-
-  // ═══ 2. PREPARACIÓN FUERZA (2º meso Neurological Carryover) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Box Squat (NCT)', 3, '5', "2'00\"", 65],
-      ['A', 'Press Banca (NCT)', 3, '5', "2'00\"", 65],
-      ['A', 'Peso Muerto (NCT)', 3, '5', "2'00\"", 60],
-      ['A', 'Onda Waterbury — Dominadas/Press Militar', 8, '3', "1'00\"", 70],
-      ['A', 'Abdomen o gemelos', 3, '12', "1'00\""],
-      ['B', 'Sentadilla Frontal', 3, '5', "2'00\"", 65],
-      ['B', 'Press Banca cerrado', 3, '5', "2'00\"", 65],
-      ['B', 'Remo Pendlay', 3, '5', "2'00\"", 65],
-      ['B', 'Onda Waterbury — Press Militar/Dominadas', 8, '3', "1'00\"", 70],
-      ['B', 'Plancha lateral', 3, '30s', "1'00\""],
-      ['C', 'Peso muerto sumo', 3, '5', "2'00\"", 60],
-      ['C', 'Press inclinado', 3, '5', "2'00\"", 65],
-      ['C', 'Remo barra', 3, '5', "2'00\"", 65],
-      ['C', 'Onda Waterbury — Curl/Tríceps', 8, '3', "1'00\"", 70],
-      ['C', 'Abdomen rueda', 3, '10', "1'00\""]
-    ].forEach(row => { const [e,n,s,r,p,pct] = row; const x = ej(e,n,s,r,p,mc5,pct); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Preparación fuerza — ${sx==='H'?'Hombre':'Mujer'}`, 'Preparación fuerza', sx, mc5, ent3, ejs));
-  });
-
-  // ═══ 3. ESPECIALIZACIÓN TÉCNICA (3º meso NC Dinosaur) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Sentadilla pausa 3s', 4, '4', "2'30\"", 70],
-      ['A', 'Press banca pausa 2s', 4, '4', "2'30\"", 70],
-      ['A', 'Dominadas lastradas', 4, '5', "2'00\""],
-      ['A', 'Press militar estricto', 3, '5', "2'00\"", 70],
-      ['A', 'Curl bíceps barra', 3, '8', "1'30\""],
-      ['B', 'Peso muerto déficit', 4, '4', "2'30\"", 70],
-      ['B', 'Press inclinado mancuerna', 4, '5', "2'00\""],
-      ['B', 'Remo Yates', 4, '6', "2'00\""],
-      ['B', 'Hip thrust pesado', 3, '6', "2'00\""],
-      ['B', 'Extensión tríceps polea', 3, '10', "1'30\""],
-      ['C', 'Sentadilla frontal pausa', 4, '4', "2'30\"", 70],
-      ['C', 'Press banca cierre 2s', 4, '5', "2'00\"", 70],
-      ['C', 'Remo Pendlay', 4, '5', "2'00\""],
-      ['C', 'Encogimientos', 3, '10', "1'30\""],
-      ['C', 'Plancha 60s', 3, '60s', "1'00\""]
-    ].forEach(row => { const [e,n,s,r,p,pct] = row; const x = ej(e,n,s,r,p,mc5,pct); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Especialización técnica — ${sx==='H'?'Hombre':'Mujer'}`, 'Especialización técnica', sx, mc5, ent3, ejs));
-  });
-
-  // ═══ 4. FUERZA 1 (4º meso Isometronic) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Sentadilla isométrica 6s', 5, '3', "3'00\"", 80],
-      ['A', 'Press banca isométrico', 5, '3', "3'00\"", 80],
-      ['A', 'Peso muerto top hold', 4, '3', "3'00\"", 80],
-      ['A', 'Dominadas isométricas', 4, '5', "2'00\""],
-      ['B', 'Sentadilla frontal isométrica', 5, '3', "3'00\"", 80],
-      ['B', 'Press cerrado isométrico', 5, '3', "3'00\"", 80],
-      ['B', 'Remo barra hold', 4, '4', "2'30\""],
-      ['B', 'Press militar isométrico', 4, '4', "2'30\"", 75],
-      ['C', 'Zancada búlgara isométrica', 4, '6', "2'30\""],
-      ['C', 'Press inclinado pausa', 4, '5', "2'30\"", 75],
-      ['C', 'Peso muerto rumano isom.', 4, '5', "2'30\"", 75],
-      ['C', 'Curl + extensión tríceps', 4, '8-8', "1'30\""]
-    ].forEach(row => { const [e,n,s,r,p,pct] = row; const x = ej(e,n,s,r,p,mc5,pct); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Fuerza 1 — ${sx==='H'?'Hombre':'Mujer'}`, 'Fuerza 1', sx, mc5, ent3, ejs));
-  });
-
-  // ═══ 5. FUERZA 2 (5º meso Método 20/20) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Sentadilla 20 reps', 1, '20', "3'00\"", 60],
-      ['A', 'Pull-over post-squat', 1, '20', "1'00\""],
-      ['A', 'Press banca', 5, '5', "2'30\"", 80],
-      ['A', 'Remo barra', 5, '5', "2'30\"", 80],
-      ['A', 'Curl bíceps + tríceps', 4, '10', "1'30\""],
-      ['B', 'Peso muerto', 5, '5', "3'00\"", 80],
-      ['B', 'Press hombro', 5, '5', "2'30\"", 75],
-      ['B', 'Dominadas lastradas', 5, '5', "2'30\""],
-      ['B', 'Gemelos pie', 5, '15', "1'30\""],
-      ['C', 'Sentadilla frontal', 5, '5', "2'30\"", 75],
-      ['C', 'Press inclinado mancuerna', 4, '8', "2'00\""],
-      ['C', 'Jalón al pecho', 4, '8', "2'00\""],
-      ['C', 'Curl bíceps barra Z', 4, '10', "1'30\""]
-    ].forEach(row => { const [e,n,s,r,p,pct] = row; const x = ej(e,n,s,r,p,mc4,pct); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Fuerza 2 — ${sx==='H'?'Hombre':'Mujer'}`, 'Fuerza 2', sx, mc4, ent3, ejs));
-  });
-
-  // ═══ 6. HÍBRIDO (7º meso Hybrid Extended Clusters) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Sentadilla cluster 3+3+3', 4, '9', "3'00\"", 75],
-      ['A', 'Press banca cluster', 4, '9', "3'00\"", 75],
-      ['A', 'Remo Pendlay', 4, '6', "2'00\""],
-      ['A', 'Curl bíceps + tríceps', 3, '12', "1'30\""],
-      ['B', 'Peso muerto cluster', 4, '9', "3'00\"", 75],
-      ['B', 'Press inclinado', 4, '8', "2'00\""],
-      ['B', 'Dominadas lastradas', 4, '6', "2'00\""],
-      ['B', 'Press hombro mancuernas', 4, '10', "1'30\""],
-      ['C', 'Zancadas búlgaras', 4, '10', "2'00\""],
-      ['C', 'Fondos lastrados', 4, '8', "2'00\""],
-      ['C', 'Remo mancuerna', 4, '10', "1'30\""],
-      ['C', 'Calf machine + abdomen', 4, '15', "1'00\""]
-    ].forEach(row => { const [e,n,s,r,p,pct] = row; const x = ej(e,n,s,r,p,mc4,pct); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Hibrido — ${sx==='H'?'Hombre':'Mujer'}`, 'Hibrido', sx, mc4, ent3, ejs));
-  });
-
-  // ═══ 7. HIPERTROFIA (10º meso Método Holístico Distribuido) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Press banca', 4, '8-10', "1'30\""],
-      ['A', 'Press inclinado mancuerna', 4, '10', "1'30\""],
-      ['A', 'Aperturas pecho polea', 3, '12-15', "1'00\""],
-      ['A', 'Fondos paralelas', 3, '10', "1'30\""],
-      ['A', 'Press francés', 4, '10', "1'00\""],
-      ['B', 'Sentadilla', 4, '8-10', "2'00\""],
-      ['B', 'Prensa', 4, '12', "1'30\""],
-      ['B', 'Extensión cuádriceps', 4, '15', "1'00\""],
-      ['B', 'Curl femoral', 4, '12', "1'00\""],
-      ['B', 'Gemelos de pie', 5, '15', "1'00\""],
-      ['C', 'Dominadas', 4, '8-10', "2'00\""],
-      ['C', 'Remo Yates', 4, '10', "1'30\""],
-      ['C', 'Jalón polea', 4, '12', "1'00\""],
-      ['C', 'Curl bíceps barra', 4, '10', "1'00\""],
-      ['C', 'Curl martillo', 3, '12', "1'00\""]
-    ].forEach(row => { const [e,n,s,r,p] = row; const x = ej(e,n,s,r,p,mc4); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Hipertrofia — ${sx==='H'?'Hombre':'Mujer'}`, 'Hipertrofia', sx, mc4, ent3, ejs));
-  });
-
-  // ═══ 8. CALIDAD MUSCULAR (11º meso Daily Undulating Power & Pump) ═══
-  ['H','M'].forEach(sx => {
-    const ejs = [];
-    let i = 0;
-    [
-      ['A', 'Press banca PUMP', 4, '12-15', "1'00\""],
-      ['A', 'Aperturas polea', 4, '15', "45\""],
-      ['A', 'Press inclinado smith', 4, '12', "1'00\""],
-      ['A', 'Tríceps polea cuerda', 4, '15', "45\""],
-      ['A', 'Tríceps barra Z', 4, '12', "1'00\""],
-      ['B', 'Sentadilla PUMP', 4, '15-20', "1'30\""],
-      ['B', 'Extensión cuádriceps drop', 4, '15', "45\""],
-      ['B', 'Hip thrust', 4, '12-15', "1'00\""],
-      ['B', 'Curl femoral', 4, '15', "45\""],
-      ['B', 'Calf burnout', 5, '20', "30\""],
-      ['C', 'Jalón polea ancho', 4, '12-15', "1'00\""],
-      ['C', 'Remo gironda', 4, '15', "45\""],
-      ['C', 'Pull-over polea', 4, '15', "45\""],
-      ['C', 'Curl bíceps polea', 4, '15', "45\""],
-      ['C', 'Curl concentrado', 4, '12', "45\""]
-    ].forEach(row => { const [e,n,s,r,p] = row; const x = ej(e,n,s,r,p,mc4); x.orden = i++; ejs.push(x); });
-    out.push(pl(`Calidad muscular — ${sx==='H'?'Hombre':'Mujer'}`, 'Calidad muscular', sx, mc4, ent3, ejs));
-  });
-
   return out;
 }
 
