@@ -172,12 +172,39 @@
 
         <div class="card">
           <div class="card-title">💸 Impuestos (IGI Andorra)</div>
-          <div class="row-3">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;color:var(--text);">
+              <input type="checkbox" id="cfg_sinIgi" onchange="cfgSave(); updateSinIgiUI();" style="width:16px;height:16px;accent-color:var(--acc);">
+              Facturas sin IGI (no se aplica impuesto)
+            </label>
+          </div>
+          <div class="row-3" id="cfg_igi_row">
             <div><label class="fld-lbl">IGI por defecto (%)</label>
               <input class="inp" type="number" step="0.5" id="cfg_igi" oninput="cfgSave()"></div>
           </div>
           <div style="font-size:.7rem;color:var(--mute2);line-height:1.5;">
             Tipos vigentes en Andorra: <strong>0%</strong> (servicios médicos, educación), <strong>1%</strong> (alimentación), <strong>2.5%</strong> (transporte, cultura), <strong>4.5%</strong> (general), <strong>9.5%</strong> (servicios bancarios).
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">⚡ Cálculo de consumo eléctrico (kWh)</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;color:var(--text);">
+              <input type="checkbox" id="cfg_kwEnabled" onchange="cfgSave(); updateKwUI();" style="width:16px;height:16px;accent-color:var(--acc);">
+              Activar módulo de consumo eléctrico en facturas
+            </label>
+          </div>
+          <div id="cfg_kw_panel" style="display:none;">
+            <div class="row-2">
+              <div><label class="fld-lbl">Precio por kWh (€)</label>
+                <input class="inp" type="number" step="0.0001" id="cfg_kwPrice" oninput="cfgSave()" placeholder="0.1850"></div>
+              <div><label class="fld-lbl">Última lectura guardada (kWh)</label>
+                <input class="inp" type="number" step="0.01" id="cfg_kwLast" oninput="cfgSave()" placeholder="0"></div>
+            </div>
+            <div style="font-size:.7rem;color:var(--mute2);line-height:1.5;margin-top:6px;">
+              Al crear una factura, podrás meter la <strong>lectura actual</strong> y se calculará una línea automática: <em>(actual − última) × precio €/kWh</em>. La nueva lectura queda guardada como "última" para la próxima factura.
+            </div>
           </div>
         </div>
 

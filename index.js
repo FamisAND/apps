@@ -720,6 +720,7 @@ const NOTIF_DAYS = [
 ];
 const NOTIF_SECTIONS = [
   { id: 'patrimonio', icon: '💰', label: 'Patrimonio', items: [
+    { id: 'profile_id',    label: 'Perfil a usar', type: 'profile', source: 'patrimonio.pat_v5', default: 'all' },
     { id: 'total',         label: 'Total actual',                          default: true  },
     { id: 'delta',         label: 'Δ vs mes anterior (€ y %)',             default: true  },
     { id: 'objetivo',      label: '% del objetivo principal',              default: true  },
@@ -759,6 +760,7 @@ const NOTIF_SECTIONS = [
     { id: 'stock_critico', label: 'Stock crítico (≤2 unidades)',           default: false }
   ]},
   { id: 'facturas', icon: '📄', label: 'Facturas', items: [
+    { id: 'profile_id',    label: 'Perfil a usar', type: 'profile', source: 'facturas.fac_v1', default: 'all' },
     { id: 'pendientes',    label: 'Facturas pendientes',                   default: true  },
     { id: 'vencidas',      label: 'Facturas vencidas',                     default: true  },
     { id: 'total_mes',     label: 'Total facturado este mes',              default: true  },
@@ -808,7 +810,8 @@ const NOTIF_SECTIONS = [
         { id: 'internacional',label: '🌐 Internacional' },
         { id: 'ciencia',      label: '🔬 Ciencia' }
       ]
-    }
+    },
+    { id: 'custom_feeds',     label: 'Feeds RSS personalizados', type: 'feeds', default: [] }
   ]}
 ];
 
@@ -827,10 +830,11 @@ function _renderNotifDays(activeDays){
 
 // Orden actual editable por el usuario (drag-and-drop). Si no hay savedOrder
 // se usa el orden definido en NOTIF_SECTIONS.
-function _renderNotifSections(savedSections, savedOrder){
+function _renderNotifSections(savedSections, savedOrder, profilesBySource){
   const cont = document.getElementById('notifSections');
   if(!cont) return;
   cont.innerHTML = '';
+  profilesBySource = profilesBySource || {};
 
   // Resolver orden: priorizar savedOrder, completar con secciones nuevas que
   // no estuvieran guardadas (al final), descartar IDs huérfanos.
@@ -923,6 +927,63 @@ function _renderNotifSections(savedSections, savedOrder){
         });
         updateState();
         itemsWrap.appendChild(wrap);
+      } else if(it.type === 'profile'){
+        // Dropdown con los perfiles disponibles + opción "Todos"
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:.78rem;color:#67e8f9;padding-left:6px;';
+        const profiles = profilesBySource[it.source] || [];
+        const current = saved[it.id] != null ? saved[it.id] : (it.default || 'all');
+        const opts = [`<option value="all" ${current==='all'?'selected':''}>Todos los perfiles</option>`]
+          .concat(profiles.map(p =>
+            `<option value="${p.id}" ${current===p.id?'selected':''}>${escapeHtml(p.name||p.id)}</option>`
+          ));
+        const noteEmpty = profiles.length === 0
+          ? ` <span style="color:#475569;font-size:.7rem">(sin perfiles aún)</span>`
+          : '';
+        row.innerHTML = `
+          <span style="flex:1">${it.label}${noteEmpty}</span>
+          <select data-sec-item="${sec.id}/${it.id}" style="background:#0a0e14;border:1px solid #1e3a5f;color:#e0f2fe;padding:3px 6px;border-radius:4px;font-family:DM Mono,monospace;font-size:.74rem;min-width:140px;">
+            ${opts.join('')}
+          </select>
+        `;
+        itemsWrap.appendChild(row);
+      } else if(it.type === 'feeds'){
+        // Lista editable de RSS feeds personalizados.
+        // Cada feed: { url, label, category: 'andorra' | 'mundial' }
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'padding:6px 6px 4px;border:1px dashed #1e3a5f;border-radius:5px;margin-top:4px;';
+        wrap.dataset.feedsList = `${sec.id}/${it.id}`;
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size:.74rem;color:#94a3b8;margin-bottom:6px;font-family:DM Mono,monospace;';
+        title.textContent = it.label + ' — añade tus propios RSS (se mezclan con Andorra o Mundial según categoría)';
+        wrap.appendChild(title);
+        const list = document.createElement('div');
+        list.style.cssText = 'display:flex;flex-direction:column;gap:4px;margin-bottom:6px;';
+        wrap.appendChild(list);
+        const initial = Array.isArray(saved[it.id]) ? saved[it.id] : (it.default || []);
+        const addRow = (f) => {
+          const r = document.createElement('div');
+          r.style.cssText = 'display:flex;gap:4px;align-items:center;font-size:.72rem;';
+          r.innerHTML = `
+            <input type="text" placeholder="https://..." value="${escapeHtml(f.url||'')}" data-feed-url style="flex:2;background:#0a0e14;border:1px solid #1e3a5f;color:#e0f2fe;padding:3px 6px;border-radius:3px;font-family:DM Mono,monospace;font-size:.72rem;">
+            <input type="text" placeholder="Etiqueta" value="${escapeHtml(f.label||'')}" data-feed-label style="flex:1;background:#0a0e14;border:1px solid #1e3a5f;color:#e0f2fe;padding:3px 6px;border-radius:3px;font-size:.72rem;">
+            <select data-feed-cat style="background:#0a0e14;border:1px solid #1e3a5f;color:#e0f2fe;padding:3px 6px;border-radius:3px;font-size:.72rem;">
+              <option value="andorra" ${f.category==='andorra'?'selected':''}>Andorra</option>
+              <option value="mundial" ${f.category==='mundial'||!f.category?'selected':''}>Mundial</option>
+            </select>
+            <button type="button" data-feed-del style="background:transparent;border:1px solid #5a1a1a;color:#fca5a5;padding:2px 7px;border-radius:3px;cursor:pointer;font-size:.7rem;">✕</button>
+          `;
+          r.querySelector('[data-feed-del]').addEventListener('click', () => r.remove());
+          list.appendChild(r);
+        };
+        initial.forEach(addRow);
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.style.cssText = 'background:transparent;border:1px solid #1e3a5f;color:#67e8f9;padding:3px 9px;border-radius:3px;cursor:pointer;font-size:.72rem;align-self:flex-start;';
+        addBtn.textContent = '+ Añadir RSS';
+        addBtn.addEventListener('click', () => addRow({}));
+        wrap.appendChild(addBtn);
+        itemsWrap.appendChild(wrap);
       } else {
         const lbl = document.createElement('label');
         lbl.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:.78rem;color:#67e8f9;cursor:pointer;padding-left:6px;';
@@ -1003,9 +1064,29 @@ function _readNotifFormConfig(){
         sections[sec.id][it.id] = checked.slice(0, it.max || checked.length);
         return;
       }
+      if(it.type === 'feeds'){
+        const list = document.querySelector(`#notifSections [data-feeds-list="${sec.id}/${it.id}"]`);
+        const out = [];
+        if(list){
+          list.querySelectorAll('input[data-feed-url]').forEach(urlInp => {
+            const row = urlInp.parentElement;
+            const url = urlInp.value.trim();
+            if(!url) return;
+            out.push({
+              url,
+              label: row.querySelector('[data-feed-label]').value.trim() || '(sin etiqueta)',
+              category: row.querySelector('[data-feed-cat]').value || 'mundial'
+            });
+          });
+        }
+        sections[sec.id][it.id] = out;
+        return;
+      }
       const inp = document.querySelector(`#notifSections [data-sec-item="${sec.id}/${it.id}"]`);
       if(!inp) return;
-      sections[sec.id][it.id] = (it.type === 'number') ? (parseInt(inp.value, 10) || it.default) : inp.checked;
+      if(it.type === 'number') sections[sec.id][it.id] = parseInt(inp.value, 10) || it.default;
+      else if(it.type === 'profile') sections[sec.id][it.id] = inp.value || 'all';
+      else sections[sec.id][it.id] = inp.checked;
     });
   });
   return {
@@ -1031,7 +1112,18 @@ async function _notifShowForm(){
   document.getElementById('notifTime').value = (cfg && cfg.time) || '09:00';
   document.getElementById('notifEnabled').checked = cfg ? cfg.enabled !== false : true;
   _renderNotifDays(cfg && cfg.days);
-  _renderNotifSections(cfg && cfg.sections, cfg && cfg.section_order);
+
+  // Cargar nombres de perfiles disponibles para los dropdowns
+  const profilesBySource = {};
+  try {
+    const full = await GitHubSync.fetchFullData();
+    const patP = _pmaybe(full?.patrimonio?.pat_v5);
+    if(Array.isArray(patP)) profilesBySource['patrimonio.pat_v5'] = patP.map(p => ({id: p.id, name: p.name}));
+    const facP = _pmaybe(full?.facturas?.fac_v1);
+    if(Array.isArray(facP)) profilesBySource['facturas.fac_v1'] = facP.map(p => ({id: p.id, name: p.name}));
+  } catch(e){ console.warn('No se pudieron cargar perfiles:', e.message); }
+
+  _renderNotifSections(cfg && cfg.sections, cfg && cfg.section_order, profilesBySource);
 }
 
 async function saveNotifConfig(){

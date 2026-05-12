@@ -236,10 +236,20 @@ async function buildActualidad(ctx, data, notif) {
     } catch (e) { console.error('actualidad tiempo:', e.message); }
   }
 
+  // Custom feeds del usuario — categorizados como 'andorra' o 'mundial'.
+  // Se mezclan con los feeds built-in del bucket correspondiente.
+  const customFeeds = Array.isArray(sec.custom_feeds) ? sec.custom_feeds : [];
+  const customAndorra = customFeeds
+    .filter(f => f && f.url && f.category === 'andorra')
+    .map(f => ({ url: f.url, source: f.label || '(custom)' }));
+  const customMundo = customFeeds
+    .filter(f => f && f.url && f.category !== 'andorra')
+    .map(f => ({ url: f.url, source: f.label || '(custom)' }));
+
   // ── Noticias Andorra ──
   if (sec.noticias_andorra === true) {
     try {
-      const news = await fetchFeeds(ANDORRA_FEEDS);
+      const news = await fetchFeeds([...ANDORRA_FEEDS, ...customAndorra]);
       if (news.length) {
         renderNewsBlock(out, '📰 Andorra hoy:', news, sec.noticias_andorra_topics);
       } else {
@@ -251,7 +261,7 @@ async function buildActualidad(ctx, data, notif) {
   // ── Noticias mundial ──
   if (sec.noticias_mundo === true) {
     try {
-      const news = await fetchFeeds(WORLD_FEEDS);
+      const news = await fetchFeeds([...WORLD_FEEDS, ...customMundo]);
       if (news.length) {
         renderNewsBlock(out, '🌐 Mundial hoy:', news, sec.noticias_mundo_topics);
       } else {
@@ -546,7 +556,9 @@ function buildPatrimonio(ctx, data, notif) {
   try {
     const profiles = parseMaybe(data?.patrimonio?.pat_v5);
     if (!Array.isArray(profiles) || !profiles.length) return [];
-    const p = profiles[0];
+    // Selección de perfil: 'all' (o ausente) = primer perfil; id concreto = ese perfil
+    const wantedId = sec.profile_id && sec.profile_id !== 'all' ? sec.profile_id : null;
+    const p = wantedId ? (profiles.find(x => x.id === wantedId) || profiles[0]) : profiles[0];
     const ents = [...(p.entries || [])].sort((a,b) => (a.year-b.year) || (a.month-b.month));
     if (!ents.length) return [];
 
@@ -1024,8 +1036,14 @@ function buildFacturas(ctx, data, notif) {
   if (sec.enabled === false) return [];
 
   try {
-    const profiles = parseMaybe(data?.facturas?.fac_v1);
-    if (!Array.isArray(profiles)) return [];
+    const allProfiles = parseMaybe(data?.facturas?.fac_v1);
+    if (!Array.isArray(allProfiles)) return [];
+    // Filtrar por perfil seleccionado, o usar todos
+    const wantedId = sec.profile_id && sec.profile_id !== 'all' ? sec.profile_id : null;
+    const profiles = wantedId
+      ? allProfiles.filter(p => p.id === wantedId)
+      : allProfiles;
+    if (!profiles.length) return [];
 
     let pend = 0, venc = 0, pag = 0, totalMes = 0, pendMes = 0, totalAll = 0;
     const byClienteMes = {};
@@ -1106,10 +1124,13 @@ function buildFacturas(ctx, data, notif) {
 function collectUrgent(ctx, data, notif) {
   const out = [];
 
-  // Facturas vencidas (computado: pendiente + >30d)
+  // Facturas vencidas (computado: pendiente + >30d), honra perfil seleccionado
   try {
-    const profiles = parseMaybe(data?.facturas?.fac_v1);
-    if (Array.isArray(profiles)) {
+    const allProfiles = parseMaybe(data?.facturas?.fac_v1);
+    if (Array.isArray(allProfiles)) {
+      const facSec = (notif.sections || {}).facturas || {};
+      const wantedId = facSec.profile_id && facSec.profile_id !== 'all' ? facSec.profile_id : null;
+      const profiles = wantedId ? allProfiles.filter(p => p.id === wantedId) : allProfiles;
       const venc = [];
       profiles.forEach(p => (p.facturas||[]).forEach(f => {
         if (getEstadoFactura(f) === 'vencida') {

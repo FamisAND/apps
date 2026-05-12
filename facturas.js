@@ -327,9 +327,32 @@ function renderAjustes(){
   document.getElementById("cfg_prefix").value = p.cfg.prefix||"";
   document.getElementById("cfg_next").value = p.cfg.next||1;
   document.getElementById("cfg_igi").value = p.cfg.igi!=null ? p.cfg.igi : 4.5;
+  // Toggles nuevos
+  const elSinIgi = document.getElementById("cfg_sinIgi");
+  if(elSinIgi) elSinIgi.checked = !!p.cfg.sinIgi;
+  const elKw = document.getElementById("cfg_kwEnabled");
+  if(elKw) elKw.checked = !!p.cfg.kwEnabled;
+  const elKwPrice = document.getElementById("cfg_kwPrice");
+  if(elKwPrice) elKwPrice.value = p.cfg.kwPrice != null ? p.cfg.kwPrice : '';
+  const elKwLast = document.getElementById("cfg_kwLast");
+  if(elKwLast) elKwLast.value = p.cfg.kwLast != null ? p.cfg.kwLast : '';
+  if(typeof updateSinIgiUI === 'function') updateSinIgiUI();
+  if(typeof updateKwUI === 'function') updateKwUI();
   updateCfgPreview();
   renderEstilos();
   renderPlantillas();
+}
+
+// Muestra/oculta el input de IGI según el toggle "Sin IGI"
+function updateSinIgiUI(){
+  const sinIgi = document.getElementById("cfg_sinIgi")?.checked;
+  const row = document.getElementById("cfg_igi_row");
+  if(row) row.style.display = sinIgi ? 'none' : '';
+}
+function updateKwUI(){
+  const on = document.getElementById("cfg_kwEnabled")?.checked;
+  const panel = document.getElementById("cfg_kw_panel");
+  if(panel) panel.style.display = on ? '' : 'none';
 }
 
 // ── Plantillas de líneas frecuentes ──
@@ -583,10 +606,15 @@ function resetEstiloTextos(){
 
 function cfgSave(){
   const p = prof(); if(!p) return;
+  const prev = p.cfg || {};
   p.cfg = {
     prefix: document.getElementById("cfg_prefix").value,
     next: parseInt(document.getElementById("cfg_next").value)||1,
-    igi: parseFloat(document.getElementById("cfg_igi").value)||0
+    igi: parseFloat(document.getElementById("cfg_igi").value)||0,
+    sinIgi: !!document.getElementById("cfg_sinIgi")?.checked,
+    kwEnabled: !!document.getElementById("cfg_kwEnabled")?.checked,
+    kwPrice: parseFloat(document.getElementById("cfg_kwPrice")?.value) || 0,
+    kwLast: parseFloat(document.getElementById("cfg_kwLast")?.value) || 0
   };
   save();
   updateCfgPreview();
@@ -984,12 +1012,27 @@ function renderEditor(){
     </div>
   </div>
 
+  <!-- ── Módulo KW (consumo eléctrico) — solo si activado en config ── -->
+  <div class="card" id="ed_kw_card" style="display:none;background:linear-gradient(135deg,#0a1f1c 0%,#0f2920 100%);border:1px solid #14532d;">
+    <div class="card-title">⚡ Cálculo de consumo eléctrico</div>
+    <div class="row-3">
+      <div><label class="fld-lbl">Lectura anterior (kWh)</label>
+        <input class="inp" type="number" step="0.01" id="ed_kw_prev" readonly style="background:#0a1421;color:var(--mute);"></div>
+      <div><label class="fld-lbl">Lectura actual (kWh)</label>
+        <input class="inp" type="number" step="0.01" id="ed_kw_curr" oninput="updateKwPreview()" placeholder="0"></div>
+      <div><label class="fld-lbl">Precio €/kWh</label>
+        <input class="inp" type="number" step="0.0001" id="ed_kw_price" readonly style="background:#0a1421;color:var(--mute);"></div>
+    </div>
+    <div style="margin-top:8px;font-size:.78rem;color:var(--mute);" id="ed_kw_preview">Consumo: — kWh · Importe: — €</div>
+    <button class="fac-add" style="margin-top:8px;" onclick="addKwLine()">+ Añadir línea de consumo a la factura</button>
+  </div>
+
   <!-- ── Totales destacados ── -->
   <div class="card" style="background:linear-gradient(135deg,#0a1120 0%,#13203a 100%);">
     <div class="card-title" style="margin-bottom:10px;">💶 Totales</div>
     <div class="fac-totals" style="background:transparent;padding:6px 4px;">
       <div class="fac-tot-row" style="font-size:.95rem;"><span style="color:var(--mute);">Subtotal</span><span id="ed_subt" class="td-num">0,00 €</span></div>
-      <div class="fac-tot-row" style="font-size:.95rem;"><span style="color:var(--mute);">IGI</span><span id="ed_igi" class="td-num">0,00 €</span></div>
+      <div class="fac-tot-row" id="ed_igi_row" style="font-size:.95rem;"><span style="color:var(--mute);">IGI</span><span id="ed_igi" class="td-num">0,00 €</span></div>
       <div class="fac-tot-row tot" style="font-size:1.2rem;border-top:1px solid var(--bd);padding-top:10px;margin-top:8px;"><span>Total</span><span id="ed_tot" class="td-num" style="color:var(--acc2);">0,00 €</span></div>
     </div>
   </div>
@@ -1119,16 +1162,78 @@ function edRemoveLine(i){
 
 function recalcTotales(){
   const f = editingFactura;
+  const p = prof();
+  const sinIgi = !!(p && p.cfg && p.cfg.sinIgi);
   let subt = 0, igi = 0;
   f.lineas.forEach(l=>{
     const base = (l.cant||0) * (l.precio||0);
     subt += base;
-    igi += base * ((l.igi||0)/100);
+    if(!sinIgi) igi += base * ((l.igi||0)/100);
   });
+  if(sinIgi) igi = 0;
   f.totales = { subtotal: subt, igi: igi, total: subt+igi };
   document.getElementById("ed_subt").textContent = fmt(subt);
   document.getElementById("ed_igi").textContent = fmt(igi);
   document.getElementById("ed_tot").textContent = fmt(subt+igi);
+  // Ocultar fila IGI en el editor si "sin IGI"
+  const igiRow = document.getElementById("ed_igi_row");
+  if(igiRow) igiRow.style.display = sinIgi ? 'none' : '';
+  // Refrescar panel KW si toca
+  refreshKwPanel();
+}
+
+// ── Módulo KW (consumo eléctrico) ──
+// Al abrir el editor, si cfg.kwEnabled muestra la card con lectura anterior +
+// input para lectura actual. El botón añade la línea calculada a la factura.
+// Al guardar la factura, kwLast se actualiza con la nueva lectura.
+function refreshKwPanel(){
+  const p = prof(); if(!p) return;
+  const card = document.getElementById("ed_kw_card");
+  if(!card) return;
+  if(!p.cfg?.kwEnabled){ card.style.display = 'none'; return; }
+  card.style.display = '';
+  const prev = parseFloat(p.cfg.kwLast) || 0;
+  const price = parseFloat(p.cfg.kwPrice) || 0;
+  document.getElementById("ed_kw_prev").value = prev;
+  document.getElementById("ed_kw_price").value = price;
+  updateKwPreview();
+}
+
+function updateKwPreview(){
+  const p = prof(); if(!p) return;
+  const prev = parseFloat(document.getElementById("ed_kw_prev")?.value) || 0;
+  const curr = parseFloat(document.getElementById("ed_kw_curr")?.value) || 0;
+  const price = parseFloat(document.getElementById("ed_kw_price")?.value) || 0;
+  const cons = Math.max(0, curr - prev);
+  const importe = cons * price;
+  const out = document.getElementById("ed_kw_preview");
+  if(out) out.textContent = `Consumo: ${cons.toFixed(2)} kWh · Importe: ${importe.toFixed(2)} €`;
+}
+
+function addKwLine(){
+  const p = prof(); if(!p || !editingFactura) return;
+  const prev = parseFloat(document.getElementById("ed_kw_prev")?.value) || 0;
+  const curr = parseFloat(document.getElementById("ed_kw_curr")?.value) || 0;
+  const price = parseFloat(document.getElementById("ed_kw_price")?.value) || 0;
+  if(curr <= prev){ alert("La lectura actual debe ser mayor que la anterior."); return; }
+  if(price <= 0){ alert("Configura el precio €/kWh en Ajustes."); return; }
+  const cons = curr - prev;
+  const importe = cons * price;
+  editingFactura.lineas.push({
+    desc: `Consumo eléctrico ${prev.toFixed(2)} → ${curr.toFixed(2)} kWh (${cons.toFixed(2)} kWh × ${price.toFixed(4)} €)`,
+    cant: 1,
+    precio: parseFloat(importe.toFixed(2)),
+    igi: p.cfg?.igi || 0
+  });
+  // Guardar la nueva lectura como "última" para próxima factura
+  p.cfg.kwLast = curr;
+  // Persistir el cambio de kwLast
+  if(typeof save === 'function') save();
+  renderEdLines();
+  recalcTotales();
+  // Limpiar el input de lectura actual y refrescar UI
+  document.getElementById("ed_kw_curr").value = '';
+  refreshKwPanel();
 }
 
 function saveFactura(){
@@ -1324,7 +1429,7 @@ const STYLE_TEMPLATES = {
           </div>
           <div style="min-width:260px;flex-shrink:0;">
             <div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:13px;color:#475569;"><span>${t.labelSubtotal}</span><span>${fmtN(f.totales.subtotal)} €</span></div>
-            <div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:13px;color:#475569;"><span>${t.labelIgi}</span><span>${fmtN(f.totales.igi)} €</span></div>
+            ${f.totales.igi > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 12px;font-size:13px;color:#475569;"><span>${t.labelIgi}</span><span>${fmtN(f.totales.igi)} €</span></div>` : ''}
             <div style="display:flex;justify-content:space-between;padding:12px 16px;background:#1d4ed8;color:#fff;border-radius:8px;margin-top:10px;font-size:16px;font-weight:700;"><span>${t.labelTotal}</span><span style="font-family:'DM Mono',monospace;">${fmtN(f.totales.total)} €</span></div>
           </div>
         </div>
@@ -1408,7 +1513,7 @@ const STYLE_TEMPLATES = {
         <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
           <div style="min-width:300px;">
             <div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:13px;color:#475569;"><span>${t.labelSubtotal}</span><span>${fmtN(f.totales.subtotal)} €</span></div>
-            <div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:13px;color:#475569;"><span>${t.labelIgi}</span><span>${fmtN(f.totales.igi)} €</span></div>
+            ${f.totales.igi > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 8px;font-size:13px;color:#475569;"><span>${t.labelIgi}</span><span>${fmtN(f.totales.igi)} €</span></div>` : ''}
             <div style="display:flex;justify-content:space-between;padding:12px 18px;border:1.5px solid #0f172a;margin-top:10px;font-size:16px;font-weight:700;color:#0f172a;"><span>${t.labelTotal}</span><span>${fmtN(f.totales.total)} €</span></div>
           </div>
         </div>
@@ -1497,8 +1602,8 @@ const STYLE_TEMPLATES = {
 
         <div style="display:flex;justify-content:flex-end;margin:30px 0;">
           <div style="min-width:300px;">
-            <div style="display:flex;justify-content:space-between;padding:6px 4px;font-size:12.5px;color:#a09a85;"><span>${t.labelSubtotal}</span><span style="color:#f5efde;">${fmtN(f.totales.subtotal)} €</span></div>
-            <div style="display:flex;justify-content:space-between;padding:6px 4px;font-size:12.5px;color:#a09a85;border-bottom:1px solid #3a3a3a;margin-bottom:10px;"><span>${t.labelIgi}</span><span style="color:#f5efde;">${fmtN(f.totales.igi)} €</span></div>
+            <div style="display:flex;justify-content:space-between;padding:6px 4px;font-size:12.5px;color:#a09a85;${f.totales.igi > 0 ? '' : 'border-bottom:1px solid #3a3a3a;margin-bottom:10px;'}"><span>${t.labelSubtotal}</span><span style="color:#f5efde;">${fmtN(f.totales.subtotal)} €</span></div>
+            ${f.totales.igi > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 4px;font-size:12.5px;color:#a09a85;border-bottom:1px solid #3a3a3a;margin-bottom:10px;"><span>${t.labelIgi}</span><span style="color:#f5efde;">${fmtN(f.totales.igi)} €</span></div>` : ''}
             <div style="display:flex;justify-content:space-between;padding:10px 4px;font-size:18px;font-weight:700;color:#f5efde;"><span>${t.labelTotal}</span><span style="font-family:Georgia,serif;letter-spacing:.02em;">${fmtN(f.totales.total)} €</span></div>
           </div>
         </div>
