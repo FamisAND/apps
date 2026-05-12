@@ -179,7 +179,6 @@
     <button class="nav-tab" onclick="showTab('hist',this)">Historial</button>
     <button class="nav-tab" onclick="showTab('activas',this)">Op Abiertas</button>
     <button class="nav-tab" onclick="showTab('strat',this)">Estrategias</button>
-    <button class="nav-tab" onclick="showTab('ia',this)">🤖 IA</button>
   </div>
   <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
     <span class="topbar-date" id="topDate"></span>
@@ -376,133 +375,6 @@
 </div>
 
 
-<!-- IA TAB -->
-<div id="tab-ia" class="tab-page" style="display:none">
-  <div style="padding:14px 20px 10px;border-bottom:1px solid #1e2d3d;display:flex;align-items:center;justify-content:space-between">
-    <span style="font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#4a9eff">🤖 Análisis con IA</span>
-    <button onclick="iaModule.openConfig()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#9a6fff';this.style.color='#9a6fff'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">📝 Instrucciones</button>
-  </div>
-
-  <div style="max-width:920px;margin:14px auto;background:#0a1421;border:1px solid #1e2d3d;border-radius:6px;padding:20px">
-
-    <!-- noKey -->
-    <div id="iaNoKey" class="hidden" style="text-align:center;padding:32px 16px;background:#0f1c2e;border:1px solid #1e2d3d;border-radius:8px">
-      <div style="font-size:36px;margin-bottom:8px">🤖</div>
-      <div style="color:#9aa9ba;margin-bottom:6px;font-size:.9rem">No hay APIs de IA configuradas</div>
-      <div style="color:#5a7a9a;font-size:.78rem;margin-bottom:18px;line-height:1.5">
-        Las APIs se configuran de forma centralizada desde el <strong>menú principal</strong> (botón 🤖 IA APIs).<br>Se aplican a todas las apps y soportan fallback automático.
-      </div>
-      <a href="index.html" style="display:inline-block;background:#1e3a5f;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:8px 18px;border-radius:3px;text-decoration:none">← Ir al menú principal</a>
-    </div>
-
-    <!-- initial -->
-    <div id="iaInitial" class="hidden">
-      <div style="color:#9aa9ba;font-size:.85rem;margin-bottom:18px;line-height:1.55">
-        Pide al modelo que analice tus operaciones (P&L, win rate, estrategias) o respóndele una pregunta libre. Los datos solo salen hacia Groq, no a otros sitios.
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px">
-        <button onclick="iaModule.selectMode('analisis')" class="ia-mode-btn" style="background:#0f1c2e;border:1px solid #1e3a5f;border-radius:10px;padding:22px 18px;cursor:pointer;text-align:left;transition:all .15s;color:inherit;font-family:inherit">
-          <div style="font-size:24px;margin-bottom:8px">📊</div>
-          <div style="font-weight:600;color:#4a9eff;margin-bottom:4px;font-family:'Courier New',monospace;letter-spacing:1px;text-transform:uppercase;font-size:11px">Análisis completo</div>
-          <div style="color:#9aa9ba;font-size:.78rem;line-height:1.45">P&L, win rate, mejores/peores estrategias. Eliges cuántos meses incluir.</div>
-        </button>
-        <button onclick="iaModule.selectMode('libre')" class="ia-mode-btn" style="background:#0f1c2e;border:1px solid #1e3a5f;border-radius:10px;padding:22px 18px;cursor:pointer;text-align:left;transition:all .15s;color:inherit;font-family:inherit">
-          <div style="font-size:24px;margin-bottom:8px">💬</div>
-          <div style="font-weight:600;color:#4a9eff;margin-bottom:4px;font-family:'Courier New',monospace;letter-spacing:1px;text-transform:uppercase;font-size:11px">Pregunta libre</div>
-          <div style="color:#9aa9ba;font-size:.78rem;line-height:1.45">Ej: "¿Qué estrategia me funciona mejor en SPX?".</div>
-        </button>
-      </div>
-      <!-- Plantillas -->
-      <div style="border-top:1px solid #1e2d3d;padding-top:16px">
-        <div style="color:#5a7a9a;font-size:9px;margin-bottom:10px;text-transform:uppercase;letter-spacing:1.2px;font-family:'Courier New',monospace">Preguntas frecuentes</div>
-        <div id="iaPlantillas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px"></div>
-      </div>
-    </div>
-
-    <!-- selectorMeses -->
-    <div id="iaSelectorMeses" class="hidden">
-      <div style="color:#9aa9ba;font-size:.85rem;margin-bottom:14px">¿Cuántos meses de operaciones quieres incluir?</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">
-        <button class="ia-meses-btn" data-meses="3" onclick="iaModule.setMeses(3)" style="background:#0f1c2e;border:1px solid #1e3a5f;color:#9aa9ba;font-family:'Courier New',monospace;font-size:10px;padding:6px 12px;border-radius:3px;cursor:pointer">3 meses</button>
-        <button class="ia-meses-btn" data-meses="6" onclick="iaModule.setMeses(6)" style="background:#0f1c2e;border:1px solid #1e3a5f;color:#9aa9ba;font-family:'Courier New',monospace;font-size:10px;padding:6px 12px;border-radius:3px;cursor:pointer">6 meses</button>
-        <button class="ia-meses-btn" data-meses="12" onclick="iaModule.setMeses(12)" style="background:#0f1c2e;border:1px solid #1e3a5f;color:#9aa9ba;font-family:'Courier New',monospace;font-size:10px;padding:6px 12px;border-radius:3px;cursor:pointer">12 meses</button>
-        <button class="ia-meses-btn" data-meses="todos" onclick="iaModule.setMeses('todos')" style="background:#0f1c2e;border:1px solid #1e3a5f;color:#9aa9ba;font-family:'Courier New',monospace;font-size:10px;padding:6px 12px;border-radius:3px;cursor:pointer">Todos</button>
-      </div>
-      <div id="iaMesesPreview" style="color:#5a7a9a;font-size:.78rem;margin-bottom:14px;font-family:'Courier New',monospace"></div>
-      <div style="display:flex;gap:8px">
-        <button onclick="iaModule.back()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:6px 14px;border-radius:3px;cursor:pointer">← Volver</button>
-        <button id="iaAnalizarBtn" onclick="iaModule.runAnalisis()" disabled style="background:#1e3a5f;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:6px 16px;border-radius:3px;cursor:pointer">Analizar</button>
-      </div>
-    </div>
-
-    <!-- pregunta -->
-    <div id="iaPregunta" class="hidden">
-      <div style="color:#9aa9ba;font-size:.85rem;margin-bottom:10px">Escribe tu pregunta</div>
-      <textarea id="iaPreguntaTxt" placeholder='Ej: ¿Qué estrategia me ha dado mejor profit en SPX?' rows="3" style="width:100%;background:#0f1c2e;border:1px solid #1e2d3d;border-radius:4px;padding:10px 12px;color:#c9d1d9;font-family:inherit;font-size:.88rem;resize:vertical"></textarea>
-      <div id="iaPreguntaInfo" style="color:#5a7a9a;font-size:.75rem;margin-top:6px;margin-bottom:14px;font-family:'Courier New',monospace"></div>
-      <div style="display:flex;gap:8px">
-        <button onclick="iaModule.back()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:6px 14px;border-radius:3px;cursor:pointer">← Volver</button>
-        <button onclick="iaModule.runPregunta()" style="background:#1e3a5f;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;padding:6px 16px;border-radius:3px;cursor:pointer">Enviar pregunta</button>
-      </div>
-    </div>
-
-    <!-- loading -->
-    <div id="iaLoading" class="hidden" style="text-align:center;padding:48px 16px">
-      <div class="ia-spinner" style="width:36px;height:36px;border:3px solid #1e2d3d;border-top-color:#4a9eff;border-radius:50%;margin:0 auto 14px;animation:iaSpin 1s linear infinite"></div>
-      <div style="color:#9aa9ba;font-size:.88rem">Analizando con IA...</div>
-      <div id="iaLoadingDetail" style="color:#5a7a9a;font-size:.75rem;margin-top:6px;font-family:'Courier New',monospace"></div>
-    </div>
-
-    <!-- resultado -->
-    <div id="iaResultado" class="hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div style="color:#5a7a9a;font-size:.78rem;font-family:'Courier New',monospace" id="iaResultadoMeta"></div>
-        <div style="display:flex;gap:6px">
-          <button onclick="iaModule.copyResult()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:4px 10px;border-radius:3px;cursor:pointer">📋 Copiar</button>
-          <button onclick="iaModule.back()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:4px 10px;border-radius:3px;cursor:pointer">← Nueva</button>
-        </div>
-      </div>
-      <div id="iaResultadoTxt" style="background:#0f1c2e;border:1px solid #1e2d3d;border-radius:8px;padding:18px 22px;color:#c9d1d9;font-size:.88rem;line-height:1.65;max-height:600px;overflow-y:auto"></div>
-    </div>
-
-    <!-- error -->
-    <div id="iaError" class="hidden" style="background:#3f1d1d;border:1px solid #7f1d1d;border-radius:8px;padding:14px 16px;color:#fca5a5;font-size:.85rem">
-      <div style="font-weight:600;margin-bottom:4px">⚠ Error al llamar a la IA</div>
-      <div id="iaErrorMsg" style="font-family:'Courier New',monospace;font-size:.75rem;color:#f87171"></div>
-      <div style="margin-top:10px">
-        <button onclick="iaModule.back()" style="background:transparent;border:1px solid #5a2020;color:#fca5a5;font-family:'Courier New',monospace;font-size:9px;padding:4px 10px;border-radius:3px;cursor:pointer">← Volver</button>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- IA CONFIG MODAL -->
-<div id="iaConfigModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(5px);overflow-y:auto;padding:20px 0">
-  <div style="background:#0a1421;border:1px solid #1e2d3d;border-radius:6px;padding:24px;width:100%;max-width:640px;margin:auto 16px;max-height:90vh;overflow-y:auto">
-    <div style="font-weight:700;font-size:.95rem;margin-bottom:14px;color:#4a9eff;font-family:'Courier New',monospace;letter-spacing:1px;text-transform:uppercase">📝 Instrucciones IA (Options)</div>
-
-    <div style="background:rgba(74,158,255,.06);border:1px solid #1e2d3d;border-radius:4px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:#9aa9ba;line-height:1.5">
-      ℹ️ Las APIs de IA se configuran de forma centralizada desde el <strong>menú principal</strong> (botón 🤖 IA APIs). Aquí solo defines las <strong>instrucciones específicas para Options</strong>.
-    </div>
-
-    <div style="margin-bottom:14px">
-      <div style="color:#c9d1d9;font-size:.82rem;margin-bottom:8px;font-weight:600">Contexto e instrucciones personalizadas</div>
-      <div style="color:#9aa9ba;font-size:.78rem;margin-bottom:8px;line-height:1.5">
-        Esto se enviará SIEMPRE al modelo en cada llamada de Options. Cuéntale tu estilo de trading, qué buscas, qué consideras éxito, qué activos te interesan, etc.
-      </div>
-      <textarea id="iaInstructionsInput" rows="10" placeholder="Ej:&#10;- Soy Sergio, opero con Tastytrade desde Andorra.&#10;- Mi estrategia favorita es vender prima en NP/PCS con delta 15-20.&#10;- 0DTE = trades del día en SPX/SPY, son satélite, no la pata principal.&#10;- Capital total disponible: 60-70k USD.&#10;- Considero éxito un win rate >75% y un retorno mensual >2%.&#10;- 'ACC' = asignación de acciones tras venta de put." style="width:100%;background:#0f1c2e;border:1px solid #1e2d3d;border-radius:4px;padding:10px 12px;color:#c9d1d9;font-family:inherit;font-size:.82rem;resize:vertical;line-height:1.5;box-sizing:border-box"></textarea>
-      <div id="iaInstructionsCount" style="color:#5a7a9a;font-size:.7rem;margin-top:4px;text-align:right"></div>
-    </div>
-
-    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-      <button onclick="iaModule.closeConfig()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:5px 12px;border-radius:3px;cursor:pointer">Cancelar</button>
-      <button onclick="iaModule.saveInstructions()" style="background:#1e3a5f;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;padding:5px 12px;border-radius:3px;cursor:pointer">Guardar</button>
-    </div>
-  </div>
-</div>
-
-
 <!-- ACTIVAS TAB -->
 <div id="tab-activas" class="tab-page" style="display:none">
 
@@ -632,11 +504,7 @@
 <!-- ACTIVAS MODAL: Open new / edit position -->
 <div class="cfg-overlay" id="actModal">
   <div class="cfg-modal" style="width:560px">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
-      <div class="cfg-title" id="actModalTitle" style="margin-bottom:0">Nueva posición activa</div>
-      <div id="actModalMicSlot" style="display:flex;gap:6px;align-items:center;"></div>
-    </div>
-    <div id="actModalVoiceStatus" style="display:none;font-size:10px;font-family:'Courier New',monospace;color:#5a7a9a;margin-bottom:10px;padding:6px 10px;background:#0a1421;border:1px solid #1e2d3d;border-radius:4px"></div>
+    <div class="cfg-title" id="actModalTitle">Nueva posición activa</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">
       <div class="cfg-field">
         <label>Operativa</label>
@@ -979,7 +847,6 @@
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
 <script src="dashboard-auth.js"></script>
-<script src="ia-module.js"></script>
 <script>
 GitHubSync.attach({
   section: 'options',
@@ -1761,7 +1628,6 @@ function showTab(name, btn){
   if(name==='dash'){ setTimeout(renderDash,100); }
   if(name==='activas'){ renderActivas(); }
   if(name==='strat'){ populateStratSelect(); renderStratOtroConfig(); renderStratDash(); }
-  if(name==='ia'){ iaModule.showTab(); }
 }
 
 // ── HISTORIAL DATA ───────────────────────────────────────────
@@ -4010,159 +3876,10 @@ function openActModal(idx){
   // Si tiene patas, abrir la sección automáticamente
   const legsSec = document.getElementById('am_legs_section');
   if(legsSec) legsSec.open = !!(a.legs && a.legs.length);
-  // Inyectar botón micrófono (voice input) la primera vez
-  _injectActModalMic();
   document.getElementById('actModal').classList.add('on');
   toggleActModalFields();
 }
 function closeActModal(){ document.getElementById('actModal').classList.remove('on'); }
-
-// ── VOICE INPUT para nueva operación ────────────────────────────
-const ACT_VOICE_SYSTEM = `Eres un parser de operaciones de opciones. Convierte el texto en JSON estricto con estos campos (solo los mencionados):
-{
-  "strat": "NP"|"PCS"|"CC"|"PMCC"|"ACC"|"CCS"|"DPS"|"BWB"|"JL"|"IC"|"0DTE"|"112",
-  "activo": "TICKER",
-  "idOp": number,
-  "contracts": number,
-  "apertura": "YYYY-MM-DD",
-  "exp": "YYYY-MM-DD",
-  "strike": number,
-  "maxRisk": number,
-  "pCredito": number,
-  "delta": number,
-  "iv": number,
-  "ivr": number,
-  "underlying": number,
-  "comi": number,
-  "nota": string
-}
-
-Reglas:
-- "vendí" / "abrí venta" → es venta de prima (operación normal de prima cobrada).
-- "naked put" / "NP" → strat:"NP". "Put credit spread" / "PCS" → "PCS". "Covered call" / "CC" → "CC". "Iron condor" → "IC". Etc.
-- Strike y prima en dólares (la prima se llama "prima cobrada" o "crédito"; en USD por contrato).
-- Fechas: convertir relativas ("la semana que viene", "viernes próximo", "17 enero") a YYYY-MM-DD. Si solo dice mes/día, asume el más cercano FUTURO.
-- Si NO se menciona un campo, NO lo incluyas en el JSON (no inventes valores).
-- Activo: convertir nombres a ticker (Apple→AAPL, Tesla→TSLA, S&P→SPX, etc.). Mayúsculas.
-- Devuelve SOLO el JSON, sin explicación ni markdown.`;
-
-let _actMicInjected = false;
-function _injectActModalMic(){
-  if(_actMicInjected) return;
-  _actMicInjected = true;
-  if(typeof createMicButton !== 'function') return; // utils.js no cargado
-  const slot = document.getElementById('actModalMicSlot');
-  if(!slot) return;
-  const mic = createMicButton({
-    title: 'Pulsa y dicta los datos de la operación',
-    onTranscript: async (text) => {
-      const status = document.getElementById('actModalVoiceStatus');
-      status.style.display = 'block';
-      status.style.color = '#5a7a9a';
-      status.textContent = '⏳ Escuchado: "' + text + '" — interpretando con IA...';
-      try {
-        const json = await parseVoiceJSON(text, ACT_VOICE_SYSTEM);
-        _fillActModalFromJSON(json);
-        const filled = Object.keys(json).filter(k=>json[k]!=null).join(', ');
-        status.style.color = '#3fb68b';
-        status.textContent = '✓ Rellenado: ' + filled + '. Revisa y guarda.';
-        setTimeout(()=>{ status.style.display='none'; }, 8000);
-      } catch(err){
-        status.style.color = '#f04545';
-        status.textContent = '✕ ' + err.message;
-      }
-    }
-  });
-  slot.innerHTML = '';
-  slot.appendChild(mic);
-  // Hint label
-  const hint = document.createElement('span');
-  hint.style.cssText = 'font-size:9px;color:#3a5468;font-family:Courier New,monospace;letter-spacing:.5px';
-  hint.textContent = 'voz';
-  slot.appendChild(hint);
-}
-
-// ── Voice input para CIERRE de operación ────────────────────────
-const ACT_CLOSE_VOICE_SYSTEM = `Eres un parser de cierre de operaciones de opciones. Convierte el texto en JSON estricto:
-{
-  "cierre": "YYYY-MM-DD",
-  "pCierre": number,
-  "comi_close": number,
-  "nota": string
-}
-
-Reglas:
-- "Cerré por X dólares" → pCierre: X (precio de cierre por contrato).
-- "comisión Y" → comi_close: Y.
-- Fechas: hoy es la default si no se menciona; convertir relativas ("ayer", "viernes") a YYYY-MM-DD.
-- Si NO se menciona un campo, omítelo.
-- Devuelve SOLO el JSON, sin markdown ni explicación.`;
-
-let _acmMicInjected = false;
-function _injectActCloseMic(){
-  if(_acmMicInjected) return;
-  _acmMicInjected = true;
-  if(typeof createMicButton !== 'function') return;
-  const slot = document.getElementById('acmMicSlot');
-  if(!slot) return;
-  const mic = createMicButton({
-    title: 'Pulsa y dicta los datos del cierre',
-    onTranscript: async (text) => {
-      const status = document.getElementById('acmVoiceStatus');
-      status.style.display = 'block';
-      status.style.color = '#5a7a9a';
-      status.textContent = '⏳ Escuchado: "' + text + '" — interpretando...';
-      try {
-        const json = await parseVoiceJSON(text, ACT_CLOSE_VOICE_SYSTEM);
-        if(json.cierre) document.getElementById('acm_cierre').value = json.cierre;
-        if(json.pCierre != null) document.getElementById('acm_pcierre').value = json.pCierre;
-        if(json.comi_close != null) document.getElementById('acm_comi_close').value = json.comi_close;
-        if(json.nota) document.getElementById('acm_nota').value = json.nota;
-        if(typeof updateCloseCalc === 'function') updateCloseCalc();
-        const filled = Object.keys(json).filter(k=>json[k]!=null).join(', ');
-        status.style.color = '#3fb68b';
-        status.textContent = '✓ Rellenado: ' + filled + '. Revisa y cierra.';
-        setTimeout(()=>{ status.style.display='none'; }, 8000);
-      } catch(err){
-        status.style.color = '#f04545';
-        status.textContent = '✕ ' + err.message;
-      }
-    }
-  });
-  slot.innerHTML = '';
-  slot.appendChild(mic);
-  const hint = document.createElement('span');
-  hint.style.cssText = 'font-size:9px;color:#3a5468;font-family:Courier New,monospace;letter-spacing:.5px';
-  hint.textContent = 'voz';
-  slot.appendChild(hint);
-}
-
-// Rellena los campos del modal a partir del JSON parseado por la IA
-function _fillActModalFromJSON(j){
-  if(!j || typeof j !== 'object') return;
-  const map = {
-    strat:'am_strat', activo:'am_activo', idOp:'am_idop', contracts:'am_contracts',
-    apertura:'am_apertura', exp:'am_exp', strike:'am_strike', maxRisk:'am_maxrisk',
-    delta:'am_delta', iv:'am_iv', ivr:'am_ivr', underlying:'am_underlying',
-    comi:'am_comi', nota:'am_nota', precioCompra:'am_precioCompra'
-  };
-  for(const [k,id] of Object.entries(map)){
-    if(j[k] == null) continue;
-    const el = document.getElementById(id);
-    if(!el) continue;
-    let v = j[k];
-    if(k === 'activo' && typeof v === 'string') v = v.toUpperCase();
-    el.value = v;
-  }
-  // pCredito viene en $/contrato en input (formulario lo divide por 100 al guardar)
-  if(j.pCredito != null){
-    const el = document.getElementById('am_pcred');
-    if(el) el.value = j.pCredito;
-  }
-  // Trigger toggle para que se muestren campos según strat
-  if(j.strat) toggleActModalFields();
-  if(j.contracts != null && typeof updateAccMaxRisk === 'function') updateAccMaxRisk();
-}
 
 // ════════════════════════════════════════════════════════════════════
 // PATAS (legs) — módulo opcional para registrar detalles por pata
@@ -5066,8 +4783,6 @@ function openActCloseModal(idx){
 
   // Auto-calc preview
   updateCloseCalc();
-  // Inyectar botón micrófono (voice input) la primera vez
-  _injectActCloseMic();
   document.getElementById('actCloseModal').classList.add('on');
 
   // Live calc on input change
@@ -8020,199 +7735,6 @@ function confirmRoll(){
   const _pataMsg   = _pataFinal !== 'todo' ? ' — '+_pataFinal.toUpperCase() : '';
   toast('✔ Roll registrado'+_pataMsg+'. Cerrada: '+pnlStr+'$, nueva exp '+newExp);
 }
-
-// ══════════════════════════════
-// IA — usa ia-module.js (compartido)
-// ══════════════════════════════
-// Solo lo específico de Options:
-//   - iaBuildDataset (con helper _iaHistByMonths)
-//   - prompts: análisis y libre
-//   - plantillas: las 10 preguntas frecuentes
-
-function _iaHistByMonths(meses){
-  const hist = HIST.filter(e=>e.cierre);
-  if(!meses || meses==='todos') return hist;
-  const limite = new Date();
-  limite.setMonth(limite.getMonth() - parseInt(meses));
-  return hist.filter(e=>{
-    const d = new Date(e.cierre);
-    return !isNaN(d) && d >= limite;
-  });
-}
-
-function iaBuildDataset(meses){
-  const hist = _iaHistByMonths(meses);
-  if(!hist.length) return null;
-
-  // computeEntry da totalNeto en escala "prima" (÷100 de los $ reales)
-  // → ×100 al construir el dataset para enviar en $ reales
-  const ops = hist.map(e=>{
-    const c = computeEntry(e);
-    const pnl = (c.totalNeto||0) * 100;
-    return {
-      fecha_cierre: e.cierre,
-      activo: e.activo,
-      strat: e.strat,
-      contracts: e.contracts||1,
-      tiempo_op_dias: c.tiempoOp,
-      dte_inicial: c.dteIni,
-      pnl_dolares: +pnl.toFixed(2),
-      tp_pct: c.tp != null ? +c.tp.toFixed(1) : null,
-      profit_op_pct: c.profitOp != null ? +c.profitOp.toFixed(2) : null,
-      max_risk: e.maxRisk||null,
-      win: pnl > 0
-    };
-  });
-
-  const totalPnl = ops.reduce((s,o)=>s+o.pnl_dolares,0);
-  const wins = ops.filter(o=>o.win).length;
-  const winRate = ops.length ? (wins/ops.length)*100 : 0;
-  const sortedByPnl = [...ops].sort((a,b)=>b.pnl_dolares-a.pnl_dolares);
-  const mejor = sortedByPnl[0];
-  const peor = sortedByPnl[sortedByPnl.length-1];
-  const avgPnl = ops.length ? totalPnl/ops.length : 0;
-
-  // Por estrategia
-  const byStrat = {};
-  ops.forEach(o=>{
-    const k = o.strat || '?';
-    if(!byStrat[k]) byStrat[k] = { n:0, pnl:0, wins:0 };
-    byStrat[k].n++; byStrat[k].pnl += o.pnl_dolares; if(o.win) byStrat[k].wins++;
-  });
-  const porEstrategia = Object.entries(byStrat).map(([k,v])=>({
-    estrategia: k, n_ops: v.n, pnl_total: +v.pnl.toFixed(2),
-    pnl_promedio: +(v.pnl/v.n).toFixed(2),
-    win_rate_pct: +(v.wins/v.n*100).toFixed(1)
-  })).sort((a,b)=>b.pnl_total-a.pnl_total);
-
-  // Por mes
-  const byMonth = {};
-  ops.forEach(o=>{
-    const k = o.fecha_cierre ? o.fecha_cierre.slice(0,7) : '?';
-    if(!byMonth[k]) byMonth[k] = { n:0, pnl:0, wins:0 };
-    byMonth[k].n++; byMonth[k].pnl += o.pnl_dolares; if(o.win) byMonth[k].wins++;
-  });
-  const porMes = Object.entries(byMonth).sort().map(([k,v])=>({
-    mes: k, n_ops: v.n, pnl_total: +v.pnl.toFixed(2), win_rate_pct: +(v.wins/v.n*100).toFixed(1)
-  }));
-
-  // Top activos
-  const byAsset = {};
-  ops.forEach(o=>{
-    const k = o.activo || '?';
-    if(!byAsset[k]) byAsset[k] = { n:0, pnl:0 };
-    byAsset[k].n++; byAsset[k].pnl += o.pnl_dolares;
-  });
-  const topActivos = Object.entries(byAsset)
-    .sort((a,b)=>b[1].pnl-a[1].pnl)
-    .slice(0,5)
-    .map(([k,v])=>({ activo:k, n_ops:v.n, pnl_total:+v.pnl.toFixed(2) }));
-
-  // Últimas 15 ops
-  const ultimas = [...ops]
-    .sort((a,b)=>(b.fecha_cierre||'').localeCompare(a.fecha_cierre||''))
-    .slice(0,15);
-
-  // Activas (resumen)
-  const activas = (typeof ACTIVAS!=='undefined') ? ACTIVAS.map(a=>({
-    activo: a.activo, strat: a.strat, contracts: a.contracts||1,
-    apertura: a.apertura, exp: a.exp, max_risk: a.maxRisk||null
-  })) : [];
-
-  const fechas = ops.map(o=>o.fecha_cierre).filter(Boolean).sort();
-
-  return {
-    periodo: fechas.length ? `${fechas[0]} → ${fechas[fechas.length-1]}` : 'sin datos',
-    n_operaciones: ops.length,
-    n_activas: activas.length,
-    metricas_globales: {
-      pnl_total_dolares: +totalPnl.toFixed(2),
-      pnl_promedio_dolares: +avgPnl.toFixed(2),
-      win_rate_pct: +winRate.toFixed(1),
-      ops_ganadoras: wins,
-      ops_perdedoras: ops.length - wins,
-      mejor_op: mejor ? { activo:mejor.activo, strat:mejor.strat, pnl:mejor.pnl_dolares, fecha:mejor.fecha_cierre } : null,
-      peor_op: peor ? { activo:peor.activo, strat:peor.strat, pnl:peor.pnl_dolares, fecha:peor.fecha_cierre } : null
-    },
-    por_estrategia: porEstrategia,
-    por_mes: porMes,
-    top_activos_por_pnl: topActivos,
-    ultimas_15_ops: ultimas,
-    posiciones_activas: activas
-  };
-}
-
-function iaPromptAnalisis(dataset){
-  return `Eres un analista cuantitativo especializado en trading de opciones. Analiza el siguiente histórico de operaciones (todas con opciones financieras: NP=Naked Put, PCS=Put Credit Spread, IC=Iron Condor, 0DTE=Zero Days To Expiration, CC=Covered Call, etc.).
-
-DATOS (todas las cifras de P&L están en dólares reales):
-\`\`\`json
-${JSON.stringify(dataset, null, 2)}
-\`\`\`
-
-Responde en español con formato markdown estructurado en estas secciones:
-
-## Resumen ejecutivo
-2-3 frases directas sobre cómo va la operativa.
-
-## Estrategias y activos
-Qué estrategias funcionan mejor y peor, en qué activos. Datos concretos.
-
-## Puntos de atención
-Cosas raras: meses de pérdidas concentradas, estrategias con win rate bajo pero P&L positivo (o al revés), concentración en pocos activos.
-
-## Recomendaciones concretas
-2-4 acciones específicas. Sin generalidades. Basadas en lo que muestran los datos.
-
-Sé directo y específico con los números. Cita estrategias, activos y meses concretos.`;
-}
-
-function iaPromptLibre(dataset, pregunta){
-  return `Eres un analista de trading de opciones. Tienes acceso al histórico operativo del usuario (P&L en dólares reales):
-
-\`\`\`json
-${JSON.stringify(dataset, null, 2)}
-\`\`\`
-
-Pregunta del usuario: ${pregunta}
-
-Responde en español, claro y conciso. Si haces cálculos, muéstralos. Usa markdown si ayuda. No inventes datos que no estén en el JSON.`;
-}
-
-const IA_PLANTILLAS = [
-  { icon:'🎯', label:'Estrategia más rentable',           q:'¿Qué estrategia ha sido la más rentable en P&L total y por operación? ¿Tiene buen win rate? Da números concretos por estrategia.' },
-  { icon:'🚫', label:'Estrategia que peor funciona',       q:'¿Qué estrategia me hace perder dinero o tiene resultados decepcionantes? Datos concretos: P&L total, win rate, pnl promedio. ¿Debería abandonarla?' },
-  { icon:'📊', label:'Análisis por activo',                q:'Analiza el comportamiento por activo subyacente. ¿En qué activos gano más / pierdo más? ¿Hay activos donde gane sistemáticamente?' },
-  { icon:'🔍', label:'Peores 5 operaciones',               q:'Mis peores 5 operaciones por P&L. Análisis de cada una: estrategia, activo, qué pasó. ¿Hay un patrón común? ¿Qué evitar a futuro?' },
-  { icon:'🏆', label:'Mejores 5 operaciones',              q:'Mis mejores 5 operaciones por P&L. ¿Qué tienen en común? ¿Hay un setup replicable? Da el patrón si existe.' },
-  { icon:'📅', label:'Mejor / peor mes',                   q:'¿Cuál ha sido mi mejor mes y mi peor mes en P&L? ¿Por qué? ¿Qué estrategias o activos los marcaron?' },
-  { icon:'⏱️', label:'DTE óptimo',                         q:'Analiza la relación entre días en operación (tiempo_op_dias) o DTE inicial (dte_inicial) y P&L. ¿Cuál parece ser el rango óptimo de DTE para mí?' },
-  { icon:'📈', label:'Win rate por estrategia',            q:'Calcula win rate detallado por estrategia. Indica también P&L medio por estrategia. ¿Hay alguna con win rate alto pero P&L medio bajo (ratio mal)?' },
-  { icon:'💸', label:'Comisiones',                         q:'No tengo el dato exacto de comisiones en el dataset, pero estima cuánto pierdo en comisiones según el número de operaciones que hago. Suelen ser 1-2$ por contrato. ¿Es un coste relevante en relación a mi P&L?' },
-  { icon:'⚠️', label:'Concentración de riesgo',           q:'Analiza la concentración de riesgo: posiciones activas (max_risk total comprometido), distribución por activo. ¿Estoy concentrado en pocos subyacentes? ¿Qué % está en cada uno?' }
-];
-
-// Inicializar el módulo IA con la config de Options
-iaModule.init({
-  instructionsKey: 'ot_ia_instructions',
-  systemPromptPrefix: 'Eres un asistente que analiza el histórico de trading de opciones del usuario. El usuario ha definido el siguiente contexto e instrucciones que debes tener SIEMPRE en cuenta al responder:',
-  buildDataset: iaBuildDataset,
-  plantillas: IA_PLANTILLAS,
-  promptAnalisis: iaPromptAnalisis,
-  promptLibre: iaPromptLibre,
-  datasetIsEmpty: ds => !ds,
-  datasetEmptyMsg: 'No hay operaciones cerradas en ese rango.',
-  // En Options, el "dataset" se mide en operaciones, no en meses. Override del preview:
-  previewText: (ds, meses) => {
-    if(!ds) return '⚠ Sin operaciones cerradas';
-    return `${ds.n_operaciones} ops cerradas · ${ds.periodo||''}`;
-  },
-  preguntaInfoText: () => {
-    const closed = (typeof HIST!=='undefined') ? HIST.filter(e=>e.cierre).length : 0;
-    const open = (typeof ACTIVAS!=='undefined') ? ACTIVAS.length : 0;
-    return `Contexto: ${closed} ops cerradas + ${open} activas + métricas agregadas.`;
-  }
-});
 
 (function init(){
   activasLoad();

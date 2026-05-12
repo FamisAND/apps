@@ -152,83 +152,6 @@
   </div>
 </div>
 
-<!-- ════════ IA APIs MODAL (centralizado) ════════ -->
-<div id="iaApisModal" class="screen" style="display:none;align-items:flex-start;padding:40px 16px;overflow-y:auto;">
-  <div style="width:100%;max-width:760px;margin:0 auto;">
-    <div class="logo" style="margin-bottom:18px;">
-      <div class="logo-icon">🤖</div>
-      <div>
-        <div class="logo-name">// CONFIG IA APIs</div>
-        <div class="logo-sub">[ FALLBACK CHAIN · DRAG TO REORDER ]</div>
-      </div>
-    </div>
-
-    <div style="background:#020617;border:1px solid #06b6d4;padding:20px;margin-bottom:18px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
-      <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;margin-bottom:14px;">
-        Las APIs se prueban <strong>en orden</strong>. Si la primera falla (rate limit, error, key inválida...), se intenta automáticamente con la siguiente. Arrastra <span style="color:#22d3ee">⋮⋮</span> para reordenar.
-      </div>
-      <div style="color:#0e7490;font-size:.7rem;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">
-        Dónde sacar la key:
-      </div>
-      <div style="color:#67e8f9;font-size:.72rem;line-height:1.7;">
-        • <strong>Groq</strong>: <span style="color:#22d3ee">console.groq.com/keys</span> (gratis, sin tarjeta) — <em>recomendado</em><br>
-        • <strong>OpenRouter</strong>: <span style="color:#22d3ee">openrouter.ai/keys</span> (gratis, modelos :free)<br>
-        • <strong>Gemini</strong>: <span style="color:#22d3ee">aistudio.google.com/apikey</span> (requiere facturación vinculada en muchas regiones)
-      </div>
-    </div>
-
-    <div id="iaApisList" style="margin-bottom:14px;"></div>
-
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-      <button class="btn" style="flex:1;min-width:160px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="openIaApiEditor()">+ Añadir API</button>
-      <button class="btn btn-ghost" style="flex:1;min-width:160px;" onclick="closeIaApisModal()">← Volver al menú</button>
-    </div>
-
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-      <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="exportIaConfig()" title="Descargar todas las APIs y instrucciones como archivo JSON">📤 Exportar config</button>
-      <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="document.getElementById('iaImportFile').click()" title="Cargar un archivo JSON exportado previamente">📥 Importar config</button>
-      <input type="file" id="iaImportFile" accept=".json,application/json" style="display:none" onchange="importIaConfig(event)">
-    </div>
-
-    <div id="iaTestResult" style="display:none;background:#020617;border:1px solid #0e7490;padding:14px;font-size:.78rem;color:#67e8f9;font-family:'DM Mono',monospace;line-height:1.6;"></div>
-  </div>
-</div>
-
-<!-- ════════ EDITOR DE UNA API ════════ -->
-<div id="iaApiEditorModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
-  <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:520px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
-    <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;" id="iaApiEditorTitle">// NUEVA API</div>
-
-    <div class="fld-lbl">Nombre identificativo</div>
-    <input type="text" class="inp" id="iaApiName" placeholder="Ej: Groq cuenta principal">
-
-    <div class="fld-lbl">Proveedor</div>
-    <select class="inp" id="iaApiProvider" onchange="onProviderChange()">
-      <option value="groq">Groq (Llama 3.3 70B)</option>
-      <option value="openrouter">OpenRouter (modelos :free)</option>
-      <option value="gemini">Google Gemini</option>
-    </select>
-
-    <div class="fld-lbl">Modelo</div>
-    <input type="text" class="inp" id="iaApiModel" placeholder="llama-3.3-70b-versatile">
-
-    <div class="fld-lbl">API key</div>
-    <input type="password" class="inp" id="iaApiKey" placeholder="sk-... / gsk_... / AIza...">
-
-    <div style="display:flex;align-items:center;gap:8px;margin-top:14px;color:#67e8f9;font-size:.85rem;">
-      <input type="checkbox" id="iaApiActive" checked style="accent-color:#22d3ee;">
-      <label for="iaApiActive" style="cursor:pointer;">Activa (incluir en la cadena de fallback)</label>
-    </div>
-
-    <div id="iaApiEditorMsg" style="display:none;margin-top:12px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
-
-    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;">
-      <button class="btn" style="flex:1;min-width:120px;background:transparent;border:1px solid #0e7490;color:#67e8f9;" onclick="testIaApi()">⚡ Probar</button>
-      <button class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="closeIaApiEditor()">Cancelar</button>
-      <button class="btn" style="flex:1;min-width:120px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveIaApi()">💾 Guardar</button>
-    </div>
-  </div>
-</div>
 
 <!-- ════════ MENÚ DE CONFIGURACIÓN (agrupa todo) ════════ -->
 <div id="configMenuModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:90;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
@@ -240,7 +163,7 @@
         <span style="margin-right:10px">🔔</span>
         <div style="flex:1">
           <div style="font-weight:600;color:#67e8f9">Notificaciones</div>
-          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Telegram daily · actualidad · ai insight</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Telegram daily · actualidad</div>
         </div>
         <span style="color:#0e7490">→</span>
       </button>
@@ -248,19 +171,10 @@
       <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); openApisModal();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
         <span style="margin-right:10px">🔌</span>
         <div style="flex:1">
-          <div style="font-weight:600;color:#67e8f9">APIs</div>
-          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">IA + financieras (Finnhub, etc.)</div>
+          <div style="font-weight:600;color:#67e8f9">APIs Financieras</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Finnhub, Alpha Vantage, Twelvedata...</div>
         </div>
         <span style="color:#0e7490">→</span>
-      </button>
-
-      <button class="btn btn-ghost cfg-row" onclick="cycleVoiceLang();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
-        <span style="margin-right:10px">🌐</span>
-        <div style="flex:1">
-          <div style="font-weight:600;color:#67e8f9">Idioma del voice input</div>
-          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace" id="cfgVoiceLangSub">—</div>
-        </div>
-        <span style="color:#0e7490">↻</span>
       </button>
 
       <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); reSync();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
@@ -279,43 +193,14 @@
 <!-- ════════ APIs (sub-pestañas: IA y Financieras) ════════ -->
 <div id="apisModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:90;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
   <div style="background:#020617;border:1px solid #22d3ee;padding:0;width:100%;max-width:760px;box-shadow:0 0 40px rgba(34,211,238,.3);">
-    <!-- Tabs -->
-    <div style="display:flex;border-bottom:1px solid #06b6d433;">
-      <button class="apis-tab active" data-apis-tab="ia" onclick="switchApisTab('ia')" style="flex:1;padding:14px;background:transparent;border:none;color:#22d3ee;cursor:pointer;font-family:'DM Mono',monospace;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid #22d3ee">🤖 IA</button>
-      <button class="apis-tab" data-apis-tab="fin" onclick="switchApisTab('fin')" style="flex:1;padding:14px;background:transparent;border:none;color:#0e7490;cursor:pointer;font-family:'DM Mono',monospace;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;border-bottom:2px solid transparent">💹 Financieras</button>
+    <!-- Header (sin tabs IA — ya no hay IA) -->
+    <div style="display:flex;border-bottom:1px solid #06b6d433;align-items:center;">
+      <div style="flex:1;padding:14px;color:#22d3ee;font-family:'DM Mono',monospace;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;">💹 APIs Financieras</div>
       <button onclick="closeApisModal()" style="padding:14px 20px;background:transparent;border:none;color:#475569;cursor:pointer;font-size:1rem">✕</button>
     </div>
 
-    <!-- Tab content: IA (re-usa el flujo de iaApisModal pero embedded) -->
-    <div id="apisTabIa" style="padding:20px;">
-      <div style="background:#020617;border:1px solid #06b6d4;padding:16px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
-        <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;">
-          Las APIs IA se prueban <strong>en orden</strong>. Si la primera falla, va a la siguiente. Arrastra <span style="color:#22d3ee">⋮⋮</span> para reordenar.
-          <br><br>
-          <strong>Dónde sacar la key:</strong>
-          <span style="color:#22d3ee">console.groq.com/keys</span> (Groq, gratis sin tarjeta) ·
-          <span style="color:#22d3ee">openrouter.ai/keys</span> (modelos :free) ·
-          <span style="color:#22d3ee">aistudio.google.com/apikey</span> (Gemini)
-        </div>
-      </div>
-
-      <div id="iaApisListV2" style="margin-bottom:14px;"></div>
-
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-        <button class="btn" style="flex:1;min-width:160px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="openIaApiEditor()">+ Añadir API</button>
-        <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="exportIaConfig()" title="Descargar todas las APIs y instrucciones como archivo JSON">📤 Exportar config</button>
-        <button class="btn btn-ghost" style="flex:1;min-width:160px;font-size:.78rem;" onclick="document.getElementById('iaImportFileV2').click()" title="Cargar un archivo JSON exportado previamente">📥 Importar config</button>
-        <input type="file" id="iaImportFileV2" accept=".json,application/json" style="display:none" onchange="importIaConfig(event)">
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-ghost" style="flex:1;min-width:200px;font-size:.78rem;" onclick="syncIaToGithub()" title="Re-subir las APIs IA a data.json (para Telegram bot)">🔄 Sync a GitHub (para Telegram)</button>
-      </div>
-
-      <div id="iaTestResultV2" style="display:none;background:#020617;border:1px solid #0e7490;padding:14px;font-size:.78rem;color:#67e8f9;font-family:'DM Mono',monospace;line-height:1.6;margin-top:14px;"></div>
-    </div>
-
     <!-- Tab content: Financieras (lista flexible — añade las que quieras) -->
-    <div id="apisTabFin" style="padding:20px;display:none;">
+    <div id="apisTabFin" style="padding:20px;">
       <div style="background:#020617;border:1px solid #06b6d4;padding:16px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
         <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;">
           API de datos financieros (opcional). Sólo se usa para mostrar precios de ETFs/acciones (SPY, QQQ, GLD…) en la sección <strong>Mercados</strong> del resumen Telegram. EUR/USD y crypto funcionan sin API. Cuantos más providers activos, más ETFs puedes recibir en cada update.
@@ -423,13 +308,6 @@
       <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">SECCIONES DEL RESUMEN</div>
       <div id="notifSections"></div>
 
-      <!-- ── EXTRAS ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">EXTRAS</div>
-      <div style="display:flex;align-items:center;gap:8px;color:#67e8f9;font-size:.82rem;">
-        <input type="checkbox" id="notifAiInsight" style="accent-color:#22d3ee;">
-        <label for="notifAiInsight" style="cursor:pointer;">Añadir insight breve por IA al final (consume créditos de tu provider)</label>
-      </div>
-
       <div id="notifFormMsg" style="display:none;margin-top:14px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
 
       <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;position:sticky;bottom:0;background:#020617;padding:10px 0 0;">
@@ -444,7 +322,6 @@
 
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
-<script src="ia-module.js"></script>
 <script src="index.js"></script>
 </body>
 </html>

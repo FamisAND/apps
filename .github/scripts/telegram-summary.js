@@ -2,14 +2,13 @@
 //
 // Estructura del mensaje:
 //   1. Cabecera con fecha
-//   2. 🎯 HOY — AI insight accionable (si activado y hay providers)
-//   3. ⚠ URGENTE — señales cross-dashboard (solo si hay)
-//   4. Bloques por dashboard, en el orden definido por notif.section_order
-//   5. Footer
+//   2. ⚠ URGENTE — señales cross-dashboard (solo si hay)
+//   3. Bloques por dashboard, en el orden definido por notif.section_order
+//   4. Footer
 //
 // Config en data.json __notif:
-//   - days, time, enabled, ai_insight
-//   - section_order: ['patrimonio','options','training','facturas']
+//   - days, time, enabled
+//   - section_order: ['actualidad','patrimonio','options','training','facturas']
 //   - sections.<id>.<flag>
 //
 // Ejecución: GitHub Actions (.github/workflows/telegram-daily.yml).
@@ -99,18 +98,8 @@ async function main() {
     facturas:   buildFacturas  (ctx, data, notif),
   };
   const urgent  = collectUrgent(ctx, data, notif);
-  const signals = buildSignals(ctx, data, notif, urgent);
 
-  let aiInsight = null;
-  if (notif.ai_insight) {
-    try { aiInsight = await generateInsight(data, signals); }
-    catch (e) {
-      console.error('AI insight error:', e.message);
-      aiInsight = `<i>(IA no disponible: ${escape(e.message)})</i>`;
-    }
-  }
-
-  const txt = renderMessage(ctx, sections, urgent, aiInsight, notif);
+  const txt = renderMessage(ctx, sections, urgent, notif);
 
   const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
     method: 'POST',
@@ -128,18 +117,12 @@ async function main() {
 // ───────────────────────────────────────────────────────────
 //  RENDER
 // ───────────────────────────────────────────────────────────
-function renderMessage(ctx, sections, urgent, aiInsight, notif) {
+function renderMessage(ctx, sections, urgent, notif) {
   const out = [];
   const dt = new Intl.DateTimeFormat('es-ES', {
     timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long'
   }).format(new Date());
   out.push(`<b>📊 Resumen — ${dt}</b>`);
-
-  if (aiInsight) {
-    out.push('');
-    out.push('🎯 <b>HOY</b>');
-    out.push(aiInsight);
-  }
 
   if (urgent.length) {
     out.push('');
@@ -1194,212 +1177,6 @@ function collectUrgent(ctx, data, notif) {
   } catch (e) { console.error('urgent ft:', e.message); }
 
   return out;
-}
-
-// ───────────────────────────────────────────────────────────
-//  AI INSIGHT — señales estructuradas + prompt accionable
-// ───────────────────────────────────────────────────────────
-function buildSignals(ctx, data, notif, urgent) {
-  const sig = [];
-
-  // Patrimonio
-  try {
-    const profiles = parseMaybe(data?.patrimonio?.pat_v5);
-    if (Array.isArray(profiles) && profiles[0]) {
-      const p = profiles[0];
-      const ents = [...(p.entries||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
-      if (ents.length) {
-        const last = ents[ents.length-1];
-        const totalNow = calcPat(last);
-        sig.push(`Patrimonio total: €${fmt(totalNow)}`);
-        if (ents.length >= 2) {
-          const prev = calcPat(ents[ents.length-2]);
-          const diff = totalNow - prev;
-          const pct = prev ? (diff/prev*100).toFixed(1) : 0;
-          sig.push(`Patrimonio Δ vs mes anterior: ${diff>=0?'+':''}€${fmt(Math.abs(diff))} (${pct}%)`);
-        }
-        const r = patGastosMes(p?.gastos?.meses?.[ctx.monthKey]);
-        if (r && r.nReal) {
-          const cats = p?.gastos?.categorias || [];
-          const catMap = {}; cats.forEach(c => catMap[c.id] = c.name);
-          const top = Object.entries(r.porCat).sort((a,b)=>b[1]-a[1]).slice(0,2)
-            .map(([cid,v]) => `${catMap[cid]||cid} €${fmt(v)}`).join(', ');
-          sig.push(`Gastos personales ${ctx.monthKey}: €${fmt(r.total)} (top: ${top})`);
-        }
-      }
-    }
-  } catch(e){}
-
-  // Options
-  try {
-    const arr = parseMaybe(data?.options?.ot_activas);
-    const histRaw = parseMaybe(data?.options?.ot_hist);
-    const hist = Array.isArray(histRaw) ? histRaw.map(computeEntry) : null;
-    if (Array.isArray(arr)) {
-      sig.push(`Opciones activas: ${arr.length}`);
-      const exp1 = arr.filter(a => {
-        if (!a.exp) return false;
-        const d = Math.round((new Date(a.exp + 'T00:00:00Z') - ctx.today0) / 86400000);
-        return d >= 0 && d <= 1;
-      });
-      if (exp1.length) {
-        sig.push(`Opciones DTE≤1: ${exp1.map(a => `${a.activo} ${a.strat||''}`).join(', ')}`);
-      }
-    }
-    if (Array.isArray(hist)) {
-      const mes = hist.filter(h => (h.cierre||'').startsWith(ctx.monthKey));
-      if (mes.length) {
-        const pnl = mes.reduce((s,h) => s + (parseFloat(h.totalNeto)||0), 0) * 100;
-        const wins = mes.filter(h => (parseFloat(h.totalNeto)||0) > 0).length;
-        sig.push(`Options P&L ${ctx.monthKey}: ${pnl>=0?'+':''}$${fmt(pnl)} (${mes.length} ops, WR ${(wins/mes.length*100).toFixed(0)}%)`);
-      }
-    }
-  } catch(e){}
-
-  // FT
-  try {
-    const ft = parseMaybe(data?.training?.ft_v4);
-    if (ft) {
-      const m = ftMonthMetrics(ft.months?.[ctx.ftMonthKey]);
-      if (m && (m.fact > 0 || m.gastos > 0)) {
-        sig.push(`FT ${ctx.ftMonthKey}: facturación €${fmt(m.fact)}, gastos €${fmt(m.gastos)}, beneficio ${m.beneficio>=0?'+':'-'}€${fmt(Math.abs(m.beneficio))}`);
-      }
-      const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
-      const byCli = {};
-      for (const [mk, mv] of Object.entries(ft.months||{})) {
-        if (mk > ctx.monthKey) continue; // incluir mes actual, excluir futuros // solo meses cerrados
-        (mv.entries||[]).forEach(e => {
-          if (e.paid === 'pagado' || e.paid === true) return;
-          const pr = parseFloat(e.price) || 0;
-          if (pr <= 0) return;
-          const cli = cliMap[e.clientId] || '?';
-          if (!byCli[cli]) byCli[cli] = { total: 0, oldest: mk };
-          byCli[cli].total += pr;
-          if (mk < byCli[cli].oldest) byCli[cli].oldest = mk;
-        });
-      }
-      const top3 = Object.entries(byCli).sort((a,b) => b[1].total - a[1].total).slice(0,3);
-      if (top3.length) {
-        const detail = top3.map(([cli, d]) => `${cli} €${fmt(d.total)} (desde ${d.oldest})`).join(' | ');
-        sig.push(`FT impagos top (meses cerrados): ${detail}`);
-      }
-      const agotados = (ft.stock||[]).filter(s => stockTotal(s) === 0).map(s => s.name);
-      if (agotados.length) sig.push(`FT stock agotado: ${agotados.slice(0,3).join(', ')}`);
-    }
-  } catch(e){}
-
-  // Facturas
-  try {
-    const profiles = parseMaybe(data?.facturas?.fac_v1);
-    if (Array.isArray(profiles)) {
-      let pend = 0, venc = 0;
-      const vencDet = [];
-      profiles.forEach(p => (p.facturas||[]).forEach(f => {
-        if (f.estado === 'pendiente') pend++;
-        if (f.estado === 'vencida') {
-          venc++;
-          vencDet.push(`${f.clienteName||'?'} €${fmt(parseFloat(f.total)||0)}`);
-        }
-      }));
-      if (pend) sig.push(`Facturas pendientes: ${pend}`);
-      if (venc) sig.push(`Facturas VENCIDAS: ${venc} (${vencDet.slice(0,3).join(', ')})`);
-    }
-  } catch(e){}
-
-  if (urgent.length) sig.push(`URGENTES detectados: ${urgent.length}`);
-
-  return sig;
-}
-
-async function generateInsight(data, signals) {
-  const ia = data.__ia;
-  console.log('[AI] providers count:', (ia?.providers||[]).length);
-  if (!ia || !Array.isArray(ia.providers) || !ia.providers.length) {
-    return '<i>(IA pedida pero __ia sin configurar)</i>';
-  }
-  const provider = ia.providers.find(p => p.activa);
-  if (!provider) return '<i>(IA pedida pero ningún provider activo)</i>';
-  console.log('[AI] provider:', provider.tipo, 'model:', provider.modelo);
-  console.log('[AI] signals count:', signals.length);
-
-  const sysPrompt = [
-    'Eres el asistente personal de Sergio. Recibes SEÑALES literales extraídas de sus dashboards.',
-    'Tu tarea: 2-3 acciones CONCRETAS para HOY, en bullets cortos (≤14 palabras), tono directo, español.',
-    '',
-    'REGLA #1 (CRÍTICA): Solo puedes mencionar un nombre propio (ticker, cliente, producto) si aparece LITERALMENTE en las SEÑALES. Si no está, NO lo nombres. NUNCA inventes ni completes con conocimiento general.',
-    '',
-    'REGLA #2: Si una sección no tiene señal urgente, NO sugieras "verifica X" o "revisa Y" — eso es ruido. Solo emite acciones cuando hay un disparador concreto en las señales.',
-    '',
-    'Contexto temporal:',
-    '- Patrimonio y Opciones = mes actual.',
-    '- FT (Full Training) SIEMPRE mes anterior cerrado, NUNCA mes en curso.',
-    '- Impagos FT solo se cuentan de meses cerrados.',
-    '',
-    'Formato:',
-    '- Acción = verbo + objetivo concreto + cifra/contexto.',
-    '- Sin markdown, sin negritas. Solo bullets con "• " al inicio.',
-    '- Si no hay nada urgente, responde EXACTAMENTE: "• Todo en orden — nada urgente hoy" y para.',
-    '',
-    'Buenos:',
-    '• Cobra a Pepe — €340 desde febrero (nombre Pepe SÍ está en señales)',
-    '• Cierra SLV NP hoy, DTE=1 (SLV sí está en señales)',
-    '',
-    'Malos (todos prohibidos):',
-    '• Cierra TSLA NP — TSLA no está en señales (alucinación)',
-    '• Verifica facturas pendientes — sin disparador (ruido)',
-    '• Revisa opciones — vago, sin nombre concreto',
-    '• Considera revisar tus gastos — genérico',
-  ].join('\n');
-
-  const userMsg = 'SEÑALES:\n' + signals.map(s => '- ' + s).join('\n');
-
-  const text = await callIA(provider, userMsg, sysPrompt);
-  console.log('[AI] response length:', text?.length || 0);
-  console.log('[AI] response text:', JSON.stringify(text||''));
-  if (!text || !text.trim()) return '<i>(IA devolvió respuesta vacía — modelo: ' + escape(provider.modelo||'?') + ')</i>';
-  // Asegurar que cada bullet vaya indentado para que case con el resto del mensaje
-  const formatted = text.trim().split('\n').filter(l => l.trim()).map(l => '   ' + escape(l.trim())).join('\n');
-  console.log('[AI] formatted length:', formatted.length);
-  return formatted || '<i>(IA respondió pero el formato quedó vacío)</i>';
-}
-
-// ───────────────────────────────────────────────────────────
-//  IA call (replicado de ia-module.js)
-// ───────────────────────────────────────────────────────────
-async function callIA(provider, prompt, systemMsg) {
-  if (provider.tipo === 'gemini') {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${provider.modelo}:generateContent?key=${encodeURIComponent(provider.key)}`;
-    const body = { contents:[{parts:[{text: prompt}]}], generationConfig:{ temperature:0.4, maxOutputTokens:512 } };
-    if (systemMsg) body.systemInstruction = { parts:[{text: systemMsg}] };
-    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error('Gemini ' + res.status);
-    const d = await res.json();
-    return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  }
-  const endpoint = provider.tipo === 'openrouter'
-    ? 'https://openrouter.ai/api/v1/chat/completions'
-    : 'https://api.groq.com/openai/v1/chat/completions';
-  const headers = { 'Content-Type':'application/json', Authorization:`Bearer ${provider.key}` };
-  if (provider.tipo === 'openrouter') {
-    headers['HTTP-Referer'] = 'https://famisand.github.io';
-    headers['X-Title'] = 'Mis Dashboards';
-  }
-  const messages = [];
-  if (systemMsg) messages.push({ role:'system', content: systemMsg });
-  messages.push({ role:'user', content: prompt });
-  const res = await fetch(endpoint, {
-    method:'POST', headers,
-    body: JSON.stringify({ model: provider.modelo, messages, temperature:0.4, max_tokens:512 })
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    console.error('[AI] HTTP', res.status, 'body:', body.slice(0, 300));
-    throw new Error(`${provider.tipo} HTTP ${res.status}: ${body.slice(0,100)}`);
-  }
-  const d = await res.json();
-  const content = d.choices?.[0]?.message?.content || '';
-  if (!content) console.error('[AI] response has no content:', JSON.stringify(d).slice(0,300));
-  return content;
 }
 
 // ───────────────────────────────────────────────────────────

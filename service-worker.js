@@ -21,7 +21,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v27';
+const CACHE_VERSION = 'mis-dashboards-v28';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).
@@ -40,7 +40,6 @@ const PRECACHE_URLS = [
   './design-system.css',
   './index.js',
   './facturas.js',
-  './ia-module.js',
   './dashboard-auth.js',
   './github-sync.js',
   './utils.js',

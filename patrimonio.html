@@ -30,7 +30,6 @@
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
 <script src="dashboard-auth.js"></script>
-<script src="ia-module.js"></script>
 <script>
 GitHubSync.attach({
   section: 'patrimonio',
@@ -76,7 +75,6 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
         <button class="tab-btn" onclick="showTab('form')">＋ Nuevo mes</button>
         <button class="tab-btn" onclick="showTab('gastos')">💰 Gastos</button>
         <button class="tab-btn" onclick="showTab('objetivos')">🎯 Objetivos</button>
-        <button class="tab-btn" onclick="showTab('ia')">🤖 IA</button>
         <button class="tab-btn" onclick="showTab('ajustes')">⚙ Ajustes</button>
       </div>
       <span class="save-badge" id="saveBadge"></span>
@@ -355,132 +353,6 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
       <div class="card" style="margin-bottom:16px;">
         <div class="sec-title">Tabla año a año</div>
         <div class="tbl-wrap" id="projTable"></div>
-      </div>
-    </div>
-
-    <!-- IA -->
-    <div id="tab-ia" class="tab-content hidden">
-      <div class="card" style="max-width:920px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div style="font-weight:700;font-size:1rem">🤖 Análisis con IA</div>
-          <button class="btn-sm" onclick="iaModule.openConfig()" title="Editar instrucciones personalizadas">📝 Instrucciones</button>
-        </div>
-
-        <!-- Estado: necesita API key -->
-        <div id="iaNoKey" class="hidden" style="text-align:center;padding:32px 16px;background:#0f172a;border:1px solid #1e293b;border-radius:8px">
-          <div style="font-size:36px;margin-bottom:8px">🤖</div>
-          <div style="color:#94a3b8;margin-bottom:6px;font-size:.9rem">No hay APIs de IA configuradas</div>
-          <div style="color:#64748b;font-size:.78rem;margin-bottom:18px;line-height:1.5">
-            Las APIs se configuran de forma centralizada desde el <strong>menú principal</strong> (botón 🤖 IA APIs).<br>Se aplican a todas las apps y soportan fallback automático.
-          </div>
-          <a href="index.html" class="btn-primary" style="display:inline-block;text-decoration:none">← Ir al menú principal</a>
-        </div>
-
-        <!-- Estado: inicial (con key configurada) -->
-        <div id="iaInitial" class="hidden">
-          <div style="color:#94a3b8;font-size:.85rem;margin-bottom:18px;line-height:1.55">
-            Pide al modelo que analice tu patrimonio o respóndele una pregunta libre. Los datos solo salen de tu navegador hacia Groq (la API que usa el modelo).
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px">
-            <button onclick="iaModule.selectMode('analisis')" class="ia-mode-btn" style="background:#0f172a;border:1px solid #1e3a5f;border-radius:10px;padding:22px 18px;cursor:pointer;text-align:left;transition:all .15s;color:inherit;font-family:inherit">
-              <div style="font-size:24px;margin-bottom:8px">📊</div>
-              <div style="font-weight:600;color:#60a5fa;margin-bottom:4px">Análisis completo</div>
-              <div style="color:#94a3b8;font-size:.78rem;line-height:1.45">Tendencia, atención, recomendaciones. Eliges cuántos meses incluir.</div>
-            </button>
-            <button onclick="iaModule.selectMode('libre')" class="ia-mode-btn" style="background:#0f172a;border:1px solid #1e3a5f;border-radius:10px;padding:22px 18px;cursor:pointer;text-align:left;transition:all .15s;color:inherit;font-family:inherit">
-              <div style="font-size:24px;margin-bottom:8px">💬</div>
-              <div style="font-weight:600;color:#60a5fa;margin-bottom:4px">Pregunta libre</div>
-              <div style="color:#94a3b8;font-size:.78rem;line-height:1.45">Escribe lo que quieras saber. Ej: "¿Voy bien para mi objetivo?".</div>
-            </button>
-          </div>
-          <!-- Plantillas de preguntas frecuentes -->
-          <div style="border-top:1px solid #1e293b;padding-top:16px">
-            <div style="color:#64748b;font-size:.74rem;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Preguntas frecuentes</div>
-            <div id="iaPlantillas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px"></div>
-          </div>
-        </div>
-
-        <!-- Estado: selector de meses para análisis -->
-        <div id="iaSelectorMeses" class="hidden">
-          <div style="color:#94a3b8;font-size:.85rem;margin-bottom:14px">¿Cuántos meses de datos quieres incluir?</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">
-            <button class="btn-sm ia-meses-btn" data-meses="3" onclick="iaModule.setMeses(3)">3 meses</button>
-            <button class="btn-sm ia-meses-btn" data-meses="6" onclick="iaModule.setMeses(6)">6 meses</button>
-            <button class="btn-sm ia-meses-btn" data-meses="12" onclick="iaModule.setMeses(12)">12 meses</button>
-            <button class="btn-sm ia-meses-btn" data-meses="24" onclick="iaModule.setMeses(24)">24 meses</button>
-            <button class="btn-sm ia-meses-btn" data-meses="todos" onclick="iaModule.setMeses('todos')">Todos</button>
-          </div>
-          <div id="iaMesesPreview" style="color:#64748b;font-size:.78rem;margin-bottom:14px"></div>
-          <div style="display:flex;gap:8px">
-            <button class="btn-ghost" onclick="iaModule.back()">← Volver</button>
-            <button class="btn-primary" id="iaAnalizarBtn" onclick="iaModule.runAnalisis()" disabled>Analizar</button>
-          </div>
-        </div>
-
-        <!-- Estado: pregunta libre -->
-        <div id="iaPregunta" class="hidden">
-          <div style="color:#94a3b8;font-size:.85rem;margin-bottom:10px">Escribe tu pregunta</div>
-          <textarea id="iaPreguntaTxt" placeholder="Ej: ¿Cuál ha sido el mes con mayor crecimiento?" rows="3" style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:10px 12px;color:#e2e8f0;font-family:inherit;font-size:.88rem;resize:vertical"></textarea>
-          <div id="iaPreguntaInfo" style="color:#64748b;font-size:.75rem;margin-top:6px;margin-bottom:14px"></div>
-          <div style="display:flex;gap:8px">
-            <button class="btn-ghost" onclick="iaModule.back()">← Volver</button>
-            <button class="btn-primary" onclick="iaModule.runPregunta()">Enviar pregunta</button>
-          </div>
-        </div>
-
-        <!-- Estado: cargando -->
-        <div id="iaLoading" class="hidden" style="text-align:center;padding:48px 16px">
-          <div class="ia-spinner" style="width:36px;height:36px;border:3px solid #1e3a5f;border-top-color:#60a5fa;border-radius:50%;margin:0 auto 14px;animation:iaSpin 1s linear infinite"></div>
-          <div style="color:#94a3b8;font-size:.88rem">Analizando con IA...</div>
-          <div id="iaLoadingDetail" style="color:#64748b;font-size:.75rem;margin-top:6px"></div>
-        </div>
-
-        <!-- Estado: resultado -->
-        <div id="iaResultado" class="hidden">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-            <div style="color:#94a3b8;font-size:.78rem" id="iaResultadoMeta"></div>
-            <div style="display:flex;gap:6px">
-              <button class="btn-sm" onclick="iaModule.copyResult()" title="Copiar al portapapeles">📋 Copiar</button>
-              <button class="btn-sm" onclick="iaModule.back()">← Nueva</button>
-            </div>
-          </div>
-          <div id="iaResultadoTxt" style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:18px 22px;color:#e2e8f0;font-size:.88rem;line-height:1.65;max-height:600px;overflow-y:auto"></div>
-        </div>
-
-        <!-- Estado: error -->
-        <div id="iaError" class="hidden" style="background:#3f1d1d;border:1px solid #7f1d1d;border-radius:8px;padding:14px 16px;color:#fca5a5;font-size:.85rem">
-          <div style="font-weight:600;margin-bottom:4px">⚠ Error al llamar a la IA</div>
-          <div id="iaErrorMsg" style="font-family:'Courier New',monospace;font-size:.75rem;color:#f87171"></div>
-          <div style="margin-top:10px">
-            <button class="btn-sm" onclick="iaModule.back()">← Volver</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- IA CONFIG MODAL -->
-    <div id="iaConfigModal" class="modal-bg hidden">
-      <div class="modal wide" style="max-width:640px;max-height:90vh;overflow-y:auto">
-        <div style="font-weight:700;font-size:1rem;margin-bottom:14px">📝 Instrucciones IA (Patrimonio)</div>
-
-        <div style="background:rgba(96,165,250,.06);border:1px solid #1e3a5f;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:.74rem;color:#94a3b8;line-height:1.5">
-          ℹ️ Las APIs de IA se configuran de forma centralizada desde el <strong>menú principal</strong> (botón 🤖 IA APIs). Aquí solo defines las <strong>instrucciones específicas para Patrimonio</strong>.
-        </div>
-
-        <!-- INSTRUCCIONES PERSONALIZADAS -->
-        <div style="margin-bottom:14px">
-          <div style="color:#94a3b8;font-size:.82rem;margin-bottom:8px;font-weight:600">Contexto e instrucciones personalizadas</div>
-          <div style="color:#94a3b8;font-size:.78rem;margin-bottom:8px;line-height:1.5">
-            Esto se enviará SIEMPRE al modelo en cada llamada de Patrimonio. Cuéntale quién eres, tus objetivos, qué debe ignorar, etc. <em>Cuanto más específico, mejor.</em>
-          </div>
-          <textarea id="iaInstructionsInput" rows="10" placeholder="Ej:&#10;- Soy Sergio, vivo en Andorra. Mi objetivo es FIRE a los 50 con 1M€.&#10;- Cobas SICAV es mi inversión principal a largo plazo.&#10;- 'Sergio Familiar' en gastos = transferencias a mí mismo, no son gastos reales.&#10;- Mi tolerancia al riesgo es media-alta." style="width:100%;background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:10px 12px;color:#e2e8f0;font-family:inherit;font-size:.82rem;resize:vertical;line-height:1.5;box-sizing:border-box"></textarea>
-          <div id="iaInstructionsCount" style="color:#64748b;font-size:.7rem;margin-top:4px;text-align:right"></div>
-        </div>
-
-        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-          <button class="btn-ghost" onclick="iaModule.closeConfig()">Cancelar</button>
-          <button class="btn-primary" onclick="iaModule.saveInstructions()">Guardar</button>
-        </div>
       </div>
     </div>
 
@@ -776,7 +648,6 @@ function showTab(tab){
   if(tab==="form"){if(!editKey){resetForm();renderFormFields();}}
   if(tab==="gastos"){renderGastos();}
   if(tab==="objetivos"){renderObjectives();}
-  if(tab==="ia"){iaModule.showTab();}
   if(tab==="ajustes")renderAjustes();
 }
 
@@ -3605,131 +3476,6 @@ function importData(ev){
 // TOAST
 // ══════════════════════════════
 function toast(msg,type="green"){const t=document.getElementById("toast");t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className="toast",3000);}
-
-// ══════════════════════════════
-// IA — usa ia-module.js (compartido)
-// ══════════════════════════════
-// Solo definimos aquí lo específico de Patrimonio:
-//   - iaBuildDataset: cómo construir el dataset desde el perfil activo
-//   - prompts: análisis y libre
-//   - plantillas: las 10 preguntas frecuentes
-
-function iaBuildDataset(meses){
-  const p = prof(); if(!p) return null;
-  const ents = (p.entries||[]).slice().sort((a,b)=>a.key.localeCompare(b.key));
-  let filtered = ents;
-  if(meses && meses!=='todos') filtered = ents.slice(-parseInt(meses));
-
-  // Construir snapshot mensual
-  const assets = profileAssets(p);
-  const snap = filtered.map(e=>{
-    const row = { mes: e.key };
-    let total = 0;
-    assets.forEach(a=>{
-      const raw = e.assets?.[a.id];
-      if(raw==null||raw==='') return;
-      const v = parseFloat(raw)||0;
-      if(v===0) return;
-      row[a.name] = v;
-      total += v;
-    });
-    if(p.empresaSection?.enabled){
-      if(e.emp_caja!=null && e.emp_caja!=='') row['empresa_caja'] = parseFloat(e.emp_caja)||0;
-      if(e.emp_ben12!=null && e.emp_ben12!=='') row['empresa_beneficio_12m'] = parseFloat(e.emp_ben12)||0;
-    }
-    if(e.deuda) row.deuda = parseFloat(e.deuda)||0;
-    row.total_neto = total - (row.deuda||0);
-    if(e.note) row.nota = e.note;
-    return row;
-  });
-
-  // Métricas agregadas
-  const totales = snap.map(s=>s.total_neto).filter(v=>!isNaN(v));
-  const inicial = totales[0]||0;
-  const actual = totales[totales.length-1]||0;
-  const variacion = inicial ? ((actual-inicial)/inicial*100) : 0;
-  const max = Math.max(...totales);
-  const min = Math.min(...totales);
-  const mesMax = snap[totales.indexOf(max)]?.mes;
-  const mesMin = snap[totales.indexOf(min)]?.mes;
-
-  return {
-    perfil: p.name,
-    moneda: p.monedas?.[0] || 'EUR',
-    periodo: snap.length ? `${snap[0].mes} → ${snap[snap.length-1].mes}` : 'sin datos',
-    n_meses: snap.length,
-    metricas: {
-      valor_inicial: inicial,
-      valor_actual: actual,
-      variacion_pct: +variacion.toFixed(2),
-      maximo: { mes: mesMax, valor: max },
-      minimo: { mes: mesMin, valor: min }
-    },
-    historial_mensual: snap
-  };
-}
-
-function iaPromptAnalisis(dataset){
-  return `Eres un analista financiero personal. Analiza el siguiente histórico de patrimonio neto.
-
-DATOS:
-\`\`\`json
-${JSON.stringify(dataset, null, 2)}
-\`\`\`
-
-Responde en español con formato markdown estructurado en estas secciones:
-
-## Resumen ejecutivo
-2-3 frases directas sobre la situación general.
-
-## Tendencia principal
-Qué está pasando con el patrimonio (creciendo/estable/cayendo) y a qué ritmo.
-
-## Puntos de atención
-Cosas raras, concentraciones de riesgo, meses anómalos. Si no hay nada raro, dilo.
-
-## Recomendaciones concretas
-2-4 acciones específicas. Sé directo, sin generalidades.
-
-Sé específico con los números. No uses lenguaje genérico tipo "es importante diversificar". Habla de los datos reales que ves.`;
-}
-
-function iaPromptLibre(dataset, pregunta){
-  return `Eres un analista financiero personal. Tienes acceso al patrimonio neto del usuario:
-
-\`\`\`json
-${JSON.stringify(dataset, null, 2)}
-\`\`\`
-
-Pregunta del usuario: ${pregunta}
-
-Responde en español, de forma clara y concisa. Si necesitas hacer cálculos, muéstralos. Usa markdown si ayuda a la legibilidad. No inventes datos que no estén en el JSON.`;
-}
-
-const IA_PLANTILLAS = [
-  { icon:'📈', label:'¿Cómo voy hacia mi objetivo?',         q:'¿Cómo voy hacia mi objetivo financiero según mi tasa de ahorro y crecimiento actuales? Calcula a qué ritmo voy y cuánto me falta.' },
-  { icon:'⚠️', label:'¿Hay algún mes anómalo?',              q:'Identifica meses con variaciones anómalas (subidas o bajadas atípicas) en mi patrimonio. Explica qué activos lo causaron.' },
-  { icon:'🎯', label:'Mi tasa de ahorro real',               q:'Calcula mi tasa de ahorro real mensual y anual. Compara aportaciones netas vs crecimiento orgánico de los activos.' },
-  { icon:'📊', label:'Año vs año anterior',                  q:'Compara este año con el año anterior: facturación, ahorro, crecimiento, qué activos han subido/bajado más.' },
-  { icon:'💼', label:'Concentración de activos (riesgo)',    q:'Analiza la concentración de mi cartera. ¿Qué porcentaje está en cada activo? ¿Hay riesgo de concentración? ¿Cómo está la diversificación?' },
-  { icon:'📉', label:'Drawdown máximo histórico',            q:'¿Cuál ha sido la mayor caída (drawdown) de mi patrimonio en el histórico? ¿Cuánto tiempo tardé en recuperarme?' },
-  { icon:'🌱', label:'Crecimiento orgánico vs aportaciones', q:'Separa cuánto del crecimiento de mi patrimonio viene de aportaciones y cuánto de revalorización orgánica de los activos.' },
-  { icon:'🏢', label:'Rendimiento de la empresa',            q:'Analiza el rendimiento de la empresa (caja, beneficio_12m). ¿Cómo evoluciona? ¿Está aportando bien al patrimonio total?' },
-  { icon:'💰', label:'Análisis de la deuda',                 q:'Analiza mi nivel de deuda histórico y actual. ¿Está controlado? ¿Subiendo o bajando? ¿Qué % representa sobre mi patrimonio?' },
-  { icon:'🔮', label:'Proyección a 5/10/20 años',            q:'Proyecta mi patrimonio a 5, 10 y 20 años usando mi tasa de crecimiento histórica. Asume aportaciones similares a las actuales.' }
-];
-
-// Inicializar el módulo IA con la config de Patrimonio
-iaModule.init({
-  instructionsKey: 'pat_ia_instructions',
-  systemPromptPrefix: 'Eres un asistente que analiza datos personales del usuario. El usuario ha definido el siguiente contexto e instrucciones que debes tener SIEMPRE en cuenta al responder:',
-  buildDataset: iaBuildDataset,
-  plantillas: IA_PLANTILLAS,
-  promptAnalisis: iaPromptAnalisis,
-  promptLibre: iaPromptLibre,
-  datasetIsEmpty: ds => !ds || !ds.historial_mensual || !ds.historial_mensual.length,
-  datasetEmptyMsg: 'No hay datos para analizar. Añade entradas mensuales primero.'
-});
 
 // ══════════════════════════════
 // INIT
