@@ -23,6 +23,7 @@
   <div class="tob-tabs">
     <button class="tob-tab active" onclick="tobShowTab('clientes',this)">Clientes</button>
     <button class="tob-tab" onclick="tobShowTab('plantillas',this)">Plantillas</button>
+    <button class="tob-tab" onclick="tobShowTab('ficha',this)" id="tobTabFicha" style="display:none">Ficha</button>
     <button class="tob-tab" onclick="tobShowTab('asignacion',this)" id="tobTabAsig" style="display:none">Rutina</button>
   </div>
   <div class="tob-tools">
@@ -77,10 +78,42 @@
   </div>
 </div>
 
+<!-- ════════ FICHA del cliente (histórico) ════════ -->
+<div id="tob-ficha" class="tob-page">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">
+    <button class="tob-action ghost" onclick="tobCloseFicha()">← Clientes</button>
+  </div>
+
+  <div class="tob-ficha-hero">
+    <div class="name" id="tobFichaNombre">—</div>
+    <div class="meta" id="tobFichaMeta">—</div>
+    <div class="tools">
+      <button class="tob-action" onclick="tobGeneratePdfHistorico()" title="PDF completo con todo el histórico, KPIs y gráficas">📄 PDF Histórico</button>
+      <button class="tob-action ghost" onclick="tobEditCliente(tobCurrentFichaId)">✏️ Editar datos</button>
+    </div>
+  </div>
+
+  <!-- KPIs globales -->
+  <div class="tob-card-title">Resumen global</div>
+  <div class="tob-kpi-row" id="tobFichaKpis"></div>
+
+  <!-- Timeline de rutinas -->
+  <div class="tob-card">
+    <div class="tob-card-title">📋 Timeline de rutinas</div>
+    <div class="tob-timeline" id="tobFichaTimeline"></div>
+  </div>
+
+  <!-- Progresión PR cross-rutina -->
+  <div class="tob-card">
+    <div class="tob-card-title">📈 Progresión global de fuerza (PR máximo por ejercicio · todas las rutinas)</div>
+    <div class="tob-charts-grid" id="tobFichaCharts"></div>
+  </div>
+</div>
+
 <!-- ════════ ASIGNACIÓN (vista rutina completa) ════════ -->
 <div id="tob-asignacion" class="tob-page">
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">
-    <button class="tob-action ghost" onclick="tobCloseAsignacion()">← Volver</button>
+    <button class="tob-action ghost" onclick="tobBackToFicha()">← Ficha cliente</button>
     <div style="flex:1;">
       <div class="tob-h" id="tobAsigTitulo">—</div>
       <div class="tob-sub" id="tobAsigSubtitulo">—</div>
@@ -129,8 +162,9 @@
       <input type="file" id="tobPdfFile" accept=".pdf" style="display:none" onchange="tobHandlePdfFile(event)">
     </div>
     <div id="tobPdfStatus" style="margin-top:10px;font-size:.78rem;color:var(--mute);font-family:DM Mono,monospace;"></div>
-    <div style="margin-top:10px;">
-      <button class="tob-action ghost" onclick="tobGeneratePdf()" title="Genera PDF rellenable con esta iteración">📄 Generar PDF para cliente</button>
+    <div class="tob-pdf-actions" style="margin-top:10px;">
+      <button class="tob-action" onclick="tobGeneratePdfActual()" title="PDF bonito: cover, KPIs, gráficas y tabla. Para enviar al cliente cuando complete la rutina">📄 PDF rutina completada</button>
+      <button class="tob-action ghost" onclick="tobGeneratePdf()" title="PDF rellenable con form fields para que el cliente lo edite y devuelva">📄 PDF en blanco (para rellenar)</button>
     </div>
   </div>
 
