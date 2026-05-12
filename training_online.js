@@ -62,6 +62,13 @@ function tobLoad(){
     }
   } catch(e){ console.warn('tobLoad:', e); }
 
+  // Backfill: si plantillas no tienen macrociclo, asignar "1º Powerbuilding"
+  let backfilled = false;
+  tobDB.plantillas.forEach(p => {
+    if(!p.macrociclo){ p.macrociclo = '1º Powerbuilding'; backfilled = true; }
+  });
+  if(backfilled) tobSave(true);
+
   // Migrar de v1 si existía (estructura distinta)
   try {
     const v1 = localStorage.getItem('tob_online_v1');
@@ -152,7 +159,9 @@ function tobRenderClientes(){
 
 function tobPlantillaName(plantId){
   const p = tobDB.plantillas.find(p => p.id === plantId);
-  return p ? tobEsc(p.nombre) : '(plantilla eliminada)';
+  if(!p) return '(plantilla eliminada)';
+  const mc = p.macrociclo ? `<span style="font-size:.65rem;color:var(--mute);font-family:DM Mono,monospace;">[${tobEsc(p.macrociclo)}]</span> ` : '';
+  return mc + tobEsc(p.nombre);
 }
 
 function tobOpenClienteModal(cli){
@@ -242,15 +251,35 @@ function tobAbrirCliente(cliId){
 }
 
 function tobOpenAsignarModal(cli){
-  const existing = (cli.asignaciones||[]).map(a => {
+  // Agrupar asignaciones existentes por macrociclo
+  const byMacro = {};
+  (cli.asignaciones||[]).forEach(a => {
     const p = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    return `<button class="tob-action ghost" style="margin:4px 0;text-align:left;width:100%;display:block;" onclick="tobCloseConfirm();tobOpenAsignacion('${cli.id}','${a.id}')">
-      <strong>${p ? tobEsc(p.nombre) : '(plantilla eliminada)'}</strong>
-      <span style="color:var(--mute);font-size:.72rem;float:right;">${a.estado} · ${a.fechaInicio||''}</span>
-    </button>`;
+    const mc = p?.macrociclo || '(Sin macrociclo)';
+    if(!byMacro[mc]) byMacro[mc] = [];
+    byMacro[mc].push({ a, p });
+  });
+  const existing = Object.entries(byMacro).map(([mc, items]) => {
+    return `<div style="margin-bottom:10px;">
+      <div style="font-family:DM Mono,monospace;font-size:.7rem;color:var(--acc);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">${tobEsc(mc)}</div>
+      ${items.map(({a, p}) => `<button class="tob-action ghost" style="margin:2px 0;text-align:left;width:100%;display:block;" onclick="tobCloseConfirm();tobOpenAsignacion('${cli.id}','${a.id}')">
+        <strong>${p ? tobEsc(p.nombre) : '(plantilla eliminada)'}</strong>
+        <span style="color:var(--mute);font-size:.72rem;float:right;">${a.estado} · ${a.fechaInicio||''}</span>
+      </button>`).join('')}
+    </div>`;
   }).join('');
-  const newOptions = tobDB.plantillas.map(p =>
-    `<option value="${p.id}">${tobEsc(p.nombre)}</option>`
+
+  // Plantillas para nueva, agrupadas por macrociclo en un optgroup
+  const macroGroups = {};
+  tobDB.plantillas.forEach(p => {
+    const mc = p.macrociclo || '(Sin macrociclo)';
+    if(!macroGroups[mc]) macroGroups[mc] = [];
+    macroGroups[mc].push(p);
+  });
+  const newOptions = Object.entries(macroGroups).sort().map(([mc, list]) =>
+    `<optgroup label="${tobEsc(mc)}">` +
+    list.map(p => `<option value="${p.id}">${tobEsc(p.nombre)}</option>`).join('') +
+    `</optgroup>`
   ).join('');
   document.getElementById('tobConfirmTitle').textContent = tobEsc(cli.nombre);
   document.getElementById('tobConfirmMsg').innerHTML = `
@@ -276,29 +305,64 @@ function tobOpenAsignarModal(cli){
 
 // ═══ PLANTILLAS ═══
 function tobRenderPlantillas(){
-  const tbody = document.getElementById('tobPlantillasBody');
+  const cont = document.getElementById('tobPlantillasGroups');
   const empty = document.getElementById('tobPlantillasEmpty');
-  if(!tobDB.plantillas.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  if(!tobDB.plantillas.length){ cont.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display = 'none';
-  tbody.innerHTML = tobDB.plantillas.map(p => {
-    const sexoBadge = `<span class="tob-badge ${p.sexo==='M'?'m':p.sexo==='H'?'h':'u'}">${p.sexo==='M'?'♀':p.sexo==='H'?'♂':'U'}</span>`;
-    const nEj = (p.entrenos||[]).reduce((s,e) => s + (e.ejercicios||[]).length, 0);
-    return `<tr>
-      <td><strong>${tobEsc(p.nombre)}</strong></td>
-      <td><span style="color:var(--mute);font-size:.78rem;">${tobEsc(p.categoria||'—')}</span></td>
-      <td>${sexoBadge}</td>
-      <td class="num">${(p.entrenos||[]).length}</td>
-      <td class="num">${nEj}</td>
-      <td class="actions">
-        <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobEditarPlantilla('${p.id}')">✏️</button>
-        <button class="tob-action danger" style="padding:4px 9px;" onclick="tobDelPlantilla('${p.id}')">🗑</button>
-      </td>
-    </tr>`;
+
+  // Agrupar por macrociclo
+  const groups = {};
+  tobDB.plantillas.forEach(p => {
+    const mc = p.macrociclo || '(Sin macrociclo)';
+    if(!groups[mc]) groups[mc] = [];
+    groups[mc].push(p);
+  });
+
+  // Ordenar macrociclos por nombre, plantillas dentro por categoría+sexo
+  const sortedMacros = Object.keys(groups).sort();
+
+  cont.innerHTML = sortedMacros.map(mc => {
+    const list = groups[mc].sort((a,b) => {
+      const c = (a.categoria||'').localeCompare(b.categoria||'');
+      if(c) return c;
+      return (a.sexo==='H'?0:a.sexo==='M'?1:2) - (b.sexo==='H'?0:b.sexo==='M'?1:2);
+    });
+    return `<div class="tob-mc-group">
+      <div class="tob-mc-hdr" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="caret">▾</span>
+        <span class="name">${tobEsc(mc)}</span>
+        <span class="count">${list.length} plantilla${list.length===1?'':'s'}</span>
+      </div>
+      <table class="tob-table">
+        <thead><tr>
+          <th>Nombre</th><th>Categoría</th><th>Sexo</th>
+          <th class="num">Entrenos</th><th class="num">Ej.</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${list.map(p => {
+            const sexoBadge = `<span class="tob-badge ${p.sexo==='M'?'m':p.sexo==='H'?'h':'u'}">${p.sexo==='M'?'♀':p.sexo==='H'?'♂':'U'}</span>`;
+            const nEj = (p.entrenos||[]).reduce((s,e) => s + (e.ejercicios||[]).length, 0);
+            return `<tr>
+              <td><strong>${tobEsc(p.nombre)}</strong></td>
+              <td><span style="color:var(--mute);font-size:.78rem;">${tobEsc(p.categoria||'—')}</span></td>
+              <td>${sexoBadge}</td>
+              <td class="num">${(p.entrenos||[]).length}</td>
+              <td class="num">${nEj}</td>
+              <td class="actions">
+                <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobEditarPlantilla('${p.id}')">✏️</button>
+                <button class="tob-action danger" style="padding:4px 9px;" onclick="tobDelPlantilla('${p.id}')">🗑</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
   }).join('');
 }
 
 function tobOpenPlantillaModal(pl){
   document.getElementById('tobPlantillaModalTitle').textContent = pl ? 'Editar plantilla' : 'Nueva plantilla';
+  document.getElementById('tobPlMacrociclo').value = pl?.macrociclo || '1º Powerbuilding';
   document.getElementById('tobPlNombre').value = pl?.nombre || '';
   document.getElementById('tobPlCategoria').value = pl?.categoria || 'Reacondicionamiento';
   document.getElementById('tobPlSexo').value = pl?.sexo || 'H';
@@ -354,6 +418,7 @@ function tobParsePlantillaDef(text){
 function tobSavePlantilla(){
   const nombre = document.getElementById('tobPlNombre').value.trim();
   if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
+  const macrociclo = document.getElementById('tobPlMacrociclo').value.trim() || '(Sin macrociclo)';
   const categoria = document.getElementById('tobPlCategoria').value;
   const sexo = document.getElementById('tobPlSexo').value;
   const entrenos = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
@@ -361,9 +426,9 @@ function tobSavePlantilla(){
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
   if(editId){
     const p = tobDB.plantillas.find(p => p.id === editId);
-    if(p) Object.assign(p, { nombre, categoria, sexo, entrenos });
+    if(p) Object.assign(p, { macrociclo, nombre, categoria, sexo, entrenos });
   } else {
-    tobDB.plantillas.push({ id: tobUid('pl'), nombre, categoria, sexo, entrenos });
+    tobDB.plantillas.push({ id: tobUid('pl'), macrociclo, nombre, categoria, sexo, entrenos });
   }
   tobSave();
   tobClosePlantillaModal();
@@ -1222,9 +1287,10 @@ function tobBuildSeedPlantillas(){
   }
 
   const out = [];
+  const MACRO = '1º Powerbuilding';
   // 1. Reacondicionamiento (exacto del PDF)
-  out.push({ id: tobUid('pl'), nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', entrenos:[entA_rea(), entB_rea()] });
-  out.push({ id: tobUid('pl'), nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', entrenos:[entA_rea(), entB_rea()] });
   // 2-8
   [
     ['Preparación fuerza',     planPF],
@@ -1236,7 +1302,7 @@ function tobBuildSeedPlantillas(){
     ['Calidad muscular',        planCM]
   ].forEach(([cat, plan]) => {
     ['H','M'].forEach(sx => {
-      out.push({ id: tobUid('pl'), nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, entrenos: makeStandard(cat, plan) });
+      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, entrenos: makeStandard(cat, plan) });
     });
   });
   return out;
@@ -1244,10 +1310,21 @@ function tobBuildSeedPlantillas(){
 
 // ═══ DEMO: cliente Jean con datos exactos del PDF de ejemplo ═══
 function tobSeedJean(){
-  if(tobDB.clientes.find(c => c.nombre.toLowerCase() === 'jean')){
-    tobToast('Jean ya existe', 'red');
-    const c = tobDB.clientes.find(c => c.nombre.toLowerCase() === 'jean');
-    if(c.asignaciones && c.asignaciones.length) tobOpenAsignacion(c.id, c.asignaciones[0].id);
+  // Si Jean ya existe, solo completamos rutinas faltantes (resto de plantillas H sin asignar)
+  const existing = tobDB.clientes.find(c => c.nombre.toLowerCase() === 'jean');
+  if(existing){
+    const before = existing.asignaciones.length;
+    tobFakeSeedRemaining(existing);
+    const added = existing.asignaciones.length - before;
+    tobSave();
+    tobRenderClientes();
+    if(added > 0){
+      tobToast(`✓ ${added} rutina${added===1?'':'s'} adicional${added===1?'':'es'} cargada${added===1?'':'s'}`, 'green');
+    } else {
+      tobToast('Jean ya tiene todas las rutinas H', 'red');
+    }
+    // Abrir la primera
+    if(existing.asignaciones.length) tobOpenAsignacion(existing.id, existing.asignaciones[0].id);
     return;
   }
   const pl = tobDB.plantillas.find(p => p.nombre === 'Reacondicionamiento — Hombre');
@@ -1456,11 +1533,124 @@ function tobSeedJean(){
 
   cli.asignaciones.push(asig);
   tobDB.clientes.push(cli);
+
+  // ── Rellenar las otras 7 plantillas H con datos inventados progresivos ──
+  tobFakeSeedRemaining(cli);
+
   tobSave();
   tobRenderClientes();
-  tobToast('✓ Jean cargado con 2 iteraciones del PDF', 'green');
-  // Abrir directamente
+  tobToast(`✓ Jean cargado: ${cli.asignaciones.length} rutinas`, 'green');
+  // Abrir directamente la Reacondicionamiento
   tobOpenAsignacion(cli.id, asig.id);
+}
+
+// Genera asignaciones con datos inventados progresivos para todas las plantillas
+// del sexo del cliente que NO tenga aún. Útil para demo visual.
+function tobFakeSeedRemaining(cli){
+  // Base de kg por nombre de ejercicio (aproximaciones realistas Hombre intermedio-avanzado)
+  const BASE = {
+    'BOX SQUAT': 105, 'PRESS BANCA': 75, 'REMO': 75, 'REMO o SEAL ROW': 75,
+    'PESO MUERTO': 135, 'PRESS MILITAR': 50, 'DOMINADAS': 12, 'DOMINADAS o LAT MACHINE': 12,
+    'CURL + HIPEREXT + CALF': 32, 'PRENSA + CRUNCH + FONDOS': 145, 'PRENSA 45º + CRUNCH + FONDOS': 145
+  };
+  // Incremento por microciclo (kg)
+  const DELTA = {
+    'BOX SQUAT': 5, 'PRESS BANCA': 2.5, 'REMO': 2.5, 'REMO o SEAL ROW': 2.5,
+    'PESO MUERTO': 5, 'PRESS MILITAR': 2.5, 'DOMINADAS': 1, 'DOMINADAS o LAT MACHINE': 1,
+    'CURL + HIPEREXT + CALF': 1, 'PRENSA + CRUNCH + FONDOS': 5, 'PRENSA 45º + CRUNCH + FONDOS': 5
+  };
+  // Bias adicional por categoría (más kg en mesociclos de fuerza, menos en hipertrofia)
+  const CAT_BOOST = {
+    'Reacondicionamiento': 0,
+    'Preparación fuerza': 10,
+    'Especialización técnica': 15,
+    'Fuerza 1': 20,
+    'Fuerza 2': 25,
+    'Hibrido': 15,
+    'Hipertrofia': 5,
+    'Calidad muscular': -5
+  };
+
+  const plantillasParaJean = tobDB.plantillas.filter(p =>
+    p.sexo === cli.sexo &&
+    !cli.asignaciones.find(a => a.plantillaId === p.id)
+  );
+
+  // Avanzar fechas: cada mesociclo aprox 1 mes después del último
+  let cursor = new Date('2025-09-01');
+
+  plantillasParaJean.forEach(pl => {
+    const asig = tobCreateAsignacion(pl.id);
+    const startStr = cursor.toISOString().slice(0,10);
+    asig.fechaInicio = startStr;
+    asig.notas = 'Demo con valores inventados (progresivos).';
+    asig.estado = 'completada';
+
+    const it = asig.iteraciones[0];
+    it.numero = 1;
+
+    const boost = CAT_BOOST[pl.categoria] || 0;
+
+    // 6 microciclos × 2 entrenos. Fechas: A en lunes, B en jueves (aprox)
+    for(let mn=1; mn<=6; mn++){
+      pl.entrenos.forEach(en => {
+        const dayOffset = (mn-1) * 7 + (en.letra === 'A' ? 0 : 2);
+        const f = new Date(cursor); f.setDate(f.getDate() + dayOffset);
+        const fechaStr = f.toISOString().slice(0,10);
+
+        const ses = {
+          fecha: fechaStr,
+          aerobica: { tipo:'', tiempo:'', intensidad:'' },
+          ejs: {}
+        };
+
+        en.ejercicios.forEach(ej => {
+          const plan = tobPlanFor(ej, mn);
+          // Resolver base + delta para este ejercicio (buscar nombre en map)
+          let base = BASE[ej.nombre];
+          let delta = DELTA[ej.nombre];
+          if(base == null){
+            // Heurística: si contiene PRESS, PRENSA etc, mid-range
+            const u = ej.nombre.toUpperCase();
+            if(u.includes('PRENSA') || u.includes('PRESS BANCA') || u.includes('SQUAT')) { base = 90; delta = 3; }
+            else if(u.includes('PRESS')) { base = 50; delta = 2.5; }
+            else if(u.includes('PESO MUERTO') || u.includes('DEADLIFT')) { base = 130; delta = 5; }
+            else if(u.includes('CURL')) { base = 30; delta = 1; }
+            else { base = 50; delta = 2; }
+          }
+          const baseKg = base + boost + (mn-1) * delta;
+
+          if(ej.tipo === 'circuito'){
+            const lineas = (ej.circuitoLineas||[]).map((nombreLin, li) => {
+              // Variación por línea del circuito
+              const offsets = [0, -5, 10];
+              const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget[0] : plan.repsTarget;
+              return { kg: Math.round((baseKg + (offsets[li] || 0)) * 2) / 2, reps: parseInt(reps) || 12 };
+            });
+            ses.ejs[ej.id] = { lineas };
+          } else {
+            const seriesArr = [];
+            const repsTarget = Array.isArray(plan.repsTarget) ? plan.repsTarget : [plan.repsTarget];
+            for(let s=0; s<plan.series; s++){
+              const targetReps = repsTarget[s] != null ? repsTarget[s] : repsTarget[repsTarget.length-1];
+              // Cada serie sube un poco de kg pero baja reps reales (a veces no llega al target)
+              const kg = Math.round((baseKg + s * 2.5) * 2) / 2;
+              const reps = Math.max(1, (parseInt(targetReps) || 8) - Math.floor(s/2));
+              seriesArr.push({ kg, reps });
+            }
+            ses.ejs[ej.id] = { series: seriesArr };
+          }
+        });
+
+        it.sesiones[mn] = it.sesiones[mn] || {};
+        it.sesiones[mn][en.id] = ses;
+      });
+    }
+
+    cli.asignaciones.push(asig);
+    // Avanzar el cursor a 5 semanas después (para que cada mesociclo no se solape)
+    cursor = new Date(cursor); cursor.setDate(cursor.getDate() + 35);
+  });
 }
 
 // Auto-init

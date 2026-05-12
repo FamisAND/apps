@@ -71,17 +71,9 @@
     <button class="tob-action" style="margin-left:auto;" onclick="tobOpenPlantillaModal()">+ Nueva plantilla</button>
   </div>
 
-  <div class="tob-card">
-    <table class="tob-table" id="tobPlantillasTable">
-      <thead><tr>
-        <th>Nombre</th><th>Categoría</th><th>Sexo</th>
-        <th class="num">Entrenos</th><th class="num">Ejercicios</th><th></th>
-      </tr></thead>
-      <tbody id="tobPlantillasBody"></tbody>
-    </table>
-    <div id="tobPlantillasEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
-      Sin plantillas. Las plantillas BIIO se cargan automáticamente.
-    </div>
+  <div id="tobPlantillasGroups"></div>
+  <div id="tobPlantillasEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
+    Sin plantillas. Las plantillas BIIO se cargan automáticamente.
   </div>
 </div>
 
@@ -186,8 +178,21 @@
 <div class="tob-modal-bg" id="tobPlantillaModalBg">
   <div class="tob-modal" style="max-width:920px;">
     <h3 id="tobPlantillaModalTitle">Plantilla</h3>
-    <div class="tob-row col-3">
+    <div class="tob-row col-2">
+      <div><label class="tob-lbl">Macrociclo</label>
+        <input class="tob-input" id="tobPlMacrociclo" list="tobMacroList" placeholder="Ej: 1º Powerbuilding">
+        <datalist id="tobMacroList">
+          <option value="1º Powerbuilding">
+          <option value="2º Powerbuilding">
+          <option value="3º Powerbuilding">
+          <option value="BIIO Modificado">
+          <option value="Especialización Powerlifting">
+          <option value="Macrociclo Agonístico HPO">
+        </datalist>
+      </div>
       <div><label class="tob-lbl">Nombre *</label><input class="tob-input" id="tobPlNombre"></div>
+    </div>
+    <div class="tob-row col-2">
       <div><label class="tob-lbl">Categoría</label>
         <select class="tob-select" id="tobPlCategoria">
           <option>Reacondicionamiento</option><option>Preparación fuerza</option>

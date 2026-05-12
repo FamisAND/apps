@@ -104,6 +104,22 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-badge.completada{background:#3a2a0d;color:var(--acc2);}
 .tob-badge.repetir{background:#3d2a0d;color:var(--orange);}
 
+/* ── Grupos de macrociclo ── */
+.tob-mc-group{margin-bottom:16px;}
+.tob-mc-hdr{padding:11px 16px;background:linear-gradient(180deg,#1f1a12 0%,#15110a 100%);
+  border:1px solid var(--border);border-bottom:2px solid var(--acc);border-radius:4px 4px 0 0;
+  display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;}
+.tob-mc-hdr .caret{color:var(--acc);font-size:.9rem;transition:transform .2s;}
+.tob-mc-group.collapsed .caret{transform:rotate(-90deg);}
+.tob-mc-hdr .name{font-family:'DM Mono',monospace;font-size:.9rem;color:var(--acc2);
+  text-transform:uppercase;letter-spacing:.06em;font-weight:700;}
+.tob-mc-hdr .count{margin-left:auto;font-family:'DM Mono',monospace;font-size:.7rem;color:var(--mute);}
+.tob-mc-group .tob-table{margin:0;background:var(--card);border:1px solid var(--border);
+  border-top:none;border-radius:0 0 4px 4px;}
+.tob-mc-group .tob-table th{padding-left:18px;}
+.tob-mc-group .tob-table td:first-child{padding-left:18px;}
+.tob-mc-group.collapsed .tob-table{display:none;}
+
 /* ── Iteraciones tabs ── */
 .tob-it-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
 .tob-it-tab{padding:6px 14px;background:transparent;border:1px solid var(--border2);color:var(--mute);
