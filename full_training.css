@@ -155,6 +155,17 @@ tr:hover td{background:rgba(255,255,255,.015);}
 .cl-group-hdr{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;user-select:none;}
 .cl-group-hdr:hover{background:rgba(255,255,255,.02);}
 .cl-group-name{font-weight:700;font-size:.88rem;flex:1;}
+/* Marcador "revisar al copiar mes" — discreto cuando off, pulso ámbar cuando on */
+.cl-flag{background:transparent;border:none;cursor:pointer;padding:2px 6px;margin-left:4px;
+  color:#475569;font-size:.95rem;opacity:.32;transition:opacity .2s,color .2s,text-shadow .2s;
+  border-radius:4px;line-height:1;}
+.cl-flag:hover{opacity:.7;color:#94a3b8;}
+.cl-flag.on{opacity:1;color:#fb923c;text-shadow:0 0 6px rgba(251,146,60,.7);
+  animation:flagPulse 2.6s ease-in-out infinite;}
+@keyframes flagPulse{
+  0%,100%{text-shadow:0 0 5px rgba(251,146,60,.55);}
+  50%{text-shadow:0 0 13px rgba(251,146,60,1);}
+}
 .cl-group-meta{font-size:.7rem;color:var(--muted);font-family:'DM Mono',monospace;}
 .cl-group-body{border-top:1px solid var(--border);display:none;}
 

@@ -332,10 +332,6 @@ function renderAjustes(){
   if(elSinIgi) elSinIgi.checked = !!p.cfg.sinIgi;
   const elKw = document.getElementById("cfg_kwEnabled");
   if(elKw) elKw.checked = !!p.cfg.kwEnabled;
-  const elKwPrice = document.getElementById("cfg_kwPrice");
-  if(elKwPrice) elKwPrice.value = p.cfg.kwPrice != null ? p.cfg.kwPrice : '';
-  const elKwLast = document.getElementById("cfg_kwLast");
-  if(elKwLast) elKwLast.value = p.cfg.kwLast != null ? p.cfg.kwLast : '';
   if(typeof updateSinIgiUI === 'function') updateSinIgiUI();
   if(typeof updateKwUI === 'function') updateKwUI();
   updateCfgPreview();
@@ -613,8 +609,9 @@ function cfgSave(){
     igi: parseFloat(document.getElementById("cfg_igi").value)||0,
     sinIgi: !!document.getElementById("cfg_sinIgi")?.checked,
     kwEnabled: !!document.getElementById("cfg_kwEnabled")?.checked,
-    kwPrice: parseFloat(document.getElementById("cfg_kwPrice")?.value) || 0,
-    kwLast: parseFloat(document.getElementById("cfg_kwLast")?.value) || 0
+    // Estos los gestiona el editor de facturas, NO ajustes. Los preservamos.
+    kwLast: prev.kwLast || 0,
+    kwLastPrice: prev.kwLastPrice || 0
   };
   save();
   updateCfgPreview();
@@ -1001,7 +998,7 @@ function renderEditor(){
   <div class="card">
     <div class="card-title">📝 Líneas de factura</div>
     <div class="fac-line-head">
-      <div>Descripción</div><div class="td-r">Cantidad</div><div class="td-r">Precio €</div><div class="td-r">IGI %</div><div></div>
+      <div>Descripción</div><div class="td-r">Cantidad</div><div class="td-r">Precio €</div><div class="td-r igi-col">IGI %</div><div></div>
     </div>
     <div id="ed_lines"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
@@ -1017,13 +1014,14 @@ function renderEditor(){
     <div class="card-title">⚡ Cálculo de consumo eléctrico</div>
     <div class="row-3">
       <div><label class="fld-lbl">Lectura anterior (kWh)</label>
-        <input class="inp" type="number" step="0.01" id="ed_kw_prev" readonly style="background:#0a1421;color:var(--mute);"></div>
+        <input class="inp" type="number" step="0.01" id="ed_kw_prev" oninput="updateKwPreview()" placeholder="0"></div>
       <div><label class="fld-lbl">Lectura actual (kWh)</label>
         <input class="inp" type="number" step="0.01" id="ed_kw_curr" oninput="updateKwPreview()" placeholder="0"></div>
-      <div><label class="fld-lbl">Precio €/kWh</label>
-        <input class="inp" type="number" step="0.0001" id="ed_kw_price" readonly style="background:#0a1421;color:var(--mute);"></div>
+      <div><label class="fld-lbl">Precio €/kWh (este período)</label>
+        <input class="inp" type="number" step="0.0001" id="ed_kw_price" oninput="updateKwPreview()" placeholder="0.1850"></div>
     </div>
     <div style="margin-top:8px;font-size:.78rem;color:var(--mute);" id="ed_kw_preview">Consumo: — kWh · Importe: — €</div>
+    <div style="margin-top:4px;font-size:.7rem;color:var(--mute2);font-style:italic;">Cada factura usa su propio precio. Si lo subes el mes que viene, las facturas pasadas no se tocan.</div>
     <button class="fac-add" style="margin-top:8px;" onclick="addKwLine()">+ Añadir línea de consumo a la factura</button>
   </div>
 
@@ -1088,14 +1086,22 @@ function edClienteChange(){
 function renderEdLines(){
   const cont = document.getElementById("ed_lines");
   cont.innerHTML = "";
+  const p = prof();
+  const sinIgi = !!(p && p.cfg && p.cfg.sinIgi);
+  // Toggle también la cabecera de la tabla
+  const head = document.querySelector(".fac-line-head");
+  if(head) head.classList.toggle("no-igi", sinIgi);
   editingFactura.lineas.forEach((l,i)=>{
     const row = document.createElement("div");
-    row.className = "fac-line";
+    row.className = "fac-line" + (sinIgi ? " no-igi" : "");
+    const igiCell = sinIgi
+      ? ''
+      : `<input class="inp" type="number" step="0.5" value="${l.igi}" oninput="edLineChange(${i},'igi',this.value)" style="text-align:right;">`;
     row.innerHTML = `
       <input class="inp" placeholder="Descripción" value="${l.desc||""}" oninput="edLineChange(${i},'desc',this.value)">
       <input class="inp" type="number" step="0.01" value="${l.cant}" oninput="edLineChange(${i},'cant',this.value)" style="text-align:right;">
       <input class="inp" type="number" step="0.01" value="${l.precio}" oninput="edLineChange(${i},'precio',this.value)" style="text-align:right;">
-      <input class="inp" type="number" step="0.5" value="${l.igi}" oninput="edLineChange(${i},'igi',this.value)" style="text-align:right;">
+      ${igiCell}
       <button class="fac-x" onclick="edRemoveLine(${i})" title="Eliminar línea">×</button>
     `;
     cont.appendChild(row);
@@ -1192,10 +1198,15 @@ function refreshKwPanel(){
   if(!card) return;
   if(!p.cfg?.kwEnabled){ card.style.display = 'none'; return; }
   card.style.display = '';
+  // Pre-rellena anterior con la última lectura guardada; precio con el último
+  // usado (orientativo, el user puede cambiarlo)
   const prev = parseFloat(p.cfg.kwLast) || 0;
-  const price = parseFloat(p.cfg.kwPrice) || 0;
-  document.getElementById("ed_kw_prev").value = prev;
-  document.getElementById("ed_kw_price").value = price;
+  const lastPrice = parseFloat(p.cfg.kwLastPrice) || 0;
+  const prevEl = document.getElementById("ed_kw_prev");
+  const priceEl = document.getElementById("ed_kw_price");
+  // Solo pre-rellena si están vacíos (no pisar lo que escribió el user)
+  if(prevEl && !prevEl.value) prevEl.value = prev || '';
+  if(priceEl && !priceEl.value) priceEl.value = lastPrice || '';
   updateKwPreview();
 }
 
@@ -1216,7 +1227,7 @@ function addKwLine(){
   const curr = parseFloat(document.getElementById("ed_kw_curr")?.value) || 0;
   const price = parseFloat(document.getElementById("ed_kw_price")?.value) || 0;
   if(curr <= prev){ alert("La lectura actual debe ser mayor que la anterior."); return; }
-  if(price <= 0){ alert("Configura el precio €/kWh en Ajustes."); return; }
+  if(price <= 0){ alert("Mete el precio €/kWh de este período."); return; }
   const cons = curr - prev;
   const importe = cons * price;
   editingFactura.lineas.push({
@@ -1225,15 +1236,18 @@ function addKwLine(){
     precio: parseFloat(importe.toFixed(2)),
     igi: p.cfg?.igi || 0
   });
-  // Guardar la nueva lectura como "última" para próxima factura
+  // Guardar lectura actual + precio como "último usado" para pre-rellenar
+  // la próxima factura. NO afecta a esta factura ni a las pasadas (la línea
+  // creada queda congelada con los valores actuales).
   p.cfg.kwLast = curr;
-  // Persistir el cambio de kwLast
+  p.cfg.kwLastPrice = price;
   if(typeof save === 'function') save();
   renderEdLines();
   recalcTotales();
-  // Limpiar el input de lectura actual y refrescar UI
+  // Resetear inputs y refrescar (la anterior pasa a ser la actual)
+  document.getElementById("ed_kw_prev").value = curr;
   document.getElementById("ed_kw_curr").value = '';
-  refreshKwPanel();
+  updateKwPreview();
 }
 
 function saveFactura(){

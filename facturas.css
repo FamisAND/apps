@@ -143,10 +143,13 @@ tr:hover td{background:var(--bg2);}
 .fac-num{font-size:1.4rem;font-weight:700;font-family:'DM Mono',monospace;color:var(--acc2);}
 .fac-line{display:grid;grid-template-columns:3fr 1fr 1fr 1fr 28px;gap:8px;align-items:center;
   margin-bottom:6px;}
+.fac-line.no-igi{grid-template-columns:3fr 1fr 1fr 28px;}
 .fac-line .inp{padding:6px 8px;font-size:.82rem;}
 .fac-line-head{display:grid;grid-template-columns:3fr 1fr 1fr 1fr 28px;gap:8px;
   font-size:.66rem;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;
   margin-bottom:6px;padding:0 4px;}
+.fac-line-head.no-igi{grid-template-columns:3fr 1fr 1fr 28px;}
+.fac-line-head.no-igi .igi-col{display:none;}
 .fac-add{background:transparent;border:1px dashed var(--bd2);color:var(--mute);
   padding:7px 12px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:.78rem;
   display:inline-flex;align-items:center;gap:6px;margin-top:4px;}

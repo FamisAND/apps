@@ -2099,6 +2099,10 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
       <td colspan="3"></td>
     </tr>`;
     const genBtnId=`gbtn_${cid}`;
+    const flagOn = !!cl?.flag;
+    const flagTitle = flagOn
+      ? 'Marca activa — clic para quitar'
+      : 'Marcar (ej: cambió cuota, revisar al copiar mes)';
     return`<div class="cl-group" draggable="true" data-cid="${cid}" ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
       <div class="cl-group-hdr" onclick="toggleGroup(this)" style="cursor:grab">
         <input type="checkbox" style="margin-right:6px;cursor:pointer;" onclick="event.stopPropagation();toggleClientSelection('${cid}')" ${selectedClientIds.has(cid)?'checked':''}>
@@ -2107,6 +2111,7 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
         <div class="cl-group-meta">${pi[cl?.payMethod]||''} ${cl?.payMethod||''} · ${fmt(tot)}</div>
         <span class="badge ${stCls}" style="margin-left:8px">${stTxt}</span>
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;font-size:.65rem;padding:2px 8px;" onclick="event.stopPropagation();openInvoiceModal('${cid}')">🧾 Factura</button>
+        <button class="cl-flag ${flagOn?'on':''}" onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${flagTitle}">⚠</button>
         <span style="color:var(--muted);font-size:.8rem;margin-left:6px">▴</span>
       </div>
       <div class="cl-group-body" style="display:block">
@@ -2143,6 +2148,17 @@ function toggleGroup(hdr){
   body.style.display=open?'none':'block';
   const arrow=hdr.querySelector('span:last-child');
   if(arrow)arrow.textContent=open?'▾':'▴';
+}
+
+// Marca/desmarca cliente como "necesita revisión" (ej: cambió cuota y al
+// copiar mes anterior hay que retocar). Persiste a db.clients[].flag.
+function toggleClientFlag(cid){
+  const cl=db.clients.find(c=>c.id===cid);
+  if(!cl) return;
+  cl.flag=!cl.flag;
+  save();
+  renderRemesas();
+  toast(cl.flag?`🔶 ${cl.name||'Cliente'}: marcado`:`✓ Marca quitada de ${cl.name||'cliente'}`);
 }
 function markAllPaid(ids){
   const key=curKey('remesas');
