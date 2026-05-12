@@ -1242,6 +1242,227 @@ function tobBuildSeedPlantillas(){
   return out;
 }
 
+// ═══ DEMO: cliente Jean con datos exactos del PDF de ejemplo ═══
+function tobSeedJean(){
+  if(tobDB.clientes.find(c => c.nombre.toLowerCase() === 'jean')){
+    tobToast('Jean ya existe', 'red');
+    const c = tobDB.clientes.find(c => c.nombre.toLowerCase() === 'jean');
+    if(c.asignaciones && c.asignaciones.length) tobOpenAsignacion(c.id, c.asignaciones[0].id);
+    return;
+  }
+  const pl = tobDB.plantillas.find(p => p.nombre === 'Reacondicionamiento — Hombre');
+  if(!pl){ tobToast('Falta plantilla "Reacondicionamiento — Hombre"', 'red'); return; }
+
+  // Mapa nombre → id (estable porque tobCreateAsignacion hace deep copy preservando IDs)
+  const ids = {};
+  pl.entrenos.forEach(en => en.ejercicios.forEach(ej => { ids[en.letra + ':' + ej.nombre] = ej.id; }));
+
+  const S = (kg, reps) => ({ kg, reps });
+
+  // ── ITERACIÓN 1 (mayo-junio 2023) ──────────────────────────
+  const fechaA1 = ['2023-05-19','2023-05-21','2023-05-24','2023-05-27','2023-05-31','2023-06-02'];
+  const fechaB1 = ['2023-05-20','2023-05-23','2023-05-25','2023-05-28','2023-06-01','2023-06-04'];
+
+  const boxSquat1 = [
+    [S(60,15),S(80,12),S(100,10)],
+    [S(80,15),S(100,12),S(110,10)],
+    [S(105,12),S(110,10),S(115,8)],
+    [S(110,12),S(115,10),S(120,8)],
+    [S(115,10),S(120,8),S(125,6)],
+    [S(120,10),S(125,8),S(130,6)]
+  ];
+  const pressBanca1 = [
+    [S(55,15),S(60,12),S(65,10)],
+    [S(60,15),S(62.5,12),S(65,10)],
+    [S(62.5,12),S(65,10),S(70,8)],
+    [S(65,12),S(70,10),S(72.5,8)],
+    [S(70,10),S(72.5,8),S(75,6)],
+    [S(70,10),S(70,10),S(70,10)]
+  ];
+  const remo1 = [
+    [S(55,15),S(60,12),S(70,10)],
+    [S(60,15),S(65,12),S(70,10)],
+    [S(65,12),S(70,10),S(75,8)],
+    [S(70,12),S(75,10),S(80,8)],
+    [S(75,10),S(80,8),S(85,6)],
+    [S(80,10),S(82.5,8),S(85,6)]
+  ];
+  const circA1 = [  // [Curl, Hipext, Calf]
+    [S(26,12),S(15,12),S(35,12)],
+    [S(31,12),S(15,12),S(40,12)],
+    [S(31,12),S(20,12),S(40,12)],
+    [S(32,12),S(25,12),S(45,12)],
+    [S(33.5,12),S(25,12),S(50,12)],
+    [S(33.5,12),S(25,12),S(50,12)]
+  ];
+
+  const pesoMuerto1 = [
+    [S(100,15),S(105,12),S(107.5,8)],
+    [S(95,15),S(100,12),S(105,10)],
+    [S(100,12),S(102.5,10),S(105,8)],
+    [S(102.5,12),S(105,10),S(110,8)],
+    [S(105,10),S(110,8),S(115,6)],
+    [S(108,10),S(115,8),S(120,6)]
+  ];
+  const pressMilitar1 = [
+    [S(15,15),S(17.5,12),S(20,10)],
+    [S(20,15),S(22.5,12),S(25,10)],
+    [S(22.5,12),S(25,7),S(25,5)],
+    [S(22.5,12),S(25,7),S(25,5)],
+    [S(25,10),S(22.5,8),S(22.5,6)],
+    [S(22.5,10),S(25,8),S(27.5,6)]
+  ];
+  const dominadas1 = [
+    [S(65,15),S(70,12),S(70,10)],
+    [S(70,15),S(75,10),S(75,10)],
+    [S(70,12),S(75,10),S(80,8)],
+    [S(75,12),S(80,10),S(80,8)],
+    [S(80,10),S(80,8),S(80,6)],
+    [S(80,10),S(82.5,8),S(85,6)]
+  ];
+  const circB1 = [  // [Prensa, Crunch, Fondos]
+    [S(110,12),S(1,12),S(15,12)],
+    [S(120,12),S(70,12),S(1,12)],
+    [S(130,12),S(1,12),S(1,12)],
+    [S(140,12),S(1,12),S(25,12)],
+    [S(150,12),S(1,12),S(20,12)],
+    [S(160,12),S(1,12),S(15,12)]
+  ];
+
+  // ── ITERACIÓN 2 (julio-agosto 2025) ──────────────────────
+  const fechaA2 = ['2025-07-24','2025-07-28','2025-08-01','2025-08-03','2025-08-09','2025-08-11'];
+  const fechaB2 = ['2025-07-25','2025-07-29','2025-08-02','2025-08-05','2025-08-09','2025-08-12'];
+  const aerA2 = [10,15,15,20,30,15];   // minutos correr
+  const aerB2 = [25,20,15,30,15,20];
+
+  const boxSquat2 = [
+    [S(125,15),S(130,12),S(135,10)],
+    [S(130,15),S(135,12),S(140,10)],
+    [S(135,12),S(140,10),S(145,8)],
+    [S(140,10),S(150,8),S(160,6)],
+    [S(150,10),S(160,8),S(170,6)],
+    [S(160,10),S(170,8),S(180,6)]
+  ];
+  const pressBanca2 = [
+    [S(62.5,15),S(65,10),S(70,8)],
+    [S(62.5,15),S(67.5,12),S(72.5,5)],
+    [S(67.5,12),S(70,10),S(75,7)],
+    [S(70,12),S(72.5,10),S(77.5,7)],
+    [S(70,12),S(72.5,10),S(77.5,7)],
+    [S(70,12),S(72.5,10),S(77.5,7)]
+  ];
+  const remo2 = [
+    [S(62.5,15),S(72.5,12),S(82.5,10)],
+    [S(65,15),S(77.5,12),S(87.5,10)],
+    [S(77.5,12),S(87.5,10),S(90,8)],
+    [S(80,12),S(87.5,10),S(95,6)],
+    [S(85,10),S(90,8),S(95,6)],
+    [S(92.5,10),S(95,8),S(100,6)]
+  ];
+  const circA2 = [
+    [S(30,12),S(30,12),S(75,12)],
+    [S(32.5,12),S(32.5,12),S(140,12)],
+    [S(32.5,12),S(37.5,12),S(140,12)],
+    [S(32.5,12),S(37.5,12),S(140,12)],
+    [S(32.5,12),S(37.5,12),S(160,12)],
+    [S(32.5,12),S(37.5,12),S(140,12)]
+  ];
+
+  const pesoMuerto2 = [
+    [S(120,15),S(125,12),S(130,10)],
+    [S(125,15),S(130,12),S(135,6)],
+    [S(130,12),S(135,10),S(145,8)],
+    [S(135,12),S(140,10),S(145,6)],
+    [S(140,10),S(150,8),S(160,6)],
+    [S(145,10),S(155,8),S(165,4)]
+  ];
+  const pressMilitar2 = [
+    [S(40,15),S(45,12),S(50,7)],
+    [S(42.5,15),S(47.5,12),S(52.5,7)],
+    [S(45,12),S(50,10),S(55,8)],
+    [S(50,10),S(55,8),S(60,4)],
+    [S(52.5,10),S(57.5,10),S(60,4)],
+    [S(55,10),S(60,6),S(65,4)]
+  ];
+  const dominadas2 = [
+    [S(5,15),S(7.5,10),S(10,6)],
+    [S(5,11),S(7.5,8),S(10,4)],
+    [S(7.5,10),S(10,10),S(12.5,6)],
+    [S(7.5,6),S(10,10),S(15,6)],
+    [S(10,10),S(12.5,8),S(15,6)],
+    [S(12.5,9),S(15,8),S(20,6)]
+  ];
+  const circB2 = [
+    [S(160,12),S(50,12),S(5,12)],
+    [S(160,12),S(50,12),S(5,12)],
+    [S(165,12),S(50,12),S(7.5,10)],
+    [S(145,12),S(50,12),S(7.5,12)],
+    [S(150,12),S(55,12),S(55,12)],
+    [S(150,12),S(55,12),S(60,12)]
+  ];
+
+  // ── Construir cliente + asignación ──
+  const cli = { id: tobUid('cli'), nombre: 'Jean', sexo: 'H', contacto: '', alta: '2023-05-19', asignaciones: [] };
+  const asig = tobCreateAsignacion(pl.id);
+  asig.fechaInicio = '2023-05-19';
+  asig.notas = 'Demo cargada del PDF de ejemplo. Iteración 1 = mayo-jun 2023. Iteración 2 = jul-ago 2025.';
+
+  function buildSesionA(it, mn, fechas, data, aerT){
+    it.sesiones[mn] = it.sesiones[mn] || {};
+    it.sesiones[mn]['A'] = {
+      fecha: fechas[mn-1],
+      aerobica: aerT ? { tipo:'Correr', tiempo:String(aerT[mn-1]), intensidad:'' } : { tipo:'', tiempo:'', intensidad:'' },
+      ejs: {
+        [ids['A:BOX SQUAT']]:                  { series: data.boxSquat[mn-1] },
+        [ids['A:PRESS BANCA']]:                { series: data.pressBanca[mn-1] },
+        [ids['A:REMO o SEAL ROW']]:            { series: data.remo[mn-1] },
+        [ids['A:CURL + HIPEREXT + CALF']]:     { lineas: data.circ[mn-1] }
+      }
+    };
+  }
+  function buildSesionB(it, mn, fechas, data, aerT){
+    it.sesiones[mn] = it.sesiones[mn] || {};
+    it.sesiones[mn]['B'] = {
+      fecha: fechas[mn-1],
+      aerobica: aerT ? { tipo:'Correr', tiempo:String(aerT[mn-1]), intensidad:'' } : { tipo:'', tiempo:'', intensidad:'' },
+      ejs: {
+        [ids['B:PESO MUERTO']]:                  { series: data.pesoMuerto[mn-1] },
+        [ids['B:PRESS MILITAR']]:                { series: data.pressMilitar[mn-1] },
+        [ids['B:DOMINADAS o LAT MACHINE']]:      { series: data.dominadas[mn-1] },
+        [ids['B:PRENSA 45º + CRUNCH + FONDOS']]: { lineas: data.circ[mn-1] }
+      }
+    };
+  }
+
+  // Iteración 1
+  const it1 = asig.iteraciones[0];
+  it1.numero = 1;
+  const dA1 = { boxSquat: boxSquat1, pressBanca: pressBanca1, remo: remo1, circ: circA1 };
+  const dB1 = { pesoMuerto: pesoMuerto1, pressMilitar: pressMilitar1, dominadas: dominadas1, circ: circB1 };
+  for(let mn=1; mn<=6; mn++){
+    buildSesionA(it1, mn, fechaA1, dA1);
+    buildSesionB(it1, mn, fechaB1, dB1);
+  }
+
+  // Iteración 2
+  const it2 = { id: tobUid('it'), numero: 2, sesiones: {} };
+  asig.iteraciones.push(it2);
+  const dA2 = { boxSquat: boxSquat2, pressBanca: pressBanca2, remo: remo2, circ: circA2 };
+  const dB2 = { pesoMuerto: pesoMuerto2, pressMilitar: pressMilitar2, dominadas: dominadas2, circ: circB2 };
+  for(let mn=1; mn<=6; mn++){
+    buildSesionA(it2, mn, fechaA2, dA2, aerA2);
+    buildSesionB(it2, mn, fechaB2, dB2, aerB2);
+  }
+
+  cli.asignaciones.push(asig);
+  tobDB.clientes.push(cli);
+  tobSave();
+  tobRenderClientes();
+  tobToast('✓ Jean cargado con 2 iteraciones del PDF', 'green');
+  // Abrir directamente
+  tobOpenAsignacion(cli.id, asig.id);
+}
+
 // Auto-init
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', tobLoad);

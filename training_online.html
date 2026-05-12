@@ -41,7 +41,10 @@
       <div class="tob-h">Clientes online</div>
       <div class="tob-sub">Asigna plantillas, registra sus kg/reps, ve su progreso entre iteraciones.</div>
     </div>
-    <button class="tob-action" style="margin-left:auto;" onclick="tobOpenClienteModal()">+ Nuevo cliente</button>
+    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="tob-action ghost" onclick="tobSeedJean()" title="Crea cliente 'Jean' con datos completos del PDF de ejemplo (2 iteraciones, mayo 2023 + jul/ago 2025)">📚 Cargar demo Jean</button>
+      <button class="tob-action" onclick="tobOpenClienteModal()">+ Nuevo cliente</button>
+    </div>
   </div>
 
   <div class="tob-card">
