@@ -21,7 +21,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v31';
+const CACHE_VERSION = 'mis-dashboards-v32';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).
@@ -32,14 +32,17 @@ const PRECACHE_URLS = [
   './full_training.html',
   './options.html',
   './facturas.html',
+  './training_online.html',
   './index.css',
   './patrimonio.css',
   './full_training.css',
   './options.css',
   './facturas.css',
+  './training_online.css',
   './design-system.css',
   './index.js',
   './facturas.js',
+  './training_online.js',
   './dashboard-auth.js',
   './github-sync.js',
   './utils.js',
@@ -61,6 +64,11 @@ const NO_CACHE_HOSTS = [
   'openrouter.ai',
   'generativelanguage.googleapis.com',
   'finnhub.io',
+  'api.frankfurter.app',
+  'api.coingecko.com',
+  'api.open-meteo.com',
+  'www.alphavantage.co',
+  'api.twelvedata.com',
 ];
 
 // ─── INSTALL ───────────────────────────────────────────────

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Entrenamientos online — BIIO System. Gestión de clientes, plantillas, asignaciones y progreso.">
+<title>Training Online — BIIO</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="training_online.css">
+<link rel="manifest" href="manifest.json">
+<!-- Chart.js + zoom + hammer (compartido con resto de apps) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<!-- pdf-lib para leer/escribir form fields en PDFs -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+</head>
+<body>
+
+<!-- ════════ TOPBAR ════════ -->
+<div class="tob-topbar">
+  <div class="tob-logo">
+    💪 Training Online <span class="tag">// BIIO System</span>
+  </div>
+  <div class="tob-tabs">
+    <button class="tob-tab active" onclick="tobShowTab('clientes',this)">👥 Clientes</button>
+    <button class="tob-tab" onclick="tobShowTab('plantillas',this)">📋 Plantillas</button>
+    <button class="tob-tab" onclick="tobShowTab('asignacion',this)" id="tobTabAsig" style="display:none">🏋 Asignación</button>
+  </div>
+  <div class="tob-tools">
+    <span id="tobSaveBadge" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;"></span>
+    <button class="tob-btn" onclick="tobExport()" title="Descargar JSON con todos los datos">📤 Export</button>
+    <button class="tob-btn" onclick="document.getElementById('tobImportFile').click()" title="Cargar JSON exportado">📥 Import</button>
+    <input type="file" id="tobImportFile" accept=".json" style="display:none" onchange="tobImport(event)">
+    <a href="index.html" class="tob-btn" style="text-decoration:none;text-align:center;">← Menú</a>
+  </div>
+</div>
+
+<!-- ════════ TAB CLIENTES ════════ -->
+<div id="tob-clientes" class="tob-page active">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+    <div>
+      <div class="tob-h">Clientes online</div>
+      <div class="tob-sub">Cada cliente tiene sus asignaciones, mediciones y progreso. Sin login: solo tú gestionas.</div>
+    </div>
+    <button class="tob-action" style="margin-left:auto;" onclick="tobOpenClienteModal()">+ Nuevo cliente</button>
+  </div>
+
+  <div class="tob-card">
+    <table class="tob-table" id="tobClientesTable">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Contacto</th>
+          <th>Sexo</th>
+          <th class="num">Asignaciones</th>
+          <th>Actual</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tobClientesBody"></tbody>
+    </table>
+    <div id="tobClientesEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
+      Aún no hay clientes. Crea el primero con <strong>+ Nuevo cliente</strong>.
+    </div>
+  </div>
+</div>
+
+<!-- ════════ TAB PLANTILLAS ════════ -->
+<div id="tob-plantillas" class="tob-page">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+    <div>
+      <div class="tob-h">Plantillas BIIO System</div>
+      <div class="tob-sub">Catálogo de mesociclos. Al asignar a un cliente, se hace una copia editable solo para él.</div>
+    </div>
+    <button class="tob-action" style="margin-left:auto;" onclick="tobOpenPlantillaModal()">+ Nueva plantilla</button>
+  </div>
+
+  <div class="tob-card">
+    <table class="tob-table" id="tobPlantillasTable">
+      <thead>
+        <tr>
+          <th>Nombre</th>
+          <th>Categoría</th>
+          <th>Sexo</th>
+          <th class="num">Microciclos</th>
+          <th class="num">Entrenos</th>
+          <th class="num">Ejercicios</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tobPlantillasBody"></tbody>
+    </table>
+    <div id="tobPlantillasEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
+      Sin plantillas. Las plantillas BIIO se cargan automáticamente; si las has eliminado, usa <strong>+ Nueva plantilla</strong>.
+    </div>
+  </div>
+</div>
+
+<!-- ════════ TAB ASIGNACIÓN (detalle) ════════ -->
+<div id="tob-asignacion" class="tob-page">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">
+    <button class="tob-action ghost" onclick="tobCloseAsignacion()">← Volver</button>
+    <div style="flex:1;">
+      <div class="tob-h" id="tobAsigTitulo">—</div>
+      <div class="tob-sub" id="tobAsigSubtitulo">—</div>
+    </div>
+    <button class="tob-action ghost" onclick="tobDeleteAsignacion()" id="tobAsigDelBtn">🗑 Eliminar asignación</button>
+  </div>
+
+  <!-- Resumen + estado -->
+  <div class="tob-card">
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+      <div>
+        <div class="tob-lbl">Estado</div>
+        <select class="tob-select" id="tobAsigEstado" style="width:160px;" onchange="tobAsigUpdateEstado(this.value)">
+          <option value="en_curso">En curso</option>
+          <option value="completada">Completada ✓</option>
+          <option value="repetir">Repetir</option>
+        </select>
+      </div>
+      <div>
+        <div class="tob-lbl">Fecha inicio</div>
+        <input class="tob-input" id="tobAsigFecha" type="date" style="width:160px;" onchange="tobAsigUpdateFecha(this.value)">
+      </div>
+      <div style="flex:1;min-width:260px;">
+        <div class="tob-lbl">Notas del entrenador</div>
+        <input class="tob-input" id="tobAsigNotas" placeholder="Notas privadas..." oninput="tobAsigUpdateNotas(this.value)">
+      </div>
+    </div>
+  </div>
+
+  <!-- Dropzone PDF -->
+  <div class="tob-card">
+    <div class="tob-card-title">📥 Importar PDF rellenado del cliente</div>
+    <div class="tob-dropzone" id="tobPdfDrop" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="event.preventDefault();this.classList.remove('dragover');tobHandlePdfDrop(event)" onclick="document.getElementById('tobPdfFile').click()">
+      Arrastra aquí el PDF rellenado por el cliente, o haz clic para seleccionar.<br>
+      <span style="font-size:.7rem;color:var(--mute2);">Detecta campos digitales del PDF (Adobe form fields). Si el cliente lo rellenó a mano, mete los valores manualmente abajo.</span>
+      <input type="file" id="tobPdfFile" accept=".pdf" style="display:none" onchange="tobHandlePdfFile(event)">
+    </div>
+    <div id="tobPdfStatus" style="margin-top:10px;font-size:.78rem;color:var(--mute);font-family:'DM Mono',monospace;"></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="tob-action ghost" onclick="tobGeneratePdf()" title="Genera un PDF rellenable con la rutina actual para que el cliente lo edite">📄 Generar PDF para cliente</button>
+    </div>
+  </div>
+
+  <!-- Micro+Entreno selectors -->
+  <div class="tob-card">
+    <div class="tob-card-title">Microciclo</div>
+    <div class="tob-micro-tabs" id="tobMicroTabs"></div>
+    <div class="tob-card-title" style="margin-top:14px;">Entreno</div>
+    <div class="tob-entreno-tabs" id="tobEntrenoTabs"></div>
+
+    <!-- Sesión info -->
+    <div class="tob-row col-4" style="margin-top:12px;">
+      <div>
+        <label class="tob-lbl">Fecha sesión</label>
+        <input class="tob-input" type="date" id="tobSesFecha" onchange="tobSaveSesionMeta()">
+      </div>
+      <div>
+        <label class="tob-lbl">Peso ayunas (kg)</label>
+        <input class="tob-input" type="number" step="0.1" id="tobSesPeso" onchange="tobSaveSesionMeta()">
+      </div>
+      <div>
+        <label class="tob-lbl">Condición (1-5)</label>
+        <input class="tob-input" type="number" min="1" max="5" id="tobSesCond" onchange="tobSaveSesionMeta()">
+      </div>
+      <div>
+        <label class="tob-lbl">Calidad ent. (1-10)</label>
+        <input class="tob-input" type="number" min="1" max="10" id="tobSesCalidad" onchange="tobSaveSesionMeta()">
+      </div>
+    </div>
+  </div>
+
+  <!-- Ejercicios -->
+  <div id="tobEjerciciosCont"></div>
+
+  <!-- Progreso -->
+  <div class="tob-card">
+    <div class="tob-card-title">📈 Progreso de fuerza</div>
+    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <label class="tob-lbl" style="margin:0;">Ejercicio:</label>
+      <select class="tob-select" id="tobProgEj" style="width:240px;" onchange="tobRenderProgreso()"></select>
+      <label class="tob-lbl" style="margin:0;">Métrica:</label>
+      <select class="tob-select" id="tobProgMetric" style="width:160px;" onchange="tobRenderProgreso()">
+        <option value="max">Kg máximos</option>
+        <option value="avg">Kg medio</option>
+        <option value="vol">Volumen (kg×reps)</option>
+        <option value="reps">Reps totales</option>
+      </select>
+    </div>
+    <div class="tob-chart-wrap"><canvas id="tobProgChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ════════ MODAL CLIENTE ════════ -->
+<div class="tob-modal-bg" id="tobClienteModalBg">
+  <div class="tob-modal">
+    <h3 id="tobClienteModalTitle">Nuevo cliente</h3>
+    <div class="tob-row col-2">
+      <div>
+        <label class="tob-lbl">Nombre *</label>
+        <input class="tob-input" id="tobCliNombre" placeholder="Ej: Juan Pérez">
+      </div>
+      <div>
+        <label class="tob-lbl">Sexo</label>
+        <select class="tob-select" id="tobCliSexo">
+          <option value="H">Hombre</option>
+          <option value="M">Mujer</option>
+        </select>
+      </div>
+    </div>
+    <div class="tob-row col-2">
+      <div>
+        <label class="tob-lbl">Contacto (WhatsApp / email)</label>
+        <input class="tob-input" id="tobCliContacto" placeholder="+376...">
+      </div>
+      <div>
+        <label class="tob-lbl">Fecha alta</label>
+        <input class="tob-input" type="date" id="tobCliAlta">
+      </div>
+    </div>
+    <div>
+      <label class="tob-lbl">Asignar plantilla inicial (opcional)</label>
+      <select class="tob-select" id="tobCliPlantilla">
+        <option value="">— Ninguna por ahora —</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="tobCloseClienteModal()">Cancelar</button>
+      <button class="tob-action" onclick="tobSaveCliente()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL PLANTILLA (creación/edición manual) ════════ -->
+<div class="tob-modal-bg" id="tobPlantillaModalBg">
+  <div class="tob-modal" style="max-width:840px;">
+    <h3 id="tobPlantillaModalTitle">Nueva plantilla</h3>
+    <div class="tob-row col-3">
+      <div>
+        <label class="tob-lbl">Nombre *</label>
+        <input class="tob-input" id="tobPlNombre" placeholder="Ej: Fuerza 1">
+      </div>
+      <div>
+        <label class="tob-lbl">Categoría</label>
+        <select class="tob-select" id="tobPlCategoria">
+          <option>Reacondicionamiento</option>
+          <option>Preparación fuerza</option>
+          <option>Especialización técnica</option>
+          <option>Fuerza 1</option>
+          <option>Fuerza 2</option>
+          <option>Hibrido</option>
+          <option>Hipertrofia</option>
+          <option>Calidad muscular</option>
+          <option>Otra</option>
+        </select>
+      </div>
+      <div>
+        <label class="tob-lbl">Sexo</label>
+        <select class="tob-select" id="tobPlSexo">
+          <option value="H">Hombre</option>
+          <option value="M">Mujer</option>
+          <option value="U">Unisex</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label class="tob-lbl">Microciclos (uno por línea)</label>
+      <textarea class="tob-textarea" id="tobPlMicros" rows="4" placeholder="1º microciclo&#10;2º microciclo&#10;3º microciclo&#10;Descarga"></textarea>
+    </div>
+    <div>
+      <label class="tob-lbl">Entrenos (uno por línea, formato: Letra | Nombre)</label>
+      <textarea class="tob-textarea" id="tobPlEntrenos" rows="3" placeholder="A | Full Body 1&#10;B | Full Body 2&#10;C | Full Body 3"></textarea>
+    </div>
+    <div>
+      <label class="tob-lbl">Ejercicios (uno por línea, formato: Entreno | Nombre | Series:Reps | Pausa)</label>
+      <textarea class="tob-textarea" id="tobPlEjercicios" rows="8" placeholder="A | Prensa 45º | 2x20 | 60''&#10;A | Press Banca | 2x15 | 60''&#10;A | Hiperextensión | 2x20 | 60''&#10;B | ..."></textarea>
+      <div style="font-size:.7rem;color:var(--mute2);margin-top:4px;font-family:'DM Mono',monospace;">
+        El formato simple aplica las mismas series/reps a todos los microciclos. Para ajustes finos, edítalo después por ejercicio en una asignación concreta.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="tobClosePlantillaModal()">Cancelar</button>
+      <button class="tob-action" onclick="tobSavePlantilla()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL CONFIRM ════════ -->
+<div class="tob-modal-bg" id="tobConfirmBg">
+  <div class="tob-modal" style="max-width:440px;">
+    <h3 id="tobConfirmTitle">Confirmar</h3>
+    <div id="tobConfirmMsg" style="margin-bottom:18px;color:var(--text);font-size:.9rem;line-height:1.5;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="tobCloseConfirm()">Cancelar</button>
+      <button class="tob-action danger" id="tobConfirmOk">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="tob-toast" id="tobToast"></div>
+
+<script src="utils.js"></script>
+<script src="github-sync.js"></script>
+<script src="dashboard-auth.js"></script>
+<script>
+GitHubSync.attach({
+  section: 'training_online',
+  localKeys: ['tob_online_v1'],
+  onLoad: function(){ if(typeof tobLoad === 'function') tobLoad(); }
+});
+</script>
+<script src="training_online.js"></script>
+</body>
+</html>
