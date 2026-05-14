@@ -56,7 +56,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
   <div style="width:100%;max-width:520px;padding:20px;">
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;">
       <svg width="38" height="38" viewBox="0 0 52 52" fill="none"><rect x="0" y="0" width="22" height="22" fill="#F5C000"/><rect x="0" y="30" width="22" height="22" fill="#F5C000"/><rect x="30" y="30" width="22" height="22" fill="#F5C000"/></svg>
-      <div style="line-height:.88;"><div style="font-family:'DM Sans',sans-serif;font-size:1.85rem;font-weight:700;letter-spacing:-.01em;"><span style="color:var(--yellow)">FUL</span>L TRAINING</div></div>
+      <div style="line-height:.88;"><div style="font-family:'DM Sans',sans-serif;font-size:1.85rem;font-weight:700;letter-spacing:-.01em;"><span style="color:var(--yellow)">FULL</span> TRAINING</div></div>
     </div>
     <div style="font-size:.6rem;text-transform:uppercase;letter-spacing:.22em;color:var(--muted);text-align:center;margin-bottom:28px;" data-i18n="selecciona_perfil">Selecciona tu perfil</div>
 
@@ -100,7 +100,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
     <div class="sidebar-logo">
       <div style="display:flex;align-items:center;gap:7px;">
         <svg width="26" height="26" viewBox="0 0 52 52" fill="none"><rect x="0" y="0" width="22" height="22" fill="#F5C000"/><rect x="0" y="30" width="22" height="22" fill="#F5C000"/><rect x="30" y="30" width="22" height="22" fill="#F5C000"/></svg>
-        <div style="line-height:.86;"><div style="font-family:'DM Sans',sans-serif;font-size:1rem;font-weight:700;letter-spacing:-.01em;"><span style="color:var(--yellow)">FUL</span>L TRAINING</div><div style="font-size:.52rem;text-transform:uppercase;letter-spacing:.17em;color:var(--muted2);margin-top:1px;">Gestión</div></div>
+        <div style="line-height:.86;"><div style="font-family:'DM Sans',sans-serif;font-size:1rem;font-weight:700;letter-spacing:-.01em;"><span style="color:var(--yellow)">FULL</span> TRAINING</div><div style="font-size:.52rem;text-transform:uppercase;letter-spacing:.17em;color:var(--muted2);margin-top:1px;">Gestión</div></div>
       </div>
     </div>
     <nav class="nav" id="mainNav">
@@ -110,6 +110,7 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
       <button class="nav-btn" onclick="showTab('remesas')" id="nav-remesas"><span class="ic">📅</span>Remesas</button>
       <button class="nav-btn" onclick="showTab('masajes')" id="nav-masajes"><span class="ic">💆</span>Masajes</button>
       <button class="nav-btn" onclick="showTab('gastos')" id="nav-gastos"><span class="ic">💸</span>Gastos</button>
+      <button class="nav-btn" onclick="showTab('documentos')" id="nav-documentos"><span class="ic">📄</span>Documentos</button>
       <div class="nav-group" id="navGrpConfig">Configuración</div>
       <button class="nav-btn" onclick="showTab('equipo')" id="nav-equipo"><span class="ic">👤</span>Equipo</button>
       <button class="nav-btn" onclick="showTab('clientes')" id="nav-clientes"><span class="ic">👥</span>Clientes</button>
@@ -228,6 +229,12 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
           <div class="month-bar"><button class="mbar-btn" onclick="changeMonth(-1,'gastos')">‹</button><div class="mbar-label" id="gasMonthLabel">—</div><button class="mbar-btn" onclick="changeMonth(1,'gastos')">›</button></div>
           <button class="btn btn-primary btn-sm" onclick="openGastoModal()">+ Añadir gasto</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('gasExtractoInput').click()">📥 Importar extracto</button>
+        </div>
+        <div id="gasDropZone" class="gas-dropzone" ondragover="gasDragOver(event)" ondragleave="gasDragLeave(event)" ondrop="gasDrop(event)" onclick="document.getElementById('gasExtractoInput').click()">
+          <input type="file" id="gasExtractoInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="gasFileChosen(event)">
+          <span class="gas-dropzone-ic">📥</span>
+          <span>Arrastra aquí el <strong>extracto del banco</strong> (Excel o CSV) y los gastos se cargan solos — clic para elegir archivo</span>
         </div>
         <div class="kpi-row" id="gasKpis"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
@@ -310,6 +317,13 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
             <div id="stockSalesList"></div>
           </div>
         </div>
+      </div>
+
+      <!-- DOCUMENTOS -->
+      <div id="tab-documentos" class="tab-content">
+        <div class="sec-hdr"><div class="sec-title">DOCUMENTOS</div><button class="btn btn-primary btn-sm" onclick="openDocEditor()">+ Nuevo</button></div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px;">Crea, edita y descarga documentos (contratos, autorizaciones, recibos…). Añade tu firma y descárgalos en PDF para enviar.</div>
+        <div id="docsList" class="doc-grid"></div>
       </div>
 
       <!-- MI PANEL (worker view) -->
@@ -544,6 +558,79 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
     </div>
     <div class="modal-err" id="gastoErr"></div>
     <div class="btn-row"><button class="btn btn-primary" onclick="saveGasto()">Guardar</button><button class="btn btn-ghost" onclick="closeModal('gastoModal')">Cancelar</button></div>
+  </div>
+</div>
+
+<!-- IMPORTAR EXTRACTO MODAL -->
+<div class="modal-overlay hidden" id="impExtractoModal">
+  <div class="modal modal-lg">
+    <div class="modal-title">IMPORTAR EXTRACTO DEL BANCO</div>
+    <div id="impExtractoSummary" style="font-size:.76rem;color:var(--muted);margin-bottom:10px;"></div>
+    <div class="tbl-wrap" style="max-height:52vh;overflow-y:auto;">
+      <table class="imp-tbl"><thead><tr>
+        <th style="width:34px;"></th><th style="width:86px;">Fecha</th><th>Descripción</th>
+        <th style="width:170px;">Categoría</th><th style="width:100px;text-align:right;">Importe €</th>
+      </tr></thead><tbody id="impExtractoBody"></tbody></table>
+    </div>
+    <div style="font-size:.66rem;color:var(--muted2);margin-top:8px;">Las categorías y descripciones que ajustes aquí se recuerdan: el próximo extracto las aplicará solas.</div>
+    <div class="modal-err" id="impExtractoErr"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="confirmImportExtracto()">✓ Importar seleccionados</button>
+      <button class="btn btn-ghost" onclick="closeModal('impExtractoModal')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOCUMENTO EDITOR MODAL -->
+<div class="modal-overlay hidden" id="docModal">
+  <div class="modal modal-lg">
+    <div class="modal-title" id="docModalTitle">NUEVO DOCUMENTO</div>
+    <div class="fld"><label>Nombre del documento</label><input class="inp" id="doc_nombre" placeholder="Ej: Autorización de uso de imagen"></div>
+    <div id="docTemplateRow" class="fld" style="display:none;">
+      <label>Empezar desde una plantilla</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="applyDocTemplate('blank')">📄 En blanco</button>
+        <button class="btn btn-ghost btn-sm" onclick="applyDocTemplate('autorizacion')">✅ Autorización</button>
+        <button class="btn btn-ghost btn-sm" onclick="applyDocTemplate('contrato')">📝 Contrato simple</button>
+        <button class="btn btn-ghost btn-sm" onclick="applyDocTemplate('recibo')">🧾 Recibo</button>
+      </div>
+    </div>
+    <div class="doc-toolbar">
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('bold')" title="Negrita"><b>B</b></button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('italic')" title="Cursiva"><i>I</i></button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('underline')" title="Subrayado"><u>U</u></button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('formatBlock','<h1>')" title="Título">H1</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('formatBlock','<h2>')" title="Subtítulo">H2</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('formatBlock','<p>')" title="Texto normal">¶</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('insertUnorderedList')" title="Lista">•</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('insertOrderedList')" title="Lista numerada">1.</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('justifyLeft')" title="Alinear izquierda">⬅</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="_docExec('justifyCenter')" title="Centrar">⬌</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="docInsertDate()" title="Insertar fecha de hoy">📅</button>
+      <button class="doc-tool-btn" onmousedown="event.preventDefault()" onclick="openSigModal()" title="Insertar firma" style="border-color:var(--yellow);color:var(--yellow)">✍ Firma</button>
+    </div>
+    <div class="doc-editor" id="docEditor" contenteditable="true"></div>
+    <div class="modal-err" id="docErr"></div>
+    <div class="btn-row" style="flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="saveDoc()">💾 Guardar</button>
+      <button class="btn btn-ghost" onclick="downloadDocPdf()">⬇ Descargar PDF</button>
+      <button class="btn btn-ghost" id="docDeleteBtn" onclick="deleteDoc()" style="display:none;border-color:#3a0d0d;color:var(--red)">🗑 Eliminar</button>
+      <button class="btn btn-ghost" onclick="closeModal('docModal')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- FIRMA MODAL -->
+<div class="modal-overlay hidden" id="sigModal">
+  <div class="modal">
+    <div class="modal-title">FIRMA</div>
+    <div style="font-size:.74rem;color:var(--muted);margin-bottom:10px;">Dibuja tu firma con el ratón o el dedo. Se insertará en el documento.</div>
+    <div class="sig-pad-wrap"><canvas id="sigCanvas" class="sig-canvas"></canvas></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="sigInsert()">✓ Insertar firma</button>
+      <button class="btn btn-ghost" onclick="sigClear()">Borrar</button>
+      <button class="btn btn-ghost" onclick="closeModal('sigModal')">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -1494,7 +1581,7 @@ function applyRoleNav(){
   // Update user badge
   document.getElementById('currentUserBadge').innerHTML=`<span style="color:${currentUser.color}">${currentUser.name}</span>`;
   // Show/hide nav items based on role
-  const adminOnly=['nav-remesas','nav-masajes','nav-gastos','nav-equipo','nav-clientes','nav-servicios','nav-stock','navGrpOperativo','navGrpConfig'];
+  const adminOnly=['nav-remesas','nav-masajes','nav-gastos','nav-documentos','nav-equipo','nav-clientes','nav-servicios','nav-stock','navGrpOperativo','navGrpConfig'];
   adminOnly.forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=isAdmin?'':'none';});
   document.getElementById('nav-dashboard').style.display=isAdmin?'':'none';
   document.getElementById('nav-mi-panel').style.display=isAdmin?'none':'flex';
@@ -1519,9 +1606,9 @@ function showTab(tab){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+tab)?.classList.add('active');
   document.getElementById('nav-'+tab)?.classList.add('active');
-  const T={dashboard:'DASHBOARD',remesas:'REMESAS',masajes:'MASAJES',gastos:'GASTOS',equipo:'EQUIPO',clientes:'CLIENTES',servicios:'SERVICIOS','mi-panel':'MI PANEL'};
+  const T={dashboard:'DASHBOARD',remesas:'REMESAS',masajes:'MASAJES',gastos:'GASTOS',documentos:'DOCUMENTOS',equipo:'EQUIPO',clientes:'CLIENTES',servicios:'SERVICIOS','mi-panel':'MI PANEL'};
   document.getElementById('pageTitle').textContent=T[tab]||tab.toUpperCase();
-  const renders={dashboard:renderDashboard,remesas:renderRemesas,masajes:renderMasajes,gastos:renderGastos,equipo:renderEquipo,clientes:renderClients,servicios:renderServices,'mi-panel':renderMiPanel,stock:()=>{initStockMonth();renderStock();}};
+  const renders={dashboard:renderDashboard,remesas:renderRemesas,masajes:renderMasajes,gastos:renderGastos,documentos:renderDocs,equipo:renderEquipo,clientes:renderClients,servicios:renderServices,'mi-panel':renderMiPanel,stock:()=>{initStockMonth();renderStock();}};
   (renders[tab]||(() => {}))();
 }
 function changeMonth(dir,sec){
@@ -2627,6 +2714,429 @@ function deleteGasto(id){
 }
 
 // ══════════════════════════
+// IMPORTAR EXTRACTO DEL BANCO
+// ══════════════════════════
+let _impRows=[];
+const _GAS_CATS=[
+  ['personal','👤 Personal (sous)'],['instalaciones','🏢 Instalaciones / Lloguer'],
+  ['suministros','💡 Subministraments'],['seguros','🛡 Assegurances / CASS'],
+  ['financiero','🏦 Financer (préstec…)'],['asesoria','📋 Assessoria'],
+  ['servicios','🔧 Serveis externs'],['material','📦 Material'],
+  ['marketing','📣 Màrqueting'],['dividendos','💰 Dividends'],['otros','➕ Altres'],
+];
+const _GAS_KEYWORDS=[
+  [/feda|electric|electrica|llum/,'suministros'],
+  [/aigua|sanejament|agua/,'suministros'],
+  [/andorra telecom|telecom|internet|telefon|mobil|movil|sta /,'suministros'],
+  [/lloguer|alquiler|arrendamiento|renta local/,'instalaciones'],
+  [/cass|seguretat social|assegur|seguro|segur /,'seguros'],
+  [/prestec|prestamo|hipoteca|amortitzac|amortizac|quota credit/,'financiero'],
+  [/comissi|comision|interes|interès|despeses bancaries|gastos banc/,'financiero'],
+  [/gestoria|assessor|asesor|jdr|forum|advocat|abogad|notari/,'asesoria'],
+  [/nomina|sou|salari| paga |transferencia personal/,'personal'],
+  [/decathlon|amazon|ferreteria|recanvi|manteniment|reparac|material/,'material'],
+  [/google|facebook| meta |instagram|publicit|marqueting|marketing|ads/,'marketing'],
+  [/neteja|limpieza|jardineria|vigilanc/,'servicios'],
+];
+function _esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function _norm(s){return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+function _ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function _parseAmount(v){
+  if(v==null||v==='')return null;
+  if(typeof v==='number')return isNaN(v)?null:v;
+  let s=String(v).trim().replace(/[€$\s]/g,'');
+  if(!s)return null;
+  let neg=false;
+  if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1);}
+  if(s.startsWith('-')){neg=true;s=s.slice(1);}
+  if(s.endsWith('-')){neg=true;s=s.slice(0,-1);}
+  if(s.indexOf(',')>-1&&s.indexOf('.')>-1){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.'))s=s.replace(/\./g,'').replace(',','.');
+    else s=s.replace(/,/g,'');
+  }else if(s.indexOf(',')>-1){s=s.replace(/\./g,'').replace(',','.');}
+  const n=parseFloat(s);
+  if(isNaN(n))return null;
+  return neg?-n:n;
+}
+function _looksNumeric(v){
+  if(typeof v==='number')return true;
+  return /^[\(\-]?\s*\d[\d.,\s]*\-?\s*\)?\s*€?$/.test(String(v).trim());
+}
+function _parseDate(v){
+  if(v==null||v==='')return null;
+  if(v instanceof Date&&!isNaN(v))return _ymd(v);
+  if(typeof v==='number'){
+    const d=new Date(Math.round((v-25569)*86400*1000));
+    return isNaN(d)?null:_ymd(d);
+  }
+  const s=String(v).trim();
+  let m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if(m){let[,d,mo,y]=m;y=y.length===2?'20'+y:y;return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+  m=s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if(m){let[,y,mo,d]=m;return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
+  const d=new Date(s);
+  return isNaN(d)?null:_ymd(d);
+}
+function _normKey(concepto){
+  let s=_norm(concepto).replace(/[0-9]/g,' ').replace(/[^a-z\s]/g,' ').replace(/\s+/g,' ').trim();
+  const stop=new Set(['de','la','el','del','los','las','y','o','en','con','por','para','sl','sa','su','un','una','the','of']);
+  return s.split(' ').filter(w=>w.length>2&&!stop.has(w)).slice(0,4).join(' ');
+}
+function _autoCat(concepto){
+  const s=_norm(concepto);
+  for(const[rx,cat]of _GAS_KEYWORDS){if(rx.test(s))return cat;}
+  return 'otros';
+}
+function _cleanDesc(concepto){
+  let s=String(concepto).trim().replace(/\s+/g,' ');
+  s=s.replace(/^(pago|pagament|compra|targeta|tarjeta|rebut|recibo|adeudo|transferencia|transf\.?|traspaso|domiciliacio|domiciliación|liquidacion|liquidació)\s+/i,'');
+  s=s.replace(/\b\d{6,}\b/g,'').replace(/\bref\.?\s*\S+/i,'').replace(/\s+/g,' ').trim();
+  if(s)s=s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+  return s||String(concepto).trim();
+}
+function gasDragOver(e){e.preventDefault();document.getElementById('gasDropZone').classList.add('dragover');}
+function gasDragLeave(e){e.preventDefault();document.getElementById('gasDropZone').classList.remove('dragover');}
+function gasDrop(e){
+  e.preventDefault();
+  document.getElementById('gasDropZone').classList.remove('dragover');
+  const f=e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f)handleExtractoFile(f);
+}
+function gasFileChosen(e){
+  const f=e.target.files&&e.target.files[0];
+  if(f)handleExtractoFile(f);
+  e.target.value='';
+}
+function handleExtractoFile(file){
+  if(!/\.(xlsx|xls|csv)$/i.test(file.name||'')){toast('Formato no soportado. Usa Excel o CSV.','red');return;}
+  if(typeof XLSX==='undefined'){toast('La librería de lectura no cargó. Recarga la página.','red');return;}
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'array',cellDates:true});
+      const sheet=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:''});
+      const txns=parseExtractoRows(rows);
+      if(!txns.length){toast('No se detectaron gastos (cargos) en el extracto.','red');return;}
+      openImportPreview(txns);
+    }catch(err){
+      console.error('Error leyendo extracto:',err);
+      toast('No pude leer el archivo. ¿Es un extracto válido?','red');
+    }
+  };
+  reader.onerror=()=>toast('Error leyendo el archivo','red');
+  reader.readAsArrayBuffer(file);
+}
+function _guessCols(rows){
+  const sample=rows.slice(0,40);
+  const ncol=sample.reduce((m,r)=>Math.max(m,r.length),0);
+  let date=-1,amt=-1,conc=-1,bestD=0,bestA=0,bestC=0;
+  for(let j=0;j<ncol;j++){
+    let dHit=0,aHit=0,cLen=0,cnt=0;
+    sample.forEach(r=>{
+      const v=r[j];
+      if(v==null||v==='')return;
+      cnt++;
+      if(_parseDate(v))dHit++;
+      else if(_looksNumeric(v)&&_parseAmount(v)!=null)aHit++;
+      cLen+=String(v).length;
+    });
+    if(!cnt)continue;
+    if(dHit/cnt>0.6&&dHit>bestD){bestD=dHit;date=j;}
+  }
+  for(let j=0;j<ncol;j++){
+    if(j===date)continue;
+    let aHit=0,cLen=0,cnt=0;
+    sample.forEach(r=>{
+      const v=r[j];
+      if(v==null||v==='')return;
+      cnt++;
+      if(_looksNumeric(v)&&_parseAmount(v)!=null)aHit++;
+      cLen+=String(v).length;
+    });
+    if(!cnt)continue;
+    if(aHit/cnt>0.6&&aHit>bestA){bestA=aHit;amt=j;}
+    if(cLen/cnt>bestC){bestC=cLen/cnt;conc=j;}
+  }
+  return {date,conc,amt,deb:-1,cre:-1};
+}
+function parseExtractoRows(rows){
+  rows=(rows||[]).filter(r=>Array.isArray(r));
+  const dateKw=['fecha','data','date','f. valor','fecha valor','f valor','fecha operacion','data valor','data operacio'];
+  const concKw=['concepto','concepte','descripcion','descripció','description','detalle','detall','observacion','observaciones','referencia','movimiento','operacion'];
+  const amtKw=['importe','import','amount','cantidad','quantitat'];
+  const debKw=['cargo','debe','debito','deute','adeudo','salida'];
+  const creKw=['abono','haber','credito','haver','ingreso','entrada'];
+  let headerIdx=-1,cols={date:-1,conc:-1,amt:-1,deb:-1,cre:-1};
+  for(let i=0;i<Math.min(rows.length,20);i++){
+    const r=rows[i].map(_norm);
+    const c={date:-1,conc:-1,amt:-1,deb:-1,cre:-1};
+    r.forEach((cell,j)=>{
+      if(c.date<0&&dateKw.some(k=>cell===k||cell.includes(k)))c.date=j;
+      if(c.conc<0&&concKw.some(k=>cell===k||cell.includes(k)))c.conc=j;
+      if(c.deb<0&&debKw.some(k=>cell===k||cell.includes(k)))c.deb=j;
+      if(c.cre<0&&creKw.some(k=>cell===k||cell.includes(k)))c.cre=j;
+      if(c.amt<0&&amtKw.some(k=>cell===k||cell.includes(k)))c.amt=j;
+    });
+    if(c.conc>=0&&(c.amt>=0||c.deb>=0)){headerIdx=i;cols=c;break;}
+  }
+  let dataRows;
+  if(headerIdx>=0){dataRows=rows.slice(headerIdx+1);}
+  else{dataRows=rows;cols=_guessCols(rows);if(cols.conc<0||(cols.amt<0&&cols.deb<0))return [];}
+  const txns=[];
+  dataRows.forEach(r=>{
+    if(!r||!r.length)return;
+    const concRaw=cols.conc>=0?String(r[cols.conc]==null?'':r[cols.conc]).trim():'';
+    if(!concRaw)return;
+    let isExpense=false,amt=0;
+    if(cols.deb>=0){
+      const d=_parseAmount(r[cols.deb]);
+      if(d!=null&&Math.abs(d)>0.0001){isExpense=true;amt=Math.abs(d);}
+    }
+    if(!isExpense&&cols.amt>=0){
+      const a=_parseAmount(r[cols.amt]);
+      if(a!=null&&a<0){isExpense=true;amt=Math.abs(a);}
+    }
+    if(!isExpense)return;
+    txns.push({fecha:cols.date>=0?_parseDate(r[cols.date]):null,concepto:concRaw,amount:amt});
+  });
+  return txns;
+}
+function openImportPreview(txns){
+  const learn=db.gastoLearn||{};
+  const existingFp=new Set();
+  Object.values(db.months).forEach(m=>(m.gastos||[]).forEach(g=>{if(g._fp)existingFp.add(g._fp);}));
+  _impRows=txns.map(t=>{
+    const normKey=_normKey(t.concepto);
+    const learned=learn[normKey];
+    const cat=learned?learned.cat:_autoCat(t.concepto);
+    const desc=learned?learned.desc:_cleanDesc(t.concepto);
+    const fp=(t.fecha||'')+'|'+t.amount.toFixed(2)+'|'+normKey;
+    const dup=existingFp.has(fp);
+    return {fecha:t.fecha,concepto:t.concepto,desc,cat,amount:t.amount,normKey,fp,dup,on:!dup};
+  });
+  document.getElementById('impExtractoErr').textContent='';
+  renderImportPreview();
+  document.getElementById('impExtractoModal').classList.remove('hidden');
+}
+function _impSummary(){
+  const on=_impRows.filter(r=>r.on);
+  const tot=on.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+  const months=[...new Set(on.map(r=>r.fecha&&/^\d{4}-\d{2}/.test(r.fecha)?r.fecha.slice(0,7):curKey('gastos')))].sort();
+  document.getElementById('impExtractoSummary').innerHTML=`<strong style="color:var(--text)">${_impRows.length}</strong> movimientos de gasto detectados · <strong style="color:var(--yellow)">${on.length} seleccionados</strong> · Total ${fmt(tot)} · Se importan a: <strong>${months.join(', ')||'—'}</strong>`;
+}
+function renderImportPreview(){
+  document.getElementById('impExtractoBody').innerHTML=_impRows.map((r,i)=>`
+    <tr class="${r.on?'':'imp-row-off'}">
+      <td style="text-align:center"><input type="checkbox" ${r.on?'checked':''} onchange="_impToggle(${i},this.checked)" style="width:15px;height:15px;accent-color:var(--yellow);cursor:pointer;"></td>
+      <td class="mono" style="font-size:.7rem;white-space:nowrap;">${r.fecha||'—'}</td>
+      <td><input value="${_esc(r.desc)}" oninput="_impEdit(${i},'desc',this.value)" title="${_esc(r.concepto)}"></td>
+      <td><select onchange="_impEdit(${i},'cat',this.value)">${_GAS_CATS.map(([v,l])=>`<option value="${v}" ${v===r.cat?'selected':''}>${l}</option>`).join('')}</select></td>
+      <td><input type="number" step="0.01" value="${r.amount}" oninput="_impEdit(${i},'amount',this.value)" style="text-align:right"></td>
+    </tr>${r.dup?`<tr class="imp-row-off"><td></td><td colspan="4" style="font-size:.66rem;color:var(--orange);padding:0 0 4px;">⚠ Posible duplicado — ya existe un gasto igual</td></tr>`:''}`).join('');
+  _impSummary();
+}
+function _impToggle(i,on){_impRows[i].on=on;renderImportPreview();}
+function _impEdit(i,field,val){_impRows[i][field]=val;_impSummary();}
+function confirmImportExtracto(){
+  const sel=_impRows.filter(r=>r.on);
+  if(!sel.length){document.getElementById('impExtractoErr').textContent='Selecciona al menos un movimiento.';return;}
+  if(!db.gastoLearn)db.gastoLearn={};
+  let added=0;
+  sel.forEach(r=>{
+    const amount=parseFloat(r.amount);
+    if(isNaN(amount)||!String(r.desc).trim())return;
+    const key=(r.fecha&&/^\d{4}-\d{2}/.test(r.fecha))?r.fecha.slice(0,7):curKey('gastos');
+    ensureMonth(key);
+    if(!db.months[key].gastos)db.months[key].gastos=[];
+    db.months[key].gastos.push({id:uid(),desc:String(r.desc).trim(),amount,cat:r.cat,_fp:r.fp,_imp:true});
+    added++;
+    if(r.normKey)db.gastoLearn[r.normKey]={cat:r.cat,desc:String(r.desc).trim()};
+  });
+  save();
+  closeModal('impExtractoModal');
+  renderGastos();
+  toast(`✓ ${added} gasto${added===1?'':'s'} importado${added===1?'':'s'}`);
+}
+
+// ══════════════════════════
+// DOCUMENTOS
+// ══════════════════════════
+let editDocId=null,_docRange=null;
+let _sigCtx=null,_sigDrawing=false,_sigLast=null,_sigUsed=false;
+function _docDate(ts){
+  if(!ts)return'';
+  const d=new Date(ts);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+function renderDocs(){
+  const el=document.getElementById('docsList');
+  const docs=db.docs||[];
+  if(!docs.length){
+    el.innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-ic">📄</div><div style="margin-bottom:10px">Sin documentos todavía</div><button class="btn btn-primary btn-sm" onclick="openDocEditor()">+ Crear documento</button></div>`;
+    return;
+  }
+  el.innerHTML=docs.slice().sort((a,b)=>(b.updated||0)-(a.updated||0)).map(d=>`
+    <div class="doc-card" onclick="openDocEditor('${d.id}')">
+      <div class="doc-ic">📄</div>
+      <div class="doc-name">${_esc(d.nombre||'Sin título')}</div>
+      <div class="doc-meta">Actualizado ${_docDate(d.updated||d.created)}</div>
+      <div class="doc-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-sm" style="flex:1;font-size:.64rem;padding:4px 6px" onclick="openDocEditor('${d.id}')">✏️ Editar</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;font-size:.64rem;padding:4px 6px" onclick="downloadDocPdf('${d.id}')">⬇ PDF</button>
+        <button class="btn btn-ghost btn-sm" style="font-size:.64rem;padding:4px 7px;border-color:#3a0d0d;color:var(--red)" onclick="deleteDoc('${d.id}')">✕</button>
+      </div>
+    </div>`).join('');
+}
+function openDocEditor(id){
+  editDocId=id||null;
+  _docRange=null;
+  const d=id?(db.docs||[]).find(x=>x.id===id):null;
+  document.getElementById('docModalTitle').textContent=d?'EDITAR DOCUMENTO':'NUEVO DOCUMENTO';
+  document.getElementById('doc_nombre').value=d?(d.nombre||''):'';
+  document.getElementById('docEditor').innerHTML=d?(d.contenido||'<p></p>'):'<p></p>';
+  document.getElementById('docErr').textContent='';
+  document.getElementById('docTemplateRow').style.display=d?'none':'block';
+  document.getElementById('docDeleteBtn').style.display=d?'inline-flex':'none';
+  document.getElementById('docModal').classList.remove('hidden');
+}
+function _docExec(cmd,val){
+  document.getElementById('docEditor').focus();
+  try{document.execCommand(cmd,false,val||null);}catch(e){}
+}
+function docInsertDate(){
+  const d=new Date();
+  _docExec('insertText',`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`);
+}
+function applyDocTemplate(t){
+  const today=_docDate(Date.now());
+  const T={
+    blank:'<p></p>',
+    autorizacion:`<h1>Autorización</h1><p>Yo, <b>_____________________</b>, con documento de identidad <b>____________</b>, autorizo a <b>Full Training</b> a ______________________________________________.</p><p>Y para que así conste, firmo la presente autorización.</p><p>Andorra, a ${today}</p><p><br></p><p>Firma:</p><p><br></p>`,
+    contrato:`<h1>Contrato de servicios</h1><p>En Andorra, a ${today}.</p><h2>Reunidos</h2><p>De una parte, <b>Full Training</b>, y de otra parte <b>_____________________</b>, con documento de identidad <b>____________</b>.</p><h2>Acuerdan</h2><p>1. Objeto del servicio: ______________________________________________.</p><p>2. Duración: ______________________________________________.</p><p>3. Precio y forma de pago: ______________________________________________.</p><p>4. Condiciones: ______________________________________________.</p><p><br></p><table><tbody><tr><td>Full Training<br><br><br>Firma:</td><td>El cliente<br><br><br>Firma:</td></tr></tbody></table>`,
+    recibo:`<h1>Recibo</h1><p>Recibí de <b>_____________________</b> la cantidad de <b>________ €</b> en concepto de ______________________________________________.</p><p>Andorra, a ${today}</p><p><br></p><p>Firma:</p><p><br></p>`,
+  };
+  document.getElementById('docEditor').innerHTML=T[t]||T.blank;
+  document.getElementById('docEditor').focus();
+}
+function saveDoc(){
+  const nombre=document.getElementById('doc_nombre').value.trim();
+  const contenido=document.getElementById('docEditor').innerHTML;
+  if(!nombre){document.getElementById('docErr').textContent='Ponle un nombre al documento';return;}
+  if(!db.docs)db.docs=[];
+  const now=Date.now();
+  if(editDocId){
+    const d=db.docs.find(x=>x.id===editDocId);
+    if(d){d.nombre=nombre;d.contenido=contenido;d.updated=now;}
+  }else{
+    const nd={id:uid(),nombre,contenido,created:now,updated:now};
+    db.docs.push(nd);
+    editDocId=nd.id;
+    document.getElementById('docModalTitle').textContent='EDITAR DOCUMENTO';
+    document.getElementById('docTemplateRow').style.display='none';
+    document.getElementById('docDeleteBtn').style.display='inline-flex';
+  }
+  save();renderDocs();toast('✓ Documento guardado');
+}
+function deleteDoc(id){
+  const tid=id||editDocId;
+  if(!tid)return;
+  if(!confirm('¿Eliminar este documento? No se puede deshacer.'))return;
+  db.docs=(db.docs||[]).filter(d=>d.id!==tid);
+  save();renderDocs();
+  if(!id)closeModal('docModal');
+  toast('Eliminado','red');
+}
+function openSigModal(){
+  const sel=window.getSelection();
+  _docRange=(sel&&sel.rangeCount&&document.getElementById('docEditor').contains(sel.anchorNode))?sel.getRangeAt(0):null;
+  document.getElementById('sigModal').classList.remove('hidden');
+  setTimeout(_sigInit,40);
+}
+function _sigInit(){
+  const c=document.getElementById('sigCanvas');
+  const rect=c.getBoundingClientRect();
+  c.width=Math.max(rect.width,200);c.height=Math.max(rect.height,150);
+  _sigCtx=c.getContext('2d');
+  _sigCtx.lineWidth=2.4;_sigCtx.lineCap='round';_sigCtx.lineJoin='round';_sigCtx.strokeStyle='#10243f';
+  _sigUsed=false;_sigDrawing=false;
+  const pos=e=>{const r=c.getBoundingClientRect();const t=e.touches&&e.touches[0]?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top};};
+  const draw=p=>{_sigCtx.beginPath();_sigCtx.moveTo(_sigLast.x,_sigLast.y);_sigCtx.lineTo(p.x,p.y);_sigCtx.stroke();_sigLast=p;_sigUsed=true;};
+  c.onmousedown=e=>{_sigDrawing=true;_sigLast=pos(e);};
+  c.onmousemove=e=>{if(_sigDrawing)draw(pos(e));};
+  c.ontouchstart=e=>{_sigDrawing=true;_sigLast=pos(e);e.preventDefault();};
+  c.ontouchmove=e=>{if(_sigDrawing){draw(pos(e));e.preventDefault();}};
+  c.ontouchend=e=>{_sigDrawing=false;e.preventDefault();};
+  if(!window._sigMouseUp){window._sigMouseUp=true;window.addEventListener('mouseup',()=>{_sigDrawing=false;});}
+}
+function sigClear(){
+  if(_sigCtx){_sigCtx.clearRect(0,0,_sigCtx.canvas.width,_sigCtx.canvas.height);_sigUsed=false;}
+}
+function sigInsert(){
+  if(!_sigUsed){toast('Dibuja la firma primero','red');return;}
+  const dataUrl=document.getElementById('sigCanvas').toDataURL('image/png');
+  const img=`<img class="doc-sig" src="${dataUrl}" alt="firma" style="max-height:90px;display:block;margin:4px 0;">`;
+  const ed=document.getElementById('docEditor');
+  ed.focus();
+  if(_docRange){
+    const sel=window.getSelection();sel.removeAllRanges();sel.addRange(_docRange);
+    try{document.execCommand('insertHTML',false,img);}catch(e){ed.innerHTML+=img;}
+  }else{
+    ed.innerHTML+=img;
+  }
+  _docRange=null;
+  closeModal('sigModal');
+  toast('✓ Firma insertada');
+}
+function downloadDocPdf(id){
+  let nombre,contenido;
+  if(id){
+    const d=(db.docs||[]).find(x=>x.id===id);
+    if(!d){toast('Documento no encontrado','red');return;}
+    nombre=d.nombre;contenido=d.contenido;
+  }else{
+    nombre=document.getElementById('doc_nombre').value.trim()||'Documento';
+    contenido=document.getElementById('docEditor').innerHTML;
+  }
+  const co=db.company||{};
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${_esc(nombre)}</title><style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:48px 54px;line-height:1.6;}
+    .doc-hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a1a;padding-bottom:14px;margin-bottom:28px;}
+    .logo{font-size:20px;font-weight:900;letter-spacing:.03em;}.logo span{color:#F5C000;}
+    .doc-date{color:#666;font-size:11px;text-align:right;}
+    h1{font-size:1.5rem;margin:.5em 0;}h2{font-size:1.2rem;margin:.5em 0;}p{margin:.5em 0;}
+    table{width:100%;border-collapse:collapse;margin:.6em 0;}td,th{border:1px solid #ccc;padding:6px 9px;vertical-align:top;}
+    img{max-width:100%;}img.doc-sig{max-height:90px;}
+    ul,ol{margin:.5em 0 .5em 1.4em;}
+    @media print{body{padding:24px 30px;}@page{margin:16mm;}}
+  </style></head><body>
+    <div class="doc-hdr">
+      <div><div class="logo"><span>FULL</span> TRAINING</div>${co.name?`<div style="color:#666;font-size:11px;margin-top:3px">${_esc(co.name)}</div>`:''}</div>
+      <div class="doc-date">${new Date().toLocaleDateString('es-ES')}</div>
+    </div>
+    <div class="doc-body">${contenido}</div>
+    <script>window.onload=()=>{setTimeout(()=>window.print(),300);}<\/script>
+  </body></html>`;
+  const w=window.open('','_blank');
+  if(w&&!w.closed){
+    try{w.document.open();w.document.write(html);w.document.close();toast('✓ Documento generado');return;}
+    catch(e){try{w.close();}catch(e2){}}
+  }
+  const ex=document.getElementById('_docPrintFrame');if(ex)ex.remove();
+  const ifr=document.createElement('iframe');
+  ifr.id='_docPrintFrame';
+  ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  document.body.appendChild(ifr);
+  const d2=ifr.contentWindow.document;
+  d2.open();d2.write(html.replace(/<script>[^<]*window\.print[^<]*<\/script>/,''));d2.close();
+  setTimeout(()=>{
+    try{ifr.contentWindow.focus();ifr.contentWindow.print();toast('✓ Diálogo de impresión abierto');}
+    catch(e){toast('Permite ventanas emergentes para descargar','red');}
+  },400);
+}
+
+// ══════════════════════════
 // EQUIPO
 // ══════════════════════════
 function renderEquipo(){
@@ -3662,7 +4172,7 @@ function printInvoice(){
 .btn.b-gn { border-color: var(--green); color: var(--green); background: rgba(34,197,94,.1); }
 .btn.b-gn:hover { background: rgba(34,197,94,.2); }
 </style></head><body>
-  <div class="hdr"><div><div class="logo"><span>FUL</span>L TRAINING</div><div style="color:#666;margin-top:4px;font-size:11px">${fromAddr}${fromCity?', '+fromCity:''}</div>${fromNif?`<div style="color:#666;font-size:11px">NIF: ${fromNif}</div>`:''}</div>
+  <div class="hdr"><div><div class="logo"><span>FULL</span> TRAINING</div><div style="color:#666;margin-top:4px;font-size:11px">${fromAddr}${fromCity?', '+fromCity:''}</div>${fromNif?`<div style="color:#666;font-size:11px">NIF: ${fromNif}</div>`:''}</div>
   <div style="text-align:right"><div class="inv-title">FACTURA</div><div class="inv-num">Nº ${num}</div><div style="color:#666;margin-top:4px">${date}</div></div></div>
   <div class="parties">
     <div><div class="party-lbl">Emisor</div><div class="party-name">${fromName}</div><div class="party-detail">${[fromAddr,fromCity,fromNif?'NIF: '+fromNif:''].filter(Boolean).join('<br>')}</div></div>
