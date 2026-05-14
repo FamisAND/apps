@@ -43,102 +43,76 @@ const TOB_KEY = 'tob_online_v2';
 const TOB_NUM_MICRO = 6;
 const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
 
-// Descripciones detalladas por categoría BIIO (objetivo, progresión, reps,
-// cargas, descansos, notas técnicas). Se aplican como seed inicial y como
-// backfill: si una plantilla tiene descripcion vacía o "vieja" (sin OBJETIVO),
-// se actualiza con la versión completa.
+// Versión de las descripciones. Al subirla, el backfill reaplica los textos.
+const TOB_DESC_VERSION = 3;
+
+// Descripciones por categoría — lenguaje claro para gente que entrena normal,
+// sin jerga de competición. Estructura: objetivo, cómo progresa, reps, pesos,
+// descansos y consejos.
 const TOB_DESC_CATEGORIAS = {
   'Reacondicionamiento':
-    'OBJETIVO: Adaptación neuromuscular tras un parón o inicio de macrociclo. Reactivar patrones motores básicos, mejorar calidad técnica y preparar al cuerpo para cargas mayores. Fase de "puesta a punto" antes de meter intensidad real.\n\n' +
-    'PROGRESIÓN: 6 microciclos agrupados en pares (1-2 / 3-4 / 5-6). Cada par mantiene el mismo esquema pero las cargas suben. Vamos de volumen alto + intensidad baja → volumen medio + intensidad media-alta.\n\n' +
-    'REPS POR SERIE: µ1-2: 15/12/10 · µ3-4: 12/10/8 · µ5-6: 10/8/6 (siempre 3 series).\n\n' +
-    'CARGAS: 50-55% del 1RM en µ1, subiendo hasta 70-75% en µ6. Las reps bajan, los kg suben.\n\n' +
-    'DESCANSOS: µ1-2: 1\'30" · µ3-4: 1\'45" · µ5-6: 2\'00".\n\n' +
-    'FRECUENCIA: 3 sesiones/semana alternando A y B. Foco en técnica perfecta, control excéntrico (2-3" bajada) y pausas técnicas (1" en Box Squat, 1" al pecho en Press Banca).',
+    'OBJETIVO: Ponerte a punto. Es la rutina para volver al gimnasio tras un parón o para empezar bien una etapa nueva. Recuperas el ritmo, recuerdas cómo se hacen los ejercicios y preparas el cuerpo para entrenamientos más exigentes.\n\n' +
+    'CÓMO PROGRESA: 6 semanas. Empiezas suave y vas subiendo el peso poco a poco. Cada par de semanas el reto sube un escalón: menos repeticiones pero algo más de peso.\n\n' +
+    'REPETICIONES: Empiezas con muchas (15-12-10 en las 3 series). Luego bajan a 12-10-8. Y al final 10-8-6. Bajar repeticiones te deja meter algo más de peso.\n\n' +
+    'PESOS: Al principio debe costarte poco — es para coger técnica. Al final notarás el esfuerzo, pero siempre pudiendo completar todas las repeticiones con buena forma.\n\n' +
+    'DESCANSOS: 1 minuto y medio entre series al principio, hasta 2 minutos al final.\n\n' +
+    'CONSEJOS: 3 días por semana alternando los entrenos A y B. Lo importante no es el peso, es hacer los movimientos bien y sin prisa, controlando la bajada.',
 
   'Preparación fuerza':
-    'OBJETIVO: Aumentar la fuerza neural sobre los patrones del powerlifting (sentadilla, banca, peso muerto). Mejorar la transferencia (carryover) entre ejercicios principales y accesorios. Puente entre reacondicionamiento y fuerza pura.\n\n' +
-    'PROGRESIÓN: 5 microciclos + descarga. Series bajas con peso alto. Ondas Waterbury modificadas: el nº de series varía entre microciclos (8x3, 3x6, 6x5 alternados) para crear "olas" de carga neuronal y romper la adaptación.\n\n' +
-    'REPS: 5 reps por serie en básicos. 3-6 reps en accesorios según microciclo. Las dominadas y press militar se alternan como pareja por ondas.\n\n' +
-    'CARGAS: 65-75% del 1RM. Más importante el % que el peso absoluto. Algunas series al fallo en accesorios.\n\n' +
-    'DESCANSOS: 2\'00"-2\'30" entre series. Imprescindible para recuperación neural completa.\n\n' +
-    'NOTAS: Microciclo 5 es DESCARGA (cargas al 50%, recuperación activa). Las "ondas" en accesorios CAMBIAN el ejercicio entre microciclos (Dominadas → Press Militar → Dominadas) para evitar estancamiento.',
+    'OBJETIVO: Empezar a ganar fuerza de verdad en los ejercicios básicos (sentadilla, press de banca, peso muerto...). Es el primer paso serio antes de las rutinas de fuerza más duras.\n\n' +
+    'CÓMO PROGRESA: 5 semanas de trabajo + 1 de descanso. Pocas repeticiones con un peso que te exija. Algunas semanas cambia el número de series para que el cuerpo no se acostumbre y siga mejorando.\n\n' +
+    'REPETICIONES: 5 repeticiones por serie en los ejercicios grandes. En los ejercicios de apoyo, entre 3 y 6 según la semana.\n\n' +
+    'PESOS: Un peso que te cueste, pero con el que puedas mover bien las 5 repeticiones sin que la técnica se rompa.\n\n' +
+    'DESCANSOS: 2 a 2 minutos y medio entre series. Aquí hace falta descansar bien para rendir.\n\n' +
+    'CONSEJOS: La última semana es de descanso, con pesos ligeros para recuperar. En algunos ejercicios de apoyo el ejercicio cambia de una semana a otra para trabajar de forma variada.',
 
   'Especialización técnica':
-    'OBJETIVO: Perfeccionar la técnica bajo carga pesada con pausas estratégicas. "Dinosaur Training" = trabajo lento y consciente. Eliminar puntos débiles técnicos antes de la siguiente fase de intensidad máxima.\n\n' +
-    'PROGRESIÓN: 5 microciclos. La intensidad se mantiene relativamente estable, pero la EXIGENCIA TÉCNICA aumenta:\n' +
-    '· µ1-2: pausa de 1" en posiciones clave\n' +
-    '· µ3-4: pausa de 2-3"\n' +
-    '· µ5: pausa máxima + intento de récord técnico\n\n' +
-    'REPS: 4-6 reps por serie (4 series). Suficientes para acumular volumen técnico sin descontrolar la forma.\n\n' +
-    'CARGAS: 70-75% del 1RM. Más importante que el peso es la PERFECCIÓN del movimiento. Si la técnica falla, baja la carga.\n\n' +
-    'DESCANSOS: 2\'00"-2\'30" para asegurar técnica fresca en cada serie.\n\n' +
-    'PAUSAS TÉCNICAS: Box Squat con pausa 2-3" sentado · Press Banca pausa al pecho · Peso Muerto pausa 2" en knee level (debajo de la rodilla).',
+    'OBJETIVO: Mejorar CÓMO haces los ejercicios. Hacer los movimientos más limpios y controlados, ahora que ya manejas algo de peso. Pulir los detalles antes de subir más la intensidad.\n\n' +
+    'CÓMO PROGRESA: 5 semanas. El peso se mantiene parecido, pero cada semana se pide más control: pausas un poco más largas en los puntos clave del movimiento.\n\n' +
+    'REPETICIONES: 4 a 6 por serie, 4 series. Las justas para practicar mucho la técnica sin perder la concentración.\n\n' +
+    'PESOS: Peso medio-alto. La prioridad es la técnica perfecta — si el movimiento se descontrola, baja el peso.\n\n' +
+    'DESCANSOS: 2 a 2 minutos y medio, para llegar a cada serie fresco y poder hacerla bien.\n\n' +
+    'CONSEJOS: Harás pausas a mitad del movimiento: 1-2 segundos sentado abajo en la sentadilla, 1-2 segundos con la barra en el pecho en el press. Estas pausas obligan a controlar y eliminan trampas.',
 
   'Fuerza 1':
-    'OBJETIVO: Maximizar la rigidez articular y la activación neuronal mediante isométricos en posiciones clave. Preparar al sistema nervioso para los intentos de récord máximo de Fuerza 2.\n\n' +
-    'PROGRESIÓN: 5 microciclos + descarga. Las contracciones isométricas (mantener posición 6") aumentan progresivamente:\n' +
-    '· µ1-2: 5x3 @ 80% con 1 isométrica al final de la serie\n' +
-    '· µ3-4: 5x3 @ 85% con 2 isométricas\n' +
-    '· µ5: peak intensity con isométricos múltiples\n\n' +
-    'REPS: 3 reps por serie (5 series). Cantidad mínima → calidad máxima.\n\n' +
-    'CARGAS: 80-90% del 1RM. La fase más intensa antes de los maximales finales.\n\n' +
-    'DESCANSOS: 3\'00" entre series. Recuperación completa imprescindible.\n\n' +
-    'ISOMETRONICS: Cada ejercicio principal lleva 1-2 paradas isométricas de 6":\n' +
-    '· Sentadilla: 6" en la posición de paralelo\n' +
-    '· Press Banca: 6" a media altura\n' +
-    '· Peso Muerto: 6" en posición de lock-out parcial',
+    'OBJETIVO: Trabajar la fuerza con pesos altos. En esta rutina, además de levantar, aguantas la posición unos segundos en un punto del movimiento — eso te hace mucho más fuerte y estable.\n\n' +
+    'CÓMO PROGRESA: 5 semanas + 1 de descanso. Vas aguantando un poco más las posiciones y subiendo peso semana a semana.\n\n' +
+    'REPETICIONES: 3 por serie, 5 series. Pocas, pero muy intensas.\n\n' +
+    'PESOS: Peso alto, de los que de verdad cuestan. Siempre con buena técnica.\n\n' +
+    'DESCANSOS: 3 minutos entre series. Necesitas recuperarte del todo para rendir en la siguiente.\n\n' +
+    'CONSEJOS: En cada ejercicio principal aguantas la posición unos 6 segundos en un punto clave (por ejemplo, a media bajada de la sentadilla o del press). Cuesta, pero es lo que te hace ganar fuerza real.',
 
   'Fuerza 2':
-    'OBJETIVO: Reevaluar fuerza máxima (1RM) tras todo el bloque de preparación. Sesión MAXIMALES como prueba final del macrociclo + capacidad muscular extrema con peak set 20 reps.\n\n' +
-    'PROGRESIÓN: 6 microciclos. Construye intensidad hasta una sesión MAXIMALES específica al final donde se intentan nuevos PRs reales.\n\n' +
-    'REPS:\n' +
-    '· Entrenos A/B: 5 series × 5 reps al 80-85%\n' +
-    '· Peak set: 1 serie de 20 reps en Sentadilla (sobreviviendo al ~60%)\n' +
-    '· Sesión Maximales: 1 serie × 1 rep al máximo posible\n\n' +
-    'CARGAS: 75-90% en bloques. La sesión de maximales busca el 100% real.\n\n' +
-    'DESCANSOS: 2\'30"-3\'00" en entrenos normales. 5\'00"-6\'00" antes de cada intento maximal.\n\n' +
-    'SESIÓN MAXIMALES: Día específico al final del mesociclo. 6 ejercicios principales (Box Squat, Press Banca, Peso Muerto, Press Militar, Remo, Dominadas con lastre). Con 3-4 series de aproximación previas a cada intento real.',
+    'OBJETIVO: Comprobar cuánta fuerza has ganado en todo este tiempo. Al final de la rutina hay un día especial para intentar tu peso máximo en cada ejercicio.\n\n' +
+    'CÓMO PROGRESA: 6 semanas. Vas subiendo la intensidad hasta llegar al día de "máximos".\n\n' +
+    'REPETICIONES: En los entrenos normales, 5 series de 5 repeticiones. Hay una serie especial de 20 repeticiones en sentadilla (de aguante mental). El día de máximos: 1 sola repetición con el peso más alto que puedas.\n\n' +
+    'PESOS: Peso alto en los entrenos. El día de máximos, lo máximo que puedas levantar con técnica correcta.\n\n' +
+    'DESCANSOS: 2 minutos y medio a 3 en los entrenos normales. 5-6 minutos antes de cada intento de máximo.\n\n' +
+    'CONSEJOS: El día de "Maximales" tiene una hoja aparte con los 6 ejercicios principales. Haz siempre series de calentamiento subiendo peso antes de ir a por tu intento máximo. Nunca vayas a frío.',
 
   'Hibrido':
-    'OBJETIVO: Combinar adaptaciones de fuerza Y volumen muscular en la misma sesión. El "puente" entre fuerza pura y la fase de hipertrofia. Aumentar densidad de entrenamiento.\n\n' +
-    'PROGRESIÓN: 4 microciclos + descarga. Las series cluster (3+3+3 con micro-pausa) se intensifican:\n' +
-    '· µ1-2: 4x(3+3+3) @ 75%, micro-pausa intra-serie 20"\n' +
-    '· µ3-4: 4x(3+3+3) @ 80%, micro-pausa 15"\n' +
-    '· µ5: descarga simple 3x6\n\n' +
-    'REPS: 9 reps efectivas por serie en formato cluster (3+3+3). El descanso intra-serie permite mantener intensidad alta sin perder calidad técnica.\n\n' +
-    'CARGAS: 75-85% del 1RM. Más altas que en hipertrofia tradicional gracias al formato cluster.\n\n' +
-    'DESCANSOS: Intra-serie (cluster): 15-20" · Entre series: 3\'00"\n\n' +
-    'EXTENDED CLUSTERS: La técnica de descomponer 1 serie de 9 reps en 3+3+3 con micro-pausa permite usar pesos mucho más altos que en una serie continua. Híbrido perfecto fuerza/hipertrofia.',
+    'OBJETIVO: Mezclar lo mejor de dos mundos en la misma sesión: ganar fuerza y ganar músculo a la vez.\n\n' +
+    'CÓMO PROGRESA: 4 semanas + 1 de descanso. Se usan "series partidas": en vez de hacer 9 repeticiones seguidas, las haces en 3+3+3 con un respiro muy corto entre cada tanda. Eso te deja mover más peso.\n\n' +
+    'REPETICIONES: 9 repeticiones por serie, pero divididas en tres tandas de 3 con una pausa corta en medio.\n\n' +
+    'PESOS: Peso alto — el formato partido te permite manejar más kilos sin que la técnica se resienta.\n\n' +
+    'DESCANSOS: El respiro corto dentro de la serie es de 15-20 segundos. Entre serie y serie, 3 minutos.\n\n' +
+    'CONSEJOS: Partir la serie en tandas es la clave de esta rutina: aguantas buen peso durante las 9 repeticiones sin llegar al agotamiento que descontrola la forma.',
 
   'Hipertrofia':
-    'OBJETIVO: Crecimiento muscular máximo. Estímulo distribuido por tipo de fibra (lentas, rápidas, intermedias) con distintos rangos de reps en sesiones alternas. Maximizar el grosor muscular.\n\n' +
-    'PROGRESIÓN: 4 microciclos. Volumen distribuido por tipo de fibra:\n' +
-    '· µ1-2: foco fibras lentas, 10-12 reps\n' +
-    '· µ3: foco fibras rápidas, 6-8 reps con más carga\n' +
-    '· µ4: foco fibras mixtas, 12-15 reps con técnica\n\n' +
-    'REPS: 8-15 según microciclo. Alterna rangos para "hit" todas las fibras musculares.\n\n' +
-    'CARGAS: 65-80% del 1RM. Más bajas que en fuerza, suficientes para fatigar muscularmente.\n\n' +
-    'DESCANSOS: 1\'30"-2\'00". Cortos para mantener tensión metabólica y bombeo.\n\n' +
-    'DISTRIBUCIÓN HOLÍSTICA: Cada microciclo trabaja todas las categorías de fibras pero con distinta intensidad. Permite estímulo completo sin sobreentrenar. Foco en técnica estricta — no buscar peso, buscar tensión muscular.',
+    'OBJETIVO: Ganar masa muscular. Que el músculo crezca y se note.\n\n' +
+    'CÓMO PROGRESA: 4 semanas. Cada semana cambia un poco el rango de repeticiones para trabajar el músculo de varias formas y que no se estanque.\n\n' +
+    'REPETICIONES: Entre 8 y 15 por serie según la semana. Unas semanas más repeticiones con menos peso, otras menos repeticiones con algo más.\n\n' +
+    'PESOS: Peso medio. El suficiente para que el músculo trabaje de verdad, pero no tanto como para fallar a las 3 repeticiones.\n\n' +
+    'DESCANSOS: 1 minuto y medio a 2. Descansos cortos para mantener el músculo "encendido".\n\n' +
+    'CONSEJOS: Aquí no buscas mover mucho peso, buscas SENTIR el músculo trabajar en cada repetición. Técnica estricta y movimiento controlado. La conexión mente-músculo es lo que hace crecer.',
 
   'Calidad muscular':
-    'OBJETIVO: Definición muscular y "pulido" estético. Fase ideal pre-competición o pre-foto. Mantener fuerza mientras se baja % graso. Bombeo extremo y densidad metabólica máxima.\n\n' +
-    'PROGRESIÓN: 4 microciclos + descarga. Onduplación diaria (DUP) entre sesiones del mismo microciclo:\n' +
-    '· Entreno A: PUMP (reps altas, pausas cortas)\n' +
-    '· Entreno B: POWER (reps medias, peso medio)\n' +
-    'La alternancia diaria estimula adaptación múltiple.\n\n' +
-    'REPS:\n' +
-    '· Entreno PUMP: 12-15-20 reps con drop-sets en último ejercicio\n' +
-    '· Entreno POWER: 6-10 reps con técnica estricta\n\n' +
-    'CARGAS:\n' +
-    '· PUMP: 50-65% del 1RM\n' +
-    '· POWER: 75-80% del 1RM\n\n' +
-    'DESCANSOS:\n' +
-    '· PUMP: 45"-1\'00" (alta densidad metabólica)\n' +
-    '· POWER: 1\'30"-2\'00"\n\n' +
-    'TÉCNICAS ESPECIALES: Drop-sets en último ejercicio de cada grupo · Pre-fatiga (aislamiento antes de compuesto) · Pumping bilateral en gemelos y abdomen al final.\n\n' +
-    'NOTA: Ideal mantenerlo 3-4 semanas máximo en fase de definición. No usar como mesociclo único de progresión de fuerza.'
+    'OBJETIVO: Definir y marcar el músculo. Mantener la fuerza que has ganado mientras afinas y se ve más el trabajo hecho.\n\n' +
+    'CÓMO PROGRESA: 4 semanas + 1 de descanso. Alternas dos tipos de día: días de muchas repeticiones (bombeo, sensación de "músculo lleno") y días de peso medio para no perder fuerza.\n\n' +
+    'REPETICIONES: En los días de bombeo, 12, 15 o hasta 20 repeticiones. En los días de peso medio, 6 a 10.\n\n' +
+    'PESOS: Ligero-medio en los días de bombeo. Medio-alto en los días de fuerza.\n\n' +
+    'DESCANSOS: Muy cortos en los días de bombeo (45 segundos a 1 minuto). Un poco más largos en los días de fuerza (1 minuto y medio a 2).\n\n' +
+    'CONSEJOS: Es una rutina pensada para una etapa corta, de unas 3-4 semanas, cuando quieres verte más marcado. En el último ejercicio de cada grupo se hacen "bajadas de peso" (sigues haciendo repeticiones con menos peso) para apurar al máximo.'
 };
 
 // Aliases de ejercicios: nombres equivalentes mapeados a un nombre canónico.
@@ -214,14 +188,14 @@ function tobLoad(){
     });
   });
 
-  // Backfill: descripciones de categoría — actualiza las plantillas que no tengan
-  // descripcion o tengan la versión vieja (sin la palabra "OBJETIVO:" que marca
-  // el formato extendido). Si el user ya editó manualmente y puso OBJETIVO, no toca.
+  // Backfill: descripciones de categoría. Versionado con _descV: si la plantilla
+  // no está en la versión actual, se reaplica el texto. Esto fuerza la actualización
+  // cuando subimos TOB_DESC_VERSION (p.ej. al cambiar el tono de los textos).
   tobDB.plantillas.forEach(p => {
     if(!p.categoria || !TOB_DESC_CATEGORIAS[p.categoria]) return;
-    const isVieja = !p.descripcion || !p.descripcion.includes('OBJETIVO:');
-    if(isVieja){
+    if(p._descV !== TOB_DESC_VERSION){
       p.descripcion = TOB_DESC_CATEGORIAS[p.categoria];
+      p._descV = TOB_DESC_VERSION;
       backfilled = true;
     }
   });
@@ -1516,8 +1490,8 @@ function tobBuildSeedPlantillas(){
   const DESC = TOB_DESC_CATEGORIAS;
   // (descripciones detalladas en TOB_DESC_CATEGORIAS arriba)
   // 1. Reacondicionamiento (exacto del PDF)
-  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', descripcion: DESC['Reacondicionamiento'], entrenos:[entA_rea(), entB_rea()] });
-  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', descripcion: DESC['Reacondicionamiento'], entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', descripcion: DESC['Reacondicionamiento'], _descV: TOB_DESC_VERSION, entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', descripcion: DESC['Reacondicionamiento'], _descV: TOB_DESC_VERSION, entrenos:[entA_rea(), entB_rea()] });
   // 2-8
   [
     ['Preparación fuerza',     planPF],
@@ -1549,7 +1523,7 @@ function tobBuildSeedPlantillas(){
           ejercicios: ejMax
         });
       }
-      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, descripcion: DESC[cat] || '', entrenos });
+      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, descripcion: DESC[cat] || '', _descV: TOB_DESC_VERSION, entrenos });
     });
   });
   return out;
@@ -2329,38 +2303,41 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   // Nombre rutina sin sufijo "— Hombre"/"— Mujer"
   const rutinaShort = (pl?.nombre || '').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
 
-  // ─── PÁGINA 1: COVER limpia + descripción ─────
+  // ─── PÁGINA 1: COVER en 2 columnas ─────
+  // Izquierda: logo + cliente + rutina + KPI. Derecha: descripción completa.
   let page = doc.addPage([W_L, H_L]);
-  page.drawRectangle({ x: 0, y: 0, width: 60, height: H_L, color: ORANGE });
-  page.drawText('FULL', { x: 100, y: H_L - 100, size: 56, font: fontB, color: ORANGE });
-  page.drawText('TRAINING', { x: 100, y: H_L - 156, size: 56, font: fontB, color: BLACK });
-  page.drawText((pl?.categoria || '').toUpperCase(), { x: 100, y: H_L - 180, size: 13, font, color: GRAY });
+  page.drawRectangle({ x: 0, y: 0, width: 50, height: H_L, color: ORANGE });
 
-  // Nombre cliente + rutina (sin "— Hombre")
-  page.drawText(cli?.nombre || '—', { x: 100, y: H_L - 240, size: 32, font: fontB, color: BLACK });
-  page.drawText(rutinaShort, { x: 100, y: H_L - 268, size: 15, font, color: GRAY_DK });
-  page.drawText(`Iteración ${it?.numero || 1}  ·  Inicio: ${a.fechaInicio || ''}`, { x: 100, y: H_L - 288, size: 11, font: fontO, color: GRAY });
+  // ── Columna izquierda ──
+  const LX = 80;
+  page.drawText('FULL', { x: LX, y: H_L - 95, size: 48, font: fontB, color: ORANGE });
+  page.drawText('TRAINING', { x: LX, y: H_L - 143, size: 48, font: fontB, color: BLACK });
+  page.drawText((pl?.categoria || '').toUpperCase(), { x: LX, y: H_L - 165, size: 12, font, color: GRAY });
 
-  // KPI única: sesiones
+  page.drawText(cli?.nombre || '—', { x: LX, y: H_L - 230, size: 30, font: fontB, color: BLACK });
+  page.drawText(rutinaShort, { x: LX, y: H_L - 256, size: 14, font, color: GRAY_DK });
+  page.drawText(`Iteración ${it?.numero || 1}  ·  Inicio: ${a.fechaInicio || ''}`, { x: LX, y: H_L - 274, size: 10, font: fontO, color: GRAY });
+
+  // KPI sesiones
   const statsIt = tobCalcItStats(a, it);
-  const kpiX = 100, kpiY = 200, kpiW = 200, kpiH = 90;
+  const kpiX = LX, kpiY = 180, kpiW = 230, kpiH = 100;
   page.drawRectangle({ x: kpiX, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
   page.drawRectangle({ x: kpiX, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
-  page.drawText('SESIONES TOTALES', { x: kpiX+14, y: kpiY+kpiH-26, size: 10, font: fontB, color: GRAY });
-  page.drawText(String(statsIt.sesiones), { x: kpiX+14, y: kpiY+28, size: 36, font: fontB, color: BLACK });
-  page.drawText(`de 12 planificadas (6 microciclos × 2 entrenos)`, { x: kpiX+kpiW+20, y: kpiY+44, size: 9, font, color: GRAY });
+  page.drawText('SESIONES REGISTRADAS', { x: kpiX+16, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
+  page.drawText(String(statsIt.sesiones), { x: kpiX+16, y: kpiY+30, size: 40, font: fontB, color: BLACK });
+  page.drawText(`de 12 (6 microciclos × 2 entrenos)`, { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
 
-  // Descripción de la rutina
+  page.drawText('FULL TRAINING · BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
+
+  // ── Columna derecha: descripción ──
   if(pl?.descripcion){
-    const descX = 100, descY = 160;
-    page.drawText('DESCRIPCIÓN', { x: descX, y: descY, size: 9, font: fontB, color: ORANGE });
-    const descLines = tobWrapText(pl.descripcion, font, 10, W_L - descX - 60);
-    descLines.slice(0, 6).forEach((line, i) => {
-      page.drawText(line, { x: descX, y: descY - 18 - i*13, size: 10, font, color: GRAY_DK });
-    });
+    const RX = 360;
+    const rightW = W_L - RX - 50;
+    page.drawRectangle({ x: RX - 20, y: 50, width: 1.5, height: H_L - 130, color: rgb(0.88,0.88,0.88) });
+    page.drawText('LA RUTINA', { x: RX, y: H_L - 70, size: 16, font: fontB, color: ORANGE });
+    let dy = H_L - 100;
+    dy = tobRenderDescription(page, pl.descripcion, RX, dy, rightW, font, fontB, ORANGE, GRAY_DK, rgb);
   }
-
-  page.drawText('FULL TRAINING · BIIO System', { x: W_L - 240, y: 40, size: 9, font: fontO, color: GRAY });
 
   // ─── PÁGINAS DETALLE POR ENTRENO (con FORM FIELDS editables) ───
   (a.rutina?.entrenos||[]).forEach(en => {
@@ -2612,6 +2589,55 @@ function tobTextWidth(text, size, fontObj){
 function tobTrunc(s, max){
   const str = String(s||'');
   return str.length > max ? str.slice(0, max-1) + '…' : str;
+}
+
+// Renderiza una descripción multi-párrafo en el PDF. Respeta los \n del texto.
+// Detecta encabezados tipo "OBJETIVO:" y los pinta en naranja negrita.
+// Devuelve la coordenada Y final (por si quieres seguir dibujando debajo).
+function tobRenderDescription(page, text, x, yStart, maxW, font, fontB, ORANGE, GRAY_DK, rgb){
+  let dy = yStart;
+  const size = 8.5;
+  const lineH = 11;
+  String(text||'').split('\n').forEach(para => {
+    const t = para.trim();
+    if(t === ''){ dy -= 5; return; }
+    // ¿Empieza con "ENCABEZADO:" en mayúsculas?
+    const hm = t.match(/^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ ]{2,}):\s*(.*)$/);
+    if(hm){
+      const headerTxt = hm[1] + ': ';
+      const headerW = tobTextWidth(headerTxt, size, fontB);
+      page.drawText(hm[1] + ':', { x, y: dy, size, font: fontB, color: ORANGE });
+      const rest = hm[2] || '';
+      if(rest){
+        // Wrap del resto: primera línea empieza tras el header
+        const words = rest.split(/\s+/);
+        let line = '', isFirst = true;
+        const flush = () => {
+          page.drawText(line, { x: isFirst ? x + headerW : x, y: dy, size, font, color: GRAY_DK });
+          dy -= lineH; isFirst = false; line = '';
+        };
+        words.forEach(w => {
+          const test = line ? line + ' ' + w : w;
+          const avail = isFirst ? (maxW - headerW) : maxW;
+          if(tobTextWidth(test, size, font) <= avail){ line = test; }
+          else { flush(); line = w; }
+        });
+        if(line) flush();
+      } else {
+        dy -= lineH;
+      }
+    } else {
+      // Párrafo normal o sub-item (·)
+      const indent = t.startsWith('·') ? 8 : 0;
+      const wrapped = tobWrapText(t, font, size, maxW - indent);
+      wrapped.forEach(l => {
+        page.drawText(l, { x: x + indent, y: dy, size, font, color: GRAY_DK });
+        dy -= lineH;
+      });
+    }
+    dy -= 3;
+  });
+  return dy;
 }
 
 // Wrap text en líneas que quepan en un ancho dado
