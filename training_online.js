@@ -693,6 +693,11 @@ function tobRenderEntreno(){
     html += tobRenderEjBlock(ej, en, microHeaders, it);
   });
 
+  // Botón añadir ejercicio (al final de la lista del entreno actual)
+  html += `<div style="margin:10px 0 16px;">
+    <button class="tob-action ghost" style="font-size:.78rem;" onclick="tobAddEjToEntreno('${en.id}')" title="Añadir un nuevo ejercicio a este entreno">+ Añadir ejercicio</button>
+  </div>`;
+
   // Aeróbica
   html += `<div class="tob-card">
     <div class="tob-card-title">Eventual actividad aeróbica</div>
@@ -791,6 +796,7 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
       <span class="tob-ej-name">${tobEsc(ej.nombre)}</span>
       ${tipoLabel}
       ${subTitle}
+      <button class="tob-action ghost" style="margin-left:auto;padding:4px 10px;font-size:.7rem;" onclick="tobOpenEjEditor('${en.id}','${ej.id}')" title="Editar este ejercicio (renombrar, cambiar plan, eliminar) — preserva los datos registrados">✏️ Editar</button>
     </div>
     <table class="tob-ej-grid">
       <thead><tr>
@@ -2668,6 +2674,125 @@ function tobCalcPeriodo(cli){
     hasta = fechas[fechas.length-1];
   }
   return { desde, hasta };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EDITOR INLINE DE EJERCICIO — preserva ID (no rompe sesiones)
+// ═══════════════════════════════════════════════════════════════
+let _tobEditingEj = null;   // { entrenoId, ejId } o { entrenoId, isNew: true }
+
+function tobOpenEjEditor(entrenoId, ejId){
+  const a = tobAsig(); if(!a) return;
+  const en = a.rutina.entrenos.find(e => e.id === entrenoId); if(!en) return;
+  let ej = ejId ? en.ejercicios.find(x => x.id === ejId) : null;
+  _tobEditingEj = { entrenoId, ejId: ej?.id || null, isNew: !ej };
+  document.getElementById('tobEjEditorTitle').textContent = ej ? `Editar: ${ej.nombre}` : `Añadir ejercicio a Entreno ${en.letra}`;
+  document.getElementById('tobEjEditName').value = ej?.nombre || '';
+  document.getElementById('tobEjEditTipo').value = ej?.tipo || 'normal';
+  document.getElementById('tobEjEditSub').value = ej?.subtitle || '';
+  // Tomar plan del primer microciclo como base
+  const plan = ej ? tobPlanFor(ej, 1) : { series: 3, repsTarget: [10], pausa: '' };
+  document.getElementById('tobEjEditSeries').value = plan.series || 3;
+  document.getElementById('tobEjEditReps').value = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : (plan.repsTarget || '');
+  document.getElementById('tobEjEditPausa').value = plan.pausa || '';
+  document.getElementById('tobEjEditCircLineas').value = (ej?.circuitoLineas || []).join('\n');
+  tobEjEditorTipoChange();
+  document.getElementById('tobEjEditorBg').classList.add('on');
+}
+
+function tobCloseEjEditor(){
+  _tobEditingEj = null;
+  document.getElementById('tobEjEditorBg').classList.remove('on');
+}
+
+function tobEjEditorTipoChange(){
+  const tipo = document.getElementById('tobEjEditTipo').value;
+  document.getElementById('tobEjEditCircWrap').style.display = (tipo === 'circuito') ? '' : 'none';
+}
+
+function tobSaveEj(){
+  const a = tobAsig(); if(!a || !_tobEditingEj) return;
+  const en = a.rutina.entrenos.find(e => e.id === _tobEditingEj.entrenoId); if(!en) return;
+  const nombre = document.getElementById('tobEjEditName').value.trim();
+  if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
+  const tipo = document.getElementById('tobEjEditTipo').value;
+  const subtitle = document.getElementById('tobEjEditSub').value.trim();
+  const series = parseInt(document.getElementById('tobEjEditSeries').value) || 3;
+  const repsRaw = document.getElementById('tobEjEditReps').value.trim();
+  const repsTarget = repsRaw.split('/').map(s => s.trim()).filter(Boolean);
+  const pausa = document.getElementById('tobEjEditPausa').value.trim();
+  const circLineas = tipo === 'circuito'
+    ? document.getElementById('tobEjEditCircLineas').value.split('\n').map(s => s.trim()).filter(Boolean)
+    : null;
+
+  // Construir planByMicro: aplica el mismo plan a los 6 microciclos
+  const planByMicro = {};
+  for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+    planByMicro[mn] = { series, repsTarget, pausa };
+  }
+
+  if(_tobEditingEj.isNew){
+    // Añadir nuevo ejercicio
+    en.ejercicios.push({
+      id: tobUid('ej'),
+      orden: en.ejercicios.length,
+      nombre, subtitle, tipo,
+      circuitoLineas: circLineas || undefined,
+      planByMicro
+    });
+    tobToast('✓ Ejercicio añadido', 'green');
+  } else {
+    // Editar existente — PRESERVA ID (sesiones siguen vinculadas)
+    const ej = en.ejercicios.find(x => x.id === _tobEditingEj.ejId); if(!ej) return;
+    ej.nombre = nombre;
+    ej.subtitle = subtitle;
+    ej.tipo = tipo;
+    if(tipo === 'circuito') ej.circuitoLineas = circLineas; else delete ej.circuitoLineas;
+    ej.planByMicro = planByMicro;
+    delete ej.planBase;
+    tobToast('✓ Ejercicio actualizado', 'green');
+  }
+  tobSave();
+  tobCloseEjEditor();
+  tobRenderEntreno(); tobRenderCharts();
+}
+
+function tobDeleteCurrentEj(){
+  if(!_tobEditingEj || _tobEditingEj.isNew){ tobCloseEjEditor(); return; }
+  const a = tobAsig(); if(!a) return;
+  const en = a.rutina.entrenos.find(e => e.id === _tobEditingEj.entrenoId); if(!en) return;
+  const ej = en.ejercicios.find(x => x.id === _tobEditingEj.ejId); if(!ej) return;
+  if(!confirm(`¿Eliminar "${ej.nombre}"?\n\nNota: los datos registrados en sesiones se mantienen en el archivo pero ya no se mostrarán. Si vuelves a añadir un ejercicio con el mismo nombre, los datos no se reasocian automáticamente.`)){ return; }
+  en.ejercicios = en.ejercicios.filter(x => x.id !== ej.id);
+  // Reordenar
+  en.ejercicios.forEach((x, i) => x.orden = i);
+  tobSave();
+  tobCloseEjEditor();
+  tobRenderEntreno(); tobRenderCharts();
+  tobToast('Ejercicio eliminado', 'green');
+}
+
+// Botón "+ Añadir ejercicio" en cada entreno
+function tobAddEjToEntreno(entrenoId){
+  tobOpenEjEditor(entrenoId, null);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RESETEAR JEAN — borra y recrea desde cero
+// ═══════════════════════════════════════════════════════════════
+function tobResetJean(){
+  const jean = tobDB.clientes.find(c => c.nombre.toLowerCase() === 'jean');
+  if(!jean){
+    if(confirm('Jean no existe. ¿Crearlo ahora con los datos demo?')){
+      tobSeedJean();
+    }
+    return;
+  }
+  if(!confirm('⚠ Esto BORRA todos los datos de Jean (8 rutinas, sesiones, iteraciones) y los recrea desde cero con los valores del PDF + datos inventados.\n\n¿Continuar?')){ return; }
+  tobDB.clientes = tobDB.clientes.filter(c => c.id !== jean.id);
+  tobSave();
+  tobSeedJean();
+  tobToast('✓ Jean reseteado', 'green');
 }
 
 function tobShareWhatsAppFicha(){

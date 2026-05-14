@@ -43,7 +43,8 @@
       <div class="tob-sub">Asigna plantillas, registra sus kg/reps, ve su progreso entre iteraciones.</div>
     </div>
     <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="tob-action ghost" onclick="tobSeedJean()" title="Crea cliente 'Jean' con datos completos del PDF de ejemplo (2 iteraciones, mayo 2023 + jul/ago 2025)">📚 Cargar demo Jean</button>
+      <button class="tob-action ghost" onclick="tobSeedJean()" title="Crea cliente 'Jean' con datos completos del PDF de ejemplo. Si ya existe, completa rutinas faltantes">📚 Cargar demo Jean</button>
+      <button class="tob-action ghost" onclick="tobResetJean()" title="Borra a Jean y lo recrea desde cero (útil si los datos se han roto)" style="color:#fb923c;border-color:#5a2a0d;">🔄 Resetear Jean</button>
       <button class="tob-action" onclick="tobOpenClienteModal()">+ Nuevo cliente</button>
     </div>
   </div>
@@ -264,6 +265,43 @@
     <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="tobClosePlantillaModal()">Cancelar</button>
       <button class="tob-action" onclick="tobSavePlantilla()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL EDITOR EJERCICIO (in-place, preserva ID) ════════ -->
+<div class="tob-modal-bg" id="tobEjEditorBg">
+  <div class="tob-modal">
+    <h3 id="tobEjEditorTitle">Editar ejercicio</h3>
+    <div class="tob-row col-2">
+      <div><label class="tob-lbl">Nombre *</label><input class="tob-input" id="tobEjEditName"></div>
+      <div><label class="tob-lbl">Tipo</label>
+        <select class="tob-select" id="tobEjEditTipo" onchange="tobEjEditorTipoChange()">
+          <option value="normal">Normal (kg + reps)</option>
+          <option value="circuito">Circuito (ejercicios alternados)</option>
+        </select>
+      </div>
+    </div>
+    <div><label class="tob-lbl">Subtítulo (notas, ej: "Espalda Recta")</label>
+      <input class="tob-input" id="tobEjEditSub"></div>
+    <div class="tob-row col-3">
+      <div><label class="tob-lbl">Series</label><input class="tob-input" type="number" id="tobEjEditSeries" min="1" max="10"></div>
+      <div><label class="tob-lbl">Reps target (15/12/10)</label><input class="tob-input" id="tobEjEditReps" placeholder="15/12/10 o 10"></div>
+      <div><label class="tob-lbl">Pausa</label><input class="tob-input" id="tobEjEditPausa" placeholder="1'30''"></div>
+    </div>
+    <div id="tobEjEditCircWrap" style="display:none;">
+      <label class="tob-lbl">Líneas del circuito (una por línea)</label>
+      <textarea class="tob-textarea" id="tobEjEditCircLineas" rows="3" placeholder="CURL con BARRA&#10;HIPEREXTENSION&#10;CALF MACHINE"></textarea>
+    </div>
+    <div style="font-size:.7rem;color:var(--mute2);margin-top:6px;font-family:DM Mono,monospace;">
+      Los cambios aplican a los 6 microciclos. Si quieres distinto plan por microciclo, edita el JSON desde "Editar ejercicios" (modo avanzado).
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px;justify-content:space-between;">
+      <button class="tob-action danger" onclick="tobDeleteCurrentEj()">🗑 Eliminar este ejercicio</button>
+      <div style="display:flex;gap:8px;">
+        <button class="tob-action ghost" onclick="tobCloseEjEditor()">Cancelar</button>
+        <button class="tob-action" onclick="tobSaveEj()">💾 Guardar</button>
+      </div>
     </div>
   </div>
 </div>
