@@ -1948,42 +1948,97 @@ function tobBuildFichaData(cli){
   return { ejNames: [...ejNames], ejHistory, matrix, rutinaLabels };
 }
 
-// PR Cards + tabla comparativa (sustituye al gráfico de barras anterior)
+// Mini line charts (uno por ejercicio principal) + tabla comparativa
 function tobRenderFichaCharts(cli){
-  const cardsGrid = document.getElementById('tobFichaPrCards');
+  const chartsGrid = document.getElementById('tobFichaCharts');
   const tableCont = document.getElementById('tobFichaCmpTable');
-  if(!cardsGrid || !tableCont) return;
+  if(!chartsGrid || !tableCont) return;
+
+  Object.values(tobFichaCharts).forEach(c => { try { c.destroy(); } catch(e){} });
+  tobFichaCharts = {};
 
   const data = tobBuildFichaData(cli);
 
   if(!data.ejNames.length){
-    cardsGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mute2);padding:30px;">Sin datos de ejercicios principales aún.</div>';
+    chartsGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mute2);padding:30px;">Sin datos de ejercicios principales aún.</div>';
     tableCont.innerHTML = '';
     return;
   }
 
-  // ─── PR Cards ───
-  cardsGrid.innerHTML = data.ejNames.map(name => {
-    const points = (data.ejHistory[name] || []).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
-    if(!points.length) return '';
-    const first = points[0].kg;
-    const max = Math.max(...points.map(p => p.kg));
-    const last = points[points.length-1].kg;
-    const deltaKg = last - first;
-    const deltaPct = first > 0 ? (deltaKg / first * 100) : 0;
-    const cls = deltaKg > 0.01 ? 'up' : deltaKg < -0.01 ? 'down' : 'flat';
-    const arrow = deltaKg > 0.01 ? '▲' : deltaKg < -0.01 ? '▼' : '=';
-    return `<div class="tob-pr-card">
-      <div class="ej">${tobEsc(name)}</div>
-      <div class="v">${max}<span class="unit">kg PR</span></div>
-      <div class="d ${cls}">${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%) <span style="color:var(--mute2);">desde inicio</span></div>
-      <div class="m">${points.length} rutina${points.length===1?'':'s'} · última: ${points[points.length-1].fecha || '—'}</div>
-    </div>`;
-  }).filter(Boolean).join('');
+  // ─── Mini line charts ─────
+  chartsGrid.innerHTML = data.ejNames.map(name => `
+    <div class="tob-chart-card">
+      <div class="hdr">${tobEsc(name)}</div>
+      <div class="body"><canvas id="tobFichaChart_${tobSlug(name)}"></canvas></div>
+    </div>
+  `).join('');
 
-  // ─── Tabla comparativa ─────
-  // Filas: ejercicios. Columnas: rutina-iteraciones cronológicas. Celdas: max kg
-  // Marcar la celda más alta de cada fila como "best".
+  if(window.ChartDataLabels && Chart.register){ try { Chart.register(ChartDataLabels); } catch(e){} }
+
+  data.ejNames.forEach(name => {
+    const canvas = document.getElementById('tobFichaChart_' + tobSlug(name));
+    if(!canvas) return;
+    const points = (data.ejHistory[name]||[]).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    if(!points.length){
+      canvas.getContext('2d').fillStyle = '#5a5240';
+      canvas.getContext('2d').font = '12px DM Mono';
+      canvas.getContext('2d').textAlign = 'center';
+      canvas.getContext('2d').fillText('Sin datos', canvas.width/2, canvas.height/2);
+      return;
+    }
+    // Calcular delta y resaltar PR
+    const maxKg = Math.max(...points.map(p => p.kg));
+    const labels = points.map(p => p.asigLabel);
+    const values = points.map(p => p.kg);
+    // Colores: punto naranja si es PR (max), gris si no
+    const pointColors = values.map(v => v === maxKg ? '#f5a623' : '#94a3b8');
+    const pointSizes = values.map(v => v === maxKg ? 7 : 5);
+    tobFichaCharts[name] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'kg PR',
+          data: values,
+          borderColor: '#f5a623',
+          backgroundColor: 'rgba(245,166,35,.12)',
+          pointBackgroundColor: pointColors,
+          pointBorderColor: pointColors,
+          pointRadius: pointSizes,
+          pointHoverRadius: 8,
+          borderWidth: 2.5,
+          tension: 0.2,
+          fill: true,
+          spanGaps: true
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: ctx => `${ctx.parsed.y} kg`,
+            afterLabel: ctx => points[ctx.dataIndex].fecha ? '📅 ' + points[ctx.dataIndex].fecha : ''
+          } },
+          datalabels: {
+            color: ctx => values[ctx.dataIndex] === maxKg ? '#f5a623' : '#cbd5e1',
+            font: ctx => ({ size: values[ctx.dataIndex] === maxKg ? 12 : 10, weight: values[ctx.dataIndex] === maxKg ? '800' : '600' }),
+            align: 'top', offset: 6,
+            formatter: v => v + ' kg'
+          }
+        },
+        scales: {
+          x: { ticks: { color:'#7a96b8', font:{size:9}, maxRotation:30, minRotation:0,
+                callback: function(val){ const l = this.getLabelForValue(val); return l.length > 14 ? l.slice(0,12)+'…' : l; } },
+               grid: { color:'#1e1810', drawBorder:false } },
+          y: { ticks: { color:'#7a96b8', font:{size:9} }, grid:{ color:'#1e1810' }, beginAtZero:false,
+               title: { display:true, text:'kg', color:'#5a7a9a', font:{size:9} } }
+        }
+      }
+    });
+  });
+
+  // ─── Tabla comparativa (igual que antes) ─────
   const colHeaders = data.rutinaLabels.map(r => `<th title="${tobEsc(r.fecha)}">${tobEsc(r.label)}</th>`).join('');
   const rows = data.ejNames.map(name => {
     const cells = data.rutinaLabels.map(r => {
@@ -1996,7 +2051,6 @@ function tobRenderFichaCharts(cli){
     <thead><tr><th class="ej-col">Ejercicio</th>${colHeaders}</tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
-  // Marcar el max de cada fila
   tableCont.querySelectorAll('tbody tr').forEach(tr => {
     const cells = [...tr.querySelectorAll('td[data-kg]')];
     if(!cells.length) return;
@@ -2362,6 +2416,7 @@ function tobTextWidth(text, size, fontObj){
 
 // Helper: dibuja banda superior naranja + título + cliente
 function drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, title, subtitle, W, H){
+  const { rgb } = PDFLib;   // PDFLib es global desde el CDN
   page.drawRectangle({ x: 0, y: H-50, width: W, height: 50, color: ORANGE });
   page.drawText(title, { x: 24, y: H-32, size: 14, font: fontB, color: BLACK });
   if(subtitle) page.drawText(subtitle, { x: 24, y: H-46, size: 9, font: fontB, color: rgb(0.18,0.18,0.18) });
@@ -2398,7 +2453,7 @@ async function tobBuildPdfHistorico(cli){
   page.drawText('HISTÓRICO COMPLETO', { x: 100, y: H-185, size: 14, font, color: GRAY });
   page.drawText(cli.nombre || '—', { x: 100, y: H-260, size: 36, font: fontB, color: BLACK });
   const periodo = tobCalcPeriodo(cli);
-  page.drawText(`${periodo.desde}  →  ${periodo.hasta}`, { x: 100, y: H-290, size: 14, font, color: GRAY_DK });
+  page.drawText(`${periodo.desde}  —  ${periodo.hasta}`, { x: 100, y: H-290, size: 14, font, color: GRAY_DK });
   page.drawText(`${(cli.asignaciones||[]).length} rutinas  ·  ${tobCountSesiones(cli)} sesiones`, { x: 100, y: H-312, size: 11, font: fontO, color: GRAY });
 
   // KPIs globales
@@ -2453,7 +2508,7 @@ async function tobBuildPdfHistorico(cli){
     page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${max}`, 38, fontB) + 6, y: yy - 65, size: 11, font, color: GRAY });
     // Delta
     const deltaColor = deltaKg > 0 ? rgb(0.18, 0.6, 0.4) : deltaKg < 0 ? rgb(0.85, 0.25, 0.25) : GRAY;
-    const arrow = deltaKg > 0 ? '↑' : deltaKg < 0 ? '↓' : '=';
+    const arrow = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '=';   // ↑↓ no WinAnsi
     const deltaTxt = `${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%) desde inicio`;
     page.drawText(deltaTxt, { x: x + 14, y: yy - 100, size: 9, font: fontB, color: deltaColor });
     // Meta
@@ -2531,7 +2586,7 @@ async function tobBuildPdfHistorico(cli){
     page.drawRectangle({ x: 24, y: y-58, width: 4, height: 60, color: ORANGE });
     page.drawText(pl ? pl.nombre : '(plantilla eliminada)', { x: 38, y: y-12, size: 12, font: fontB, color: BLACK });
     if(pl) page.drawText(`${pl.macrociclo || ''} · ${pl.categoria || ''}`, { x: 38, y: y-26, size: 8, font: fontO, color: GRAY });
-    const dates = `${a.fechaInicio || '?'} → ${stats.ultimaFecha || '?'}`;
+    const dates = `${a.fechaInicio || '?'} — ${stats.ultimaFecha || '?'}`;
     page.drawText(dates, { x: 38, y: y-40, size: 9, font, color: GRAY_DK });
     page.drawText(a.estado || 'en curso', { x: 38, y: y-52, size: 8, font: fontB, color: a.estado==='completada' ? rgb(0.2,0.6,0.4) : a.estado==='repetir' ? rgb(0.9,0.5,0.2) : GRAY });
     // Stats derecha
