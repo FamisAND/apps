@@ -44,75 +44,76 @@ const TOB_NUM_MICRO = 6;
 const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
 
 // Versión de las descripciones. Al subirla, el backfill reaplica los textos.
-const TOB_DESC_VERSION = 3;
+const TOB_DESC_VERSION = 4;
 
 // Descripciones por categoría — lenguaje claro para gente que entrena normal,
-// sin jerga de competición. Estructura: objetivo, cómo progresa, reps, pesos,
+// sin jerga de competición ni duración fija (la velocidad depende de cuántos
+// días entrene cada persona). Estructura: objetivo, cómo progresa, reps, pesos,
 // descansos y consejos.
 const TOB_DESC_CATEGORIAS = {
   'Reacondicionamiento':
     'OBJETIVO: Ponerte a punto. Es la rutina para volver al gimnasio tras un parón o para empezar bien una etapa nueva. Recuperas el ritmo, recuerdas cómo se hacen los ejercicios y preparas el cuerpo para entrenamientos más exigentes.\n\n' +
-    'CÓMO PROGRESA: 6 semanas. Empiezas suave y vas subiendo el peso poco a poco. Cada par de semanas el reto sube un escalón: menos repeticiones pero algo más de peso.\n\n' +
-    'REPETICIONES: Empiezas con muchas (15-12-10 en las 3 series). Luego bajan a 12-10-8. Y al final 10-8-6. Bajar repeticiones te deja meter algo más de peso.\n\n' +
-    'PESOS: Al principio debe costarte poco — es para coger técnica. Al final notarás el esfuerzo, pero siempre pudiendo completar todas las repeticiones con buena forma.\n\n' +
-    'DESCANSOS: 1 minuto y medio entre series al principio, hasta 2 minutos al final.\n\n' +
-    'CONSEJOS: 3 días por semana alternando los entrenos A y B. Lo importante no es el peso, es hacer los movimientos bien y sin prisa, controlando la bajada.',
+    'CÓMO PROGRESA: La rutina está dividida en 6 microciclos (bloques). Avanzas al siguiente cuando completas las sesiones del bloque actual — no hay duración fija, va a tu ritmo. Cada par de bloques el reto sube un escalón: menos repeticiones pero algo más de peso.\n\n' +
+    'REPETICIONES: Empiezas con muchas (15-12-10 en las 3 series). Luego bajan a 12-10-8. Y en los últimos bloques 10-8-6. Bajar repeticiones te deja meter algo más de peso.\n\n' +
+    'PESOS: Al principio debe costarte poco — es para coger técnica. En los últimos bloques notarás el esfuerzo, pero siempre pudiendo completar todas las repeticiones con buena forma.\n\n' +
+    'DESCANSOS: 1 minuto y medio entre series en los primeros bloques, hasta 2 minutos en los últimos.\n\n' +
+    'CONSEJOS: Lo recomendable es entrenar entre 3 y 5 días por semana, alternando los entrenos A y B. Lo importante no es el peso, es hacer los movimientos bien y sin prisa, controlando la bajada.',
 
   'Preparación fuerza':
     'OBJETIVO: Empezar a ganar fuerza de verdad en los ejercicios básicos (sentadilla, press de banca, peso muerto...). Es el primer paso serio antes de las rutinas de fuerza más duras.\n\n' +
-    'CÓMO PROGRESA: 5 semanas de trabajo + 1 de descanso. Pocas repeticiones con un peso que te exija. Algunas semanas cambia el número de series para que el cuerpo no se acostumbre y siga mejorando.\n\n' +
-    'REPETICIONES: 5 repeticiones por serie en los ejercicios grandes. En los ejercicios de apoyo, entre 3 y 6 según la semana.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). Avanzas cuando completas las sesiones del bloque — a tu ritmo, sin calendario fijo. Pocas repeticiones con un peso que te exija. En algunos bloques cambia el número de series para que el cuerpo no se acostumbre y siga mejorando. El último bloque es más suave, de recuperación.\n\n' +
+    'REPETICIONES: 5 repeticiones por serie en los ejercicios grandes. En los ejercicios de apoyo, entre 3 y 6 según el bloque.\n\n' +
     'PESOS: Un peso que te cueste, pero con el que puedas mover bien las 5 repeticiones sin que la técnica se rompa.\n\n' +
     'DESCANSOS: 2 a 2 minutos y medio entre series. Aquí hace falta descansar bien para rendir.\n\n' +
-    'CONSEJOS: La última semana es de descanso, con pesos ligeros para recuperar. En algunos ejercicios de apoyo el ejercicio cambia de una semana a otra para trabajar de forma variada.',
+    'CONSEJOS: Entrena entre 3 y 5 días por semana, alternando A y B. En algunos ejercicios de apoyo el ejercicio cambia de un bloque a otro para trabajar de forma variada.',
 
   'Especialización técnica':
     'OBJETIVO: Mejorar CÓMO haces los ejercicios. Hacer los movimientos más limpios y controlados, ahora que ya manejas algo de peso. Pulir los detalles antes de subir más la intensidad.\n\n' +
-    'CÓMO PROGRESA: 5 semanas. El peso se mantiene parecido, pero cada semana se pide más control: pausas un poco más largas en los puntos clave del movimiento.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). El peso se mantiene parecido, pero bloque a bloque se pide más control: pausas un poco más largas en los puntos clave del movimiento. Avanzas a tu ritmo según completes las sesiones.\n\n' +
     'REPETICIONES: 4 a 6 por serie, 4 series. Las justas para practicar mucho la técnica sin perder la concentración.\n\n' +
     'PESOS: Peso medio-alto. La prioridad es la técnica perfecta — si el movimiento se descontrola, baja el peso.\n\n' +
     'DESCANSOS: 2 a 2 minutos y medio, para llegar a cada serie fresco y poder hacerla bien.\n\n' +
-    'CONSEJOS: Harás pausas a mitad del movimiento: 1-2 segundos sentado abajo en la sentadilla, 1-2 segundos con la barra en el pecho en el press. Estas pausas obligan a controlar y eliminan trampas.',
+    'CONSEJOS: Entrena entre 3 y 5 días por semana. Harás pausas a mitad del movimiento: 1-2 segundos sentado abajo en la sentadilla, 1-2 segundos con la barra en el pecho en el press. Estas pausas obligan a controlar y eliminan trampas.',
 
   'Fuerza 1':
     'OBJETIVO: Trabajar la fuerza con pesos altos. En esta rutina, además de levantar, aguantas la posición unos segundos en un punto del movimiento — eso te hace mucho más fuerte y estable.\n\n' +
-    'CÓMO PROGRESA: 5 semanas + 1 de descanso. Vas aguantando un poco más las posiciones y subiendo peso semana a semana.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). Vas aguantando un poco más las posiciones y subiendo peso de un bloque al siguiente. Avanzas cuando completas las sesiones del bloque, sin prisa de calendario. El último bloque es más suave, de recuperación.\n\n' +
     'REPETICIONES: 3 por serie, 5 series. Pocas, pero muy intensas.\n\n' +
     'PESOS: Peso alto, de los que de verdad cuestan. Siempre con buena técnica.\n\n' +
     'DESCANSOS: 3 minutos entre series. Necesitas recuperarte del todo para rendir en la siguiente.\n\n' +
-    'CONSEJOS: En cada ejercicio principal aguantas la posición unos 6 segundos en un punto clave (por ejemplo, a media bajada de la sentadilla o del press). Cuesta, pero es lo que te hace ganar fuerza real.',
+    'CONSEJOS: Entrena entre 3 y 5 días por semana. En cada ejercicio principal aguantas la posición unos 6 segundos en un punto clave (por ejemplo, a media bajada de la sentadilla o del press). Cuesta, pero es lo que te hace ganar fuerza real.',
 
   'Fuerza 2':
     'OBJETIVO: Comprobar cuánta fuerza has ganado en todo este tiempo. Al final de la rutina hay un día especial para intentar tu peso máximo en cada ejercicio.\n\n' +
-    'CÓMO PROGRESA: 6 semanas. Vas subiendo la intensidad hasta llegar al día de "máximos".\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). Vas subiendo la intensidad bloque a bloque hasta llegar al día de "máximos". Avanzas a tu ritmo según completes las sesiones.\n\n' +
     'REPETICIONES: En los entrenos normales, 5 series de 5 repeticiones. Hay una serie especial de 20 repeticiones en sentadilla (de aguante mental). El día de máximos: 1 sola repetición con el peso más alto que puedas.\n\n' +
     'PESOS: Peso alto en los entrenos. El día de máximos, lo máximo que puedas levantar con técnica correcta.\n\n' +
     'DESCANSOS: 2 minutos y medio a 3 en los entrenos normales. 5-6 minutos antes de cada intento de máximo.\n\n' +
-    'CONSEJOS: El día de "Maximales" tiene una hoja aparte con los 6 ejercicios principales. Haz siempre series de calentamiento subiendo peso antes de ir a por tu intento máximo. Nunca vayas a frío.',
+    'CONSEJOS: Entrena entre 3 y 5 días por semana. El día de "Maximales" tiene una hoja aparte con los 6 ejercicios principales. Haz siempre series de calentamiento subiendo peso antes de ir a por tu intento máximo. Nunca vayas a frío.',
 
   'Hibrido':
     'OBJETIVO: Mezclar lo mejor de dos mundos en la misma sesión: ganar fuerza y ganar músculo a la vez.\n\n' +
-    'CÓMO PROGRESA: 4 semanas + 1 de descanso. Se usan "series partidas": en vez de hacer 9 repeticiones seguidas, las haces en 3+3+3 con un respiro muy corto entre cada tanda. Eso te deja mover más peso.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). Se usan "series partidas": en vez de hacer 9 repeticiones seguidas, las haces en 3+3+3 con un respiro muy corto entre cada tanda. Eso te deja mover más peso. Avanzas de bloque cuando completas sus sesiones, a tu ritmo. El último bloque es más suave.\n\n' +
     'REPETICIONES: 9 repeticiones por serie, pero divididas en tres tandas de 3 con una pausa corta en medio.\n\n' +
     'PESOS: Peso alto — el formato partido te permite manejar más kilos sin que la técnica se resienta.\n\n' +
     'DESCANSOS: El respiro corto dentro de la serie es de 15-20 segundos. Entre serie y serie, 3 minutos.\n\n' +
-    'CONSEJOS: Partir la serie en tandas es la clave de esta rutina: aguantas buen peso durante las 9 repeticiones sin llegar al agotamiento que descontrola la forma.',
+    'CONSEJOS: Entrena entre 3 y 5 días por semana. Partir la serie en tandas es la clave de esta rutina: aguantas buen peso durante las 9 repeticiones sin llegar al agotamiento que descontrola la forma.',
 
   'Hipertrofia':
     'OBJETIVO: Ganar masa muscular. Que el músculo crezca y se note.\n\n' +
-    'CÓMO PROGRESA: 4 semanas. Cada semana cambia un poco el rango de repeticiones para trabajar el músculo de varias formas y que no se estanque.\n\n' +
-    'REPETICIONES: Entre 8 y 15 por serie según la semana. Unas semanas más repeticiones con menos peso, otras menos repeticiones con algo más.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). Cada bloque cambia un poco el rango de repeticiones para trabajar el músculo de varias formas y que no se estanque. Avanzas cuando completas las sesiones del bloque, sin calendario fijo.\n\n' +
+    'REPETICIONES: Entre 8 y 15 por serie según el bloque. Unos bloques más repeticiones con menos peso, otros menos repeticiones con algo más.\n\n' +
     'PESOS: Peso medio. El suficiente para que el músculo trabaje de verdad, pero no tanto como para fallar a las 3 repeticiones.\n\n' +
     'DESCANSOS: 1 minuto y medio a 2. Descansos cortos para mantener el músculo "encendido".\n\n' +
-    'CONSEJOS: Aquí no buscas mover mucho peso, buscas SENTIR el músculo trabajar en cada repetición. Técnica estricta y movimiento controlado. La conexión mente-músculo es lo que hace crecer.',
+    'CONSEJOS: Entrena entre 3 y 5 días por semana. Aquí no buscas mover mucho peso, buscas SENTIR el músculo trabajar en cada repetición. Técnica estricta y movimiento controlado. La conexión mente-músculo es lo que hace crecer.',
 
   'Calidad muscular':
     'OBJETIVO: Definir y marcar el músculo. Mantener la fuerza que has ganado mientras afinas y se ve más el trabajo hecho.\n\n' +
-    'CÓMO PROGRESA: 4 semanas + 1 de descanso. Alternas dos tipos de día: días de muchas repeticiones (bombeo, sensación de "músculo lleno") y días de peso medio para no perder fuerza.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques). Alternas dos tipos de día: días de muchas repeticiones (bombeo, sensación de "músculo lleno") y días de peso medio para no perder fuerza. Avanzas a tu ritmo según completes las sesiones de cada bloque.\n\n' +
     'REPETICIONES: En los días de bombeo, 12, 15 o hasta 20 repeticiones. En los días de peso medio, 6 a 10.\n\n' +
     'PESOS: Ligero-medio en los días de bombeo. Medio-alto en los días de fuerza.\n\n' +
     'DESCANSOS: Muy cortos en los días de bombeo (45 segundos a 1 minuto). Un poco más largos en los días de fuerza (1 minuto y medio a 2).\n\n' +
-    'CONSEJOS: Es una rutina pensada para una etapa corta, de unas 3-4 semanas, cuando quieres verte más marcado. En el último ejercicio de cada grupo se hacen "bajadas de peso" (sigues haciendo repeticiones con menos peso) para apurar al máximo.'
+    'CONSEJOS: Entrena entre 3 y 5 días por semana. Es una rutina ideal cuando quieres verte más marcado. En el último ejercicio de cada grupo se hacen "bajadas de peso" (sigues haciendo repeticiones con menos peso) para apurar al máximo.'
 };
 
 // Aliases de ejercicios: nombres equivalentes mapeados a un nombre canónico.
