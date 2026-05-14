@@ -43,6 +43,17 @@ const TOB_KEY = 'tob_online_v2';
 const TOB_NUM_MICRO = 6;
 const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
 
+// Aliases de ejercicios: nombres equivalentes mapeados a un nombre canónico.
+// Se aplica en tobLoad() por backfill — preserva IDs (sesiones quedan intactas).
+const TOB_EJ_ALIASES = {
+  'REMO O SEAL ROW': 'REMO',
+  'REMO o SEAL ROW': 'REMO',
+  'Remo o Seal Row': 'REMO',
+  'DOMINADAS O LAT MACHINE': 'DOMINADAS',
+  'DOMINADAS o LAT MACHINE': 'DOMINADAS',
+  'Dominadas o Lat Machine': 'DOMINADAS'
+};
+
 let tobDB = { clientes: [], plantillas: [] };
 let tobCurrentAsig = null;     // {clienteId, asigId}
 let tobCurrentItId = null;
@@ -104,6 +115,21 @@ function tobLoad(){
       }
     });
   });
+
+  // Backfill: normalizar nombres de ejercicios con aliases.
+  // Preserva IDs — las sesiones logueadas siguen vinculadas.
+  const renameEj = (ej) => {
+    const canonical = TOB_EJ_ALIASES[ej.nombre];
+    if(canonical && canonical !== ej.nombre){ ej.nombre = canonical; backfilled = true; }
+  };
+  tobDB.plantillas.forEach(p =>
+    (p.entrenos||[]).forEach(en =>
+      (en.ejercicios||[]).forEach(renameEj)));
+  tobDB.clientes.forEach(c =>
+    (c.asignaciones||[]).forEach(a =>
+      (a.rutina?.entrenos||[]).forEach(en =>
+        (en.ejercicios||[]).forEach(renameEj))));
+
   if(backfilled) tobSave(true);
 
   // Migrar de v1 si existía (estructura distinta)
@@ -1131,18 +1157,31 @@ tobSavePlantilla = function(){
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
   if(editId === '__asig__'){
     const a = tobAsig(); if(!a){ tobClosePlantillaModal(); return; }
-    const entrenos = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
-    if(!entrenos.length){ tobToast('Sin ejercicios', 'red'); return; }
-    a.rutina.entrenos = entrenos;
-    // Re-asegurar entreno actual válido
-    if(!entrenos.find(e => e.id === tobCurrentEntrenoId)) tobCurrentEntrenoId = entrenos[0].id;
+    const parsed = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
+    if(!parsed.length){ tobToast('Sin ejercicios', 'red'); return; }
+    // CRÍTICO: preservar IDs existentes de ejercicios (match por entreno+nombre)
+    // para no romper las sesiones registradas que usan ej.id.
+    const oldMap = {};   // 'A:NOMBRE' → id
+    (a.rutina?.entrenos||[]).forEach(en => {
+      (en.ejercicios||[]).forEach(ej => {
+        oldMap[en.letra + ':' + ej.nombre] = ej.id;
+      });
+    });
+    parsed.forEach(en => {
+      (en.ejercicios||[]).forEach(ej => {
+        const key = en.letra + ':' + ej.nombre;
+        if(oldMap[key]) ej.id = oldMap[key];   // reusar ID antiguo
+      });
+    });
+    a.rutina.entrenos = parsed;
+    if(!parsed.find(e => e.id === tobCurrentEntrenoId)) tobCurrentEntrenoId = parsed[0].id;
     document.getElementById('tobPlNombre').disabled = false;
     document.getElementById('tobPlCategoria').disabled = false;
     document.getElementById('tobPlSexo').disabled = false;
     tobSave();
     tobClosePlantillaModal();
     tobRenderEntTabs(); tobRenderEntreno(); tobRenderCharts();
-    tobToast('✓ Rutina actualizada', 'green');
+    tobToast('✓ Rutina actualizada (datos previos conservados)', 'green');
     return;
   }
   _origSavePl();
@@ -1233,7 +1272,7 @@ function tobBuildSeedPlantillas(){
     const ejs = [
       { ...ej('BOX SQUAT', '1" Pausa en Box', planRea), orden: 0 },
       { ...ej('PRESS BANCA', '1" Pausa al Pecho', planRea), orden: 1 },
-      { ...ej('REMO o SEAL ROW', 'Espalda Recta', planRea), orden: 2 },
+      { ...ej('REMO', 'Espalda Recta · o Seal Row', planRea), orden: 2 },
       { ...ejCirc('CURL + HIPEREXT + CALF', 'Alternados', ['CURL con BARRA','HIPEREXTENSION','CALF MACHINE'], { series:3, repsTarget:[12], pausa:'30"' }), planByMicro: planCircRea, orden: 3 }
     ];
     // Aplicar planByMicro al circuit
@@ -1244,7 +1283,7 @@ function tobBuildSeedPlantillas(){
     const ejs = [
       { ...ej('PESO MUERTO', 'Espalda Neutra', planRea), orden: 0 },
       { ...ej('PRESS MILITAR', 'Hasta las Claviculas', planRea), orden: 1 },
-      { ...ej('DOMINADAS o LAT MACHINE', 'Tocando el Pecho (peso + lastre)', planRea), orden: 2 },
+      { ...ej('DOMINADAS', 'Tocando el Pecho (peso + lastre) · o Lat Machine', planRea), orden: 2 },
       { ...ejCirc('PRENSA 45º + CRUNCH + FONDOS', 'Alternados', ['PRENSA 45º','CRUNCH INVERSO','FONDOS TRICEPS'], { series:3, repsTarget:[12], pausa:'30"' }), orden: 3 }
     ];
     ejs[3].planByMicro = planCircRea; delete ejs[3].planBase;
@@ -1563,7 +1602,7 @@ function tobSeedJean(){
       ejs: {
         [ids['A:BOX SQUAT']]:                  { series: data.boxSquat[mn-1] },
         [ids['A:PRESS BANCA']]:                { series: data.pressBanca[mn-1] },
-        [ids['A:REMO o SEAL ROW']]:            { series: data.remo[mn-1] },
+        [ids['A:REMO']]:                       { series: data.remo[mn-1] },
         [ids['A:CURL + HIPEREXT + CALF']]:     { lineas: data.circ[mn-1] }
       }
     };
@@ -1576,7 +1615,7 @@ function tobSeedJean(){
       ejs: {
         [ids['B:PESO MUERTO']]:                  { series: data.pesoMuerto[mn-1] },
         [ids['B:PRESS MILITAR']]:                { series: data.pressMilitar[mn-1] },
-        [ids['B:DOMINADAS o LAT MACHINE']]:      { series: data.dominadas[mn-1] },
+        [ids['B:DOMINADAS']]:                    { series: data.dominadas[mn-1] },
         [ids['B:PRENSA 45º + CRUNCH + FONDOS']]: { lineas: data.circ[mn-1] }
       }
     };
