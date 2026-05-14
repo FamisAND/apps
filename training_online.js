@@ -53,6 +53,10 @@ function tobUid(prefix){ return prefix + '_' + Date.now().toString(36) + '_' + M
 function tobEsc(s){ return String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
 
 function tobLoad(){
+  // Registrar plugin datalabels (idempotente con try/catch)
+  if(window.Chart && window.ChartDataLabels){
+    try { Chart.register(ChartDataLabels); } catch(e){}
+  }
   try {
     const raw = localStorage.getItem(TOB_KEY);
     if(raw){
@@ -66,6 +70,39 @@ function tobLoad(){
   let backfilled = false;
   tobDB.plantillas.forEach(p => {
     if(!p.macrociclo){ p.macrociclo = '1º Powerbuilding'; backfilled = true; }
+  });
+  // Backfill: añadir entreno "Maximales" a plantillas Fuerza 2 que no lo tengan
+  tobDB.plantillas.forEach(p => {
+    if(p.categoria !== 'Fuerza 2') return;
+    if((p.entrenos||[]).find(e => e.letra === 'MX')) return;
+    const planMax = {};
+    for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+      planMax[mn] = { series: 1, repsTarget: [1], pausa: "5'00''" };
+    }
+    const maxNames = ['BOX SQUAT', 'PRESS BANCA', 'PESO MUERTO', 'PRESS MILITAR', 'REMO', 'DOMINADAS'];
+    const ejMax = maxNames.map((n, i) => ({
+      id: tobUid('ej'), orden: i, nombre: n,
+      subtitle: 'Intento máximo (1RM)',
+      tipo: 'normal',
+      planByMicro: planMax
+    }));
+    p.entrenos.push({ id:'MX', letra:'MX', nombre:'Maximales', ejercicios: ejMax });
+    backfilled = true;
+  });
+  // También backfill las asignaciones existentes que tengan plantilla Fuerza 2
+  // sin Maximales en su rutina copiada.
+  tobDB.clientes.forEach(c => {
+    (c.asignaciones||[]).forEach(a => {
+      const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+      if(!pl || pl.categoria !== 'Fuerza 2') return;
+      if(!a.rutina || !a.rutina.entrenos) return;
+      if(a.rutina.entrenos.find(e => e.letra === 'MX')) return;
+      const mx = (pl.entrenos||[]).find(e => e.letra === 'MX');
+      if(mx){
+        a.rutina.entrenos.push(JSON.parse(JSON.stringify(mx)));
+        backfilled = true;
+      }
+    });
   });
   if(backfilled) tobSave(true);
 
@@ -143,13 +180,14 @@ function tobRenderClientes(){
     const sexoCls = c.sexo==='M'?'m':c.sexo==='H'?'h':'u';
     const sexoTxt = c.sexo==='M'?'♀':c.sexo==='H'?'♂':'U';
     return `<tr>
-      <td><strong>${tobEsc(c.nombre)}</strong></td>
+      <td style="cursor:pointer;" onclick="tobOpenFicha('${c.id}')" title="Abrir ficha histórica"><strong>${tobEsc(c.nombre)}</strong></td>
       <td><span style="color:var(--mute);font-family:DM Mono,monospace;font-size:.78rem;">${tobEsc(c.contacto||'—')}</span></td>
       <td><span class="tob-badge ${sexoCls}">${sexoTxt}</span></td>
       <td class="num">${(c.asignaciones||[]).length}</td>
       <td>${lastInfo}</td>
       <td class="actions">
-        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobAbrirCliente('${c.id}')">📂 Abrir</button>
+        <button class="tob-action" style="padding:5px 10px;" onclick="tobAbrirUltimaRutina('${c.id}')" title="Abrir la última rutina">🏋 Abrir</button>
+        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobOpenFicha('${c.id}')" title="Ficha histórica">📋 Ficha</button>
         <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobEditCliente('${c.id}')">✏️</button>
         <button class="tob-action danger" style="padding:5px 10px;" onclick="tobDelCliente('${c.id}')">🗑</button>
       </td>
@@ -237,8 +275,20 @@ function tobCreateAsignacion(plantId){
 }
 
 function tobAbrirCliente(cliId){
-  // Ahora abre la FICHA del cliente (timeline + KPIs + charts globales)
-  tobOpenFicha(cliId);
+  // Abre la última rutina (uso común). Para ver el histórico → tobOpenFicha
+  tobAbrirUltimaRutina(cliId);
+}
+
+function tobAbrirUltimaRutina(cliId){
+  const c = tobDB.clientes.find(c => c.id === cliId);
+  if(!c) return;
+  if(!c.asignaciones || !c.asignaciones.length){
+    tobOpenAsignarModal(c);
+    return;
+  }
+  // Ordenar por fechaInicio desc, abrir la última
+  const sorted = [...c.asignaciones].sort((a,b) => (b.fechaInicio||'').localeCompare(a.fechaInicio||''));
+  tobOpenAsignacion(c.id, sorted[0].id);
 }
 
 function tobBackToFicha(){
@@ -1303,7 +1353,27 @@ function tobBuildSeedPlantillas(){
     ['Calidad muscular',        planCM]
   ].forEach(([cat, plan]) => {
     ['H','M'].forEach(sx => {
-      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, entrenos: makeStandard(cat, plan) });
+      const entrenos = makeStandard(cat, plan);
+      // Maximales: solo en Fuerza 2. 3º entreno con 6 ejercicios principales,
+      // plan 1×1 (intento de 1RM). El cliente apunta el max alcanzado.
+      if(cat === 'Fuerza 2'){
+        const planMax = {};
+        for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+          planMax[mn] = { series: 1, repsTarget: [1], pausa: "5'00''" };
+        }
+        const maxNames = ['BOX SQUAT', 'PRESS BANCA', 'PESO MUERTO', 'PRESS MILITAR', 'REMO', 'DOMINADAS'];
+        const ejMax = maxNames.map((n, i) => ({
+          id: tobUid('ej'), orden: i, nombre: n,
+          subtitle: 'Intento máximo (1RM)',
+          tipo: 'normal',
+          planByMicro: planMax
+        }));
+        entrenos.push({
+          id: 'MX', letra: 'MX', nombre: 'Maximales',
+          ejercicios: ejMax
+        });
+      }
+      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, entrenos });
     });
   });
   return out;
@@ -1691,10 +1761,9 @@ function tobRenderFicha(){
     `Cliente desde ${cli.alta || '—'}  ·  ${(cli.asignaciones||[]).length} rutinas  ·  ${totalSes} sesiones registradas` +
     (cli.contacto ? `  ·  ${cli.contacto}` : '');
 
-  // KPIs
+  // KPIs (sin tonelaje, no aporta)
   const kpis = tobCalcGlobalKPIs(cli);
   document.getElementById('tobFichaKpis').innerHTML = `
-    <div class="tob-kpi vol"><div class="lbl">Tonelaje total</div><div class="val">${kpis.tonelajeTotal.toLocaleString('es-ES')}<span class="unit"> kg</span></div></div>
     <div class="tob-kpi ses"><div class="lbl">Sesiones totales</div><div class="val">${totalSes}</div></div>
     <div class="tob-kpi"><div class="lbl">Rutinas completadas</div><div class="val">${kpis.completadas}<span class="unit"> / ${(cli.asignaciones||[]).length}</span></div></div>
     ${Object.entries(kpis.prByEj).slice(0,6).map(([n, kg]) =>
@@ -1825,14 +1894,14 @@ function tobCalcAsigStats(a){
   return { tonelaje: Math.round(tonelaje), sesiones, ultimaFecha, maxByEj: sorted };
 }
 
-// Charts globales: una gráfica por ejercicio principal, mostrando PR a lo
-// largo del tiempo a través de TODAS las rutinas (cada rutina-iteración = 1 línea)
+// Charts globales: 1 BAR CHART por ejercicio principal. Cada barra = una
+// rutina-iteración con el PR máximo (kg de la mejor serie). Ordenadas
+// cronológicamente. Mucho más legible que líneas superpuestas.
 function tobRenderFichaCharts(cli){
   const grid = document.getElementById('tobFichaCharts');
   Object.values(tobFichaCharts).forEach(c => { try { c.destroy(); } catch(e){} });
   tobFichaCharts = {};
 
-  // Recolectar todos los ejercicios principales únicos (por nombre)
   const ejNames = new Set();
   (cli.asignaciones||[]).forEach(a => {
     (a.rutina?.entrenos||[]).forEach(en => {
@@ -1847,7 +1916,6 @@ function tobRenderFichaCharts(cli){
     return;
   }
 
-  // Para cada ejercicio: serie temporal de PR (max kg) por sesión, agrupado por rutina
   grid.innerHTML = [...ejNames].map(name => `
     <div class="tob-chart-card">
       <div class="hdr">${tobEsc(name)}</div>
@@ -1860,76 +1928,86 @@ function tobRenderFichaCharts(cli){
   [...ejNames].forEach(name => {
     const canvas = document.getElementById('tobFichaChart_' + tobSlug(name));
     if(!canvas) return;
-    // Punto por sesión: x = fecha, y = max kg de la sesión
-    const points = [];   // {fecha, kg, asigName}
-    (cli.asignaciones||[]).forEach(a => {
-      const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-      const asigLabel = pl ? pl.nombre : 'Rutina';
-      (a.iteraciones||[]).forEach((it, idx) => {
-        Object.values(it.sesiones||{}).forEach(microSes => {
-          Object.entries(microSes).forEach(([entId, s]) => {
-            const en = a.rutina?.entrenos.find(e => e.id === entId);
-            const ej = en?.ejercicios.find(x => x.nombre === name);
-            if(!ej || ej.tipo === 'circuito') return;
-            const series = s.ejs?.[ej.id]?.series;
-            if(!series || !series.length) return;
-            const maxKg = Math.max(0, ...series.map(sr => sr.kg||0));
-            if(maxKg <= 0) return;
-            points.push({ fecha: s.fecha || '', kg: maxKg, asig: asigLabel, asigId: a.id, it: it.numero });
-          });
-        });
-      });
-    });
-    if(!points.length){
+    const cfg = tobBuildGlobalEjBarConfig(cli, name);
+    if(!cfg){
       canvas.getContext('2d').fillStyle = '#5a5240';
       canvas.getContext('2d').font = '12px DM Mono';
       canvas.getContext('2d').textAlign = 'center';
       canvas.getContext('2d').fillText('Sin datos', canvas.width/2, canvas.height/2);
       return;
     }
-    points.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    tobFichaCharts[name] = new Chart(canvas, cfg);
+  });
+}
 
-    // Agrupar por asigId+it para que cada (rutina-iteración) sea una "subserie" coloreada
-    const groups = {};
-    points.forEach(p => {
-      const key = p.asigId + '_' + p.it;
-      if(!groups[key]) groups[key] = { label: `${p.asig} (it.${p.it})`, points: [] };
-      groups[key].points.push(p);
-    });
-    const labels = points.map(p => p.fecha ? p.fecha.split('-').reverse().join('/') : '?');
-    const datasets = Object.values(groups).map((g, i) => {
-      const color = TOB_IT_COLORS[i % TOB_IT_COLORS.length];
-      // Alinear a labels
-      const map = {};
-      g.points.forEach(p => { map[p.fecha ? p.fecha.split('-').reverse().join('/') : '?'] = p.kg; });
-      return {
-        label: g.label,
-        data: labels.map(l => map[l] != null ? map[l] : null),
-        borderColor: color, backgroundColor: color+'22', pointBackgroundColor: color,
-        pointRadius: 4, pointHoverRadius: 6, tension: 0.1, fill: false, spanGaps: true, borderWidth: 2
-      };
-    });
-
-    tobFichaCharts[name] = new Chart(canvas, {
-      type: 'line',
-      data: { labels, datasets },
-      options: {
-        responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{ labels:{ color:'#cbd5e1', font:{size:9}, boxWidth:10 }, position:'top', align:'end' },
-          datalabels: {
-            color: ctx => ctx.dataset.borderColor,
-            font: { size: 9, weight:'600' }, align:'top', offset:4,
-            formatter: v => v == null ? '' : v
-          }
-        },
-        scales:{
-          x:{ ticks:{ color:'#7a96b8', font:{size:9}, maxRotation:60, minRotation:45 }, grid:{ color:'#1e1810' } },
-          y:{ ticks:{ color:'#7a96b8', font:{size:9} }, grid:{ color:'#1e1810' }, beginAtZero:true }
-        }
+// Construye config bar chart con 1 barra por rutina-iteración (max PR)
+function tobBuildGlobalEjBarConfig(cli, ejName){
+  const bars = [];
+  (cli.asignaciones||[]).forEach(a => {
+    const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+    const asigLabel = pl ? pl.nombre.replace(' — Hombre','').replace(' — Mujer','') : 'Rutina';
+    (a.iteraciones||[]).forEach(it => {
+      let maxKg = 0; let lastFecha = '';
+      Object.values(it.sesiones||{}).forEach(microSes => {
+        Object.entries(microSes).forEach(([entId, s]) => {
+          const en = a.rutina?.entrenos.find(e => e.id === entId);
+          const ej = en?.ejercicios.find(x => x.nombre === ejName);
+          if(!ej || ej.tipo === 'circuito') return;
+          const series = s.ejs?.[ej.id]?.series;
+          if(!series) return;
+          series.forEach(sr => { if((sr.kg||0) > maxKg) maxKg = sr.kg; });
+          if(s.fecha && s.fecha > lastFecha) lastFecha = s.fecha;
+        });
+      });
+      if(maxKg > 0){
+        const label = (a.iteraciones.length > 1)
+          ? `${asigLabel} (it.${it.numero})`
+          : asigLabel;
+        bars.push({ label, kg: maxKg, fecha: lastFecha || a.fechaInicio || '' });
       }
     });
   });
+  if(!bars.length) return null;
+  // Ordenar por fecha
+  bars.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+
+  // Colorear: cada barra con un color, alternando paleta (igual que iteraciones)
+  const colors = bars.map((_, i) => TOB_IT_COLORS[i % TOB_IT_COLORS.length]);
+
+  return {
+    type: 'bar',
+    data: {
+      labels: bars.map(b => b.label),
+      datasets: [{
+        label: 'PR (kg)',
+        data: bars.map(b => b.kg),
+        backgroundColor: colors,
+        borderColor: colors,
+        borderWidth: 0,
+        borderRadius: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.y} kg · ${bars[ctx.dataIndex].fecha}` } },
+        datalabels: {
+          color: '#fff', font:{size:11,weight:'700'}, anchor:'end', align:'top', offset:2,
+          formatter: v => v + ' kg'
+        }
+      },
+      scales: {
+        x: { ticks: { color:'#7a96b8', font:{size:9}, maxRotation:35, minRotation:0,
+              autoSkip: false, callback: function(val){
+                const lbl = this.getLabelForValue(val);
+                return lbl.length > 18 ? lbl.slice(0,16)+'…' : lbl;
+              } }, grid:{ display:false } },
+        y: { ticks:{ color:'#7a96b8', font:{size:10} }, grid:{ color:'#1e1810' }, beginAtZero:true,
+             title:{ display:true, text:'kg', color:'#7a96b8', font:{size:9} } }
+      }
+    }
+  };
 }
 
 function tobSlug(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
@@ -1938,25 +2016,34 @@ function tobSlug(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
 // PDF BONITO — rutina completada actual + histórico
 // ═════════════════════════════════════════════════════════════════
 
-// Render Chart.js a PNG dataURL (canvas oculto, animation off)
+// Render Chart.js a PNG Uint8Array (canvas oculto, animation off).
+// Devuelve bytes listos para pdf-lib embedPng.
 async function tobChartToPng(config, w, h){
   const canvas = document.createElement('canvas');
   canvas.width = w || 800; canvas.height = h || 380;
   canvas.style.position = 'fixed'; canvas.style.left = '-9999px'; canvas.style.top = '0';
   document.body.appendChild(canvas);
-  const cfg = JSON.parse(JSON.stringify(config));
-  if(!cfg.options) cfg.options = {};
-  cfg.options.animation = false;
-  cfg.options.responsive = false;
-  cfg.options.maintainAspectRatio = false;
-  // Forzar dpr para mejor calidad
-  cfg.options.devicePixelRatio = 2;
-  const chart = new Chart(canvas, cfg);
-  await new Promise(r => setTimeout(r, 120));
-  const png = chart.toBase64Image('image/png', 1.0);
-  chart.destroy();
-  canvas.remove();
-  return png;
+  let chart = null;
+  try {
+    const cfg = JSON.parse(JSON.stringify(config));
+    if(!cfg.options) cfg.options = {};
+    cfg.options.animation = false;
+    cfg.options.responsive = false;
+    cfg.options.maintainAspectRatio = false;
+    cfg.options.devicePixelRatio = 2;
+    chart = new Chart(canvas, cfg);
+    await new Promise(r => setTimeout(r, 120));
+    const dataUrl = chart.toBase64Image('image/png', 1.0);
+    // dataUrl = 'data:image/png;base64,iVBORw0...' — pdf-lib espera bytes
+    const base64 = dataUrl.split(',')[1] || '';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } finally {
+    if(chart) try { chart.destroy(); } catch(e){}
+    canvas.remove();
+  }
 }
 
 // Genera PDF "rutina completada" con cover + KPIs + charts + tabla
@@ -2046,18 +2133,20 @@ async function tobBuildPdfRutina(cli, a, pl, it){
 
   for(let i = 0; i < Math.min(mainEjs.length, 6); i++){
     const { ej, entId } = mainEjs[i];
-    const cfg = tobBuildEjChartConfig(a, ej, entId);
-    if(!cfg) continue;
     try {
-      const png = await tobChartToPng(cfg, 600, 360);
-      const img = await doc.embedPng(png);
+      const cfg = tobBuildEjChartConfig(a, ej, entId);
+      if(!cfg) continue;
+      const pngBytes = await tobChartToPng(cfg, 700, 380);
+      const img = await doc.embedPng(pngBytes);
       const slot = slots[i];
-      // Cuadro de fondo
       page.drawRectangle({ x: slot.x - 4, y: slot.y - 22, width: slot.w + 8, height: slot.h + 30, borderColor: ORANGE, borderWidth: 1.5 });
       page.drawRectangle({ x: slot.x - 4, y: slot.y + slot.h + 8, width: slot.w + 8, height: 18, color: ORANGE });
       page.drawText(ej.nombre.toUpperCase(), { x: slot.x + 4, y: slot.y + slot.h + 12, size: 9, font: fontB, color: BLACK });
       page.drawImage(img, { x: slot.x, y: slot.y - 18, width: slot.w, height: slot.h + 4 });
-    } catch(e){ console.warn('chart embed fail:', e); }
+    } catch(e){
+      console.warn('chart embed fail for', ej.nombre, e);
+      // Sigue con los demás, no rompe el PDF
+    }
   }
 
   // ─── PÁGINAS 3+: DETALLE DE CADA ENTRENO ───────
@@ -2341,15 +2430,18 @@ async function tobBuildPdfHistorico(cli){
   });
 
   // ─── GRÁFICAS PROGRESIÓN GLOBAL ────────────
-  // Para cada ejercicio principal, una página con su gráfica grande
+  // Para cada ejercicio principal, una página con su gráfica grande (bar chart)
   for(const [ejName] of prEntries.slice(0, 6)){
-    page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `EVOLUCIÓN: ${ejName}`, cli.nombre || '', W, H);
-    const cfg = tobBuildGlobalEjChartConfig(cli, ejName);
-    if(cfg){
-      const png = await tobChartToPng(cfg, 900, 500);
-      const img = await doc.embedPng(png);
+    try {
+      const cfg = tobBuildGlobalEjBarConfig(cli, ejName);
+      if(!cfg) continue;
+      page = doc.addPage([W, H]);
+      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `EVOLUCIÓN: ${ejName}`, cli.nombre || '', W, H);
+      const pngBytes = await tobChartToPng(cfg, 900, 480);
+      const img = await doc.embedPng(pngBytes);
       page.drawImage(img, { x: 60, y: 80, width: W-120, height: H-180 });
+    } catch(e){
+      console.warn('historico chart fail for', ejName, e);
     }
   }
 
@@ -2416,62 +2508,41 @@ function tobCalcPeriodo(cli){
   return { desde, hasta };
 }
 
-function tobBuildGlobalEjChartConfig(cli, ejName){
-  const points = [];
-  (cli.asignaciones||[]).forEach(a => {
-    const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    (a.iteraciones||[]).forEach(it => {
-      Object.values(it.sesiones||{}).forEach(microSes => {
-        Object.entries(microSes).forEach(([entId, s]) => {
-          const en = a.rutina?.entrenos.find(e => e.id === entId);
-          const ej = en?.ejercicios.find(x => x.nombre === ejName);
-          if(!ej || ej.tipo === 'circuito') return;
-          const series = s.ejs?.[ej.id]?.series;
-          if(!series || !series.length) return;
-          const maxKg = Math.max(0, ...series.map(sr => sr.kg||0));
-          if(maxKg <= 0 || !s.fecha) return;
-          points.push({ fecha: s.fecha, kg: maxKg, asig: pl?.nombre || '?', it: it.numero });
-        });
-      });
-    });
-  });
-  if(!points.length) return null;
-  points.sort((a,b) => a.fecha.localeCompare(b.fecha));
-  // Agrupar por (asig+it)
-  const groups = {};
-  points.forEach(p => {
-    const key = p.asig + '_it' + p.it;
-    if(!groups[key]) groups[key] = [];
-    groups[key].push(p);
-  });
-  const labels = points.map(p => p.fecha.split('-').reverse().join('/'));
-  const datasets = Object.entries(groups).map(([k, pts], i) => {
-    const color = TOB_IT_COLORS[i % TOB_IT_COLORS.length];
-    const map = {}; pts.forEach(p => map[p.fecha.split('-').reverse().join('/')] = p.kg);
-    return {
-      label: k.replace('_it', ' it.'),
-      data: labels.map(l => map[l] != null ? map[l] : null),
-      borderColor: color, backgroundColor: color+'22',
-      pointBackgroundColor: color, pointStyle: 'crossRot',
-      pointRadius: 5, pointBorderWidth: 2, tension: 0.1, fill: false, spanGaps: true, borderWidth: 2
-    };
-  });
-  return {
-    type:'line', data:{labels, datasets},
-    options:{
-      plugins:{
-        legend:{ labels:{ color:'#222', font:{size:11} }, position:'top' },
-        datalabels: window.ChartDataLabels ? {
-          color: ctx => ctx.dataset.borderColor, font:{size:10,weight:'700'},
-          align:'top', offset:4, formatter: v => v == null ? '' : v + ' kg'
-        } : undefined
-      },
-      scales:{
-        x:{ ticks:{ color:'#444', font:{size:10}, maxRotation:60, minRotation:45 }, grid:{ color:'#e4e4e4' } },
-        y:{ ticks:{ color:'#444', font:{size:10} }, grid:{ color:'#e4e4e4' }, beginAtZero:true }
-      }
-    }
-  };
+function tobShareWhatsAppFicha(){
+  if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  const stats = tobCalcGlobalKPIs(cli);
+  const extra = `Tienes ${(cli.asignaciones||[]).length} rutinas registradas con ${stats.completadas} completadas. Te paso el PDF — recuerda adjuntarlo manualmente cuando se abra el chat.`;
+  tobShareWhatsApp(cli, 'historico', extra);
+}
+
+function tobShareWhatsAppRutina(){
+  const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
+  const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+  const it = tobIt();
+  const stats = tobCalcItStats(a, it);
+  const extra = `Rutina: ${pl?.nombre || ''}${a.iteraciones.length > 1 ? ` (it.${it?.numero})` : ''}. ${stats.sesiones} sesiones registradas.`;
+  tobShareWhatsApp(cli, 'rutina', extra);
+}
+
+// ═══ WhatsApp share core ════════════════════════════════════
+function tobShareWhatsApp(cli, kind, extraText){
+  if(!cli){ tobToast('Sin cliente', 'red'); return; }
+  const phone = (cli.contacto || '').replace(/[^\d+]/g, '').replace(/^\+/,'');
+  let msg;
+  if(kind === 'historico'){
+    msg = `Hola ${cli.nombre}! Aquí tu histórico de entrenamientos. ${extraText||''} 💪`;
+  } else if(kind === 'rutina'){
+    msg = `Hola ${cli.nombre}! Aquí tu rutina completada. ${extraText||''} ¡Buen trabajo! 💪`;
+  } else {
+    msg = `Hola ${cli.nombre}! ${extraText||''}`;
+  }
+  const url = phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
+  if(!phone) tobToast('Sin contacto guardado — abre WhatsApp y elige destinatario', '');
 }
 
 // Auto-init

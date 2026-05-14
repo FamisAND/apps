@@ -89,6 +89,7 @@
     <div class="meta" id="tobFichaMeta">—</div>
     <div class="tools">
       <button class="tob-action" onclick="tobGeneratePdfHistorico()" title="PDF completo con todo el histórico, KPIs y gráficas">📄 PDF Histórico</button>
+      <button class="tob-action ghost" onclick="tobShareWhatsAppFicha()" title="Abre WhatsApp con un mensaje preformateado para enviarle el histórico (adjunta el PDF manualmente)">📲 WhatsApp</button>
       <button class="tob-action ghost" onclick="tobEditCliente(tobCurrentFichaId)">✏️ Editar datos</button>
     </div>
   </div>
@@ -165,6 +166,7 @@
     <div class="tob-pdf-actions" style="margin-top:10px;">
       <button class="tob-action" onclick="tobGeneratePdfActual()" title="PDF bonito: cover, KPIs, gráficas y tabla. Para enviar al cliente cuando complete la rutina">📄 PDF rutina completada</button>
       <button class="tob-action ghost" onclick="tobGeneratePdf()" title="PDF rellenable con form fields para que el cliente lo edite y devuelva">📄 PDF en blanco (para rellenar)</button>
+      <button class="tob-action ghost" onclick="tobShareWhatsAppRutina()" title="Abre WhatsApp con un mensaje preformateado para enviarle la rutina (adjunta el PDF manualmente)">📲 WhatsApp</button>
     </div>
   </div>
 
