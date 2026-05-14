@@ -229,6 +229,39 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 
 .tob-pdf-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 
+/* ── PR cards (showcase de progresión por ejercicio) ── */
+.tob-pr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;}
+.tob-pr-card{background:linear-gradient(135deg,#1a1510 0%,#0a0806 100%);
+  border:1px solid var(--border2);border-radius:4px;padding:18px;position:relative;overflow:hidden;
+  transition:transform .15s,border-color .15s;}
+.tob-pr-card:hover{border-color:var(--acc);transform:translateY(-2px);}
+.tob-pr-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--acc);}
+.tob-pr-card .ej{font-size:.72rem;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--acc2);margin-bottom:8px;font-weight:700;}
+.tob-pr-card .v{font-size:2.4rem;font-weight:800;color:var(--text);line-height:1;font-family:'DM Mono',monospace;}
+.tob-pr-card .v .unit{font-size:.95rem;color:var(--mute);font-weight:400;margin-left:5px;}
+.tob-pr-card .d{margin-top:9px;font-size:.82rem;font-family:'DM Mono',monospace;}
+.tob-pr-card .d.up{color:var(--green);}
+.tob-pr-card .d.down{color:var(--red);}
+.tob-pr-card .d.flat{color:var(--mute);}
+.tob-pr-card .m{margin-top:6px;font-size:.68rem;color:var(--mute2);font-family:'DM Mono',monospace;letter-spacing:.04em;}
+
+/* ── Tabla comparativa (ejercicio × rutina) ── */
+.tob-cmp-wrap{overflow-x:auto;}
+.tob-cmp{width:100%;border-collapse:separate;border-spacing:0;font-size:.78rem;min-width:600px;}
+.tob-cmp th{background:#0e0d0a;color:var(--acc2);padding:9px 12px;text-align:center;
+  font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;
+  font-weight:700;border-bottom:1px solid var(--acc);position:sticky;top:0;}
+.tob-cmp th.ej-col{text-align:left;background:#13110d;color:var(--mute);}
+.tob-cmp td{padding:7px 10px;text-align:center;border-bottom:1px solid var(--border);
+  font-family:'DM Mono',monospace;color:var(--text);font-weight:600;}
+.tob-cmp td.ej-name{text-align:left;font-weight:700;background:#13110d;color:var(--acc2);
+  font-family:inherit;font-size:.85rem;}
+.tob-cmp tr:nth-child(even) td{background:#0c0b08;}
+.tob-cmp tr:nth-child(even) td.ej-name{background:#13110d;}
+.tob-cmp td.best{color:var(--acc);font-weight:700;text-shadow:0 0 5px rgba(245,166,35,.4);}
+.tob-cmp td.empty{color:var(--mute2);font-weight:400;}
+
 /* ── Modal ── */
 .tob-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(4px);
   z-index:90;align-items:center;justify-content:center;padding:20px;overflow-y:auto;}

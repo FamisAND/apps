@@ -1894,14 +1894,9 @@ function tobCalcAsigStats(a){
   return { tonelaje: Math.round(tonelaje), sesiones, ultimaFecha, maxByEj: sorted };
 }
 
-// Charts globales: 1 BAR CHART por ejercicio principal. Cada barra = una
-// rutina-iteración con el PR máximo (kg de la mejor serie). Ordenadas
-// cronológicamente. Mucho más legible que líneas superpuestas.
-function tobRenderFichaCharts(cli){
-  const grid = document.getElementById('tobFichaCharts');
-  Object.values(tobFichaCharts).forEach(c => { try { c.destroy(); } catch(e){} });
-  tobFichaCharts = {};
-
+// Construye datos consolidados para ficha: PR por ejercicio y tabla rutina×ejercicio
+function tobBuildFichaData(cli){
+  // Recolectar todos los ejercicios principales únicos
   const ejNames = new Set();
   (cli.asignaciones||[]).forEach(a => {
     (a.rutina?.entrenos||[]).forEach(en => {
@@ -1910,104 +1905,105 @@ function tobRenderFichaCharts(cli){
       });
     });
   });
+  // Para cada ejercicio: lista de {kg, fecha, asigLabel} de cada rutina-iteración
+  const ejHistory = {};
+  // También: por rutina-iteración → ejercicio → kg max
+  const matrix = {};   // { rutinaKey: { ejName: maxKg } }
+  const rutinaLabels = []; // ordenadas crono
 
-  if(!ejNames.size){
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mute2);padding:30px;">Sin datos de ejercicios principales aún.</div>';
-    return;
-  }
-
-  grid.innerHTML = [...ejNames].map(name => `
-    <div class="tob-chart-card">
-      <div class="hdr">${tobEsc(name)}</div>
-      <div class="body"><canvas id="tobFichaChart_${tobSlug(name)}"></canvas></div>
-    </div>
-  `).join('');
-
-  if(window.ChartDataLabels && Chart.register){ try { Chart.register(ChartDataLabels); } catch(e){} }
-
-  [...ejNames].forEach(name => {
-    const canvas = document.getElementById('tobFichaChart_' + tobSlug(name));
-    if(!canvas) return;
-    const cfg = tobBuildGlobalEjBarConfig(cli, name);
-    if(!cfg){
-      canvas.getContext('2d').fillStyle = '#5a5240';
-      canvas.getContext('2d').font = '12px DM Mono';
-      canvas.getContext('2d').textAlign = 'center';
-      canvas.getContext('2d').fillText('Sin datos', canvas.width/2, canvas.height/2);
-      return;
-    }
-    tobFichaCharts[name] = new Chart(canvas, cfg);
-  });
-}
-
-// Construye config bar chart con 1 barra por rutina-iteración (max PR)
-function tobBuildGlobalEjBarConfig(cli, ejName){
-  const bars = [];
-  (cli.asignaciones||[]).forEach(a => {
+  // Ordenar asignaciones por fechaInicio
+  const sortedAsigs = [...(cli.asignaciones||[])].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
+  sortedAsigs.forEach(a => {
     const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    const asigLabel = pl ? pl.nombre.replace(' — Hombre','').replace(' — Mujer','') : 'Rutina';
-    (a.iteraciones||[]).forEach(it => {
-      let maxKg = 0; let lastFecha = '';
+    const baseLabel = pl ? pl.nombre.replace(' — Hombre','').replace(' — Mujer','') : 'Rutina';
+    a.iteraciones.forEach(it => {
+      const ejMaxIt = {};
+      let lastFecha = '';
       Object.values(it.sesiones||{}).forEach(microSes => {
         Object.entries(microSes).forEach(([entId, s]) => {
           const en = a.rutina?.entrenos.find(e => e.id === entId);
-          const ej = en?.ejercicios.find(x => x.nombre === ejName);
-          if(!ej || ej.tipo === 'circuito') return;
-          const series = s.ejs?.[ej.id]?.series;
-          if(!series) return;
-          series.forEach(sr => { if((sr.kg||0) > maxKg) maxKg = sr.kg; });
+          if(!en) return;
+          en.ejercicios.forEach(ej => {
+            if(ej.tipo === 'circuito') return;
+            const series = s.ejs?.[ej.id]?.series;
+            if(!series) return;
+            series.forEach(sr => {
+              if((sr.kg||0) > (ejMaxIt[ej.nombre]||0)) ejMaxIt[ej.nombre] = sr.kg;
+            });
+          });
           if(s.fecha && s.fecha > lastFecha) lastFecha = s.fecha;
         });
       });
-      if(maxKg > 0){
-        const label = (a.iteraciones.length > 1)
-          ? `${asigLabel} (it.${it.numero})`
-          : asigLabel;
-        bars.push({ label, kg: maxKg, fecha: lastFecha || a.fechaInicio || '' });
-      }
+      const itLabel = (a.iteraciones.length > 1) ? `${baseLabel} it.${it.numero}` : baseLabel;
+      const fechaR = lastFecha || a.fechaInicio || '';
+      const rutinaKey = `${itLabel}__${fechaR}`;
+      rutinaLabels.push({ key: rutinaKey, label: itLabel, fecha: fechaR });
+      matrix[rutinaKey] = ejMaxIt;
+      Object.entries(ejMaxIt).forEach(([n, kg]) => {
+        if(!ejHistory[n]) ejHistory[n] = [];
+        ejHistory[n].push({ kg, fecha: fechaR, asigLabel: itLabel });
+      });
     });
   });
-  if(!bars.length) return null;
-  // Ordenar por fecha
-  bars.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+  return { ejNames: [...ejNames], ejHistory, matrix, rutinaLabels };
+}
 
-  // Colorear: cada barra con un color, alternando paleta (igual que iteraciones)
-  const colors = bars.map((_, i) => TOB_IT_COLORS[i % TOB_IT_COLORS.length]);
+// PR Cards + tabla comparativa (sustituye al gráfico de barras anterior)
+function tobRenderFichaCharts(cli){
+  const cardsGrid = document.getElementById('tobFichaPrCards');
+  const tableCont = document.getElementById('tobFichaCmpTable');
+  if(!cardsGrid || !tableCont) return;
 
-  return {
-    type: 'bar',
-    data: {
-      labels: bars.map(b => b.label),
-      datasets: [{
-        label: 'PR (kg)',
-        data: bars.map(b => b.kg),
-        backgroundColor: colors,
-        borderColor: colors,
-        borderWidth: 0,
-        borderRadius: 3
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.y} kg · ${bars[ctx.dataIndex].fecha}` } },
-        datalabels: {
-          color: '#fff', font:{size:11,weight:'700'}, anchor:'end', align:'top', offset:2,
-          formatter: v => v + ' kg'
-        }
-      },
-      scales: {
-        x: { ticks: { color:'#7a96b8', font:{size:9}, maxRotation:35, minRotation:0,
-              autoSkip: false, callback: function(val){
-                const lbl = this.getLabelForValue(val);
-                return lbl.length > 18 ? lbl.slice(0,16)+'…' : lbl;
-              } }, grid:{ display:false } },
-        y: { ticks:{ color:'#7a96b8', font:{size:10} }, grid:{ color:'#1e1810' }, beginAtZero:true,
-             title:{ display:true, text:'kg', color:'#7a96b8', font:{size:9} } }
-      }
-    }
-  };
+  const data = tobBuildFichaData(cli);
+
+  if(!data.ejNames.length){
+    cardsGrid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mute2);padding:30px;">Sin datos de ejercicios principales aún.</div>';
+    tableCont.innerHTML = '';
+    return;
+  }
+
+  // ─── PR Cards ───
+  cardsGrid.innerHTML = data.ejNames.map(name => {
+    const points = (data.ejHistory[name] || []).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    if(!points.length) return '';
+    const first = points[0].kg;
+    const max = Math.max(...points.map(p => p.kg));
+    const last = points[points.length-1].kg;
+    const deltaKg = last - first;
+    const deltaPct = first > 0 ? (deltaKg / first * 100) : 0;
+    const cls = deltaKg > 0.01 ? 'up' : deltaKg < -0.01 ? 'down' : 'flat';
+    const arrow = deltaKg > 0.01 ? '▲' : deltaKg < -0.01 ? '▼' : '=';
+    return `<div class="tob-pr-card">
+      <div class="ej">${tobEsc(name)}</div>
+      <div class="v">${max}<span class="unit">kg PR</span></div>
+      <div class="d ${cls}">${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%) <span style="color:var(--mute2);">desde inicio</span></div>
+      <div class="m">${points.length} rutina${points.length===1?'':'s'} · última: ${points[points.length-1].fecha || '—'}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  // ─── Tabla comparativa ─────
+  // Filas: ejercicios. Columnas: rutina-iteraciones cronológicas. Celdas: max kg
+  // Marcar la celda más alta de cada fila como "best".
+  const colHeaders = data.rutinaLabels.map(r => `<th title="${tobEsc(r.fecha)}">${tobEsc(r.label)}</th>`).join('');
+  const rows = data.ejNames.map(name => {
+    const cells = data.rutinaLabels.map(r => {
+      const kg = data.matrix[r.key]?.[name];
+      return kg != null ? `<td data-kg="${kg}">${kg}</td>` : `<td class="empty">—</td>`;
+    }).join('');
+    return `<tr><td class="ej-name">${tobEsc(name)}</td>${cells}</tr>`;
+  }).join('');
+  tableCont.innerHTML = `<table class="tob-cmp">
+    <thead><tr><th class="ej-col">Ejercicio</th>${colHeaders}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  // Marcar el max de cada fila
+  tableCont.querySelectorAll('tbody tr').forEach(tr => {
+    const cells = [...tr.querySelectorAll('td[data-kg]')];
+    if(!cells.length) return;
+    let maxKg = -Infinity;
+    cells.forEach(td => { const v = +td.dataset.kg; if(v > maxKg) maxKg = v; });
+    cells.forEach(td => { if(+td.dataset.kg === maxKg) td.classList.add('best'); });
+  });
 }
 
 function tobSlug(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
@@ -2016,34 +2012,51 @@ function tobSlug(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
 // PDF BONITO — rutina completada actual + histórico
 // ═════════════════════════════════════════════════════════════════
 
-// Render Chart.js a PNG Uint8Array (canvas oculto, animation off).
-// Devuelve bytes listos para pdf-lib embedPng.
-async function tobChartToPng(config, w, h){
-  const canvas = document.createElement('canvas');
-  canvas.width = w || 800; canvas.height = h || 380;
-  canvas.style.position = 'fixed'; canvas.style.left = '-9999px'; canvas.style.top = '0';
-  document.body.appendChild(canvas);
-  let chart = null;
-  try {
-    const cfg = JSON.parse(JSON.stringify(config));
-    if(!cfg.options) cfg.options = {};
-    cfg.options.animation = false;
-    cfg.options.responsive = false;
-    cfg.options.maintainAspectRatio = false;
-    cfg.options.devicePixelRatio = 2;
-    chart = new Chart(canvas, cfg);
-    await new Promise(r => setTimeout(r, 120));
-    const dataUrl = chart.toBase64Image('image/png', 1.0);
-    // dataUrl = 'data:image/png;base64,iVBORw0...' — pdf-lib espera bytes
-    const base64 = dataUrl.split(',')[1] || '';
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  } finally {
-    if(chart) try { chart.destroy(); } catch(e){}
-    canvas.remove();
-  }
+// Render Chart.js a PNG Uint8Array. Usa doble requestAnimationFrame para
+// garantizar que Chart.js complete layout antes de toBase64Image.
+// Importante: usar spread (no JSON.stringify) para preservar funciones
+// (formatter de datalabels, callbacks, etc).
+function tobChartToPng(config, w, h){
+  return new Promise((resolve, reject) => {
+    if(!window.Chart){ reject(new Error('Chart.js no cargado')); return; }
+    const canvas = document.createElement('canvas');
+    canvas.width = w || 800; canvas.height = h || 380;
+    canvas.style.position = 'fixed'; canvas.style.left = '-9999px'; canvas.style.top = '0';
+    document.body.appendChild(canvas);
+    let chart = null;
+    const cleanup = () => {
+      if(chart) try { chart.destroy(); } catch(_){}
+      canvas.remove();
+    };
+    try {
+      // Shallow override de options sin perder funciones (formatter, callbacks)
+      const cfg = {
+        ...config,
+        options: {
+          ...(config.options || {}),
+          animation: false,
+          responsive: false,
+          maintainAspectRatio: false
+        }
+      };
+      chart = new Chart(canvas, cfg);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        try {
+          const dataUrl = chart.toBase64Image('image/png', 1.0);
+          if(!dataUrl || !dataUrl.startsWith('data:image/png')){
+            throw new Error('Chart no produjo PNG válido');
+          }
+          const base64 = dataUrl.split(',')[1] || '';
+          if(!base64) throw new Error('Base64 vacío');
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          cleanup();
+          resolve(bytes);
+        } catch(e){ cleanup(); reject(e); }
+      }));
+    } catch(e){ cleanup(); reject(e); }
+  });
 }
 
 // Genera PDF "rutina completada" con cover + KPIs + charts + tabla
@@ -2408,41 +2421,96 @@ async function tobBuildPdfHistorico(cli){
   page.drawText(`Generado: ${new Date().toLocaleDateString('es-ES')}`, { x: 100, y: 40, size: 9, font, color: GRAY });
   page.drawText('FULL TRAINING · BIIO System', { x: W-240, y: 40, size: 9, font: fontO, color: GRAY });
 
-  // ─── PR POR EJERCICIO ──────────────────────
+  // ─── PR CARDS BONITAS ──────────────────────
   page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'PR MÁXIMOS', cli.nombre || '', W, H);
-  let y = H - 90;
-  page.drawText('Récord absoluto (kg de la mejor serie) por ejercicio principal a lo largo de toda la historia:',
-    { x: 30, y, size: 10, font, color: GRAY_DK });
-  y -= 26;
-  // Tabla simple de PRs
-  const prEntries = Object.entries(kpisG.prByEj);
-  const colW = 280, rowH = 32;
-  prEntries.forEach((pr, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = 30 + col * (colW + 30);
-    const yy = y - row * rowH;
-    page.drawRectangle({ x, y: yy-4, width: colW, height: rowH-4, color: rgb(0.97,0.97,0.97) });
-    page.drawRectangle({ x, y: yy-4, width: 4, height: rowH-4, color: ORANGE });
-    page.drawText(pr[0], { x: x+14, y: yy+12, size: 11, font: fontB, color: BLACK });
-    page.drawText(`${pr[1]} kg`, { x: x+colW-90, y: yy+8, size: 16, font: fontB, color: ORANGE });
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RÉCORDS PERSONALES', cli.nombre || '', W, H);
+  const fichaData = tobBuildFichaData(cli);
+  // Layout 3 columnas × 2 filas (6 ejercicios)
+  const cardW = 240, cardH = 130, gap = 20;
+  const totalW = 3*cardW + 2*gap;
+  const startX = (W - totalW) / 2;
+  const startY = H - 160;
+  let cardIdx = 0;
+  fichaData.ejNames.slice(0, 6).forEach(name => {
+    const points = (fichaData.ejHistory[name]||[]).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    if(!points.length) return;
+    const col = cardIdx % 3;
+    const row = Math.floor(cardIdx / 3);
+    const x = startX + col * (cardW + gap);
+    const yy = startY - row * (cardH + gap);
+    const first = points[0].kg;
+    const max = Math.max(...points.map(p => p.kg));
+    const last = points[points.length-1].kg;
+    const deltaKg = last - first;
+    const deltaPct = first > 0 ? (deltaKg / first * 100) : 0;
+    // Caja
+    page.drawRectangle({ x, y: yy - cardH, width: cardW, height: cardH, color: rgb(0.98,0.98,0.98) });
+    page.drawRectangle({ x, y: yy - 5, width: cardW, height: 5, color: ORANGE });
+    // Nombre ejercicio
+    page.drawText(name.toUpperCase(), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
+    // Número grande
+    page.drawText(`${max}`, { x: x + 14, y: yy - 75, size: 38, font: fontB, color: BLACK });
+    page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${max}`, 38, fontB) + 6, y: yy - 65, size: 11, font, color: GRAY });
+    // Delta
+    const deltaColor = deltaKg > 0 ? rgb(0.18, 0.6, 0.4) : deltaKg < 0 ? rgb(0.85, 0.25, 0.25) : GRAY;
+    const arrow = deltaKg > 0 ? '↑' : deltaKg < 0 ? '↓' : '=';
+    const deltaTxt = `${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%) desde inicio`;
+    page.drawText(deltaTxt, { x: x + 14, y: yy - 100, size: 9, font: fontB, color: deltaColor });
+    // Meta
+    page.drawText(`${points.length} rutinas · última: ${points[points.length-1].fecha || '—'}`,
+      { x: x + 14, y: yy - 116, size: 7, font, color: GRAY });
+    cardIdx++;
   });
 
-  // ─── GRÁFICAS PROGRESIÓN GLOBAL ────────────
-  // Para cada ejercicio principal, una página con su gráfica grande (bar chart)
-  for(const [ejName] of prEntries.slice(0, 6)){
-    try {
-      const cfg = tobBuildGlobalEjBarConfig(cli, ejName);
-      if(!cfg) continue;
+  // ─── TABLA COMPARATIVA ───────────────────
+  page = doc.addPage([W, H]);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPARATIVA ENTRE RUTINAS', `${cli.nombre || ''} · kg máximo por ejercicio en cada rutina`, W, H);
+  const tableY = H - 80;
+  const ejColW = 130;
+  // Limitamos a las primeras 8 rutinas si hay muchas para que entre en una página
+  const allLabels = fichaData.rutinaLabels;
+  const colsPerPage = 8;
+  let pageOffset = 0;
+  while(pageOffset < allLabels.length){
+    if(pageOffset > 0){
       page = doc.addPage([W, H]);
-      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `EVOLUCIÓN: ${ejName}`, cli.nombre || '', W, H);
-      const pngBytes = await tobChartToPng(cfg, 900, 480);
-      const img = await doc.embedPng(pngBytes);
-      page.drawImage(img, { x: 60, y: 80, width: W-120, height: H-180 });
-    } catch(e){
-      console.warn('historico chart fail for', ejName, e);
+      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPARATIVA (cont.)', cli.nombre || '', W, H);
     }
+    const labels = allLabels.slice(pageOffset, pageOffset + colsPerPage);
+    const cellW = Math.min(85, (W - 60 - ejColW) / labels.length);
+    let y = tableY;
+    // Header
+    page.drawRectangle({ x: 30, y: y - 28, width: W - 60, height: 28, color: rgb(0.06,0.06,0.06) });
+    page.drawText('Ejercicio', { x: 38, y: y - 18, size: 9, font: fontB, color: ORANGE });
+    labels.forEach((r, i) => {
+      const x = 30 + ejColW + i * cellW;
+      const lbl = r.label.length > 18 ? r.label.slice(0,16) + '…' : r.label;
+      page.drawText(lbl, { x: x + 4, y: y - 12, size: 7, font: fontB, color: rgb(0.9,0.7,0.3) });
+      page.drawText(r.fecha || '', { x: x + 4, y: y - 22, size: 6, font: fontO, color: rgb(0.7,0.7,0.7) });
+    });
+    y -= 32;
+    // Filas
+    fichaData.ejNames.forEach((name, idx) => {
+      if(y < 60) return; // simple page-overflow handling
+      // Fondo alternado
+      if(idx % 2 === 0) page.drawRectangle({ x: 30, y: y - 18, width: W - 60, height: 22, color: rgb(0.96,0.96,0.96) });
+      page.drawText(name, { x: 38, y: y - 8, size: 9, font: fontB, color: BLACK });
+      // Encontrar el max de la fila para destacarlo
+      let rowMax = 0;
+      labels.forEach(r => { const v = fichaData.matrix[r.key]?.[name]; if(v > rowMax) rowMax = v; });
+      labels.forEach((r, i) => {
+        const x = 30 + ejColW + i * cellW;
+        const kg = fichaData.matrix[r.key]?.[name];
+        if(kg != null){
+          const isBest = kg === rowMax;
+          page.drawText(`${kg}`, { x: x + 4, y: y - 8, size: 10, font: fontB, color: isBest ? ORANGE : BLACK });
+        } else {
+          page.drawText('—', { x: x + 4, y: y - 8, size: 9, font, color: rgb(0.7,0.7,0.7) });
+        }
+      });
+      y -= 22;
+    });
+    pageOffset += colsPerPage;
   }
 
   // ─── RESUMEN POR RUTINA ────────────────────
