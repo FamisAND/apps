@@ -443,6 +443,7 @@ function tobOpenPlantillaModal(pl){
   document.getElementById('tobPlNombre').value = pl?.nombre || '';
   document.getElementById('tobPlCategoria').value = pl?.categoria || 'Reacondicionamiento';
   document.getElementById('tobPlSexo').value = pl?.sexo || 'H';
+  document.getElementById('tobPlDescripcion').value = pl?.descripcion || '';
   document.getElementById('tobPlDef').value = pl ? tobPlantillaToText(pl) : '';
   document.getElementById('tobPlantillaModalBg').dataset.editId = pl?.id || '';
   document.getElementById('tobPlantillaModalBg').classList.add('on');
@@ -498,14 +499,15 @@ function tobSavePlantilla(){
   const macrociclo = document.getElementById('tobPlMacrociclo').value.trim() || '(Sin macrociclo)';
   const categoria = document.getElementById('tobPlCategoria').value;
   const sexo = document.getElementById('tobPlSexo').value;
+  const descripcion = document.getElementById('tobPlDescripcion').value.trim();
   const entrenos = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
   if(!entrenos.length){ tobToast('Define al menos un ejercicio', 'red'); return; }
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
   if(editId){
     const p = tobDB.plantillas.find(p => p.id === editId);
-    if(p) Object.assign(p, { macrociclo, nombre, categoria, sexo, entrenos });
+    if(p) Object.assign(p, { macrociclo, nombre, categoria, sexo, descripcion, entrenos });
   } else {
-    tobDB.plantillas.push({ id: tobUid('pl'), macrociclo, nombre, categoria, sexo, entrenos });
+    tobDB.plantillas.push({ id: tobUid('pl'), macrociclo, nombre, categoria, sexo, descripcion, entrenos });
   }
   tobSave();
   tobClosePlantillaModal();
@@ -1384,9 +1386,28 @@ function tobBuildSeedPlantillas(){
 
   const out = [];
   const MACRO = '1º Powerbuilding';
+  // Descripciones por categoría (puedes editarlas después por plantilla)
+  const DESC = {
+    'Reacondicionamiento':
+      'Mesociclo introductorio. Adaptación neuromuscular y técnica. Volumen alto con reps descendentes (15/12/10 → 12/10/8 → 10/8/6) y pausa progresiva. 3 sesiones semanales (A, B alternando). Foco: reactivar patrones motores tras un parón o iniciar bien la temporada.',
+    'Preparación fuerza':
+      'Neurological Carryover Training. Series bajas (3x5) a intensidad alta con descansos generosos (2-3 min). Trabajo sobre patrones básicos: sentadilla, banca, peso muerto. Ondas Waterbury en algunos ejercicios accesorios.',
+    'Especialización técnica':
+      'Neurological Carryover Dinosaur Training. 4 series x 4-6 reps con pausa larga (2\'30"-3\'00") y pausas técnicas (Box Squat con 1" en el cajón, Press con pausa al pecho). Foco en técnica perfecta y control bajo cargas pesadas.',
+    'Fuerza 1':
+      'Neurological Dinosaur Isometronic. Cargas elevadas (≥80% RM) con isométricos en posiciones clave (6-segundos hold). 5x3, descanso 3\'. Máxima adaptación neuromuscular y rigidez articular.',
+    'Fuerza 2':
+      'Método 20/20 modificado. 5x5 a alta intensidad con peak set de 20 reps en sentadilla. Incluye sesión "Maximales" (1RM) al final para reevaluar y registrar récords personales.',
+    'Hibrido':
+      'Hybrid Extended Clusters. Series cluster 3+3+3 (con micro-pausa intra-serie). Combina fuerza neural y volumen muscular en la misma sesión. Pausa entre series 3 min.',
+    'Hipertrofia':
+      'Método Holístico Distribuido. 4x8-10/12 con técnica estricta, pausa 1\'30"-2\'00". Volumen alto distribuido por grupo muscular. Foco: crecimiento muscular sostenido sin descuidar la fuerza.',
+    'Calidad muscular':
+      'Daily Undulating Power & Pump. 4x12-15-20 reps con pausas cortas (45"-1\'00"). Mezcla alta densidad + drop-sets. Foco en definición y bombeo. Ideal para fase de pre-competición o etapa de "pulido".'
+  };
   // 1. Reacondicionamiento (exacto del PDF)
-  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', entrenos:[entA_rea(), entB_rea()] });
-  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', descripcion: DESC['Reacondicionamiento'], entrenos:[entA_rea(), entB_rea()] });
+  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', descripcion: DESC['Reacondicionamiento'], entrenos:[entA_rea(), entB_rea()] });
   // 2-8
   [
     ['Preparación fuerza',     planPF],
@@ -1418,7 +1439,7 @@ function tobBuildSeedPlantillas(){
           ejercicios: ejMax
         });
       }
-      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, entrenos });
+      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, descripcion: DESC[cat] || '', entrenos });
     });
   });
   return out;
@@ -1889,19 +1910,30 @@ function tobRenderTimeline(cli){
     const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
     const stats = tobCalcAsigStats(a);
     const fechaFin = stats.ultimaFecha || a.fechaInicio || '';
+    const nombreShort = pl ? pl.nombre.replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '') : '(plantilla eliminada)';
+    const topPrs = Object.entries(stats.maxByEj).slice(0, 3);
+    const prBoxes = topPrs.length
+      ? topPrs.map(([n, kg]) => {
+          const ejShort = n.length > 10 ? n.slice(0,9)+'…' : n;
+          return `<div class="tl-prbox" title="${tobEsc(n)}: ${kg} kg">
+            <div class="ej">${tobEsc(ejShort)}</div>
+            <div class="v">${kg}<span class="u"> kg</span></div>
+          </div>`;
+        }).join('')
+      : `<div style="color:var(--mute2);font-size:.72rem;font-style:italic;align-self:center;">Sin datos registrados</div>`;
     return `<div class="tob-tl-item ${a.estado||''}" onclick="tobOpenAsignacion('${cli.id}','${a.id}')">
-      <div class="tl-hdr">
-        <span class="tl-fechas">${tobEsc(a.fechaInicio||'?')} → ${tobEsc(fechaFin)}</span>
-        <span class="tl-name">${pl ? tobEsc(pl.nombre) : '(plantilla eliminada)'}</span>
-        <span class="tob-badge ${a.estado||'en_curso'}">${a.estado||'en curso'}</span>
+      <div class="tl-left">
+        <div class="tl-hdr">
+          <span class="tl-fechas">${tobEsc(a.fechaInicio||'?')} → ${tobEsc(fechaFin)}</span>
+          <span class="tl-name">${tobEsc(nombreShort)}</span>
+          <span class="tob-badge ${a.estado||'en_curso'}">${a.estado||'en curso'}</span>
+        </div>
+        <div class="tl-meta">${pl ? tobEsc(pl.macrociclo||'') + ' · ' + tobEsc(pl.categoria||'') : ''}  ·  ${(a.iteraciones||[]).length} iteración${(a.iteraciones||[]).length===1?'':'es'}</div>
+        <div class="tl-kpi">
+          <span><strong>${stats.sesiones}</strong>sesiones</span>
+        </div>
       </div>
-      <div class="tl-meta">${pl ? tobEsc(pl.macrociclo||'') + ' · ' + tobEsc(pl.categoria||'') : ''}  ·  ${(a.iteraciones||[]).length} iteración${(a.iteraciones||[]).length===1?'':'es'}</div>
-      <div class="tl-kpi">
-        <span><strong>${stats.sesiones}</strong>sesiones</span>
-        <span><strong>${stats.tonelaje.toLocaleString('es-ES')}</strong>kg movidos</span>
-        ${Object.entries(stats.maxByEj).slice(0,3).map(([n,kg]) =>
-          `<span>PR <strong>${tobEsc(n)}</strong>: ${kg}kg</span>`).join('')}
-      </div>
+      <div class="tl-right">${prBoxes}</div>
     </div>`;
   }).join('');
 }
@@ -2175,183 +2207,190 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
   const fontO = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const form = doc.getForm();   // ← PDF EDITABLE
   const ORANGE = rgb(0.96, 0.65, 0.13);
   const BLACK = rgb(0.06, 0.06, 0.06);
-  const GRAY_LT = rgb(0.94, 0.94, 0.94);
   const GRAY = rgb(0.55, 0.55, 0.55);
   const GRAY_DK = rgb(0.25, 0.25, 0.25);
+  const GRAY_MD = rgb(0.4, 0.4, 0.4);
 
   const W_L = 842, H_L = 595;  // landscape
-  const W_P = 595, H_P = 842;  // portrait
 
-  // ─── PÁGINA 1: COVER ───────────────────────────
+  // Nombre rutina sin sufijo "— Hombre"/"— Mujer"
+  const rutinaShort = (pl?.nombre || '').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+
+  // ─── PÁGINA 1: COVER limpia + descripción ─────
   let page = doc.addPage([W_L, H_L]);
-  // Banda lateral naranja
   page.drawRectangle({ x: 0, y: 0, width: 60, height: H_L, color: ORANGE });
-  // Logo FULL TRAINING
-  page.drawText('FULL', { x: 100, y: H_L - 100, size: 60, font: fontB, color: ORANGE });
-  page.drawText('TRAINING', { x: 100, y: H_L - 160, size: 60, font: fontB, color: BLACK });
-  page.drawText((pl?.categoria || '').toUpperCase(), { x: 100, y: H_L - 185, size: 14, font, color: GRAY });
+  page.drawText('FULL', { x: 100, y: H_L - 100, size: 56, font: fontB, color: ORANGE });
+  page.drawText('TRAINING', { x: 100, y: H_L - 156, size: 56, font: fontB, color: BLACK });
+  page.drawText((pl?.categoria || '').toUpperCase(), { x: 100, y: H_L - 180, size: 13, font, color: GRAY });
 
-  // Nombre cliente
-  page.drawText(cli?.nombre || '—', { x: 100, y: H_L - 260, size: 36, font: fontB, color: BLACK });
-  page.drawText(`${pl?.nombre || ''}`, { x: 100, y: H_L - 290, size: 16, font, color: GRAY_DK });
-  page.drawText(`Iteración ${it?.numero || 1}  ·  ${a.fechaInicio || ''}`, { x: 100, y: H_L - 312, size: 11, font: fontO, color: GRAY });
+  // Nombre cliente + rutina (sin "— Hombre")
+  page.drawText(cli?.nombre || '—', { x: 100, y: H_L - 240, size: 32, font: fontB, color: BLACK });
+  page.drawText(rutinaShort, { x: 100, y: H_L - 268, size: 15, font, color: GRAY_DK });
+  page.drawText(`Iteración ${it?.numero || 1}  ·  Inicio: ${a.fechaInicio || ''}`, { x: 100, y: H_L - 288, size: 11, font: fontO, color: GRAY });
 
-  // KPIs
-  const stats = tobCalcAsigStats(a);
-  // En la cover, mostrar stats de ESTA iteración únicamente
+  // KPI única: sesiones
   const statsIt = tobCalcItStats(a, it);
-  const kpis = [
-    ['SESIONES', statsIt.sesiones.toString(), ''],
-    ['TONELAJE', statsIt.tonelaje.toLocaleString('es-ES'), 'kg'],
-    ['EJERCICIOS', String(statsIt.ejCount), ''],
-    ['MICROCICLOS', '6', '']
-  ];
-  const kpiW = 160, kpiH = 90, kpiGap = 14;
-  const kpiStartX = 100;
-  const kpiY = 160;
-  kpis.forEach((kp, i) => {
-    const x = kpiStartX + i * (kpiW + kpiGap);
-    page.drawRectangle({ x, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97, 0.97, 0.97) });
-    page.drawRectangle({ x, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
-    page.drawText(kp[0], { x: x + 12, y: kpiY + kpiH - 26, size: 9, font: fontB, color: GRAY });
-    page.drawText(kp[1], { x: x + 12, y: kpiY + 28, size: 28, font: fontB, color: BLACK });
-    if(kp[2]) page.drawText(kp[2], { x: x + 12 + tobTextWidth(kp[1], 28, fontB) + 6, y: kpiY + 28, size: 11, font, color: GRAY });
-  });
-  // Footer cover
-  page.drawText(`Generado: ${new Date().toLocaleDateString('es-ES')}`, { x: 100, y: 40, size: 9, font, color: GRAY });
-  page.drawText('FULL TRAINING · BIIO System', { x: W_L - 240, y: 40, size: 9, font: fontO, color: GRAY });
+  const kpiX = 100, kpiY = 200, kpiW = 200, kpiH = 90;
+  page.drawRectangle({ x: kpiX, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
+  page.drawRectangle({ x: kpiX, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
+  page.drawText('SESIONES TOTALES', { x: kpiX+14, y: kpiY+kpiH-26, size: 10, font: fontB, color: GRAY });
+  page.drawText(String(statsIt.sesiones), { x: kpiX+14, y: kpiY+28, size: 36, font: fontB, color: BLACK });
+  page.drawText(`de 12 planificadas (6 microciclos × 2 entrenos)`, { x: kpiX+kpiW+20, y: kpiY+44, size: 9, font, color: GRAY });
 
-  // ─── PÁGINA 2: GRÁFICAS DE PROGRESIÓN ──────────
-  page = doc.addPage([W_L, H_L]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'EVOLUCIÓN DE FUERZA', `${cli?.nombre} — ${pl?.nombre}`, W_L, H_L);
-
-  // Renderizar charts (uno por ejercicio principal) y embedlos
-  const mainEjs = [];
-  (a.rutina?.entrenos||[]).forEach(en => {
-    (en.ejercicios||[]).forEach(ej => { if(ej.tipo !== 'circuito') mainEjs.push({ej, entId: en.id}); });
-  });
-
-  // Layout: 3 charts arriba (190x230), 2 charts abajo (190x230 cada uno) — tipo PDF original
-  const slots = [
-    { x: 80,  y: 280, w: 230, h: 180 },
-    { x: 325, y: 280, w: 230, h: 180 },
-    { x: 570, y: 280, w: 230, h: 180 },
-    { x: 80,  y: 60,  w: 230, h: 180 },
-    { x: 325, y: 60,  w: 230, h: 180 },
-    { x: 570, y: 60,  w: 230, h: 180 }
-  ];
-
-  for(let i = 0; i < Math.min(mainEjs.length, 6); i++){
-    const { ej, entId } = mainEjs[i];
-    try {
-      const cfg = tobBuildEjChartConfig(a, ej, entId);
-      if(!cfg) continue;
-      const pngBytes = await tobChartToPng(cfg, 700, 380);
-      const img = await doc.embedPng(pngBytes);
-      const slot = slots[i];
-      page.drawRectangle({ x: slot.x - 4, y: slot.y - 22, width: slot.w + 8, height: slot.h + 30, borderColor: ORANGE, borderWidth: 1.5 });
-      page.drawRectangle({ x: slot.x - 4, y: slot.y + slot.h + 8, width: slot.w + 8, height: 18, color: ORANGE });
-      page.drawText(ej.nombre.toUpperCase(), { x: slot.x + 4, y: slot.y + slot.h + 12, size: 9, font: fontB, color: BLACK });
-      page.drawImage(img, { x: slot.x, y: slot.y - 18, width: slot.w, height: slot.h + 4 });
-    } catch(e){
-      console.warn('chart embed fail for', ej.nombre, e);
-      // Sigue con los demás, no rompe el PDF
-    }
+  // Descripción de la rutina
+  if(pl?.descripcion){
+    const descX = 100, descY = 160;
+    page.drawText('DESCRIPCIÓN', { x: descX, y: descY, size: 9, font: fontB, color: ORANGE });
+    const descLines = tobWrapText(pl.descripcion, font, 10, W_L - descX - 60);
+    descLines.slice(0, 6).forEach((line, i) => {
+      page.drawText(line, { x: descX, y: descY - 18 - i*13, size: 10, font, color: GRAY_DK });
+    });
   }
 
-  // ─── PÁGINAS 3+: DETALLE DE CADA ENTRENO ───────
+  page.drawText('FULL TRAINING · BIIO System', { x: W_L - 240, y: 40, size: 9, font: fontO, color: GRAY });
+
+  // ─── PÁGINAS DETALLE POR ENTRENO (con FORM FIELDS editables) ───
   (a.rutina?.entrenos||[]).forEach(en => {
     page = doc.addPage([W_L, H_L]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra}`, pl?.categoria || '', W_L, H_L);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra}${en.nombre && en.nombre !== ('Entreno '+en.letra) ? ' — ' + en.nombre : ''}`, rutinaShort, W_L, H_L);
     let y = H_L - 90;
 
-    // Fila de fechas
     const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i)=>i+1);
     const colW = 105;
-    const startX = 100;
+    const startX = 110;
+    const tableRight = startX + colW * TOB_NUM_MICRO;
+
+    // Fila Fecha (form field editable)
     page.drawText('Fecha', { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
     microHeaders.forEach((mn, i) => {
       const cellX = startX + i*colW;
       const ses = it?.sesiones[mn]?.[en.id];
-      page.drawRectangle({ x: cellX, y: y-4, width: colW-4, height: 16, color: rgb(0.97,0.97,0.97) });
-      page.drawText(ses?.fecha || '', { x: cellX+5, y, size: 8, font, color: BLACK });
+      const tf = form.createTextField(`fecha_${en.id}_${mn}`);
+      if(ses?.fecha) tf.setText(ses.fecha);
+      tf.addToPage(page, { x: cellX, y: y-4, width: colW-4, height: 16, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
     });
     y -= 24;
-    // Microciclo row
+
+    // Fila Microciclo
     page.drawText('Microciclo', { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
     microHeaders.forEach((mn, i) => {
       const cellX = startX + i*colW;
-      page.drawText(`${mn}º`, { x: cellX+5, y, size: 9, font: fontB, color: ORANGE });
+      page.drawText(`${mn}º`, { x: cellX+5, y, size: 11, font: fontB, color: ORANGE });
     });
-    y -= 18;
-    // Línea separadora
-    page.drawLine({ start:{x:30, y:y+4}, end:{x:W_L-30, y:y+4}, thickness:1, color: ORANGE });
+    y -= 16;
+
+    // Líneas separadoras verticales entre microciclos
+    const drawVertSeparators = (yTop, yBottom) => {
+      for(let i=0; i<=TOB_NUM_MICRO; i++){
+        const lx = startX + i*colW - 2;
+        page.drawLine({ start:{x:lx, y:yTop}, end:{x:lx, y:yBottom}, thickness:0.5, color: rgb(0.85,0.85,0.85) });
+      }
+    };
+    const separatorTop = y + 6;
+
+    page.drawLine({ start:{x:30, y:y+4}, end:{x:tableRight, y:y+4}, thickness:1.2, color: ORANGE });
     y -= 8;
+
+    const blockTop = y + 6;
 
     // Ejercicios
     (en.ejercicios||[]).sort((x,y)=>(x.orden||0)-(y.orden||0)).forEach(ej => {
-      if(y < 70){
+      if(y < 80){
         page = doc.addPage([W_L, H_L]);
-        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra} (cont.)`, pl?.categoria||'', W_L, H_L);
+        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra} (cont.)`, rutinaShort, W_L, H_L);
         y = H_L - 90;
       }
       // Header ejercicio
-      page.drawRectangle({ x: 24, y: y-4, width: W_L-48, height: 20, color: rgb(0.06,0.06,0.06) });
-      page.drawText(ej.nombre.toUpperCase(), { x: 30, y: y+1, size: 10, font: fontB, color: ORANGE });
-      if(ej.subtitle) page.drawText('· ' + ej.subtitle, { x: 30 + tobTextWidth(ej.nombre.toUpperCase(),10,fontB) + 8, y: y+2, size: 8, font: fontO, color: rgb(0.85,0.85,0.85) });
-      y -= 22;
+      page.drawRectangle({ x: 24, y: y-5, width: W_L-48, height: 22, color: rgb(0.08,0.08,0.08) });
+      page.drawText(ej.nombre.toUpperCase(), { x: 30, y: y+2, size: 11, font: fontB, color: ORANGE });
+      if(ej.subtitle){
+        const nameWidth = tobTextWidth(ej.nombre.toUpperCase(), 11, fontB);
+        page.drawText('· ' + ej.subtitle, { x: 30 + nameWidth + 10, y: y+3, size: 8, font: fontO, color: rgb(0.85,0.85,0.85) });
+      }
+      // Plan info en la derecha del header (mejor que línea "Plan" aparte)
+      const planTxt = microHeaders.map(mn => {
+        const p = tobPlanFor(ej, mn);
+        const reps = Array.isArray(p.repsTarget) ? p.repsTarget.join('/') : p.repsTarget;
+        return `${mn}º: ${p.series}×${reps}`;
+      }).join('  ·  ');
+      // Esto puede ser muy largo, lo omitimos del header y lo dejamos solo en la fila Plan abajo (compacta)
+      y -= 24;
 
-      // Plan row
-      page.drawText('Plan', { x: 30, y, size: 8, font, color: GRAY });
+      // Fila plan (compacta, sin texto "Plan" — la celda misma es la info)
       microHeaders.forEach((mn, i) => {
         const plan = tobPlanFor(ej, mn);
         const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
-        page.drawText(`${plan.series}×${reps}`, { x: startX + i*colW + 5, y, size: 8, font, color: GRAY_DK });
+        page.drawRectangle({ x: startX + i*colW - 1, y: y-3, width: colW-3, height: 13, color: rgb(0.97,0.94,0.85) });
+        page.drawText(`${plan.series} × ${reps}`, { x: startX + i*colW + 5, y, size: 9, font: fontB, color: rgb(0.6,0.4,0.05) });
       });
-      y -= 12;
+      y -= 16;
 
-      // Series/Lineas
+      // Cabecera Kg/Reps por columna
+      page.drawText('Series', { x: 30, y, size: 7, font: fontB, color: GRAY_MD });
+      microHeaders.forEach((mn, i) => {
+        const cellX = startX + i*colW;
+        page.drawText('Kg', { x: cellX+8, y, size: 7, font: fontB, color: GRAY_MD });
+        page.drawText('Reps', { x: cellX+55, y, size: 7, font: fontB, color: GRAY_MD });
+      });
+      y -= 10;
+
+      // Series con form fields editables
       const isCirc = ej.tipo === 'circuito';
       const linesN = isCirc ? (ej.circuitoLineas?.length || 3) : Math.max(...microHeaders.map(mn => tobPlanFor(ej, mn).series));
       const arrName = isCirc ? 'lineas' : 'series';
 
       for(let s = 0; s < linesN; s++){
-        const lbl = isCirc ? (ej.circuitoLineas?.[s] || `${s+1}º`) : `${s+1}ª`;
-        page.drawText(lbl.length > 14 ? lbl.slice(0,14)+'…' : lbl, { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
+        const lbl = isCirc ? (ej.circuitoLineas?.[s] || `${s+1}º`) : `${s+1}ª Serie`;
+        page.drawText(lbl.length > 18 ? lbl.slice(0,16)+'…' : lbl, { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
         microHeaders.forEach((mn, i) => {
+          const cellX = startX + i*colW;
           const ses = it?.sesiones[mn]?.[en.id];
           const sr = ses?.ejs?.[ej.id]?.[arrName]?.[s];
-          const cellX = startX + i*colW;
-          // Fondo alternado para legibilidad
-          if(s % 2 === 0) page.drawRectangle({ x: cellX-1, y: y-3, width: colW-3, height: 12, color: rgb(0.97,0.97,0.97) });
-          if(sr?.kg != null || sr?.reps != null){
-            const txt = `${sr.kg ?? '—'} × ${sr.reps ?? '—'}`;
-            page.drawText(txt, { x: cellX+5, y, size: 8, font: fontB, color: BLACK });
-          }
+          // Cuadrito kg
+          const kgF = form.createTextField(`ej_${ej.id}_${mn}_${en.id}_${arrName}_${s}_kg`);
+          if(sr?.kg != null) kgF.setText(String(sr.kg));
+          kgF.addToPage(page, { x: cellX+3, y: y-3, width: 44, height: 12, borderColor: rgb(0.55,0.55,0.55), borderWidth: 0.7 });
+          // Cuadrito reps
+          const rpF = form.createTextField(`ej_${ej.id}_${mn}_${en.id}_${arrName}_${s}_reps`);
+          if(sr?.reps != null) rpF.setText(String(sr.reps));
+          rpF.addToPage(page, { x: cellX+50, y: y-3, width: 44, height: 12, borderColor: rgb(0.55,0.55,0.55), borderWidth: 0.7 });
         });
-        y -= 13;
+        y -= 16;
       }
-      // Pausa
-      page.drawText('Pausa', { x: 30, y, size: 7, font: fontO, color: GRAY });
+
+      // Pausa (color visible, NO gris claro)
+      page.drawText('Descanso', { x: 30, y, size: 8, font: fontB, color: rgb(0.6,0.4,0.05) });
       microHeaders.forEach((mn, i) => {
         const plan = tobPlanFor(ej, mn);
-        page.drawText(plan.pausa || '—', { x: startX + i*colW + 5, y, size: 7, font: fontO, color: GRAY });
+        page.drawText(plan.pausa || '—', { x: startX + i*colW + 5, y, size: 8, font: fontB, color: BLACK });
       });
-      y -= 16;
+      y -= 18;
+
+      // Línea separadora entre ejercicios
+      page.drawLine({ start:{x:24, y:y+4}, end:{x:W_L-24, y:y+4}, thickness:0.3, color: rgb(0.8,0.8,0.8) });
+      y -= 4;
     });
 
-    // Aeróbica
+    // Separadores verticales entre microciclos (cubren toda la tabla del entreno)
+    drawVertSeparators(blockTop, y + 12);
+
+    // Aeróbica con form fields
     if(y > 40){
-      page.drawText('Aeróbica', { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
-      microHeaders.forEach((mn, i) => {
-        const ses = it?.sesiones[mn]?.[en.id];
-        const a2 = ses?.aerobica;
-        if(a2){
-          const txt = [a2.tipo, a2.tiempo, a2.intensidad].filter(Boolean).join(' / ');
-          page.drawText(txt, { x: startX + i*colW + 5, y, size: 7, font, color: GRAY_DK });
-        }
+      ['Tipo', 'Tiempo', 'Intensidad'].forEach((label, fi) => {
+        if(y < 30) return;
+        page.drawText(fi === 0 ? 'Aeróbica · ' + label : '         · ' + label, { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
+        const field = ['tipo','tiempo','intensidad'][fi];
+        microHeaders.forEach((mn, i) => {
+          const cellX = startX + i*colW;
+          const ses = it?.sesiones[mn]?.[en.id];
+          const tf = form.createTextField(`aer_${en.id}_${mn}_${field}`);
+          if(ses?.aerobica?.[field]) tf.setText(String(ses.aerobica[field]));
+          tf.addToPage(page, { x: cellX+3, y: y-3, width: colW-7, height: 11, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
+        });
+        y -= 13;
       });
     }
   });
@@ -2459,6 +2498,30 @@ function tobTextWidth(text, size, fontObj){
   try { return fontObj.widthOfTextAtSize(text, size); } catch(e){ return String(text).length * size * 0.55; }
 }
 
+// Trunca texto con elipsis para que quepa
+function tobTrunc(s, max){
+  const str = String(s||'');
+  return str.length > max ? str.slice(0, max-1) + '…' : str;
+}
+
+// Wrap text en líneas que quepan en un ancho dado
+function tobWrapText(text, fontObj, size, maxWidth){
+  const words = String(text||'').split(/\s+/);
+  const lines = [];
+  let current = '';
+  words.forEach(w => {
+    const test = current ? current + ' ' + w : w;
+    if(tobTextWidth(test, size, fontObj) <= maxWidth){
+      current = test;
+    } else {
+      if(current) lines.push(current);
+      current = w;
+    }
+  });
+  if(current) lines.push(current);
+  return lines;
+}
+
 // Helper: dibuja banda superior naranja + título + cliente
 function drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, title, subtitle, W, H){
   const { rgb } = PDFLib;   // PDFLib es global desde el CDN
@@ -2490,86 +2553,108 @@ async function tobBuildPdfHistorico(cli){
   const GRAY_DK = rgb(0.25, 0.25, 0.25);
   const W = 842, H = 595;
 
-  // ─── COVER ─────────────────────────────────
+  // ─── COVER (sin tonelaje/completadas/generado) ────
   let page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: 60, height: H, color: ORANGE });
-  page.drawText('FULL', { x: 100, y: H-100, size: 60, font: fontB, color: ORANGE });
-  page.drawText('TRAINING', { x: 100, y: H-160, size: 60, font: fontB, color: BLACK });
-  page.drawText('HISTÓRICO COMPLETO', { x: 100, y: H-185, size: 14, font, color: GRAY });
-  page.drawText(cli.nombre || '—', { x: 100, y: H-260, size: 36, font: fontB, color: BLACK });
+  page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
+  page.drawText('TRAINING', { x: 100, y: H-156, size: 56, font: fontB, color: BLACK });
+  page.drawText('HISTÓRICO COMPLETO', { x: 100, y: H-180, size: 13, font, color: GRAY });
+  page.drawText(cli.nombre || '—', { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
   const periodo = tobCalcPeriodo(cli);
-  page.drawText(`${periodo.desde}  —  ${periodo.hasta}`, { x: 100, y: H-290, size: 14, font, color: GRAY_DK });
-  page.drawText(`${(cli.asignaciones||[]).length} rutinas  ·  ${tobCountSesiones(cli)} sesiones`, { x: 100, y: H-312, size: 11, font: fontO, color: GRAY });
+  page.drawText(`Período: ${periodo.desde}  —  ${periodo.hasta}`, { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
 
-  // KPIs globales
-  const kpisG = tobCalcGlobalKPIs(cli);
+  // Solo 2 KPIs: Rutinas + Sesiones
   const kpisCover = [
-    ['TONELAJE TOTAL', kpisG.tonelajeTotal.toLocaleString('es-ES'), 'kg'],
-    ['RUTINAS', String((cli.asignaciones||[]).length), ''],
-    ['COMPLETADAS', String(kpisG.completadas), ''],
-    ['SESIONES', String(tobCountSesiones(cli)), '']
+    ['RUTINAS REGISTRADAS', String((cli.asignaciones||[]).length), ''],
+    ['SESIONES TOTALES',    String(tobCountSesiones(cli)),         '']
   ];
-  const kpiW = 160, kpiH = 90, kpiGap = 14, kpiY = 160;
+  const kpiW = 220, kpiH = 90, kpiGap = 20, kpiY = 180;
   kpisCover.forEach((kp, i) => {
     const x = 100 + i*(kpiW+kpiGap);
     page.drawRectangle({ x, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
     page.drawRectangle({ x, y: kpiY+kpiH-4, width: kpiW, height: 4, color: ORANGE });
-    page.drawText(kp[0], { x: x+12, y: kpiY+kpiH-26, size: 9, font: fontB, color: GRAY });
-    page.drawText(kp[1], { x: x+12, y: kpiY+28, size: 26, font: fontB, color: BLACK });
-    if(kp[2]) page.drawText(kp[2], { x: x+12+tobTextWidth(kp[1],26,fontB)+6, y: kpiY+28, size: 11, font, color: GRAY });
+    page.drawText(kp[0], { x: x+14, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
+    page.drawText(kp[1], { x: x+14, y: kpiY+28, size: 36, font: fontB, color: BLACK });
   });
-  page.drawText(`Generado: ${new Date().toLocaleDateString('es-ES')}`, { x: 100, y: 40, size: 9, font, color: GRAY });
   page.drawText('FULL TRAINING · BIIO System', { x: W-240, y: 40, size: 9, font: fontO, color: GRAY });
 
-  // ─── PR CARDS BONITAS ──────────────────────
+  // ─── PR CARDS con contexto (rutina donde se hizo el PR y delta vs inicio) ─
   page = doc.addPage([W, H]);
   drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RÉCORDS PERSONALES', cli.nombre || '', W, H);
+  page.drawText('PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico',
+    { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
   const fichaData = tobBuildFichaData(cli);
-  // Layout 3 columnas × 2 filas (6 ejercicios)
-  const cardW = 240, cardH = 130, gap = 20;
+  const cardW = 240, cardH = 150, gap = 20;
   const totalW = 3*cardW + 2*gap;
   const startX = (W - totalW) / 2;
-  const startY = H - 160;
+  const startY = H - 100;
   let cardIdx = 0;
   fichaData.ejNames.slice(0, 6).forEach(name => {
-    const points = (fichaData.ejHistory[name]||[]).sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+    const points = (fichaData.ejHistory[name]||[]).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
     if(!points.length) return;
     const col = cardIdx % 3;
     const row = Math.floor(cardIdx / 3);
     const x = startX + col * (cardW + gap);
     const yy = startY - row * (cardH + gap);
-    const first = points[0].kg;
-    const max = Math.max(...points.map(p => p.kg));
-    const last = points[points.length-1].kg;
-    const deltaKg = last - first;
-    const deltaPct = first > 0 ? (deltaKg / first * 100) : 0;
+    const firstPoint = points[0];
+    const lastPoint = points[points.length-1];
+    const maxIdx = points.reduce((iMax, p, i) => p.kg > points[iMax].kg ? i : iMax, 0);
+    const maxPoint = points[maxIdx];
+    const deltaKg = lastPoint.kg - firstPoint.kg;
+    const deltaPct = firstPoint.kg > 0 ? (deltaKg / firstPoint.kg * 100) : 0;
     // Caja
     page.drawRectangle({ x, y: yy - cardH, width: cardW, height: cardH, color: rgb(0.98,0.98,0.98) });
     page.drawRectangle({ x, y: yy - 5, width: cardW, height: 5, color: ORANGE });
     // Nombre ejercicio
     page.drawText(name.toUpperCase(), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
     // Número grande
-    page.drawText(`${max}`, { x: x + 14, y: yy - 75, size: 38, font: fontB, color: BLACK });
-    page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${max}`, 38, fontB) + 6, y: yy - 65, size: 11, font, color: GRAY });
-    // Delta
+    page.drawText(`${maxPoint.kg}`, { x: x + 14, y: yy - 72, size: 36, font: fontB, color: BLACK });
+    page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${maxPoint.kg}`, 36, fontB) + 6, y: yy - 62, size: 11, font, color: GRAY });
+    // Contexto: en qué rutina se hizo el PR
+    page.drawText(`en ${tobTrunc(maxPoint.asigLabel, 28)}`,
+      { x: x + 14, y: yy - 90, size: 8, font: fontO, color: GRAY_DK });
+    // Delta vs primera rutina
     const deltaColor = deltaKg > 0 ? rgb(0.18, 0.6, 0.4) : deltaKg < 0 ? rgb(0.85, 0.25, 0.25) : GRAY;
-    const arrow = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '=';   // ↑↓ no WinAnsi
-    const deltaTxt = `${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%) desde inicio`;
-    page.drawText(deltaTxt, { x: x + 14, y: yy - 100, size: 9, font: fontB, color: deltaColor });
-    // Meta
-    page.drawText(`${points.length} rutinas · última: ${points[points.length-1].fecha || '—'}`,
-      { x: x + 14, y: yy - 116, size: 7, font, color: GRAY });
+    const arrow = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '=';
+    page.drawText(`${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%)`,
+      { x: x + 14, y: yy - 110, size: 9, font: fontB, color: deltaColor });
+    page.drawText(`vs ${tobTrunc(firstPoint.asigLabel, 22)} (${firstPoint.kg} kg)`,
+      { x: x + 14, y: yy - 124, size: 7, font, color: GRAY });
+    // Última fecha
+    page.drawText(`Última: ${lastPoint.fecha || '—'}`,
+      { x: x + 14, y: yy - 138, size: 7, font, color: GRAY });
     cardIdx++;
   });
 
-  // ─── TABLA COMPARATIVA ───────────────────
+  // ─── TABLA COMPARATIVA ABREVIADA + LEYENDA ───
   page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPARATIVA ENTRE RUTINAS', `${cli.nombre || ''} · kg máximo por ejercicio en cada rutina`, W, H);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPARATIVA ENTRE RUTINAS', `${cli.nombre || ''} · kg máximo por ejercicio`, W, H);
+
+  // Mapas de abreviaciones
+  const EJ_ABBR = {
+    'BOX SQUAT': 'BX SQT', 'PRESS BANCA': 'PR BAN', 'REMO': 'REMO',
+    'PESO MUERTO': 'PM', 'PRESS MILITAR': 'PR MIL', 'DOMINADAS': 'DOM',
+    'CURL + HIPEREXT + CALF': 'CURL+', 'PRENSA 45º + CRUNCH + FONDOS': 'PRENSA+',
+    'PRENSA + CRUNCH + FONDOS': 'PRENSA+'
+  };
+  function abbrRutina(label){
+    const m = String(label||'');
+    return m
+      .replace(/^Reacondicionamiento/i, 'REA')
+      .replace(/^Preparación fuerza/i, 'PF')
+      .replace(/^Especialización técnica/i, 'ET')
+      .replace(/^Fuerza 1/i, 'F1')
+      .replace(/^Fuerza 2/i, 'F2')
+      .replace(/^Hibrido/i, 'HIB')
+      .replace(/^Hipertrofia/i, 'HIP')
+      .replace(/^Calidad muscular/i, 'CAL')
+      .replace(/ it\.(\d+)/i, '·$1');   // " it.2" → "·2"
+  }
+
+  const allLabels = fichaData.rutinaLabels.map(r => ({ ...r, abbr: abbrRutina(r.label) }));
   const tableY = H - 80;
-  const ejColW = 130;
-  // Limitamos a las primeras 8 rutinas si hay muchas para que entre en una página
-  const allLabels = fichaData.rutinaLabels;
-  const colsPerPage = 8;
+  const ejColW = 100;
+  const colsPerPage = 12;
   let pageOffset = 0;
   while(pageOffset < allLabels.length){
     if(pageOffset > 0){
@@ -2577,25 +2662,24 @@ async function tobBuildPdfHistorico(cli){
       drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPARATIVA (cont.)', cli.nombre || '', W, H);
     }
     const labels = allLabels.slice(pageOffset, pageOffset + colsPerPage);
-    const cellW = Math.min(85, (W - 60 - ejColW) / labels.length);
+    const availW = W - 60 - ejColW;
+    const cellW = availW / labels.length;
     let y = tableY;
     // Header
     page.drawRectangle({ x: 30, y: y - 28, width: W - 60, height: 28, color: rgb(0.06,0.06,0.06) });
-    page.drawText('Ejercicio', { x: 38, y: y - 18, size: 9, font: fontB, color: ORANGE });
+    page.drawText('Ejercicio', { x: 38, y: y - 12, size: 9, font: fontB, color: ORANGE });
     labels.forEach((r, i) => {
       const x = 30 + ejColW + i * cellW;
-      const lbl = r.label.length > 18 ? r.label.slice(0,16) + '…' : r.label;
-      page.drawText(lbl, { x: x + 4, y: y - 12, size: 7, font: fontB, color: rgb(0.9,0.7,0.3) });
-      page.drawText(r.fecha || '', { x: x + 4, y: y - 22, size: 6, font: fontO, color: rgb(0.7,0.7,0.7) });
+      page.drawText(r.abbr, { x: x + 4, y: y - 12, size: 8, font: fontB, color: rgb(0.95,0.75,0.3) });
+      page.drawText((r.fecha||'').slice(2, 7), { x: x + 4, y: y - 22, size: 6, font: fontO, color: rgb(0.6,0.6,0.6) });
     });
     y -= 32;
     // Filas
     fichaData.ejNames.forEach((name, idx) => {
-      if(y < 60) return; // simple page-overflow handling
-      // Fondo alternado
-      if(idx % 2 === 0) page.drawRectangle({ x: 30, y: y - 18, width: W - 60, height: 22, color: rgb(0.96,0.96,0.96) });
-      page.drawText(name, { x: 38, y: y - 8, size: 9, font: fontB, color: BLACK });
-      // Encontrar el max de la fila para destacarlo
+      if(y < 80) return;
+      if(idx % 2 === 0) page.drawRectangle({ x: 30, y: y - 16, width: W - 60, height: 20, color: rgb(0.96,0.96,0.96) });
+      const ejAbbr = EJ_ABBR[name] || tobTrunc(name, 12);
+      page.drawText(ejAbbr, { x: 38, y: y - 6, size: 9, font: fontB, color: BLACK });
       let rowMax = 0;
       labels.forEach(r => { const v = fichaData.matrix[r.key]?.[name]; if(v > rowMax) rowMax = v; });
       labels.forEach((r, i) => {
@@ -2603,46 +2687,93 @@ async function tobBuildPdfHistorico(cli){
         const kg = fichaData.matrix[r.key]?.[name];
         if(kg != null){
           const isBest = kg === rowMax;
-          page.drawText(`${kg}`, { x: x + 4, y: y - 8, size: 10, font: fontB, color: isBest ? ORANGE : BLACK });
+          page.drawText(`${kg}`, { x: x + 4, y: y - 6, size: 9, font: fontB, color: isBest ? ORANGE : BLACK });
         } else {
-          page.drawText('—', { x: x + 4, y: y - 8, size: 9, font, color: rgb(0.7,0.7,0.7) });
+          page.drawText('—', { x: x + 4, y: y - 6, size: 8, font, color: rgb(0.7,0.7,0.7) });
         }
       });
-      y -= 22;
+      y -= 20;
     });
+
+    // Leyenda al pie
+    y -= 8;
+    page.drawText('LEYENDA:', { x: 30, y, size: 8, font: fontB, color: GRAY });
+    y -= 12;
+    const ejLegendItems = fichaData.ejNames.map(n => `${EJ_ABBR[n] || tobTrunc(n,12)} = ${n}`);
+    const ejLegendText = ejLegendItems.join('  ·  ');
+    const ejLines = tobWrapText(ejLegendText, font, 8, W - 60);
+    ejLines.forEach(l => { page.drawText(l, { x: 30, y, size: 8, font, color: GRAY_DK }); y -= 10; });
+    y -= 4;
+    const rutLegendItems = labels.map(r => `${r.abbr} = ${r.label}`);
+    const rutLegendText = rutLegendItems.join('  ·  ');
+    const rutLines = tobWrapText(rutLegendText, font, 8, W - 60);
+    rutLines.forEach(l => { page.drawText(l, { x: 30, y, size: 8, font, color: GRAY_DK }); y -= 10; });
+
     pageOffset += colsPerPage;
   }
 
-  // ─── RESUMEN POR RUTINA ────────────────────
+  // ─── RESUMEN POR RUTINA — más visual y útil ──
   page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RESUMEN DE RUTINAS', cli.nombre || '', W, H);
-  y = H - 80;
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS', cli.nombre || '', W, H);
+  page.drawText('Línea de tiempo cronológica · cada rutina con sus PRs principales',
+    { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
+  y = H - 90;
   const sorted = [...cli.asignaciones].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
+
   sorted.forEach((a, i) => {
-    if(y < 80){
+    if(y < 95){
       page = doc.addPage([W, H]);
-      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RESUMEN DE RUTINAS (cont.)', cli.nombre||'', W, H);
-      y = H - 80;
+      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS (cont.)', cli.nombre||'', W, H);
+      y = H - 90;
     }
     const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
     const stats = tobCalcAsigStats(a);
-    // Caja por rutina
-    page.drawRectangle({ x: 24, y: y-58, width: W-48, height: 60, color: rgb(0.97,0.97,0.97) });
-    page.drawRectangle({ x: 24, y: y-58, width: 4, height: 60, color: ORANGE });
-    page.drawText(pl ? pl.nombre : '(plantilla eliminada)', { x: 38, y: y-12, size: 12, font: fontB, color: BLACK });
-    if(pl) page.drawText(`${pl.macrociclo || ''} · ${pl.categoria || ''}`, { x: 38, y: y-26, size: 8, font: fontO, color: GRAY });
-    const dates = `${a.fechaInicio || '?'} — ${stats.ultimaFecha || '?'}`;
-    page.drawText(dates, { x: 38, y: y-40, size: 9, font, color: GRAY_DK });
-    page.drawText(a.estado || 'en curso', { x: 38, y: y-52, size: 8, font: fontB, color: a.estado==='completada' ? rgb(0.2,0.6,0.4) : a.estado==='repetir' ? rgb(0.9,0.5,0.2) : GRAY });
-    // Stats derecha
-    const rx = W - 230;
-    page.drawText('Sesiones:', { x: rx, y: y-20, size: 8, font, color: GRAY });
-    page.drawText(String(stats.sesiones), { x: rx+60, y: y-20, size: 11, font: fontB, color: BLACK });
-    page.drawText('Tonelaje:', { x: rx, y: y-36, size: 8, font, color: GRAY });
-    page.drawText(`${stats.tonelaje.toLocaleString('es-ES')} kg`, { x: rx+60, y: y-36, size: 11, font: fontB, color: BLACK });
-    page.drawText('Iteraciones:', { x: rx, y: y-52, size: 8, font, color: GRAY });
-    page.drawText(String((a.iteraciones||[]).length), { x: rx+60, y: y-52, size: 11, font: fontB, color: BLACK });
-    y -= 70;
+    const itN = (a.iteraciones||[]).length;
+    const rutinaShort = (pl?.nombre || '(plantilla eliminada)').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+    const cardH = 80;
+
+    // Caja
+    page.drawRectangle({ x: 24, y: y-cardH, width: W-48, height: cardH, color: rgb(0.98,0.98,0.98) });
+    // Barra lateral coloreada por estado
+    const sideColor = a.estado === 'completada' ? rgb(0.18,0.6,0.4)
+                   : a.estado === 'repetir' ? rgb(0.9,0.5,0.2)
+                   : ORANGE;
+    page.drawRectangle({ x: 24, y: y-cardH, width: 5, height: cardH, color: sideColor });
+
+    // Nº de rutina (índice)
+    page.drawText(String(i+1).padStart(2,'0'), { x: 40, y: y-30, size: 22, font: fontB, color: rgb(0.85,0.85,0.85) });
+
+    // Datos rutina
+    page.drawText(rutinaShort, { x: 80, y: y-22, size: 12, font: fontB, color: BLACK });
+    if(pl){
+      page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' · ' : ''}${pl.categoria || ''}`,
+        { x: 80, y: y-36, size: 8, font: fontO, color: GRAY });
+    }
+    const dates = `${a.fechaInicio || '?'}  —  ${stats.ultimaFecha || '?'}`;
+    page.drawText(dates, { x: 80, y: y-52, size: 9, font, color: GRAY_DK });
+    // Badge estado
+    const estLbl = (a.estado || 'en curso').toUpperCase();
+    page.drawText(estLbl, { x: 80, y: y-66, size: 8, font: fontB, color: sideColor });
+
+    // Stats medio: sesiones + iteraciones
+    const midX = 360;
+    page.drawText('Sesiones', { x: midX, y: y-20, size: 7, font, color: GRAY });
+    page.drawText(String(stats.sesiones), { x: midX, y: y-38, size: 18, font: fontB, color: BLACK });
+    page.drawText('Iteraciones', { x: midX + 80, y: y-20, size: 7, font, color: GRAY });
+    page.drawText(String(itN), { x: midX + 80, y: y-38, size: 18, font: fontB, color: BLACK });
+
+    // PRs top 3 de esa rutina
+    const prsArr = Object.entries(stats.maxByEj).slice(0, 3);
+    if(prsArr.length){
+      page.drawText('PRS DE LA RUTINA', { x: W - 280, y: y-20, size: 7, font: fontB, color: ORANGE });
+      prsArr.forEach((pr, j) => {
+        const px = W - 280, py = y - 36 - j*14;
+        const ejAbbr = (pr[0].length > 18 ? pr[0].slice(0,17)+'…' : pr[0]);
+        page.drawText(ejAbbr, { x: px, y: py, size: 9, font, color: GRAY_DK });
+        page.drawText(`${pr[1]} kg`, { x: px + 165, y: py, size: 9, font: fontB, color: BLACK });
+      });
+    }
+    y -= (cardH + 10);
   });
 
   // Paginación
