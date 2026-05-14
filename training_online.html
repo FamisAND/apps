@@ -257,17 +257,27 @@
       <label class="tob-lbl">Descripción de la rutina (aparece en el PDF que recibe el cliente)</label>
       <textarea class="tob-textarea" id="tobPlDescripcion" rows="4" spellcheck="false" placeholder="Ej: Mesociclo de reacondicionamiento físico. Volumen alto con reps descendentes. Foco en técnica y adaptación. 6 microciclos progresivos en intensidad."></textarea>
     </div>
-    <div>
-      <label class="tob-lbl">Definición (un ejercicio por línea, vacía = nueva fila)</label>
+    <div id="tobPlEjListWrap" style="margin-top:14px;">
+      <div style="font-family:DM Mono,monospace;color:var(--acc);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:5px;">
+        ✏️ Editor por ejercicio (seguro · preserva IDs y datos)
+      </div>
+      <div id="tobPlEjList" style="margin-bottom:14px;"></div>
+      <div style="font-size:.7rem;color:var(--mute2);font-style:italic;margin-bottom:14px;">
+        💡 Los cambios en la plantilla NO afectan a las asignaciones ya creadas (cada cliente tiene su propia copia).
+      </div>
+    </div>
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer;font-size:.78rem;color:var(--mute);font-family:DM Mono,monospace;">⚙ Modo avanzado: editor textarea (reescribe todo de golpe)</summary>
+      <label class="tob-lbl" style="margin-top:8px;">Definición (un ejercicio por línea)</label>
       <textarea class="tob-textarea" id="tobPlDef" rows="10" spellcheck="false"
         placeholder="A | BOX SQUAT | normal | 1&quot; Pausa en Box | 3 | 15/12/10 | 1'30&quot;&#10;A | PRESS BANCA | normal | 1&quot; Pausa al Pecho | 3 | 15/12/10 | 1'30&quot;&#10;A | REMO o SEAL ROW | normal | Espalda Recta | 3 | 15/12/10 | 1'30&quot;&#10;A | CURL+HIPEREXT+CALF | circuito | Alternados | 3 | 12 | 30&quot; | CURL con BARRA;HIPEREXTENSION;CALF MACHINE"></textarea>
       <div style="font-size:.7rem;color:var(--mute2);margin-top:4px;font-family:DM Mono,monospace;">
-        El mismo plan (series + reps + pausa) se aplica a los 6 microciclos. En el editor de rutina del cliente puedes ajustar microciclo a microciclo.
+        El mismo plan se aplica a los 6 microciclos. <strong>Guardar</strong> preserva IDs por entreno+nombre.
       </div>
-    </div>
+    </details>
     <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="tobClosePlantillaModal()">Cancelar</button>
-      <button class="tob-action" onclick="tobSavePlantilla()">Guardar</button>
+      <button class="tob-action" onclick="tobSavePlantilla()">💾 Guardar cabecera + textarea (avanzado)</button>
     </div>
   </div>
 </div>

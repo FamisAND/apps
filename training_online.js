@@ -446,6 +446,10 @@ function tobOpenPlantillaModal(pl){
   document.getElementById('tobPlDescripcion').value = pl?.descripcion || '';
   document.getElementById('tobPlDef').value = pl ? tobPlantillaToText(pl) : '';
   document.getElementById('tobPlantillaModalBg').dataset.editId = pl?.id || '';
+  // Mostrar el editor por-ejercicio solo si la plantilla ya existe (tiene id)
+  const wrap = document.getElementById('tobPlEjListWrap');
+  if(wrap) wrap.style.display = pl ? '' : 'none';
+  if(pl) tobRenderPlEjList(pl);
   document.getElementById('tobPlantillaModalBg').classList.add('on');
 }
 function tobClosePlantillaModal(){ document.getElementById('tobPlantillaModalBg').classList.remove('on'); }
@@ -505,7 +509,20 @@ function tobSavePlantilla(){
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
   if(editId){
     const p = tobDB.plantillas.find(p => p.id === editId);
-    if(p) Object.assign(p, { macrociclo, nombre, categoria, sexo, descripcion, entrenos });
+    if(p){
+      // PRESERVAR IDs: match por entreno+nombre con los ejercicios antiguos
+      const oldMap = {};
+      (p.entrenos||[]).forEach(en => {
+        (en.ejercicios||[]).forEach(ej => { oldMap[en.letra + ':' + ej.nombre] = ej.id; });
+      });
+      entrenos.forEach(en => {
+        (en.ejercicios||[]).forEach(ej => {
+          const key = en.letra + ':' + ej.nombre;
+          if(oldMap[key]) ej.id = oldMap[key];
+        });
+      });
+      Object.assign(p, { macrociclo, nombre, categoria, sexo, descripcion, entrenos });
+    }
   } else {
     tobDB.plantillas.push({ id: tobUid('pl'), macrociclo, nombre, categoria, sexo, descripcion, entrenos });
   }
@@ -2809,19 +2826,33 @@ function tobCalcPeriodo(cli){
 
 // ═══════════════════════════════════════════════════════════════
 // EDITOR INLINE DE EJERCICIO — preserva ID (no rompe sesiones)
+// Funciona en dos contextos: asignación (rutina del cliente) o plantilla.
 // ═══════════════════════════════════════════════════════════════
-let _tobEditingEj = null;   // { entrenoId, ejId } o { entrenoId, isNew: true }
+let _tobEditingEj = null;   // { context, plantillaId?, entrenoId, ejId, isNew }
 
 function tobOpenEjEditor(entrenoId, ejId){
+  // Contexto: asignación
   const a = tobAsig(); if(!a) return;
   const en = a.rutina.entrenos.find(e => e.id === entrenoId); if(!en) return;
   let ej = ejId ? en.ejercicios.find(x => x.id === ejId) : null;
-  _tobEditingEj = { entrenoId, ejId: ej?.id || null, isNew: !ej };
+  _tobEditingEj = { context: 'asig', entrenoId, ejId: ej?.id || null, isNew: !ej };
+  _tobFillEjEditorForm(ej, en);
+}
+
+function tobOpenEjEditorPlantilla(plantillaId, entrenoId, ejId){
+  // Contexto: plantilla
+  const pl = tobDB.plantillas.find(p => p.id === plantillaId); if(!pl) return;
+  const en = pl.entrenos.find(e => e.id === entrenoId); if(!en) return;
+  let ej = ejId ? en.ejercicios.find(x => x.id === ejId) : null;
+  _tobEditingEj = { context: 'plantilla', plantillaId, entrenoId, ejId: ej?.id || null, isNew: !ej };
+  _tobFillEjEditorForm(ej, en);
+}
+
+function _tobFillEjEditorForm(ej, en){
   document.getElementById('tobEjEditorTitle').textContent = ej ? `Editar: ${ej.nombre}` : `Añadir ejercicio a Entreno ${en.letra}`;
   document.getElementById('tobEjEditName').value = ej?.nombre || '';
   document.getElementById('tobEjEditTipo').value = ej?.tipo || 'normal';
   document.getElementById('tobEjEditSub').value = ej?.subtitle || '';
-  // Tomar plan del primer microciclo como base
   const plan = ej ? tobPlanFor(ej, 1) : { series: 3, repsTarget: [10], pausa: '' };
   document.getElementById('tobEjEditSeries').value = plan.series || 3;
   document.getElementById('tobEjEditReps').value = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : (plan.repsTarget || '');
@@ -2841,9 +2872,21 @@ function tobEjEditorTipoChange(){
   document.getElementById('tobEjEditCircWrap').style.display = (tipo === 'circuito') ? '' : 'none';
 }
 
+// Obtiene el entreno actual según contexto (asig | plantilla)
+function _tobGetEditingEntreno(){
+  if(!_tobEditingEj) return null;
+  if(_tobEditingEj.context === 'plantilla'){
+    const pl = tobDB.plantillas.find(p => p.id === _tobEditingEj.plantillaId);
+    return pl?.entrenos.find(e => e.id === _tobEditingEj.entrenoId);
+  }
+  const a = tobAsig();
+  return a?.rutina.entrenos.find(e => e.id === _tobEditingEj.entrenoId);
+}
+
 function tobSaveEj(){
-  const a = tobAsig(); if(!a || !_tobEditingEj) return;
-  const en = a.rutina.entrenos.find(e => e.id === _tobEditingEj.entrenoId); if(!en) return;
+  if(!_tobEditingEj) return;
+  const en = _tobGetEditingEntreno();
+  if(!en){ tobToast('Entreno no encontrado', 'red'); return; }
   const nombre = document.getElementById('tobEjEditName').value.trim();
   if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
   const tipo = document.getElementById('tobEjEditTipo').value;
@@ -2856,14 +2899,12 @@ function tobSaveEj(){
     ? document.getElementById('tobEjEditCircLineas').value.split('\n').map(s => s.trim()).filter(Boolean)
     : null;
 
-  // Construir planByMicro: aplica el mismo plan a los 6 microciclos
   const planByMicro = {};
   for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
     planByMicro[mn] = { series, repsTarget, pausa };
   }
 
   if(_tobEditingEj.isNew){
-    // Añadir nuevo ejercicio
     en.ejercicios.push({
       id: tobUid('ej'),
       orden: en.ejercicios.length,
@@ -2873,7 +2914,6 @@ function tobSaveEj(){
     });
     tobToast('✓ Ejercicio añadido', 'green');
   } else {
-    // Editar existente — PRESERVA ID (sesiones siguen vinculadas)
     const ej = en.ejercicios.find(x => x.id === _tobEditingEj.ejId); if(!ej) return;
     ej.nombre = nombre;
     ej.subtitle = subtitle;
@@ -2884,28 +2924,81 @@ function tobSaveEj(){
     tobToast('✓ Ejercicio actualizado', 'green');
   }
   tobSave();
+  const ctx = _tobEditingEj.context;
+  const plId = _tobEditingEj.plantillaId;
   tobCloseEjEditor();
-  tobRenderEntreno(); tobRenderCharts();
+  // Re-render según contexto
+  if(ctx === 'plantilla'){
+    const pl = tobDB.plantillas.find(p => p.id === plId);
+    if(pl){ tobRenderPlEjList(pl); }
+    tobRenderPlantillas();
+  } else {
+    tobRenderEntreno(); tobRenderCharts();
+  }
 }
 
 function tobDeleteCurrentEj(){
   if(!_tobEditingEj || _tobEditingEj.isNew){ tobCloseEjEditor(); return; }
-  const a = tobAsig(); if(!a) return;
-  const en = a.rutina.entrenos.find(e => e.id === _tobEditingEj.entrenoId); if(!en) return;
+  const en = _tobGetEditingEntreno();
+  if(!en){ tobCloseEjEditor(); return; }
   const ej = en.ejercicios.find(x => x.id === _tobEditingEj.ejId); if(!ej) return;
-  if(!confirm(`¿Eliminar "${ej.nombre}"?\n\nNota: los datos registrados en sesiones se mantienen en el archivo pero ya no se mostrarán. Si vuelves a añadir un ejercicio con el mismo nombre, los datos no se reasocian automáticamente.`)){ return; }
+  const ctxNote = _tobEditingEj.context === 'plantilla'
+    ? '\n\nEsto solo afecta a la plantilla. Las asignaciones ya creadas con esta plantilla NO se ven afectadas (tienen su propia copia).'
+    : '\n\nNota: los datos registrados en sesiones se mantienen en el archivo pero ya no se mostrarán.';
+  if(!confirm(`¿Eliminar "${ej.nombre}"?${ctxNote}`)){ return; }
   en.ejercicios = en.ejercicios.filter(x => x.id !== ej.id);
-  // Reordenar
   en.ejercicios.forEach((x, i) => x.orden = i);
   tobSave();
+  const ctx = _tobEditingEj.context;
+  const plId = _tobEditingEj.plantillaId;
   tobCloseEjEditor();
-  tobRenderEntreno(); tobRenderCharts();
+  if(ctx === 'plantilla'){
+    const pl = tobDB.plantillas.find(p => p.id === plId);
+    if(pl){ tobRenderPlEjList(pl); }
+    tobRenderPlantillas();
+  } else {
+    tobRenderEntreno(); tobRenderCharts();
+  }
   tobToast('Ejercicio eliminado', 'green');
 }
 
-// Botón "+ Añadir ejercicio" en cada entreno
 function tobAddEjToEntreno(entrenoId){
   tobOpenEjEditor(entrenoId, null);
+}
+
+function tobAddEjToPlantilla(plantillaId, entrenoId){
+  tobOpenEjEditorPlantilla(plantillaId, entrenoId, null);
+}
+
+// Render lista de ejercicios dentro del modal de plantilla
+function tobRenderPlEjList(pl){
+  const cont = document.getElementById('tobPlEjList');
+  if(!cont) return;
+  if(!pl || !pl.entrenos || !pl.entrenos.length){
+    cont.innerHTML = '<div style="color:var(--mute2);font-style:italic;padding:10px;">Aún no hay entrenos. Guarda primero con la definición textarea de arriba para crearlos.</div>';
+    return;
+  }
+  cont.innerHTML = pl.entrenos.map(en => `
+    <div style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;">
+        <span style="font-family:DM Mono,monospace;color:var(--acc);font-size:.85rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;">ENTRENO ${en.letra}</span>
+        <span style="color:var(--mute);font-size:.72rem;">${tobEsc(en.nombre||'')}</span>
+        <button class="tob-action ghost" style="margin-left:auto;font-size:.7rem;padding:3px 9px;" onclick="tobAddEjToPlantilla('${pl.id}','${en.id}')">+ Añadir ejercicio</button>
+      </div>
+      ${(en.ejercicios||[]).sort((a,b)=>(a.orden||0)-(b.orden||0)).map(ej => {
+        const plan = tobPlanFor(ej, 1);
+        const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
+        const tipoBadge = ej.tipo === 'circuito' ? '<span style="font-size:.65rem;color:var(--acc2);margin-left:6px;">CIRCUITO</span>' : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;background:#0e0d0a;border:1px solid var(--border);border-radius:3px;margin-bottom:4px;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:700;font-size:.85rem;color:var(--text);">${tobEsc(ej.nombre)}${tipoBadge}</div>
+            <div style="font-size:.7rem;color:var(--mute);font-family:DM Mono,monospace;margin-top:2px;">${plan.series} × ${tobEsc(reps)}${plan.pausa?` · pausa ${tobEsc(plan.pausa)}`:''}${ej.subtitle?` · ${tobEsc(ej.subtitle)}`:''}</div>
+          </div>
+          <button class="tob-action ghost" style="padding:4px 10px;font-size:.72rem;" onclick="tobOpenEjEditorPlantilla('${pl.id}','${en.id}','${ej.id}')" title="Editar este ejercicio (preserva ID)">✏️ Editar</button>
+        </div>`;
+      }).join('') || '<div style="color:var(--mute2);font-style:italic;padding:6px;font-size:.78rem;">Sin ejercicios en este entreno</div>'}
+    </div>
+  `).join('');
 }
 
 // ═══════════════════════════════════════════════════════════════
