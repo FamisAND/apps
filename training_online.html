@@ -88,7 +88,10 @@
     <div class="name" id="tobFichaNombre">—</div>
     <div class="meta" id="tobFichaMeta">—</div>
     <div class="tools">
-      <button class="tob-action" onclick="tobGeneratePdfHistorico()" title="PDF completo con todo el histórico, KPIs y gráficas">📄 PDF Histórico</button>
+      <button class="tob-action" onclick="tobOpenMedicionModal()" title="Registrar una nueva medición de composición corporal">📏 + Medición</button>
+      <button class="tob-action ghost" onclick="tobGeneratePdfUltimaRutina()" title="PDF resumen de la última rutina solo — con las gráficas de progreso por ejercicio. Para entregar los resultados de esa rutina.">📄 PDF Última rutina</button>
+      <button class="tob-action ghost" onclick="tobGeneratePdfHistorico()" title="PDF completo con todo el histórico de rutinas, KPIs y gráficas">📄 PDF Histórico</button>
+      <button class="tob-action ghost" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal con gráficas">📄 PDF Evolución</button>
       <button class="tob-action ghost" onclick="tobShareWhatsAppFicha()" title="Abre WhatsApp con un mensaje preformateado para enviarle el histórico (adjunta el PDF manualmente)">📲 WhatsApp</button>
       <button class="tob-action ghost" onclick="tobEditCliente(tobCurrentFichaId)">✏️ Editar datos</button>
     </div>
@@ -98,22 +101,51 @@
   <div class="tob-card-title">Resumen global</div>
   <div class="tob-kpi-row" id="tobFichaKpis"></div>
 
-  <!-- Timeline de rutinas -->
-  <div class="tob-card">
-    <div class="tob-card-title">📋 Timeline de rutinas</div>
-    <div class="tob-timeline" id="tobFichaTimeline"></div>
+  <!-- Estado vacío: ni rutinas ni mediciones -->
+  <div class="tob-card" id="tobFichaEmptyBoth" style="display:none;">
+    <div style="text-align:center;padding:26px;color:var(--mute);">
+      Este cliente aún no tiene rutinas ni mediciones registradas.
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button class="tob-action" onclick="tobOpenMedicionModal()">📏 + Añadir medición</button>
+        <button class="tob-action ghost" onclick="tobNuevaRutinaDesdeFicha()">🏋 Asignar rutina</button>
+      </div>
+    </div>
   </div>
 
-  <!-- Gráficas progresión por ejercicio (PR por rutina-iteración) -->
-  <div class="tob-card">
-    <div class="tob-card-title">📈 Progresión de fuerza · kg PR por rutina</div>
-    <div class="tob-charts-grid" id="tobFichaCharts"></div>
+  <!-- ── BLOQUE RUTINAS (se oculta si el cliente solo hace mediciones) ── -->
+  <div id="tobFichaRutinasBlock">
+    <!-- Timeline de rutinas -->
+    <div class="tob-card">
+      <div class="tob-card-title">📋 Timeline de rutinas</div>
+      <div class="tob-timeline" id="tobFichaTimeline"></div>
+    </div>
+
+    <!-- Gráficas progresión por ejercicio (PR por rutina-iteración) -->
+    <div class="tob-card">
+      <div class="tob-card-title">📈 Progresión de fuerza · kg PR por rutina</div>
+      <div class="tob-charts-grid" id="tobFichaCharts"></div>
+    </div>
+
+    <!-- Tabla comparativa ejercicio × rutina -->
+    <div class="tob-card">
+      <div class="tob-card-title">📊 Comparativa entre rutinas (kg máximo alcanzado por ejercicio en cada rutina)</div>
+      <div class="tob-cmp-wrap" id="tobFichaCmpTable"></div>
+    </div>
   </div>
 
-  <!-- Tabla comparativa ejercicio × rutina -->
-  <div class="tob-card">
-    <div class="tob-card-title">📊 Comparativa entre rutinas (kg máximo alcanzado por ejercicio en cada rutina)</div>
-    <div class="tob-cmp-wrap" id="tobFichaCmpTable"></div>
+  <!-- ── BLOQUE MEDICIONES (se oculta si el cliente solo hace rutinas) ── -->
+  <div id="tobFichaMedicionesBlock">
+    <div class="tob-card">
+      <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+        <span>📏 Mediciones · composición corporal</span>
+        <button class="tob-action" style="padding:5px 12px;font-size:.72rem;" onclick="tobOpenMedicionModal()">+ Añadir medición</button>
+      </div>
+      <div class="tob-cmp-wrap" id="tobFichaMedTable"></div>
+    </div>
+    <div class="tob-card">
+      <div class="tob-card-title">📉 Evolución de medidas</div>
+      <div class="tob-charts-grid" id="tobFichaMedCharts"></div>
+    </div>
   </div>
 </div>
 
@@ -171,6 +203,7 @@
     <div id="tobPdfStatus" style="margin-top:10px;font-size:.78rem;color:var(--mute);font-family:DM Mono,monospace;"></div>
     <div class="tob-pdf-actions" style="margin-top:10px;">
       <button class="tob-action" onclick="tobGeneratePdfActual()" title="PDF editable con cover, KPIs y tablas con campos rellenables">📄 PDF rutina (editable)</button>
+      <button class="tob-action ghost" onclick="tobGeneratePdfResumenActual()" title="PDF resumen de esta rutina con las gráficas de progreso por ejercicio (volumen kg×reps por iteración)">📊 PDF resumen (gráficas)</button>
       <button class="tob-action ghost" onclick="tobShareWhatsAppRutina()" title="Abre WhatsApp con un mensaje preformateado para enviarle la rutina (adjunta el PDF manualmente)">📲 WhatsApp</button>
     </div>
   </div>
@@ -204,6 +237,10 @@
       <div><label class="tob-lbl">Contacto</label><input class="tob-input" id="tobCliContacto" placeholder="WhatsApp / email"></div>
       <div><label class="tob-lbl">Fecha alta</label><input class="tob-input" type="date" id="tobCliAlta"></div>
     </div>
+    <div class="tob-row col-2">
+      <div><label class="tob-lbl">Fecha de nacimiento (opcional · para la edad en el PDF)</label><input class="tob-input" type="date" id="tobCliNacimiento"></div>
+      <div></div>
+    </div>
     <div>
       <label class="tob-lbl">Asignar plantilla inicial (opcional)</label>
       <select class="tob-select" id="tobCliPlantilla"><option value="">— Ninguna —</option></select>
@@ -211,6 +248,34 @@
     <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="tobCloseClienteModal()">Cancelar</button>
       <button class="tob-action" onclick="tobSaveCliente()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL MEDICIÓN (composición corporal) ════════ -->
+<div class="tob-modal-bg" id="tobMedicionModalBg">
+  <div class="tob-modal" style="max-width:740px;">
+    <h3 id="tobMedicionModalTitle">Nueva medición</h3>
+    <div class="tob-row col-3">
+      <div><label class="tob-lbl">Fecha *</label><input class="tob-input" type="date" id="tobMedFecha"></div>
+      <div><label class="tob-lbl">Peso (kg) *</label><input class="tob-input" type="number" step="0.1" id="tobMedPes" placeholder="77.4"></div>
+      <div><label class="tob-lbl">Estatura (cm)</label><input class="tob-input" type="number" step="0.5" id="tobMedEstatura" placeholder="177"></div>
+    </div>
+    <div style="font-family:'DM Mono',monospace;color:var(--acc);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;margin:16px 0 8px;border-bottom:1px solid var(--border);padding-bottom:5px;">
+      Pliegues cutáneos (mm)
+    </div>
+    <div class="tob-row col-3" id="tobMedPlecsRow"></div>
+    <div style="font-family:'DM Mono',monospace;color:var(--acc);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;margin:16px 0 8px;border-bottom:1px solid var(--border);padding-bottom:5px;">
+      Perímetros (cm)
+    </div>
+    <div class="tob-row col-3" id="tobMedPerimRow"></div>
+    <div style="margin-top:6px;"><label class="tob-lbl">Notas (opcional)</label><input class="tob-input" id="tobMedNotas" placeholder="..."></div>
+    <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">
+      <button class="tob-action danger" id="tobMedDelBtn" onclick="tobDelMedicionFromModal()" style="display:none;">🗑 Eliminar</button>
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button class="tob-action ghost" onclick="tobCloseMedicionModal()">Cancelar</button>
+        <button class="tob-action" onclick="tobSaveMedicion()">💾 Guardar</button>
+      </div>
     </div>
   </div>
 </div>

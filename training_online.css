@@ -294,6 +294,15 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-toast.red{border-color:var(--red);}
 .tob-toast.green{border-color:var(--green);}
 
+/* ── Mediciones (composición corporal) ── */
+.tob-kpi.med{border-left-color:var(--blue);}
+.tob-kpi .delta{font-size:.66rem;font-family:'DM Mono',monospace;margin-top:4px;color:var(--mute);letter-spacing:.03em;}
+.tob-kpi .delta.up{color:var(--green);}
+.tob-kpi .delta.down{color:var(--orange);}
+.tob-med-d{font-size:.66rem;font-family:'DM Mono',monospace;color:var(--mute2);margin-left:4px;}
+#tobFichaMedTable .tob-table{font-size:.82rem;}
+#tobFichaMedTable .tob-table td{white-space:nowrap;}
+
 @media(max-width:900px){
   .tob-ej-grid{font-size:.7rem;}
   .tob-ej-grid input.cell{width:45px;font-size:.7rem;}

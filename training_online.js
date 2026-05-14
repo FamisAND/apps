@@ -127,6 +127,17 @@ const TOB_EJ_ALIASES = {
   'Dominadas o Lat Machine': 'DOMINADAS'
 };
 
+// Campos de medición (composición corporal — antropometría tipo ISAK,
+// formato del informe Full Training). key interna → etiqueta visible.
+const TOB_MED_PLECS = [
+  ['triceps','Tríceps'], ['subescapular','Subescapular'], ['supraespinal','Supraespinal'],
+  ['abdominal','Abdominal'], ['cuixa','Cuixa Mitjana'], ['panxell','Panxell Mitjà']
+];
+const TOB_MED_PERIM = [
+  ['mesoesternal','Mesoesternal'], ['brac','Braç en Tensió'], ['cintura','Cintura'],
+  ['malucs','Malucs'], ['cuixa','Cuixa Mitjana'], ['panxell','Panxell Mitjà']
+];
+
 let tobDB = { clientes: [], plantillas: [] };
 let tobCurrentAsig = null;     // {clienteId, asigId}
 let tobCurrentItId = null;
@@ -214,6 +225,11 @@ function tobLoad(){
     (c.asignaciones||[]).forEach(a =>
       (a.rutina?.entrenos||[]).forEach(en =>
         (en.ejercicios||[]).forEach(renameEj))));
+
+  // Backfill: todos los clientes tienen array de mediciones
+  tobDB.clientes.forEach(c => {
+    if(!c.mediciones){ c.mediciones = []; backfilled = true; }
+  });
 
   if(backfilled) tobSave(true);
 
@@ -319,6 +335,7 @@ function tobOpenClienteModal(cli){
   document.getElementById('tobCliSexo').value = cli?.sexo || 'H';
   document.getElementById('tobCliContacto').value = cli?.contacto || '';
   document.getElementById('tobCliAlta').value = cli?.alta || new Date().toISOString().slice(0,10);
+  document.getElementById('tobCliNacimiento').value = cli?.nacimiento || '';
   const sel = document.getElementById('tobCliPlantilla');
   sel.innerHTML = '<option value="">— Ninguna —</option>' +
     tobDB.plantillas.map(p => `<option value="${p.id}">${tobEsc(p.nombre)}</option>`).join('');
@@ -335,7 +352,8 @@ function tobSaveCliente(){
     nombre,
     sexo: document.getElementById('tobCliSexo').value,
     contacto: document.getElementById('tobCliContacto').value.trim(),
-    alta: document.getElementById('tobCliAlta').value
+    alta: document.getElementById('tobCliAlta').value,
+    nacimiento: document.getElementById('tobCliNacimiento').value || ''
   };
   const editId = document.getElementById('tobClienteModalBg').dataset.editId;
   if(editId){
@@ -1906,26 +1924,53 @@ function tobCloseFicha(){
 function tobRenderFicha(){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli) return;
+
+  // Destruir todos los charts de la ficha de una vez (rutinas + mediciones)
+  Object.values(tobFichaCharts).forEach(c => { try { c.destroy(); } catch(e){} });
+  tobFichaCharts = {};
+
+  const hasRutinas = (cli.asignaciones||[]).length > 0;
+  const hasMediciones = (cli.mediciones||[]).length > 0;
+
   document.getElementById('tobFichaNombre').textContent = cli.nombre + (cli.sexo==='M'?' ♀':cli.sexo==='H'?' ♂':'');
   const totalSes = tobCountSesiones(cli);
-  document.getElementById('tobFichaMeta').textContent =
-    `Cliente desde ${cli.alta || '—'}  ·  ${(cli.asignaciones||[]).length} rutinas  ·  ${totalSes} sesiones registradas` +
-    (cli.contacto ? `  ·  ${cli.contacto}` : '');
+  const metaParts = [`Cliente desde ${cli.alta || '—'}`];
+  if(hasRutinas) metaParts.push(`${(cli.asignaciones||[]).length} rutinas`, `${totalSes} sesiones`);
+  if(hasMediciones) metaParts.push(`${cli.mediciones.length} mediciones`);
+  if(cli.contacto) metaParts.push(cli.contacto);
+  document.getElementById('tobFichaMeta').textContent = metaParts.join('  ·  ');
 
-  // KPIs (sin tonelaje, no aporta)
-  const kpis = tobCalcGlobalKPIs(cli);
-  document.getElementById('tobFichaKpis').innerHTML = `
-    <div class="tob-kpi ses"><div class="lbl">Sesiones totales</div><div class="val">${totalSes}</div></div>
-    <div class="tob-kpi"><div class="lbl">Rutinas completadas</div><div class="val">${kpis.completadas}<span class="unit"> / ${(cli.asignaciones||[]).length}</span></div></div>
-    ${Object.entries(kpis.prByEj).slice(0,6).map(([n, kg]) =>
-      `<div class="tob-kpi pr"><div class="lbl">PR ${tobEsc(n)}</div><div class="val">${kg}<span class="unit"> kg</span></div></div>`).join('')}
-  `;
+  // ── KPIs adaptativos: rutinas, mediciones, o ambas ──
+  const kpiCards = [];
+  if(hasRutinas){
+    const kpis = tobCalcGlobalKPIs(cli);
+    kpiCards.push(`<div class="tob-kpi ses"><div class="lbl">Sesiones totales</div><div class="val">${totalSes}</div></div>`);
+    kpiCards.push(`<div class="tob-kpi"><div class="lbl">Rutinas completadas</div><div class="val">${kpis.completadas}<span class="unit"> / ${(cli.asignaciones||[]).length}</span></div></div>`);
+    Object.entries(kpis.prByEj).slice(0, hasMediciones ? 3 : 6).forEach(([n, kg]) =>
+      kpiCards.push(`<div class="tob-kpi pr"><div class="lbl">PR ${tobEsc(n)}</div><div class="val">${kg}<span class="unit"> kg</span></div></div>`));
+  }
+  if(hasMediciones){
+    const mk = tobCalcMedKPIs(cli);
+    kpiCards.push(`<div class="tob-kpi med"><div class="lbl">Mediciones</div><div class="val">${mk.count}</div></div>`);
+    kpiCards.push(`<div class="tob-kpi med"><div class="lbl">Peso actual</div><div class="val">${mk.pes}<span class="unit"> kg</span></div>${mk.pesDelta}</div>`);
+    kpiCards.push(`<div class="tob-kpi med"><div class="lbl">Σ Pliegues</div><div class="val">${mk.sum}<span class="unit"> mm</span></div>${mk.sumDelta}</div>`);
+    kpiCards.push(`<div class="tob-kpi med"><div class="lbl">Cintura</div><div class="val">${mk.cintura}<span class="unit"> cm</span></div>${mk.cinturaDelta}</div>`);
+  }
+  document.getElementById('tobFichaKpis').innerHTML = kpiCards.join('') ||
+    '<div style="color:var(--mute2);padding:8px;font-size:.85rem;">Sin datos todavía.</div>';
 
-  // Timeline
-  tobRenderTimeline(cli);
+  // ── Bloques adaptativos ──
+  document.getElementById('tobFichaEmptyBoth').style.display = (!hasRutinas && !hasMediciones) ? '' : 'none';
+  document.getElementById('tobFichaRutinasBlock').style.display = hasRutinas ? '' : 'none';
+  document.getElementById('tobFichaMedicionesBlock').style.display = hasMediciones ? '' : 'none';
 
-  // Charts globales
-  tobRenderFichaCharts(cli);
+  if(hasRutinas){
+    tobRenderTimeline(cli);
+    tobRenderFichaCharts(cli);
+  }
+  if(hasMediciones){
+    tobRenderFichaMediciones(cli);
+  }
 }
 
 function tobCountSesiones(cli){
@@ -2115,9 +2160,7 @@ function tobRenderFichaCharts(cli){
   const chartsGrid = document.getElementById('tobFichaCharts');
   const tableCont = document.getElementById('tobFichaCmpTable');
   if(!chartsGrid || !tableCont) return;
-
-  Object.values(tobFichaCharts).forEach(c => { try { c.destroy(); } catch(e){} });
-  tobFichaCharts = {};
+  // Nota: los charts ya se destruyen en tobRenderFicha (rutinas + mediciones a la vez)
 
   const data = tobBuildFichaData(cli);
 
@@ -2225,6 +2268,600 @@ function tobRenderFichaCharts(cli){
 function tobSlug(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
 
 // ═════════════════════════════════════════════════════════════════
+// MEDICIONES — composición corporal (pliegues, perímetros, peso)
+// ═════════════════════════════════════════════════════════════════
+function tobMedsSorted(cli){
+  return [...(cli?.mediciones||[])].sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+}
+function tobMedSum(med){
+  return TOB_MED_PLECS.reduce((s,[k]) => s + (parseFloat(med?.plecs?.[k])||0), 0);
+}
+function tobMedRatios(med){
+  const cintura = parseFloat(med?.perimetres?.cintura);
+  const malucs  = parseFloat(med?.perimetres?.malucs);
+  const pes     = parseFloat(med?.pes);
+  const sum     = tobMedSum(med);
+  return {
+    cinturaCadera: (malucs > 0 && !isNaN(cintura)) ? cintura/malucs : null,
+    plecsPes:      (pes > 0) ? sum/pes : null
+  };
+}
+function tobMedAge(cli, fecha){
+  if(!cli?.nacimiento || !fecha) return null;
+  const n = new Date(cli.nacimiento), f = new Date(fecha);
+  if(isNaN(n) || isNaN(f)) return null;
+  let age = f.getFullYear() - n.getFullYear();
+  const m = f.getMonth() - n.getMonth();
+  if(m < 0 || (m === 0 && f.getDate() < n.getDate())) age--;
+  return (age >= 0 && age < 130) ? age : null;
+}
+function tobMedShortLabel(fecha){
+  const [y,mo] = String(fecha||'').split('-');
+  return (mo && y) ? `${mo}/${y.slice(2)}` : (fecha || '?');
+}
+
+function tobCalcMedKPIs(cli){
+  const meds = tobMedsSorted(cli);
+  const first = meds[0], last = meds[meds.length-1];
+  const r1 = v => (v == null ? '—' : Math.round(v*10)/10);
+  const deltaHtml = (cur, prev, unit) => {
+    if(cur == null || prev == null) return '';
+    const d = cur - prev;
+    if(Math.abs(d) < 0.05) return `<div class="delta">= sin cambio vs inicio</div>`;
+    return `<div class="delta">${d>0?'+':''}${Math.round(d*10)/10} ${unit} vs inicio</div>`;
+  };
+  const pesA = last?.pes != null ? +last.pes : null;
+  const pesF = first?.pes != null ? +first.pes : null;
+  const sumA = last ? tobMedSum(last) : null;
+  const sumF = first ? tobMedSum(first) : null;
+  const cinA = last?.perimetres?.cintura != null ? +last.perimetres.cintura : null;
+  const cinF = first?.perimetres?.cintura != null ? +first.perimetres.cintura : null;
+  return {
+    count: meds.length,
+    pes: r1(pesA),     pesDelta: deltaHtml(pesA, pesF, 'kg'),
+    sum: r1(sumA),     sumDelta: deltaHtml(sumA, sumF, 'mm'),
+    cintura: r1(cinA), cinturaDelta: deltaHtml(cinA, cinF, 'cm')
+  };
+}
+
+// ── Modal medición ──
+function tobOpenMedicionModal(medId){
+  if(!tobCurrentFichaId){ tobToast('Abre la ficha de un cliente primero', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const meds = tobMedsSorted(cli);
+  const med = medId ? (cli.mediciones||[]).find(m => m.id === medId) : null;
+  const lastMed = meds[meds.length-1];
+  document.getElementById('tobMedicionModalTitle').textContent = med ? 'Editar medición' : 'Nueva medición';
+  document.getElementById('tobMedFecha').value = med?.fecha || new Date().toISOString().slice(0,10);
+  document.getElementById('tobMedPes').value = med?.pes ?? '';
+  document.getElementById('tobMedEstatura').value = med?.estatura ?? lastMed?.estatura ?? '';
+  document.getElementById('tobMedNotas').value = med?.notas || '';
+  document.getElementById('tobMedPlecsRow').innerHTML = TOB_MED_PLECS.map(([k,label]) =>
+    `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPlec_${k}" value="${med?.plecs?.[k] ?? ''}" placeholder="mm"></div>`
+  ).join('');
+  document.getElementById('tobMedPerimRow').innerHTML = TOB_MED_PERIM.map(([k,label]) =>
+    `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPerim_${k}" value="${med?.perimetres?.[k] ?? ''}" placeholder="cm"></div>`
+  ).join('');
+  document.getElementById('tobMedDelBtn').style.display = med ? '' : 'none';
+  document.getElementById('tobMedicionModalBg').dataset.editId = med?.id || '';
+  document.getElementById('tobMedicionModalBg').classList.add('on');
+}
+function tobCloseMedicionModal(){ document.getElementById('tobMedicionModalBg').classList.remove('on'); }
+
+function tobSaveMedicion(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli){ tobToast('Sin cliente', 'red'); return; }
+  const fecha = document.getElementById('tobMedFecha').value;
+  const pes = parseFloat(document.getElementById('tobMedPes').value);
+  if(!fecha){ tobToast('Falta la fecha', 'red'); return; }
+  if(isNaN(pes)){ tobToast('Falta el peso', 'red'); return; }
+  const num = id => { const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+  const plecs = {}; TOB_MED_PLECS.forEach(([k]) => plecs[k] = num('tobMedPlec_'+k));
+  const perimetres = {}; TOB_MED_PERIM.forEach(([k]) => perimetres[k] = num('tobMedPerim_'+k));
+  const data = {
+    fecha, pes,
+    estatura: num('tobMedEstatura'),
+    plecs, perimetres,
+    notas: document.getElementById('tobMedNotas').value.trim()
+  };
+  if(!cli.mediciones) cli.mediciones = [];
+  const editId = document.getElementById('tobMedicionModalBg').dataset.editId;
+  if(editId){
+    const m = cli.mediciones.find(m => m.id === editId);
+    if(m) Object.assign(m, data);
+  } else {
+    data.id = tobUid('med');
+    cli.mediciones.push(data);
+  }
+  tobSave();
+  tobCloseMedicionModal();
+  tobRenderFicha();
+  tobToast('✓ Medición guardada', 'green');
+}
+function tobDelMedicionFromModal(){
+  const editId = document.getElementById('tobMedicionModalBg').dataset.editId;
+  if(editId) tobDelMedicion(editId);
+}
+function tobDelMedicion(medId){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  tobConfirm('¿Eliminar medición?', 'Se borra esta medición. No se puede deshacer.', () => {
+    cli.mediciones = (cli.mediciones||[]).filter(m => m.id !== medId);
+    tobSave();
+    tobCloseMedicionModal();
+    tobRenderFicha();
+    tobToast('Eliminada', 'green');
+  });
+}
+
+// ── Tabla + gráficas de mediciones en la ficha ──
+function tobRenderFichaMediciones(cli){
+  const tableCont = document.getElementById('tobFichaMedTable');
+  if(!tableCont) return;
+  const meds = tobMedsSorted(cli);
+  if(!meds.length){
+    tableCont.innerHTML = '<div style="color:var(--mute2);padding:14px;">Sin mediciones. Añade la primera con <strong>+ Añadir medición</strong>.</div>';
+  } else {
+    const deltaSpan = (cur, prev, dec) => {
+      if(prev == null || cur == null) return '';
+      const d = cur - prev;
+      if(Math.abs(d) < 0.05) return '';
+      const f = Math.round(d * Math.pow(10,dec)) / Math.pow(10,dec);
+      return ` <span class="tob-med-d">${d>0?'+':''}${f}</span>`;
+    };
+    const rows = meds.map((m, i) => {
+      const prev = i > 0 ? meds[i-1] : null;
+      return { m, prev, sum: tobMedSum(m), prevSum: prev ? tobMedSum(prev) : null, ratios: tobMedRatios(m) };
+    }).reverse().map(({m, prev, sum, prevSum, ratios}) => {
+      const cintura = m.perimetres?.cintura;
+      return `<tr>
+        <td><strong>${tobEsc(m.fecha || '—')}</strong></td>
+        <td>${m.pes ?? '—'}${deltaSpan(m.pes!=null?+m.pes:null, prev?.pes!=null?+prev.pes:null, 1)}</td>
+        <td>${sum.toFixed(1)}${deltaSpan(sum, prevSum, 1)}</td>
+        <td>${cintura ?? '—'}${deltaSpan(cintura!=null?+cintura:null, prev?.perimetres?.cintura!=null?+prev.perimetres.cintura:null, 1)}</td>
+        <td>${ratios.cinturaCadera != null ? ratios.cinturaCadera.toFixed(2) : '—'}</td>
+        <td>${ratios.plecsPes != null ? ratios.plecsPes.toFixed(2) : '—'}</td>
+        <td class="actions">
+          <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobOpenMedicionModal('${m.id}')">✏️</button>
+          <button class="tob-action danger" style="padding:4px 9px;" onclick="tobDelMedicion('${m.id}')">🗑</button>
+        </td>
+      </tr>`;
+    }).join('');
+    tableCont.innerHTML = `<table class="tob-table">
+      <thead><tr>
+        <th>Fecha</th><th>Peso (kg)</th><th>Σ Pliegues (mm)</th>
+        <th>Cintura (cm)</th><th>Cintura/Cadera</th><th>Pliegues/Peso</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+  tobRenderMedCharts(cli);
+}
+
+// Configs Chart.js de mediciones (reutilizadas por la ficha y el PDF).
+// forPdf=true → colores oscuros sobre fondo blanco.
+function tobBuildMedChartConfigs(cli, forPdf){
+  const meds = tobMedsSorted(cli);
+  if(!meds.length) return {};
+  const labels = meds.map(m => tobMedShortLabel(m.fecha));
+  const ACC = '#f5a623';
+  const txtCol  = forPdf ? '#444444' : '#7a96b8';
+  const txtCol2 = forPdf ? '#222222' : '#cbd5e1';
+  const gridCol = forPdf ? '#dddddd' : '#1e1810';
+  const lineChart = (label, data, color) => ({
+    type: 'line',
+    data: { labels, datasets: [{
+      label, data, borderColor: color, backgroundColor: color + '22',
+      pointBackgroundColor: color, pointRadius: 4, pointHoverRadius: 7,
+      borderWidth: 2.5, tension: 0.25, fill: true, spanGaps: true
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          color: txtCol2, font: { size: 9, weight: '700' }, align: 'top', offset: 5,
+          formatter: v => (v == null ? '' : v)
+        }
+      },
+      scales: {
+        x: { ticks: { color: txtCol, font: { size: 9 }, maxRotation: 40 }, grid: { color: gridCol } },
+        y: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol }, beginAtZero: false }
+      }
+    }
+  });
+  const first = meds[0], last = meds[meds.length-1];
+  const cfgs = {};
+  cfgs.peso  = lineChart('Peso (kg)',       meds.map(m => m.pes != null ? +m.pes : null), ACC);
+  cfgs.plecs = lineChart('Σ Pliegues (mm)', meds.map(m => +tobMedSum(m).toFixed(1)), '#60a5fa');
+  cfgs.cc    = lineChart('Cintura/Cadera',  meds.map(m => { const r = tobMedRatios(m).cinturaCadera; return r != null ? +r.toFixed(3) : null; }), '#3fb68b');
+  cfgs.pp    = lineChart('Pliegues/Peso',   meds.map(m => { const r = tobMedRatios(m).plecsPes; return r != null ? +r.toFixed(3) : null; }), '#a78bfa');
+  cfgs.perim = {
+    type: 'bar',
+    data: {
+      labels: TOB_MED_PERIM.map(([,l]) => l),
+      datasets: [
+        { label: 'Inicio (' + (first.fecha||'') + ')', data: TOB_MED_PERIM.map(([k]) => first.perimetres?.[k] ?? null), backgroundColor: (forPdf ? '#cfc9b8' : '#5a524077'), borderColor: '#8a7f6a', borderWidth: 1 },
+        { label: 'Actual (' + (last.fecha||'') + ')',  data: TOB_MED_PERIM.map(([k]) => last.perimetres?.[k] ?? null),  backgroundColor: ACC + (forPdf ? '' : 'cc'), borderColor: ACC, borderWidth: 1 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { labels: { color: txtCol2, font: { size: 9 } } }, datalabels: { display: false } },
+      scales: {
+        x: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol }, beginAtZero: true },
+        y: { ticks: { color: txtCol2, font: { size: 9 } }, grid: { color: gridCol } }
+      }
+    }
+  };
+  cfgs.radar = {
+    type: 'radar',
+    data: {
+      labels: TOB_MED_PLECS.map(([,l]) => l),
+      datasets: [
+        { label: 'Inicio', data: TOB_MED_PLECS.map(([k]) => first.plecs?.[k] ?? null), borderColor: '#8a7f6a', backgroundColor: (forPdf ? 'rgba(138,127,106,.18)' : '#5a524033'), pointBackgroundColor: '#8a7f6a', borderWidth: 2 },
+        { label: 'Actual', data: TOB_MED_PLECS.map(([k]) => last.plecs?.[k] ?? null),  borderColor: ACC, backgroundColor: ACC + '33', pointBackgroundColor: ACC, borderWidth: 2 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: txtCol2, font: { size: 9 } } }, datalabels: { display: false } },
+      scales: { r: {
+        angleLines: { color: forPdf ? '#cccccc' : '#2a2620' },
+        grid: { color: forPdf ? '#dddddd' : '#2a2620' },
+        pointLabels: { color: txtCol2, font: { size: 9 } },
+        ticks: { color: txtCol, backdropColor: 'transparent', font: { size: 8 } },
+        beginAtZero: true
+      } }
+    }
+  };
+  return cfgs;
+}
+
+function tobRenderMedCharts(cli){
+  const grid = document.getElementById('tobFichaMedCharts');
+  if(!grid) return;
+  const cfgs = tobBuildMedChartConfigs(cli, false);
+  if(!Object.keys(cfgs).length){
+    grid.innerHTML = '<div style="grid-column:1/-1;color:var(--mute2);padding:20px;text-align:center;">Sin mediciones aún.</div>';
+    return;
+  }
+  const order = [
+    ['peso',  'Peso corporal'],
+    ['plecs', 'Σ Pliegues cutáneos'],
+    ['perim', 'Perímetros · inicio vs actual'],
+    ['radar', 'Pliegues · inicio vs actual'],
+    ['cc',    'Ratio Cintura / Cadera'],
+    ['pp',    'Ratio Pliegues / Peso']
+  ];
+  grid.innerHTML = order.map(([k,title]) => `
+    <div class="tob-chart-card">
+      <div class="hdr">${title}</div>
+      <div class="body"><canvas id="tobMedChart_${k}"></canvas></div>
+    </div>`).join('');
+  if(window.ChartDataLabels && Chart.register){ try { Chart.register(ChartDataLabels); } catch(e){} }
+  order.forEach(([k]) => {
+    const canvas = document.getElementById('tobMedChart_' + k);
+    if(!canvas || !cfgs[k]) return;
+    tobFichaCharts['med_' + k] = new Chart(canvas, cfgs[k]);
+  });
+}
+
+// ═══ PDF EVOLUCIÓN — informe de composición corporal ═══════════
+async function tobGeneratePdfMediciones(){
+  if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
+  if(!(cli.mediciones||[]).length){ tobToast('Este cliente no tiene mediciones', 'red'); return; }
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+  tobToast('⏳ Generando PDF de evolución...', '');
+  await tobBuildPdfMediciones(cli).catch(e => { console.error(e); tobToast('Error: ' + e.message, 'red'); });
+}
+
+async function tobBuildPdfMediciones(cli){
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const doc = await PDFDocument.create();
+  const font  = await doc.embedFont(StandardFonts.Helvetica);
+  const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fontO = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const ORANGE = rgb(0.96, 0.65, 0.13);
+  const BLACK = rgb(0.06, 0.06, 0.06);
+  const GRAY = rgb(0.55, 0.55, 0.55);
+  const GRAY_DK = rgb(0.25, 0.25, 0.25);
+  const GREEN = rgb(0.18, 0.6, 0.4);
+  const RED = rgb(0.85, 0.25, 0.25);
+  const W = 842, H = 595;
+  const meds = tobMedsSorted(cli);
+  const first = meds[0], last = meds[meds.length-1];
+
+  // ─── COVER ───
+  let page = doc.addPage([W, H]);
+  page.drawRectangle({ x: 0, y: 0, width: 60, height: H, color: ORANGE });
+  page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
+  page.drawText('TRAINING', { x: 100, y: H-156, size: 56, font: fontB, color: BLACK });
+  page.drawText("INFORME D'EVOLUCIO - COMPOSICIO CORPORAL", { x: 100, y: H-180, size: 12, font, color: GRAY });
+  page.drawText(cli.nombre || '-', { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
+  page.drawText(`Periode: ${first.fecha || '?'}  -  ${last.fecha || '?'}`, { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
+  const pesDelta = (last.pes != null && first.pes != null) ? (+last.pes - +first.pes) : null;
+  const sumDelta = tobMedSum(last) - tobMedSum(first);
+  const kpisCover = [
+    ['MEDICIONS', String(meds.length), ''],
+    ['PES ACTUAL', (last.pes != null ? last.pes : '-') + ' kg', pesDelta != null ? `${pesDelta>=0?'+':''}${(+pesDelta.toFixed(1))} kg` : ''],
+    ['SUMA 6 PLECS', tobMedSum(last).toFixed(1) + ' mm', `${sumDelta>=0?'+':''}${sumDelta.toFixed(1)} mm`]
+  ];
+  const kpiW = 200, kpiH = 88, kpiGap = 16, kpiY = 165;
+  kpisCover.forEach((kp, i) => {
+    const x = 100 + i*(kpiW+kpiGap);
+    page.drawRectangle({ x, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
+    page.drawRectangle({ x, y: kpiY+kpiH-4, width: kpiW, height: 4, color: ORANGE });
+    page.drawText(kp[0], { x: x+14, y: kpiY+kpiH-26, size: 9, font: fontB, color: GRAY });
+    page.drawText(kp[1], { x: x+14, y: kpiY+32, size: 24, font: fontB, color: BLACK });
+    if(kp[2]) page.drawText(kp[2] + ' vs inici', { x: x+14, y: kpiY+14, size: 8, font, color: GRAY });
+  });
+  page.drawText('FULL TRAINING - BIIO System', { x: W-230, y: 40, size: 9, font: fontO, color: GRAY });
+
+  // ─── PÁGINA EVOLUCIÓN: 4 line charts 2×2 ───
+  const cfgs = tobBuildMedChartConfigs(cli, true);
+  page = doc.addPage([W, H]);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, "EVOLUCIO", cli.nombre || '', W, H);
+  {
+    const chW = 380, chH = 215, gapX = 30, gapY = 24;
+    const ox = (W - (chW*2 + gapX)) / 2;
+    const oy = H - 80;
+    const slots = [
+      ['peso',  'PES CORPORAL (kg)'],
+      ['plecs', 'SUMATORI DE PLECS (mm)'],
+      ['cc',    'RATIO CINTURA / MALUC'],
+      ['pp',    'RATIO PLECS / PES']
+    ];
+    for(let i = 0; i < slots.length; i++){
+      const [k, title] = slots[i];
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = ox + col*(chW+gapX);
+      const yTop = oy - row*(chH+gapY);
+      page.drawText(title, { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+      try {
+        const png = await tobChartToPng(cfgs[k], 760, 430);
+        page.drawImage(await doc.embedPng(png), { x, y: yTop - chH, width: chW, height: chH });
+      } catch(e){ console.warn('chart', k, e); page.drawText('(grafica no disponible)', { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
+    }
+  }
+
+  // ─── PÁGINA COMPOSICIÓN: perim bar + radar plecs ───
+  page = doc.addPage([W, H]);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPOSICIO - INICI vs ACTUAL', cli.nombre || '', W, H);
+  {
+    const chW = 380, chH = 380, gapX = 30;
+    const ox = (W - (chW*2 + gapX)) / 2;
+    const yTop = H - 90;
+    page.drawText('PERIMETRES (cm)', { x: ox, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+    page.drawText('PLECS CUTANIS (mm)', { x: ox + chW + gapX, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+    try {
+      const png1 = await tobChartToPng(cfgs.perim, 700, 700);
+      page.drawImage(await doc.embedPng(png1), { x: ox, y: yTop - chH, width: chW, height: chH });
+    } catch(e){ console.warn(e); }
+    try {
+      const png2 = await tobChartToPng(cfgs.radar, 700, 700);
+      page.drawImage(await doc.embedPng(png2), { x: ox + chW + gapX, y: yTop - chH, width: chW, height: chH });
+    } catch(e){ console.warn(e); }
+  }
+
+  // ─── PÁGINAS DETALLE: una por medición (más reciente primero) ───
+  const sexoTxt = cli.sexo === 'M' ? 'Dona' : cli.sexo === 'H' ? 'Home' : '-';
+  for(let idx = meds.length - 1; idx >= 0; idx--){
+    const m = meds[idx];
+    const prev = idx > 0 ? meds[idx-1] : null;
+    page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPOSICIO CORPORAL', `${cli.nombre || ''}  -  ${m.fecha || ''}`, W, H);
+
+    let yy = H - 78;
+    page.drawRectangle({ x: 30, y: yy-66, width: W-60, height: 66, color: rgb(0.97,0.97,0.97) });
+    page.drawRectangle({ x: 30, y: yy-4, width: W-60, height: 4, color: ORANGE });
+    const edat = tobMedAge(cli, m.fecha);
+    const dadesA = [['Nom', cli.nombre || '-'], ['Edat', edat != null ? String(edat) : '-'], ['Sexe', sexoTxt]];
+    const pesTxt = (m.pes != null ? m.pes : '-') + (prev && m.pes!=null && prev.pes!=null ? `   (${(+m.pes - +prev.pes)>=0?'+':''}${(+(m.pes - prev.pes)).toFixed(1)})` : '');
+    const dadesB = [['Pes (kg)', pesTxt], ['Estatura (cm)', m.estatura != null ? m.estatura : '-'], ['Data de medicio', m.fecha || '-']];
+    dadesA.forEach((d, i) => {
+      page.drawText(d[0], { x: 48, y: yy-22-i*16, size: 8, font: fontB, color: GRAY });
+      page.drawText(String(d[1]), { x: 135, y: yy-22-i*16, size: 9, font, color: BLACK });
+    });
+    dadesB.forEach((d, i) => {
+      page.drawText(d[0], { x: 440, y: yy-22-i*16, size: 8, font: fontB, color: GRAY });
+      page.drawText(String(d[1]), { x: 560, y: yy-22-i*16, size: 9, font, color: BLACK });
+    });
+
+    yy -= 92;
+    const tableTop = yy;
+    const colW = (W - 90) / 2;
+    const drawMetricTable = (x, w, title, defs, valObj, prevObj, sumRow) => {
+      page.drawRectangle({ x, y: tableTop-2, width: w, height: 18, color: ORANGE });
+      page.drawText(title, { x: x+10, y: tableTop+3, size: 9, font: fontB, color: BLACK });
+      let ry = tableTop - 18;
+      defs.forEach(([k, label], i) => {
+        if(i % 2 === 1) page.drawRectangle({ x, y: ry-4, width: w, height: 15, color: rgb(0.96,0.96,0.96) });
+        const cur = valObj?.[k];
+        const pv  = prevObj?.[k];
+        page.drawText(label, { x: x+10, y: ry, size: 8.5, font, color: GRAY_DK });
+        page.drawText(cur != null ? String(cur) : '-', { x: x+w-95, y: ry, size: 9, font: fontB, color: BLACK });
+        if(cur != null && pv != null){
+          const d = +(cur - pv).toFixed(1);
+          if(Math.abs(d) >= 0.05) page.drawText(`${d>0?'+':''}${d}`, { x: x+w-48, y: ry, size: 8, font: fontB, color: d>0?RED:GREEN });
+        }
+        ry -= 15;
+      });
+      if(sumRow){
+        page.drawLine({ start:{x, y:ry+8}, end:{x:x+w, y:ry+8}, thickness: 1, color: ORANGE });
+        page.drawText(sumRow[0], { x: x+10, y: ry-5, size: 9, font: fontB, color: BLACK });
+        page.drawText(sumRow[1], { x: x+w-95, y: ry-5, size: 10, font: fontB, color: BLACK });
+        if(sumRow[2] != null && Math.abs(sumRow[2]) >= 0.05)
+          page.drawText(`${sumRow[2]>0?'+':''}${sumRow[2]}`, { x: x+w-48, y: ry-5, size: 8, font: fontB, color: sumRow[2]>0?RED:GREEN });
+        ry -= 18;
+      }
+      return ry;
+    };
+    const sum = tobMedSum(m), prevSum = prev ? tobMedSum(prev) : null;
+    drawMetricTable(30, colW, 'PLECS (mm)', TOB_MED_PLECS, m.plecs, prev?.plecs,
+      ['Suma 6 Plecs', sum.toFixed(1), prevSum != null ? +(sum - prevSum).toFixed(1) : null]);
+    drawMetricTable(30 + colW + 30, colW, 'PERIMETRES (cm)', TOB_MED_PERIM, m.perimetres, prev?.perimetres, null);
+
+    const r = tobMedRatios(m);
+    const rTxt = `Ratio Cintura/Maluc: ${r.cinturaCadera != null ? r.cinturaCadera.toFixed(2) : '-'}        Ratio Plecs/Pes: ${r.plecsPes != null ? r.plecsPes.toFixed(2) : '-'}`;
+    page.drawText(rTxt, { x: 30, y: 58, size: 9, font: fontB, color: GRAY_DK });
+    if(m.notas) page.drawText('Notes: ' + tobTrunc(m.notas, 120), { x: 30, y: 42, size: 8, font: fontO, color: GRAY });
+  }
+
+  const pages = doc.getPages();
+  pages.forEach((p, i) => p.drawText(`${i+1} / ${pages.length}`, { x: W-50, y: 22, size: 8, font, color: GRAY }));
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(cli.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_evolucion_${new Date().toISOString().slice(0,10)}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+  tobToast('✓ PDF de evolución descargado', 'green');
+}
+
+// ═══ PDF RESUMEN — solo la última rutina (para entregar resultados) ═══
+async function tobGeneratePdfUltimaRutina(){
+  if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
+  const asigs = [...(cli.asignaciones||[])].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
+  const a = asigs[asigs.length-1];
+  if(!a){ tobToast('Este cliente no tiene rutinas', 'red'); return; }
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+  const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+  tobToast('⏳ Generando resumen de la última rutina...', '');
+  await tobBuildPdfResumenRutina(cli, a, pl).catch(e => { console.error(e); tobToast('Error: ' + e.message, 'red'); });
+}
+
+async function tobGeneratePdfResumenActual(){
+  const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
+  const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+  tobToast('⏳ Generando resumen de la rutina...', '');
+  await tobBuildPdfResumenRutina(cli, a, pl).catch(e => { console.error(e); tobToast('Error: ' + e.message, 'red'); });
+}
+
+async function tobBuildPdfResumenRutina(cli, a, pl){
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const doc = await PDFDocument.create();
+  const font  = await doc.embedFont(StandardFonts.Helvetica);
+  const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
+  const fontO = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const ORANGE = rgb(0.96, 0.65, 0.13);
+  const BLACK = rgb(0.06, 0.06, 0.06);
+  const GRAY = rgb(0.55, 0.55, 0.55);
+  const GRAY_DK = rgb(0.25, 0.25, 0.25);
+  const W = 842, H = 595;
+  const rutinaShort = (pl?.nombre || '(plantilla eliminada)').replace(/\s*-\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+  const stats = tobCalcAsigStats(a);
+
+  // ─── COVER ───
+  let page = doc.addPage([W, H]);
+  page.drawRectangle({ x: 0, y: 0, width: 50, height: H, color: ORANGE });
+  const LX = 80;
+  page.drawText('FULL', { x: LX, y: H-95, size: 48, font: fontB, color: ORANGE });
+  page.drawText('TRAINING', { x: LX, y: H-143, size: 48, font: fontB, color: BLACK });
+  page.drawText('RESUM DE LA RUTINA', { x: LX, y: H-165, size: 12, font, color: GRAY });
+  page.drawText(cli?.nombre || '-', { x: LX, y: H-220, size: 30, font: fontB, color: BLACK });
+  page.drawText(rutinaShort, { x: LX, y: H-246, size: 14, font, color: GRAY_DK });
+  if(pl) page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' - ' : ''}${pl.categoria || ''}`, { x: LX, y: H-264, size: 10, font: fontO, color: GRAY });
+  page.drawText(`Periode: ${a.fechaInicio || '?'}  -  ${stats.ultimaFecha || '?'}`, { x: LX, y: H-282, size: 10, font, color: GRAY_DK });
+
+  const kpis = [
+    ['SESSIONS', String(stats.sesiones)],
+    ['ITERACIONS', String((a.iteraciones||[]).length)],
+    ['ESTAT', (a.estado || 'en curs').replace('_',' ').toUpperCase()]
+  ];
+  const kpiW = 180, kpiH = 84, kpiGap = 16, kpiY = 170;
+  kpis.forEach((kp, i) => {
+    const x = LX + i*(kpiW+kpiGap);
+    page.drawRectangle({ x, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
+    page.drawRectangle({ x, y: kpiY+kpiH-4, width: kpiW, height: 4, color: ORANGE });
+    page.drawText(kp[0], { x: x+14, y: kpiY+kpiH-26, size: 9, font: fontB, color: GRAY });
+    page.drawText(kp[1], { x: x+14, y: kpiY+28, size: kp[1].length > 9 ? 15 : 28, font: fontB, color: BLACK });
+  });
+
+  const prs = Object.entries(stats.maxByEj).slice(0, 6);
+  if(prs.length){
+    page.drawText('RECORDS DE LA RUTINA', { x: W-330, y: H-95, size: 10, font: fontB, color: ORANGE });
+    prs.forEach((pr, i) => {
+      const py = H-118 - i*20;
+      page.drawText(tobTrunc(pr[0], 26), { x: W-330, y: py, size: 9, font, color: GRAY_DK });
+      page.drawText(`${pr[1]} kg`, { x: W-115, y: py, size: 10, font: fontB, color: BLACK });
+    });
+  }
+  page.drawText('FULL TRAINING - BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
+
+  // ─── GRÁFICAS — volumen por ejercicio (una línea por iteración) ───
+  const mainEjs = [];
+  (a.rutina?.entrenos||[]).forEach(en => {
+    (en.ejercicios||[]).forEach(ej => { if(ej.tipo !== 'circuito') mainEjs.push({ ej, entId: en.id }); });
+  });
+  const chartItems = [];
+  mainEjs.forEach(({ ej, entId }) => {
+    const cfg = tobBuildEjChartConfig(a, ej, entId);
+    if(cfg){
+      cfg.options.responsive = false;
+      cfg.options.plugins.legend = { display: true, labels: { color: '#444444', font: { size: 9 }, boxWidth: 14 } };
+      chartItems.push({ name: ej.nombre, cfg });
+    }
+  });
+
+  if(!chartItems.length){
+    page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'PROGRES PER EXERCICI', rutinaShort, W, H);
+    page.drawText('Encara no hi ha sessions amb dades registrades en aquesta rutina.', { x: 30, y: H-90, size: 11, font: fontO, color: GRAY });
+  } else {
+    const perPage = 4, chW = 380, chH = 215, gapX = 30, gapY = 26;
+    for(let p = 0; p < chartItems.length; p += perPage){
+      page = doc.addPage([W, H]);
+      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY,
+        p === 0 ? 'PROGRES PER EXERCICI - VOLUM (kg x reps)' : 'PROGRES PER EXERCICI (cont.)', rutinaShort, W, H);
+      const slice = chartItems.slice(p, p+perPage);
+      const ox = (W - (chW*2 + gapX)) / 2;
+      const oy = H - 78;
+      for(let i = 0; i < slice.length; i++){
+        const col = i % 2, row = Math.floor(i / 2);
+        const x = ox + col*(chW+gapX);
+        const yTop = oy - row*(chH+gapY);
+        page.drawText(slice[i].name.toUpperCase(), { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+        try {
+          const png = await tobChartToPng(slice[i].cfg, 760, 430);
+          page.drawImage(await doc.embedPng(png), { x, y: yTop - chH, width: chW, height: chH });
+        } catch(e){ console.warn('chart', slice[i].name, e); page.drawText('(grafica no disponible)', { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
+      }
+    }
+  }
+
+  if(a.notas){
+    page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'NOTES DE LENTRENADOR', rutinaShort, W, H);
+    let ny = H - 90;
+    tobWrapText(a.notas, font, 11, W-80).forEach(l => { page.drawText(l, { x: 40, y: ny, size: 11, font, color: GRAY_DK }); ny -= 16; });
+  }
+
+  const pages = doc.getPages();
+  pages.forEach((pg, i) => pg.drawText(`${i+1} / ${pages.length}`, { x: W-50, y: 22, size: 8, font, color: GRAY }));
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_resumen_${rutinaShort.replace(/[^a-zA-Z0-9]/g,'_')}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+  tobToast('✓ Resumen de la rutina descargado', 'green');
+}
+
+// ═════════════════════════════════════════════════════════════════
 // PDF BONITO — rutina completada actual + histórico
 // ═════════════════════════════════════════════════════════════════
 
@@ -2239,10 +2876,27 @@ function tobChartToPng(config, w, h){
     canvas.width = w || 800; canvas.height = h || 380;
     canvas.style.position = 'fixed'; canvas.style.left = '-9999px'; canvas.style.top = '0';
     document.body.appendChild(canvas);
-    let chart = null;
+    let chart = null, settled = false;
     const cleanup = () => {
       if(chart) try { chart.destroy(); } catch(_){}
       canvas.remove();
+    };
+    const capture = () => {
+      if(settled) return;
+      settled = true;
+      try {
+        const dataUrl = chart.toBase64Image('image/png', 1.0);
+        if(!dataUrl || !dataUrl.startsWith('data:image/png')){
+          throw new Error('Chart no produjo PNG válido');
+        }
+        const base64 = dataUrl.split(',')[1] || '';
+        if(!base64) throw new Error('Base64 vacío');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        cleanup();
+        resolve(bytes);
+      } catch(e){ cleanup(); reject(e); }
     };
     try {
       // Shallow override de options sin perder funciones (formatter, callbacks)
@@ -2256,21 +2910,11 @@ function tobChartToPng(config, w, h){
         }
       };
       chart = new Chart(canvas, cfg);
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        try {
-          const dataUrl = chart.toBase64Image('image/png', 1.0);
-          if(!dataUrl || !dataUrl.startsWith('data:image/png')){
-            throw new Error('Chart no produjo PNG válido');
-          }
-          const base64 = dataUrl.split(',')[1] || '';
-          if(!base64) throw new Error('Base64 vacío');
-          const binary = atob(base64);
-          const bytes = new Uint8Array(binary.length);
-          for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          cleanup();
-          resolve(bytes);
-        } catch(e){ cleanup(); reject(e); }
-      }));
+      // Esperar a que Chart.js complete el layout. rAF doble es lo ideal, pero
+      // si está limitado (pestaña en segundo plano) caemos a setTimeout para
+      // que el PDF nunca se quede colgado. El primero que dispare, captura.
+      requestAnimationFrame(() => requestAnimationFrame(capture));
+      setTimeout(capture, 150);
     } catch(e){ cleanup(); reject(e); }
   });
 }
