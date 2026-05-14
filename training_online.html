@@ -31,6 +31,7 @@
     <button class="tob-btn" onclick="tobExport()" title="Descargar JSON con todos los datos">Export</button>
     <button class="tob-btn" onclick="document.getElementById('tobImportFile').click()" title="Cargar JSON exportado">Import</button>
     <input type="file" id="tobImportFile" accept=".json" style="display:none" onchange="tobImport(event)">
+    <button class="tob-btn" onclick="DashboardAuth.changePin('training_online','Training Online')" title="Cambiar el PIN de acceso">🔑 PIN</button>
     <a href="index.html" class="tob-btn">← Menú</a>
   </div>
 </div>
@@ -331,15 +332,21 @@
 
 <div class="tob-toast" id="tobToast"></div>
 
+<!-- Sync badge (estado de sincronización con GitHub) -->
+<div id="ghSyncBadge" style="position:fixed;bottom:10px;right:10px;background:#0e0d0a;border:1px solid var(--border2);color:var(--mute);padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;pointer-events:none;opacity:.85;"></div>
+
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
 <script src="dashboard-auth.js"></script>
 <script>
 GitHubSync.attach({
   section: 'training_online',
-  localKeys: ['tob_online_v2'],
-  onLoad: function(){ if(typeof tobLoad === 'function') tobLoad(); }
+  keys: ['tob_online_v2']
 });
+GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
+// Gate de PIN — igual que el resto de dashboards. Tras pasarlo, se activa
+// el auto-push y la app arranca normal (tobLoad corre por su auto-init).
+DashboardAuth.gate({ section: 'training_online', title: 'Training Online' });
 </script>
 <script src="training_online.js"></script>
 </body>
