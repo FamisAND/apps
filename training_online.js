@@ -2445,72 +2445,118 @@ function tobBuildMedChartConfigs(cli, forPdf){
   const meds = tobMedsSorted(cli);
   if(!meds.length) return {};
   const labels = meds.map(m => tobMedShortLabel(m.fecha));
+  const fechas = meds.map(m => m.fecha || '');
   const ACC = '#f5a623';
-  const txtCol  = forPdf ? '#444444' : '#7a96b8';
-  const txtCol2 = forPdf ? '#222222' : '#cbd5e1';
-  const gridCol = forPdf ? '#dddddd' : '#1e1810';
-  const lineChart = (label, data, color) => ({
-    type: 'line',
-    data: { labels, datasets: [{
-      label, data, borderColor: color, backgroundColor: color + '22',
-      pointBackgroundColor: color, pointRadius: 4, pointHoverRadius: 7,
-      borderWidth: 2.5, tension: 0.25, fill: true, spanGaps: true
-    }]},
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        datalabels: {
-          color: txtCol2, font: { size: 9, weight: '700' }, align: 'top', offset: 5,
-          formatter: v => (v == null ? '' : v)
+  const txtCol  = forPdf ? '#555555' : '#9aa7bd';
+  const txtCol2 = forPdf ? '#222222' : '#e6e2d4';
+  const gridCol = forPdf ? '#e6e6e6' : '#221d14';
+
+  // Línea bonita: relleno en degradado, último punto resaltado (valor actual),
+  // datalabels limpios. Reutilizable en pantalla y en PDF.
+  const lineChart = (label, data, color) => {
+    let lastIdx = -1;
+    for(let i = data.length - 1; i >= 0; i--){ if(data[i] != null){ lastIdx = i; break; } }
+    return {
+      type: 'line',
+      data: { labels, datasets: [{
+        label, data, borderColor: color, borderWidth: 3,
+        backgroundColor: (c) => {
+          const ch = c.chart, area = ch.chartArea;
+          if(!area) return color + '22';
+          const g = ch.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+          g.addColorStop(0, color + '66');
+          g.addColorStop(1, color + '08');
+          return g;
+        },
+        pointBackgroundColor: data.map((v,i) => i === lastIdx ? color : (forPdf ? '#ffffff' : '#13130f')),
+        pointBorderColor: color,
+        pointBorderWidth: 2,
+        pointRadius: data.map((v,i) => v == null ? 0 : (i === lastIdx ? 7 : 4)),
+        pointHoverRadius: 9,
+        tension: 0.3, fill: true, spanGaps: true
+      }]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 20, right: 14, left: 4, bottom: 2 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            label: ctx => `${label}: ${ctx.parsed.y}`,
+            afterLabel: ctx => fechas[ctx.dataIndex] ? '📅 ' + fechas[ctx.dataIndex] : ''
+          } },
+          datalabels: {
+            color: (c) => c.dataIndex === lastIdx ? color : txtCol2,
+            font: (c) => ({ size: c.dataIndex === lastIdx ? 11 : 9, weight: c.dataIndex === lastIdx ? '800' : '600' }),
+            align: 'top', offset: 6,
+            formatter: v => (v == null ? '' : v)
+          }
+        },
+        scales: {
+          x: { ticks: { color: txtCol, font: { size: 9 }, maxRotation: 40 },
+               grid: { color: gridCol, drawTicks: false }, border: { display: false } },
+          y: { ticks: { color: txtCol, font: { size: 9 }, padding: 6 },
+               grid: { color: gridCol, drawTicks: false }, border: { display: false }, beginAtZero: false }
         }
-      },
-      scales: {
-        x: { ticks: { color: txtCol, font: { size: 9 }, maxRotation: 40 }, grid: { color: gridCol } },
-        y: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol }, beginAtZero: false }
       }
-    }
-  });
+    };
+  };
+
   const first = meds[0], last = meds[meds.length-1];
   const cfgs = {};
-  cfgs.peso  = lineChart('Peso (kg)',       meds.map(m => m.pes != null ? +m.pes : null), ACC);
-  cfgs.plecs = lineChart('Σ Pliegues (mm)', meds.map(m => +tobMedSum(m).toFixed(1)), '#60a5fa');
-  cfgs.cc    = lineChart('Cintura/Cadera',  meds.map(m => { const r = tobMedRatios(m).cinturaCadera; return r != null ? +r.toFixed(3) : null; }), '#3fb68b');
-  cfgs.pp    = lineChart('Pliegues/Peso',   meds.map(m => { const r = tobMedRatios(m).plecsPes; return r != null ? +r.toFixed(3) : null; }), '#a78bfa');
+  cfgs.peso    = lineChart('Peso (kg)',       meds.map(m => m.pes != null ? +m.pes : null), ACC);
+  cfgs.plecs   = lineChart('Σ Pliegues (mm)', meds.map(m => +tobMedSum(m).toFixed(1)), '#60a5fa');
+  cfgs.cintura = lineChart('Cintura (cm)',    meds.map(m => m.perimetres?.cintura != null ? +m.perimetres.cintura : null), '#f472b6');
+  cfgs.cc      = lineChart('Cintura/Cadera',  meds.map(m => { const r = tobMedRatios(m).cinturaCadera; return r != null ? +r.toFixed(3) : null; }), '#3fb68b');
+  cfgs.pp      = lineChart('Pliegues/Peso',   meds.map(m => { const r = tobMedRatios(m).plecsPes; return r != null ? +r.toFixed(3) : null; }), '#a78bfa');
+
   cfgs.perim = {
     type: 'bar',
     data: {
       labels: TOB_MED_PERIM.map(([,l]) => l),
       datasets: [
-        { label: 'Inicio (' + (first.fecha||'') + ')', data: TOB_MED_PERIM.map(([k]) => first.perimetres?.[k] ?? null), backgroundColor: (forPdf ? '#cfc9b8' : '#5a524077'), borderColor: '#8a7f6a', borderWidth: 1 },
-        { label: 'Actual (' + (last.fecha||'') + ')',  data: TOB_MED_PERIM.map(([k]) => last.perimetres?.[k] ?? null),  backgroundColor: ACC + (forPdf ? '' : 'cc'), borderColor: ACC, borderWidth: 1 }
+        { label: 'Inicio · ' + (first.fecha||''), data: TOB_MED_PERIM.map(([k]) => first.perimetres?.[k] ?? null),
+          backgroundColor: (forPdf ? '#d8d2c0' : '#4a443666'), borderColor: '#8a7f6a', borderWidth: 1, borderRadius: 4, borderSkipped: false },
+        { label: 'Actual · ' + (last.fecha||''), data: TOB_MED_PERIM.map(([k]) => last.perimetres?.[k] ?? null),
+          backgroundColor: ACC + (forPdf ? 'ee' : 'dd'), borderColor: ACC, borderWidth: 1, borderRadius: 4, borderSkipped: false }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-      plugins: { legend: { labels: { color: txtCol2, font: { size: 9 } } }, datalabels: { display: false } },
+      layout: { padding: { right: 16, left: 2 } },
+      plugins: {
+        legend: { position: 'top', labels: { color: txtCol2, font: { size: 9 }, boxWidth: 12, padding: 10 } },
+        datalabels: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x} cm` } }
+      },
       scales: {
-        x: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol }, beginAtZero: true },
-        y: { ticks: { color: txtCol2, font: { size: 9 } }, grid: { color: gridCol } }
+        x: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol, drawTicks: false }, border: { display: false }, beginAtZero: true },
+        y: { ticks: { color: txtCol2, font: { size: 9, weight: '600' } }, grid: { display: false }, border: { display: false } }
       }
     }
   };
+
   cfgs.radar = {
     type: 'radar',
     data: {
       labels: TOB_MED_PLECS.map(([,l]) => l),
       datasets: [
-        { label: 'Inicio', data: TOB_MED_PLECS.map(([k]) => first.plecs?.[k] ?? null), borderColor: '#8a7f6a', backgroundColor: (forPdf ? 'rgba(138,127,106,.18)' : '#5a524033'), pointBackgroundColor: '#8a7f6a', borderWidth: 2 },
-        { label: 'Actual', data: TOB_MED_PLECS.map(([k]) => last.plecs?.[k] ?? null),  borderColor: ACC, backgroundColor: ACC + '33', pointBackgroundColor: ACC, borderWidth: 2 }
+        { label: 'Inicio · ' + (first.fecha||''), data: TOB_MED_PLECS.map(([k]) => first.plecs?.[k] ?? null),
+          borderColor: '#8a7f6a', backgroundColor: (forPdf ? 'rgba(138,127,106,.15)' : 'rgba(138,127,106,.22)'),
+          pointBackgroundColor: '#8a7f6a', pointRadius: 3, borderWidth: 2 },
+        { label: 'Actual · ' + (last.fecha||''), data: TOB_MED_PLECS.map(([k]) => last.plecs?.[k] ?? null),
+          borderColor: ACC, backgroundColor: ACC + '3a', pointBackgroundColor: ACC, pointRadius: 3.5, borderWidth: 2.5 }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: txtCol2, font: { size: 9 } } }, datalabels: { display: false } },
+      plugins: {
+        legend: { position: 'top', labels: { color: txtCol2, font: { size: 9 }, boxWidth: 12, padding: 10 } },
+        datalabels: { display: false }
+      },
       scales: { r: {
-        angleLines: { color: forPdf ? '#cccccc' : '#2a2620' },
-        grid: { color: forPdf ? '#dddddd' : '#2a2620' },
-        pointLabels: { color: txtCol2, font: { size: 9 } },
+        angleLines: { color: forPdf ? '#dddddd' : '#2f2a20' },
+        grid: { color: forPdf ? '#e6e6e6' : '#2f2a20' },
+        pointLabels: { color: txtCol2, font: { size: 9, weight: '600' } },
         ticks: { color: txtCol, backdropColor: 'transparent', font: { size: 8 } },
         beginAtZero: true
       } }
@@ -2528,12 +2574,13 @@ function tobRenderMedCharts(cli){
     return;
   }
   const order = [
-    ['peso',  'Peso corporal'],
-    ['plecs', 'Σ Pliegues cutáneos'],
-    ['perim', 'Perímetros · inicio vs actual'],
-    ['radar', 'Pliegues · inicio vs actual'],
-    ['cc',    'Ratio Cintura / Cadera'],
-    ['pp',    'Ratio Pliegues / Peso']
+    ['peso',    'Peso corporal'],
+    ['plecs',   'Σ Pliegues cutáneos'],
+    ['cintura', 'Cintura'],
+    ['perim',   'Perímetros · inicio vs actual'],
+    ['radar',   'Pliegues · inicio vs actual'],
+    ['cc',      'Ratio Cintura / Cadera'],
+    ['pp',      'Ratio Pliegues / Peso']
   ];
   grid.innerHTML = order.map(([k,title]) => `
     <div class="tob-chart-card">
@@ -2559,19 +2606,27 @@ async function tobGeneratePdfMediciones(){
   await tobBuildPdfMediciones(cli).catch(e => { console.error(e); tobToast('Error: ' + e.message, 'red'); });
 }
 
+// Bundle de fuentes + colores reutilizable por los PDFs (mediciones, resumen,
+// histórico). Mantener los mismos colores en todos los PDFs.
+async function tobPdfCtx(doc){
+  const { StandardFonts, rgb } = PDFLib;
+  return {
+    rgb,
+    font:  await doc.embedFont(StandardFonts.Helvetica),
+    fontB: await doc.embedFont(StandardFonts.HelveticaBold),
+    fontO: await doc.embedFont(StandardFonts.HelveticaOblique),
+    ORANGE: rgb(0.96,0.65,0.13), BLACK: rgb(0.06,0.06,0.06),
+    GRAY: rgb(0.55,0.55,0.55), GRAY_DK: rgb(0.25,0.25,0.25),
+    GREEN: rgb(0.18,0.6,0.4), RED: rgb(0.85,0.25,0.25),
+    W: 842, H: 595
+  };
+}
+
 async function tobBuildPdfMediciones(cli){
-  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const { PDFDocument } = PDFLib;
   const doc = await PDFDocument.create();
-  const font  = await doc.embedFont(StandardFonts.Helvetica);
-  const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
-  const fontO = await doc.embedFont(StandardFonts.HelveticaOblique);
-  const ORANGE = rgb(0.96, 0.65, 0.13);
-  const BLACK = rgb(0.06, 0.06, 0.06);
-  const GRAY = rgb(0.55, 0.55, 0.55);
-  const GRAY_DK = rgb(0.25, 0.25, 0.25);
-  const GREEN = rgb(0.18, 0.6, 0.4);
-  const RED = rgb(0.85, 0.25, 0.25);
-  const W = 842, H = 595;
+  const ctx = await tobPdfCtx(doc);
+  const { font, fontB, fontO, ORANGE, BLACK, GRAY, GRAY_DK, W, H, rgb } = ctx;
   const meds = tobMedsSorted(cli);
   const first = meds[0], last = meds[meds.length-1];
 
@@ -2601,22 +2656,49 @@ async function tobBuildPdfMediciones(cli){
   });
   page.drawText('FULL TRAINING - BIIO System', { x: W-230, y: 40, size: 9, font: fontO, color: GRAY });
 
-  // ─── PÁGINA EVOLUCIÓN: 4 line charts 2×2 ───
+  // Páginas: evolución + composición + detalle por medición
+  await _tobPdfMedicionPages(doc, ctx, cli);
+
+  // Paginación
+  const pages = doc.getPages();
+  pages.forEach((p, i) => p.drawText(`${i+1} / ${pages.length}`, { x: W-50, y: 22, size: 8, font, color: GRAY }));
+
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(cli.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_evolucion_${new Date().toISOString().slice(0,10)}.pdf`;
+  link.click();
+  URL.revokeObjectURL(url);
+  tobToast('✓ PDF de evolución descargado', 'green');
+}
+
+// Añade las páginas de mediciones (evolución + composición inicio-vs-actual +
+// detalle por medición) a un PDF existente. Reutilizado por "PDF Evolución"
+// y por "PDF Histórico" (cuando el cliente tiene mediciones).
+async function _tobPdfMedicionPages(doc, ctx, cli){
+  const { font, fontB, fontO, ORANGE, BLACK, GRAY, GRAY_DK, GREEN, RED, W, H, rgb } = ctx;
+  const meds = tobMedsSorted(cli);
+  if(!meds.length) return;
   const cfgs = tobBuildMedChartConfigs(cli, true);
-  page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, "EVOLUCIO", cli.nombre || '', W, H);
+
+  // ─── PÁGINA EVOLUCIÓN: 4 line charts 2×2 ───
+  let page = doc.addPage([W, H]);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'EVOLUCIO DE MESURES', cli.nombre || '', W, H);
   {
     const chW = 380, chH = 215, gapX = 30, gapY = 24;
     const ox = (W - (chW*2 + gapX)) / 2;
     const oy = H - 80;
     const slots = [
-      ['peso',  'PES CORPORAL (kg)'],
-      ['plecs', 'SUMATORI DE PLECS (mm)'],
-      ['cc',    'RATIO CINTURA / MALUC'],
-      ['pp',    'RATIO PLECS / PES']
+      ['peso',    'PES CORPORAL (kg)'],
+      ['plecs',   'SUMATORI DE PLECS (mm)'],
+      ['cintura', 'CINTURA (cm)'],
+      ['cc',      'RATIO CINTURA / MALUC']
     ];
     for(let i = 0; i < slots.length; i++){
       const [k, title] = slots[i];
+      if(!cfgs[k]) continue;
       const col = i % 2, row = Math.floor(i / 2);
       const x = ox + col*(chW+gapX);
       const yTop = oy - row*(chH+gapY);
@@ -2710,19 +2792,6 @@ async function tobBuildPdfMediciones(cli){
     page.drawText(rTxt, { x: 30, y: 58, size: 9, font: fontB, color: GRAY_DK });
     if(m.notas) page.drawText('Notes: ' + tobTrunc(m.notas, 120), { x: 30, y: 42, size: 8, font: fontO, color: GRAY });
   }
-
-  const pages = doc.getPages();
-  pages.forEach((p, i) => p.drawText(`${i+1} / ${pages.length}`, { x: W-50, y: 22, size: 8, font, color: GRAY }));
-
-  const bytes = await doc.save();
-  const blob = new Blob([bytes], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${(cli.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_evolucion_${new Date().toISOString().slice(0,10)}.pdf`;
-  link.click();
-  URL.revokeObjectURL(url);
-  tobToast('✓ PDF de evolución descargado', 'green');
 }
 
 // ═══ PDF RESUMEN — solo la última rutina (para entregar resultados) ═══
@@ -3323,18 +3392,16 @@ async function tobGeneratePdfHistorico(){
 }
 
 async function tobBuildPdfHistorico(cli){
-  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const { PDFDocument } = PDFLib;
   const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
-  const fontO = await doc.embedFont(StandardFonts.HelveticaOblique);
-  const ORANGE = rgb(0.96, 0.65, 0.13);
-  const BLACK = rgb(0.06, 0.06, 0.06);
-  const GRAY = rgb(0.55, 0.55, 0.55);
-  const GRAY_DK = rgb(0.25, 0.25, 0.25);
-  const W = 842, H = 595;
+  const ctx = await tobPdfCtx(doc);
+  const { font, fontB, fontO, ORANGE, BLACK, GRAY, GRAY_DK, W, H, rgb } = ctx;
+  const hasRutinas    = (cli.asignaciones||[]).length > 0;
+  const hasMediciones = (cli.mediciones  ||[]).length > 0;
+  const meds = tobMedsSorted(cli);
+  const lastMed = meds[meds.length-1];
 
-  // ─── COVER (sin tonelaje/completadas/generado) ────
+  // ─── COVER adaptativa según lo que tenga el cliente ────
   let page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: 60, height: H, color: ORANGE });
   page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
@@ -3344,134 +3411,141 @@ async function tobBuildPdfHistorico(cli){
   const periodo = tobCalcPeriodo(cli);
   page.drawText(`Período: ${periodo.desde}  —  ${periodo.hasta}`, { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
 
-  // Solo 2 KPIs: Rutinas + Sesiones
-  const kpisCover = [
-    ['RUTINAS REGISTRADAS', String((cli.asignaciones||[]).length), ''],
-    ['SESIONES TOTALES',    String(tobCountSesiones(cli)),         '']
-  ];
-  const kpiW = 220, kpiH = 90, kpiGap = 20, kpiY = 180;
+  // KPIs adaptativos
+  const kpisCover = [];
+  if(hasRutinas){
+    kpisCover.push(['RUTINAS', String((cli.asignaciones||[]).length)]);
+    kpisCover.push(['SESIONES', String(tobCountSesiones(cli))]);
+  }
+  if(hasMediciones){
+    kpisCover.push(['MEDICIONES', String(meds.length)]);
+    if(lastMed?.pes != null) kpisCover.push(['PESO ACTUAL', lastMed.pes + ' kg']);
+  }
+  const n = kpisCover.length;
+  const kpiW = n <= 2 ? 220 : (n === 3 ? 200 : 160);
+  const kpiH = 90, kpiGap = 16, kpiY = 180;
+  const totalKpiW = n*kpiW + (n-1)*kpiGap;
+  const kpiStartX = Math.max(100, (W - totalKpiW) / 2);
   kpisCover.forEach((kp, i) => {
-    const x = 100 + i*(kpiW+kpiGap);
+    const x = kpiStartX + i*(kpiW+kpiGap);
     page.drawRectangle({ x, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
     page.drawRectangle({ x, y: kpiY+kpiH-4, width: kpiW, height: 4, color: ORANGE });
     page.drawText(kp[0], { x: x+14, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
-    page.drawText(kp[1], { x: x+14, y: kpiY+28, size: 36, font: fontB, color: BLACK });
+    const valSize = kp[1].length > 8 ? 24 : 32;
+    page.drawText(kp[1], { x: x+14, y: kpiY+30, size: valSize, font: fontB, color: BLACK });
   });
   page.drawText('FULL TRAINING · BIIO System', { x: W-240, y: 40, size: 9, font: fontO, color: GRAY });
 
-  // ─── PR CARDS con contexto (rutina donde se hizo el PR y delta vs inicio) ─
-  page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RÉCORDS PERSONALES', cli.nombre || '', W, H);
-  page.drawText('PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico',
-    { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
-  const fichaData = tobBuildFichaData(cli);
-  const cardW = 240, cardH = 150, gap = 20;
-  const totalW = 3*cardW + 2*gap;
-  const startX = (W - totalW) / 2;
-  const startY = H - 100;
-  let cardIdx = 0;
-  fichaData.ejNames.slice(0, 6).forEach(name => {
-    const points = (fichaData.ejHistory[name]||[]).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
-    if(!points.length) return;
-    const col = cardIdx % 3;
-    const row = Math.floor(cardIdx / 3);
-    const x = startX + col * (cardW + gap);
-    const yy = startY - row * (cardH + gap);
-    const firstPoint = points[0];
-    const lastPoint = points[points.length-1];
-    const maxIdx = points.reduce((iMax, p, i) => p.kg > points[iMax].kg ? i : iMax, 0);
-    const maxPoint = points[maxIdx];
-    const deltaKg = lastPoint.kg - firstPoint.kg;
-    const deltaPct = firstPoint.kg > 0 ? (deltaKg / firstPoint.kg * 100) : 0;
-    // Caja
-    page.drawRectangle({ x, y: yy - cardH, width: cardW, height: cardH, color: rgb(0.98,0.98,0.98) });
-    page.drawRectangle({ x, y: yy - 5, width: cardW, height: 5, color: ORANGE });
-    // Nombre ejercicio
-    page.drawText(name.toUpperCase(), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
-    // Número grande
-    page.drawText(`${maxPoint.kg}`, { x: x + 14, y: yy - 72, size: 36, font: fontB, color: BLACK });
-    page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${maxPoint.kg}`, 36, fontB) + 6, y: yy - 62, size: 11, font, color: GRAY });
-    // Contexto: en qué rutina se hizo el PR
-    page.drawText(`en ${tobTrunc(maxPoint.asigLabel, 28)}`,
-      { x: x + 14, y: yy - 90, size: 8, font: fontO, color: GRAY_DK });
-    // Delta vs primera rutina
-    const deltaColor = deltaKg > 0 ? rgb(0.18, 0.6, 0.4) : deltaKg < 0 ? rgb(0.85, 0.25, 0.25) : GRAY;
-    const arrow = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '=';
-    page.drawText(`${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%)`,
-      { x: x + 14, y: yy - 110, size: 9, font: fontB, color: deltaColor });
-    page.drawText(`vs ${tobTrunc(firstPoint.asigLabel, 22)} (${firstPoint.kg} kg)`,
-      { x: x + 14, y: yy - 124, size: 7, font, color: GRAY });
-    // Última fecha
-    page.drawText(`Última: ${lastPoint.fecha || '—'}`,
-      { x: x + 14, y: yy - 138, size: 7, font, color: GRAY });
-    cardIdx++;
-  });
+  // ═══ SECCIÓN RUTINAS ═════════════════════════════════════════
+  if(hasRutinas){
+    // ─── PR CARDS con contexto (rutina donde se hizo el PR y delta vs inicio) ─
+    page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RÉCORDS PERSONALES', cli.nombre || '', W, H);
+    page.drawText('PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico',
+      { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
+    const fichaData = tobBuildFichaData(cli);
+    const cardW = 240, prCardH = 150, gap = 20;
+    const totalW = 3*cardW + 2*gap;
+    const startX = (W - totalW) / 2;
+    const startY = H - 100;
+    let cardIdx = 0;
+    fichaData.ejNames.slice(0, 6).forEach(name => {
+      const points = (fichaData.ejHistory[name]||[]).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+      if(!points.length) return;
+      const col = cardIdx % 3;
+      const row = Math.floor(cardIdx / 3);
+      const x = startX + col * (cardW + gap);
+      const yy = startY - row * (prCardH + gap);
+      const firstPoint = points[0];
+      const lastPoint = points[points.length-1];
+      const maxIdx = points.reduce((iMax, p, i) => p.kg > points[iMax].kg ? i : iMax, 0);
+      const maxPoint = points[maxIdx];
+      const deltaKg = lastPoint.kg - firstPoint.kg;
+      const deltaPct = firstPoint.kg > 0 ? (deltaKg / firstPoint.kg * 100) : 0;
+      page.drawRectangle({ x, y: yy - prCardH, width: cardW, height: prCardH, color: rgb(0.98,0.98,0.98) });
+      page.drawRectangle({ x, y: yy - 5, width: cardW, height: 5, color: ORANGE });
+      page.drawText(name.toUpperCase(), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
+      page.drawText(`${maxPoint.kg}`, { x: x + 14, y: yy - 72, size: 36, font: fontB, color: BLACK });
+      page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${maxPoint.kg}`, 36, fontB) + 6, y: yy - 62, size: 11, font, color: GRAY });
+      page.drawText(`en ${tobTrunc(maxPoint.asigLabel, 28)}`,
+        { x: x + 14, y: yy - 90, size: 8, font: fontO, color: GRAY_DK });
+      const deltaColor = deltaKg > 0 ? rgb(0.18, 0.6, 0.4) : deltaKg < 0 ? rgb(0.85, 0.25, 0.25) : GRAY;
+      const arrow = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '=';
+      page.drawText(`${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%)`,
+        { x: x + 14, y: yy - 110, size: 9, font: fontB, color: deltaColor });
+      page.drawText(`vs ${tobTrunc(firstPoint.asigLabel, 22)} (${firstPoint.kg} kg)`,
+        { x: x + 14, y: yy - 124, size: 7, font, color: GRAY });
+      page.drawText(`Última: ${lastPoint.fecha || '—'}`,
+        { x: x + 14, y: yy - 138, size: 7, font, color: GRAY });
+      cardIdx++;
+    });
 
-  // (Tabla comparativa eliminada — la info está en las PR cards y el historial visual)
+    // ─── HISTORIAL DE RUTINAS — cronológico ──
+    page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS', cli.nombre || '', W, H);
+    page.drawText('Línea de tiempo cronológica · cada rutina con sus PRs principales',
+      { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
+    let y = H - 90;
+    const sorted = [...cli.asignaciones].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
 
-  // ─── RESUMEN POR RUTINA — más visual y útil ──
-  page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS', cli.nombre || '', W, H);
-  page.drawText('Línea de tiempo cronológica · cada rutina con sus PRs principales',
-    { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
-  y = H - 90;
-  const sorted = [...cli.asignaciones].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
+    sorted.forEach((a, i) => {
+      if(y < 95){
+        page = doc.addPage([W, H]);
+        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS (cont.)', cli.nombre||'', W, H);
+        y = H - 90;
+      }
+      const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+      const stats = tobCalcAsigStats(a);
+      const itN = (a.iteraciones||[]).length;
+      const rutinaShort = (pl?.nombre || '(plantilla eliminada)').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+      const cardH = 80;
 
-  sorted.forEach((a, i) => {
-    if(y < 95){
-      page = doc.addPage([W, H]);
-      drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS (cont.)', cli.nombre||'', W, H);
-      y = H - 90;
-    }
-    const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    const stats = tobCalcAsigStats(a);
-    const itN = (a.iteraciones||[]).length;
-    const rutinaShort = (pl?.nombre || '(plantilla eliminada)').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
-    const cardH = 80;
+      page.drawRectangle({ x: 24, y: y-cardH, width: W-48, height: cardH, color: rgb(0.98,0.98,0.98) });
+      const sideColor = a.estado === 'completada' ? rgb(0.18,0.6,0.4)
+                     : a.estado === 'repetir' ? rgb(0.9,0.5,0.2)
+                     : ORANGE;
+      page.drawRectangle({ x: 24, y: y-cardH, width: 5, height: cardH, color: sideColor });
+      page.drawText(String(i+1).padStart(2,'0'), { x: 40, y: y-30, size: 22, font: fontB, color: rgb(0.85,0.85,0.85) });
+      page.drawText(rutinaShort, { x: 80, y: y-22, size: 12, font: fontB, color: BLACK });
+      if(pl){
+        page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' · ' : ''}${pl.categoria || ''}`,
+          { x: 80, y: y-36, size: 8, font: fontO, color: GRAY });
+      }
+      const dates = `${a.fechaInicio || '?'}  —  ${stats.ultimaFecha || '?'}`;
+      page.drawText(dates, { x: 80, y: y-52, size: 9, font, color: GRAY_DK });
+      const estLbl = (a.estado || 'en curso').toUpperCase();
+      page.drawText(estLbl, { x: 80, y: y-66, size: 8, font: fontB, color: sideColor });
+      const midX = 360;
+      page.drawText('Sesiones', { x: midX, y: y-20, size: 7, font, color: GRAY });
+      page.drawText(String(stats.sesiones), { x: midX, y: y-38, size: 18, font: fontB, color: BLACK });
+      page.drawText('Iteraciones', { x: midX + 80, y: y-20, size: 7, font, color: GRAY });
+      page.drawText(String(itN), { x: midX + 80, y: y-38, size: 18, font: fontB, color: BLACK });
+      const prsArr = Object.entries(stats.maxByEj).slice(0, 3);
+      if(prsArr.length){
+        page.drawText('PRS DE LA RUTINA', { x: W - 280, y: y-20, size: 7, font: fontB, color: ORANGE });
+        prsArr.forEach((pr, j) => {
+          const px = W - 280, py = y - 36 - j*14;
+          const ejAbbr = (pr[0].length > 18 ? pr[0].slice(0,17)+'…' : pr[0]);
+          page.drawText(ejAbbr, { x: px, y: py, size: 9, font, color: GRAY_DK });
+          page.drawText(`${pr[1]} kg`, { x: px + 165, y: py, size: 9, font: fontB, color: BLACK });
+        });
+      }
+      y -= (cardH + 10);
+    });
+  }
 
-    // Caja
-    page.drawRectangle({ x: 24, y: y-cardH, width: W-48, height: cardH, color: rgb(0.98,0.98,0.98) });
-    // Barra lateral coloreada por estado
-    const sideColor = a.estado === 'completada' ? rgb(0.18,0.6,0.4)
-                   : a.estado === 'repetir' ? rgb(0.9,0.5,0.2)
-                   : ORANGE;
-    page.drawRectangle({ x: 24, y: y-cardH, width: 5, height: cardH, color: sideColor });
+  // ═══ SECCIÓN MEDICIONES ══════════════════════════════════════
+  if(hasMediciones){
+    await _tobPdfMedicionPages(doc, ctx, cli);
+  }
 
-    // Nº de rutina (índice)
-    page.drawText(String(i+1).padStart(2,'0'), { x: 40, y: y-30, size: 22, font: fontB, color: rgb(0.85,0.85,0.85) });
-
-    // Datos rutina
-    page.drawText(rutinaShort, { x: 80, y: y-22, size: 12, font: fontB, color: BLACK });
-    if(pl){
-      page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' · ' : ''}${pl.categoria || ''}`,
-        { x: 80, y: y-36, size: 8, font: fontO, color: GRAY });
-    }
-    const dates = `${a.fechaInicio || '?'}  —  ${stats.ultimaFecha || '?'}`;
-    page.drawText(dates, { x: 80, y: y-52, size: 9, font, color: GRAY_DK });
-    // Badge estado
-    const estLbl = (a.estado || 'en curso').toUpperCase();
-    page.drawText(estLbl, { x: 80, y: y-66, size: 8, font: fontB, color: sideColor });
-
-    // Stats medio: sesiones + iteraciones
-    const midX = 360;
-    page.drawText('Sesiones', { x: midX, y: y-20, size: 7, font, color: GRAY });
-    page.drawText(String(stats.sesiones), { x: midX, y: y-38, size: 18, font: fontB, color: BLACK });
-    page.drawText('Iteraciones', { x: midX + 80, y: y-20, size: 7, font, color: GRAY });
-    page.drawText(String(itN), { x: midX + 80, y: y-38, size: 18, font: fontB, color: BLACK });
-
-    // PRs top 3 de esa rutina
-    const prsArr = Object.entries(stats.maxByEj).slice(0, 3);
-    if(prsArr.length){
-      page.drawText('PRS DE LA RUTINA', { x: W - 280, y: y-20, size: 7, font: fontB, color: ORANGE });
-      prsArr.forEach((pr, j) => {
-        const px = W - 280, py = y - 36 - j*14;
-        const ejAbbr = (pr[0].length > 18 ? pr[0].slice(0,17)+'…' : pr[0]);
-        page.drawText(ejAbbr, { x: px, y: py, size: 9, font, color: GRAY_DK });
-        page.drawText(`${pr[1]} kg`, { x: px + 165, y: py, size: 9, font: fontB, color: BLACK });
-      });
-    }
-    y -= (cardH + 10);
-  });
+  // ═══ ESTADO VACÍO ════════════════════════════════════════════
+  if(!hasRutinas && !hasMediciones){
+    page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTÓRICO COMPLETO', cli.nombre || '', W, H);
+    page.drawText('Este cliente aún no tiene rutinas ni mediciones registradas.',
+      { x: 30, y: H - 100, size: 12, font: fontO, color: GRAY });
+  }
 
   // Paginación
   const pages = doc.getPages();
@@ -3496,6 +3570,7 @@ function tobCalcPeriodo(cli){
     const st = tobCalcAsigStats(a);
     if(st.ultimaFecha) fechas.push(st.ultimaFecha);
   });
+  (cli.mediciones||[]).forEach(m => { if(m.fecha) fechas.push(m.fecha); });
   if(fechas.length){
     fechas.sort();
     desde = fechas[0];
