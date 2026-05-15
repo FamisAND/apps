@@ -245,9 +245,12 @@
       <label class="tob-lbl">Asignar plantilla inicial (opcional)</label>
       <select class="tob-select" id="tobCliPlantilla"><option value="">— Ninguna —</option></select>
     </div>
-    <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;">
-      <button class="tob-action ghost" onclick="tobCloseClienteModal()">Cancelar</button>
-      <button class="tob-action" onclick="tobSaveCliente()">Guardar</button>
+    <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">
+      <button class="tob-action danger" id="tobCliDelBtn" onclick="tobDelClienteFromModal()" style="display:none;">🗑 Eliminar cliente</button>
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button class="tob-action ghost" onclick="tobCloseClienteModal()">Cancelar</button>
+        <button class="tob-action" onclick="tobSaveCliente()">Guardar</button>
+      </div>
     </div>
   </div>
 </div>

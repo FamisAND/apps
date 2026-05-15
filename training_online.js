@@ -313,10 +313,9 @@ function tobRenderClientes(){
       <td class="num">${(c.asignaciones||[]).length}</td>
       <td>${lastInfo}</td>
       <td class="actions">
-        <button class="tob-action" style="padding:5px 10px;" onclick="tobAbrirUltimaRutina('${c.id}')" title="Abrir la última rutina">🏋 Abrir</button>
-        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobOpenFicha('${c.id}')" title="Ficha histórica">📋 Ficha</button>
-        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobEditCliente('${c.id}')">✏️</button>
-        <button class="tob-action danger" style="padding:5px 10px;" onclick="tobDelCliente('${c.id}')">🗑</button>
+        <button class="tob-action" style="padding:5px 10px;" onclick="tobAbrirUltimaRutina('${c.id}')" title="Abrir la última rutina del cliente">🏋 Rutina</button>
+        <button class="tob-action" style="padding:5px 10px;" onclick="tobAbrirMediciones('${c.id}')" title="Ver/añadir mediciones de composición corporal">📏 Mediciones</button>
+        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobOpenFicha('${c.id}')" title="Ficha general — rutinas + mediciones + histórico">📋 Ficha</button>
       </td>
     </tr>`;
   }).join('');
@@ -341,9 +340,18 @@ function tobOpenClienteModal(cli){
     tobDB.plantillas.map(p => `<option value="${p.id}">${tobEsc(p.nombre)}</option>`).join('');
   sel.value = '';
   document.getElementById('tobClienteModalBg').dataset.editId = cli?.id || '';
+  document.getElementById('tobCliDelBtn').style.display = cli ? '' : 'none';
   document.getElementById('tobClienteModalBg').classList.add('on');
 }
 function tobCloseClienteModal(){ document.getElementById('tobClienteModalBg').classList.remove('on'); }
+function tobDelClienteFromModal(){
+  const editId = document.getElementById('tobClienteModalBg').dataset.editId;
+  if(!editId) return;
+  tobCloseClienteModal();
+  // Cerrar también la ficha si estaba abierta (para no quedar mostrando datos eliminados)
+  if(tobCurrentFichaId === editId) tobCloseFicha();
+  tobDelCliente(editId);
+}
 
 function tobSaveCliente(){
   const nombre = document.getElementById('tobCliNombre').value.trim();
@@ -418,6 +426,22 @@ function tobAbrirUltimaRutina(cliId){
   // Ordenar por fechaInicio desc, abrir la última
   const sorted = [...c.asignaciones].sort((a,b) => (b.fechaInicio||'').localeCompare(a.fechaInicio||''));
   tobOpenAsignacion(c.id, sorted[0].id);
+}
+
+// Abre la ficha posicionada en el bloque de mediciones. Si el cliente aún no
+// tiene ninguna, lanza directamente el formulario de "+ Nueva medición".
+function tobAbrirMediciones(cliId){
+  const c = tobDB.clientes.find(c => c.id === cliId);
+  if(!c) return;
+  tobOpenFicha(cliId);
+  if(!c.mediciones || !c.mediciones.length){
+    setTimeout(() => tobOpenMedicionModal(), 100);
+    return;
+  }
+  setTimeout(() => {
+    const block = document.getElementById('tobFichaMedicionesBlock');
+    if(block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
 }
 
 function tobBackToFicha(){
@@ -2522,10 +2546,15 @@ function tobBuildMedChartConfigs(cli, forPdf){
     },
     options: {
       responsive: true, maintainAspectRatio: false, indexAxis: 'y',
-      layout: { padding: { right: 16, left: 2 } },
+      layout: { padding: { right: 38, left: 2 } },
       plugins: {
         legend: { position: 'top', labels: { color: txtCol2, font: { size: 9 }, boxWidth: 12, padding: 10 } },
-        datalabels: { display: false },
+        datalabels: {
+          display: true, anchor: 'end', align: 'end', offset: 4,
+          color: (c) => c.datasetIndex === 1 ? ACC : (forPdf ? '#666666' : '#8a7f6a'),
+          font: (c) => ({ size: 9, weight: c.datasetIndex === 1 ? '800' : '600' }),
+          formatter: v => v == null ? '' : v
+        },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x} cm` } }
       },
       scales: {
@@ -2551,7 +2580,13 @@ function tobBuildMedChartConfigs(cli, forPdf){
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'top', labels: { color: txtCol2, font: { size: 9 }, boxWidth: 12, padding: 10 } },
-        datalabels: { display: false }
+        datalabels: {
+          // Solo etiquetamos el "Actual" para no saturar el radar.
+          display: (c) => c.datasetIndex === 1,
+          color: ACC, font: { size: 9, weight: '800' }, align: 'end', offset: 4,
+          formatter: v => v == null ? '' : v,
+          textStrokeColor: forPdf ? '#ffffff' : '#0a0a0c', textStrokeWidth: 3
+        }
       },
       scales: { r: {
         angleLines: { color: forPdf ? '#dddddd' : '#2f2a20' },
@@ -2691,10 +2726,10 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
     const ox = (W - (chW*2 + gapX)) / 2;
     const oy = H - 80;
     const slots = [
-      ['peso',    'PES CORPORAL (kg)'],
-      ['plecs',   'SUMATORI DE PLECS (mm)'],
-      ['cintura', 'CINTURA (cm)'],
-      ['cc',      'RATIO CINTURA / MALUC']
+      ['peso',  'PES CORPORAL (kg)'],
+      ['plecs', 'SUMATORI DE PLECS (mm)'],
+      ['pp',    'RATIO PLECS / PES'],
+      ['cc',    'RATIO CINTURA / MALUC']
     ];
     for(let i = 0; i < slots.length; i++){
       const [k, title] = slots[i];
