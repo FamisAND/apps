@@ -44,85 +44,87 @@ const TOB_NUM_MICRO = 6;
 const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
 
 // Versión de las descripciones. Al subirla, el backfill reaplica los textos.
-const TOB_DESC_VERSION = 4;
+const TOB_DESC_VERSION = 5;
 
-// Descripciones por categoría — lenguaje claro para gente que entrena normal,
-// sin jerga de competición ni duración fija (la velocidad depende de cuántos
-// días entrene cada persona). Estructura: objetivo, cómo progresa, reps, pesos,
-// descansos y consejos.
+// Descripciones por categoría — texto que aparece en el PDF de la rutina que
+// recibe el cliente. Resumen del esquema BIIO MODIFICADO real (1º macrociclo),
+// con lenguaje claro pero respetando reps/series/intensidades originales.
 const TOB_DESC_CATEGORIAS = {
   'Reacondicionamiento':
-    'OBJETIVO: Ponerte a punto. Es la rutina para volver al gimnasio tras un parón o para empezar bien una etapa nueva. Recuperas el ritmo, recuerdas cómo se hacen los ejercicios y preparas el cuerpo para entrenamientos más exigentes.\n\n' +
-    'CÓMO PROGRESA: La rutina está dividida en 6 microciclos (bloques). Avanzas al siguiente cuando completas las sesiones del bloque actual — no hay duración fija, va a tu ritmo. Cada par de bloques el reto sube un escalón: menos repeticiones pero algo más de peso.\n\n' +
-    'REPETICIONES: Empiezas con muchas (15-12-10 en las 3 series). Luego bajan a 12-10-8. Y en los últimos bloques 10-8-6. Bajar repeticiones te deja meter algo más de peso.\n\n' +
-    'PESOS: Al principio debe costarte poco — es para coger técnica. En los últimos bloques notarás el esfuerzo, pero siempre pudiendo completar todas las repeticiones con buena forma.\n\n' +
-    'DESCANSOS: 1 minuto y medio entre series en los primeros bloques, hasta 2 minutos en los últimos.\n\n' +
-    'CONSEJOS: Lo recomendable es entrenar entre 3 y 5 días por semana, alternando los entrenos A y B. Lo importante no es el peso, es hacer los movimientos bien y sin prisa, controlando la bajada.',
+    'OBJETIVO: Volver al gimnasio o empezar una nueva etapa. Recuperas técnica, mueves rangos medios de repeticiones, preparas el cuerpo para mesociclos más exigentes.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos (bloques) — cada pareja sube un escalón. Onda 15/12/10 → 12/10/8 → 10/8/6. Vas a tu ritmo, sin calendario fijo.\n\n' +
+    'REPETICIONES: 3 series por ejercicio principal, con onda descendente (1ª serie más reps a peso menor, 3ª serie menos reps a peso mayor).\n\n' +
+    'PESOS: Que te cueste pero pudiendo completar todas las repeticiones con técnica correcta. La 1ª serie de cada par de bloques debería ser asequible — sube algo en el siguiente.\n\n' +
+    'DESCANSOS: 1\'30" en los primeros bloques · 1\'45" en los del medio · 2\'00" en los últimos. El circuito accesorio con 30" entre ejercicios.\n\n' +
+    'CONSEJOS: 3 entrenos por semana (Lun-Mié-Vie). División A+B (simil full body). En accesorios va circuito sin pausa (jump set). Foco en técnica y recorrido completo.',
 
   'Preparación fuerza':
-    'OBJETIVO: Empezar a ganar fuerza de verdad en los ejercicios básicos (sentadilla, press de banca, peso muerto...). Es el primer paso serio antes de las rutinas de fuerza más duras.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). Avanzas cuando completas las sesiones del bloque — a tu ritmo, sin calendario fijo. Pocas repeticiones con un peso que te exija. En algunos bloques cambia el número de series para que el cuerpo no se acostumbre y siga mejorando. El último bloque es más suave, de recuperación.\n\n' +
-    'REPETICIONES: 5 repeticiones por serie en los ejercicios grandes. En los ejercicios de apoyo, entre 3 y 6 según el bloque.\n\n' +
-    'PESOS: Un peso que te cueste, pero con el que puedas mover bien las 5 repeticiones sin que la técnica se rompa.\n\n' +
-    'DESCANSOS: 2 a 2 minutos y medio entre series. Aquí hace falta descansar bien para rendir.\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana, alternando A y B. En algunos ejercicios de apoyo el ejercicio cambia de un bloque a otro para trabajar de forma variada.',
+    'OBJETIVO: Trabajar fuerza con ondas 8-6-4 en los ejercicios grandes. Es el paso intermedio antes de Fuerza 1.\n\n' +
+    'CÓMO PROGRESA: 3 microciclos BIIO + descarga técnica. En la app salen como 6 bloques: los 1-2 son el "primer micro BIIO" con pausa 2\', los 3-4 son el "segundo micro" con pausa 2\'30, y los 5-6 son la descarga técnica (8 series de 3 reps con pausa corta).\n\n' +
+    'REPETICIONES: Onda 8/6/4 en grandes (3 series). En apoyos onda 10/8/6 (3 series). Descarga = 8×3 cluster.\n\n' +
+    'PESOS: RPE 10 — al fallo técnico en cada serie. Si en la 1ª serie del 1º bloque consigues las 8 repeticiones target, sube un kg en cada ejercicio para el siguiente bloque.\n\n' +
+    'DESCANSOS: 2\'00" en bloques 1-2, 2\'30" en bloques 3-4, 1\'00" en descarga.\n\n' +
+    'CONSEJOS: 3 entrenos semanales (Lun-Mié-Vie). División A+B+C: piernas-hombros-abdomen / pecho-tríceps-piernas (recall) / espalda-bíceps-abdomen-cuádriceps.',
 
   'Especialización técnica':
-    'OBJETIVO: Mejorar CÓMO haces los ejercicios. Hacer los movimientos más limpios y controlados, ahora que ya manejas algo de peso. Pulir los detalles antes de subir más la intensidad.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). El peso se mantiene parecido, pero bloque a bloque se pide más control: pausas un poco más largas en los puntos clave del movimiento. Avanzas a tu ritmo según completes las sesiones.\n\n' +
-    'REPETICIONES: 4 a 6 por serie, 4 series. Las justas para practicar mucho la técnica sin perder la concentración.\n\n' +
-    'PESOS: Peso medio-alto. La prioridad es la técnica perfecta — si el movimiento se descontrola, baja el peso.\n\n' +
-    'DESCANSOS: 2 a 2 minutos y medio, para llegar a cada serie fresco y poder hacerla bien.\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana. Harás pausas a mitad del movimiento: 1-2 segundos sentado abajo en la sentadilla, 1-2 segundos con la barra en el pecho en el press. Estas pausas obligan a controlar y eliminan trampas.',
+    'OBJETIVO: Pulir la técnica con peso medio-alto. Ondas 345 BUFFER — 8×3, 7×4, 6×5 al 75% del 1RM, luego repite al 80%, cierra con descarga 8×2 al 85%.\n\n' +
+    'CÓMO PROGRESA: 7 microciclos BIIO (mapeados a 6 bloques de la app). Bloques 1-3 al 75% con series clúster decreciente, bloques 4-5 al 80%, bloque 6 = descarga técnica al 85% con buffer.\n\n' +
+    'REPETICIONES: 8×3, 7×4, 6×5 alternando — siempre series clúster (varias series de pocas reps con pausa corta).\n\n' +
+    'PESOS: Buffer — guarda 1-2 repeticiones en el depósito en cada serie. La idea es velocidad y técnica perfecta, no fallo.\n\n' +
+    'DESCANSOS: 1\'00" (8×3) · 1\'15" (7×4) · 1\'30" (6×5). En descarga 1\'30" para todas.\n\n' +
+    'CONSEJOS: 3 entrenos por semana. Fase concéntrica explosiva, pausa isométrica abajo y arriba de 1". Es el bloque de calidad técnica antes de Fuerza 1 y 2.',
 
   'Fuerza 1':
-    'OBJETIVO: Trabajar la fuerza con pesos altos. En esta rutina, además de levantar, aguantas la posición unos segundos en un punto del movimiento — eso te hace mucho más fuerte y estable.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). Vas aguantando un poco más las posiciones y subiendo peso de un bloque al siguiente. Avanzas cuando completas las sesiones del bloque, sin prisa de calendario. El último bloque es más suave, de recuperación.\n\n' +
-    'REPETICIONES: 3 por serie, 5 series. Pocas, pero muy intensas.\n\n' +
-    'PESOS: Peso alto, de los que de verdad cuestan. Siempre con buena técnica.\n\n' +
-    'DESCANSOS: 3 minutos entre series. Necesitas recuperarte del todo para rendir en la siguiente.\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana. En cada ejercicio principal aguantas la posición unos 6 segundos en un punto clave (por ejemplo, a media bajada de la sentadilla o del press). Cuesta, pero es lo que te hace ganar fuerza real.',
+    'OBJETIVO: Subir intensidad real. 4×4 progresivo del 80% al 87.5% del 1RM con RPE creciente.\n\n' +
+    'CÓMO PROGRESA: 5 microciclos BIIO (mapeados a 6 bloques de la app). 1º: 80% RPE 7/8. 2º: 82.5% RPE 8/9. 3º: 85% RPE 9/10. 4º: 87.5% RPE 10. Bloques 5-6: descarga técnica 8×3 al 75%.\n\n' +
+    'REPETICIONES: 4 series de 4 reps en los grandes. Accesorios con jump set 3×12.\n\n' +
+    'PESOS: Sube ~2.5% del 1RM cada bloque. La técnica manda — si se rompe, baja peso. Subida explosiva, control en la bajada.\n\n' +
+    'DESCANSOS: 3\'00" entre series en los grandes (necesitas estar fresco). 1\'00" en descarga. 30" entre ejercicios del jump set.\n\n' +
+    'CONSEJOS: 3 entrenos por semana. Foco en arrancadas (sin rebote en peso muerto), pausa al pecho en banca, dominadas explosivas hasta el pecho.',
 
   'Fuerza 2':
-    'OBJETIVO: Comprobar cuánta fuerza has ganado en todo este tiempo. Al final de la rutina hay un día especial para intentar tu peso máximo en cada ejercicio.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). Vas subiendo la intensidad bloque a bloque hasta llegar al día de "máximos". Avanzas a tu ritmo según completes las sesiones.\n\n' +
-    'REPETICIONES: En los entrenos normales, 5 series de 5 repeticiones. Hay una serie especial de 20 repeticiones en sentadilla (de aguante mental). El día de máximos: 1 sola repetición con el peso más alto que puedas.\n\n' +
-    'PESOS: Peso alto en los entrenos. El día de máximos, lo máximo que puedas levantar con técnica correcta.\n\n' +
-    'DESCANSOS: 2 minutos y medio a 3 en los entrenos normales. 5-6 minutos antes de cada intento de máximo.\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana. El día de "Maximales" tiene una hoja aparte con los 6 ejercicios principales. Haz siempre series de calentamiento subiendo peso antes de ir a por tu intento máximo. Nunca vayas a frío.',
+    'OBJETIVO: Demostrar la fuerza ganada. Clúster cargado al 87.5% / 90% / 92.5% con rest-pause de 15"/20"/25", y al final 2 sesiones de MAXIMALES para batir tu 1RM.\n\n' +
+    'CÓMO PROGRESA: 4 microciclos BIIO + 2 sesiones de máximos. En la app, los bloques 1-2 son el 87.5% con RP 15", el 3 es 90% RP 20", el 4 es 92.5% RP 25", y los 5-6 son la descarga 10×1 al 95%. El entreno "Maximales" va aparte.\n\n' +
+    'REPETICIONES: Cada serie son 8 reps simples con una pausa corta entre cada una (rest-pause) — sueltas la barra entre reps pero sin bajar peso. El objetivo es completar las 8 con técnica perfecta.\n\n' +
+    'PESOS: % del 1RM. Si completas las 8 reps con técnica correcta en una serie, suma 2.5% al peso para esa serie en el siguiente bloque.\n\n' +
+    'DESCANSOS: 4\'00" entre series clúster. 2\'00" en descarga. 5-6\' antes de cada intento de máximo.\n\n' +
+    'CONSEJOS: 3 entrenos por semana + 2 sesiones de Maximales separadas (1ª: Squat/Press Militar/Press Estrecho. 2ª: Peso Muerto/Jalones invertidos/Curl con barra). Calentamiento progresivo siempre antes de cada intento de máximo.',
 
   'Hibrido':
-    'OBJETIVO: Mezclar lo mejor de dos mundos en la misma sesión: ganar fuerza y ganar músculo a la vez.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). Se usan "series partidas": en vez de hacer 9 repeticiones seguidas, las haces en 3+3+3 con un respiro muy corto entre cada tanda. Eso te deja mover más peso. Avanzas de bloque cuando completas sus sesiones, a tu ritmo. El último bloque es más suave.\n\n' +
-    'REPETICIONES: 9 repeticiones por serie, pero divididas en tres tandas de 3 con una pausa corta en medio.\n\n' +
-    'PESOS: Peso alto — el formato partido te permite manejar más kilos sin que la técnica se resienta.\n\n' +
-    'DESCANSOS: El respiro corto dentro de la serie es de 15-20 segundos. Entre serie y serie, 3 minutos.\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana. Partir la serie en tandas es la clave de esta rutina: aguantas buen peso durante las 9 repeticiones sin llegar al agotamiento que descontrola la forma.',
+    'OBJETIVO: Mezclar fuerza e hipertrofia en la misma sesión. Trabaja al fallo técnico con ondas 4-6-8 + DROP al final.\n\n' +
+    'CÓMO PROGRESA: 3 microciclos BIIO (mapeados a 6 bloques). 1º (bloques 1-2): 3×4/6/8 + DROP al fallo, al 85/75/65% del 1RM. 2º (bloques 3-4): 2×20 Rest-Pause al 70% del 1RM. 3º (bloques 5-6): descarga parcial.\n\n' +
+    'REPETICIONES: En el principal, 3 series con onda 4-6-8 reps + serie extra DROP (bajada de peso al fallo). En el Rest-Pause, 20 reps totales con pausa breve de respiración SIN soltar la barra.\n\n' +
+    'PESOS: 1ª serie 85% (apunta 4 reps), 2ª 75% (6 reps), 3ª 65% (8 reps). Si llegas al numero target, añade el DROP. En Rest-Pause empieza al 70%.\n\n' +
+    'DESCANSOS: 2\'00" entre series en bloque 1, 3\'00" en bloque 2 (Rest-Pause), 2\'30" en descarga.\n\n' +
+    'CONSEJOS: 3 entrenos por semana. División A+B+C: piernas-hombros-abdomen / pecho-tríceps / espalda-bíceps. Todas las series al fallo técnico (RPE 10).',
 
   'Hipertrofia':
-    'OBJETIVO: Ganar masa muscular. Que el músculo crezca y se note.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). Cada bloque cambia un poco el rango de repeticiones para trabajar el músculo de varias formas y que no se estanque. Avanzas cuando completas las sesiones del bloque, sin calendario fijo.\n\n' +
-    'REPETICIONES: Entre 8 y 15 por serie según el bloque. Unos bloques más repeticiones con menos peso, otros menos repeticiones con algo más.\n\n' +
-    'PESOS: Peso medio. El suficiente para que el músculo trabaje de verdad, pero no tanto como para fallar a las 3 repeticiones.\n\n' +
-    'DESCANSOS: 1 minuto y medio a 2. Descansos cortos para mantener el músculo "encendido".\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana. Aquí no buscas mover mucho peso, buscas SENTIR el músculo trabajar en cada repetición. Técnica estricta y movimiento controlado. La conexión mente-músculo es lo que hace crecer.',
+    'OBJETIVO: Masa muscular pura. Onda 8-6-4 al fallo técnico + Rest Pause 20"/20" para apurar al máximo cada serie.\n\n' +
+    'CÓMO PROGRESA: 3 microciclos BIIO (en la app 6 bloques). 1º (bloques 1-2): 3×8/6/4 + Rest Pause al 75% del 1RM. 2º (bloques 3-4): mismo esquema, sube 1% si alcanzaste reps target. 3º (bloques 5-6): descarga parcial 8×3 al 75%.\n\n' +
+    'REPETICIONES: 3 series con onda 8-6-4. Después de la última, Rest Pause: descansa 20", coge más reps; descansa 20" otra vez, coge más reps. En apoyos jump set 20/12 reps.\n\n' +
+    'PESOS: 75% del 1RM. Si alcanzas las 8/6/4 reps target, +1% para la próxima sesión.\n\n' +
+    'DESCANSOS: 2\'00" entre series. 30" entre ejercicios del jump set. En descarga 1\'00".\n\n' +
+    'CONSEJOS: 3 entrenos por semana. División A+B+C. Foco en SENTIR el músculo, técnica estricta. Hay BURNS (parciales hasta el fallo) en algunos accesorios.',
 
   'Calidad muscular':
-    'OBJETIVO: Definir y marcar el músculo. Mantener la fuerza que has ganado mientras afinas y se ve más el trabajo hecho.\n\n' +
-    'CÓMO PROGRESA: 6 microciclos (bloques). Alternas dos tipos de día: días de muchas repeticiones (bombeo, sensación de "músculo lleno") y días de peso medio para no perder fuerza. Avanzas a tu ritmo según completes las sesiones de cada bloque.\n\n' +
-    'REPETICIONES: En los días de bombeo, 12, 15 o hasta 20 repeticiones. En los días de peso medio, 6 a 10.\n\n' +
-    'PESOS: Ligero-medio en los días de bombeo. Medio-alto en los días de fuerza.\n\n' +
-    'DESCANSOS: Muy cortos en los días de bombeo (45 segundos a 1 minuto). Un poco más largos en los días de fuerza (1 minuto y medio a 2).\n\n' +
-    'CONSEJOS: Entrena entre 3 y 5 días por semana. Es una rutina ideal cuando quieres verte más marcado. En el último ejercicio de cada grupo se hacen "bajadas de peso" (sigues haciendo repeticiones con menos peso) para apurar al máximo.'
+    'OBJETIVO: Calidad y definición muscular. Clúster al 75% / 77.5% con tempo 3232, accesorios en SUPERSERIE / TRISERIE buscando MAX PUMP.\n\n' +
+    'CÓMO PROGRESA: 6 microciclos BIIO. Bloques 1-3 al 75% del 1RM (8×2, 8×3, 8×3 alternando). Bloques 4-6 al 77.5% (mismo esquema). Cardio progresivo de 15\' a 50\' al 60-70% del FCM.\n\n' +
+    'REPETICIONES: Series clúster — 8 series de 2-3 reps con pausa 1\'. Accesorios MAX PUMP 10-12 reps en SUPERSERIE (2 ejs alternados) o TRISERIE (3 ejs alternados).\n\n' +
+    'PESOS: % del 1RM. Tempo crítico: 3 segundos eccéntrica · 2 segundos pausa abajo · 3 segundos concéntrica · 2 segundos pausa arriba (3232).\n\n' +
+    'DESCANSOS: 1\'00" entre series clúster, 1\'30" entre superseries / triseries. En accesorios solo el tiempo de alternar.\n\n' +
+    'CONSEJOS: 3 entrenos por semana. División A+B+C. El tempo 3232 es lo que da la calidad — sin él pierdes el objetivo. En el último ejercicio de cada grupo se hacen STRIPPING (drop sets) para apurar.'
 };
 
-// Versión del plan oficial (series/reps/pausa por microciclo) por categoría.
-// Cuando subimos TOB_PLAN_VERSION, tobLoad reaplica los planes de TOB_FIXED_PLANS
-// a las plantillas guardadas — para corregir errores de pase del catálogo BIIO.
-// IMPORTANTE: los ejercicios en circuito y los "Maximales" (Fuerza 2) NO se tocan.
-const TOB_PLAN_VERSION = 2;
+// Versión del plan oficial (series/reps/pausa por microciclo) por categoría —
+// transcrito desde los PDFs originales BIIO MODIFICADO 1º macrociclo.
+// IMPORTANTE: BIIO usa entre 3 y 7 microciclos según el mesociclo. La app usa
+// 6 slots de microciclo, así que mapeamos cada micro BIIO a 1-2 slots.
+// "note" se muestra junto a "series×reps" (p.ej. "@75%", "+DROP", "RP15"").
+// Los circuitos y "Maximales" (Fuerza 2) NO se tocan en el backfill.
+const TOB_PLAN_VERSION = 3;
 const TOB_FIXED_PLANS = {
-  // Reacondicionamiento: progresión clásica 15/12/10 → 12/10/8 → 10/8/6, pausa creciente.
+  // ── 1º Mesociclo · Reacondicionamiento (BIIO 6 micros × A+B) ──
+  // Onda 15/12/10 → 12/10/8 → 10/8/6, pausa creciente 1'30 → 2'00.
   'Reacondicionamiento': {
     1: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
     2: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
@@ -131,73 +133,84 @@ const TOB_FIXED_PLANS = {
     5: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" },
     6: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" }
   },
-  // Preparación fuerza: 5 reps todo, picos en intensidad, último bloque deload.
-  // Descansos 2' a 2'30, NO 3'00 (el bloque final es suave de recuperación).
+  // ── 2º Mesociclo · Preparación Fuerza (BIIO 3 micros × A+B+C) ──
+  // Onda 8/6/4 en grandes (RPE10 al fallo). Micro 3 = descarga técnica 8×3 @8RM.
+  // Mapeo: slots 1-2 → BIIO micro 1, slots 3-4 → BIIO micro 2, slots 5-6 → descarga.
   'Preparación fuerza': {
-    1: { series:3, repsTarget:[5,5,5],       pausa:"2'00''" },
-    2: { series:3, repsTarget:[5,5,5],       pausa:"2'00''" },
-    3: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
-    4: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
-    5: { series:4, repsTarget:[5,5,5,5],     pausa:"2'30''" },
-    6: { series:3, repsTarget:[6,6,6],       pausa:"1'45''" }   // deload
+    1: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"RPE 10 al fallo" },
+    2: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"RPE 10 al fallo" },
+    3: { series:3, repsTarget:[8,6,4], pausa:"2'30''", note:"RPE 10 al fallo" },
+    4: { series:3, repsTarget:[8,6,4], pausa:"2'30''", note:"RPE 10 al fallo" },
+    5: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@8RM · descarga técnica" },
+    6: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@8RM · descarga técnica" }
   },
-  // Especialización técnica: 4-6 reps, pausa hasta 2'30 (no 3').
+  // ── 3º Mesociclo · Especialización Técnica (BIIO 7 micros × A+B) ──
+  // ONDAS 345 BUFFER: 8×3 → 7×4 → 6×5 a @75%, luego repite a @80%. Micro 7 = descarga 8×2 @85%.
+  // 7 micros BIIO mapeados a 6 slots: 1-2-3 @75%, 4-5 @80%, 6 = descarga.
   'Especialización técnica': {
-    1: { series:4, repsTarget:[6,6,6,6],     pausa:"2'00''" },
-    2: { series:4, repsTarget:[6,6,6,6],     pausa:"2'00''" },
-    3: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
-    4: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
-    5: { series:4, repsTarget:[4,4,4,4],     pausa:"2'30''" },
-    6: { series:4, repsTarget:[4,4,4,4],     pausa:"2'30''" }
+    1: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% ondas 345" },
+    2: { series:7, repsTarget:[4], pausa:"1'15''", note:"@75% ondas 345" },
+    3: { series:6, repsTarget:[5], pausa:"1'30''", note:"@75% ondas 345" },
+    4: { series:8, repsTarget:[3], pausa:"1'00''", note:"@80% ondas 345" },
+    5: { series:7, repsTarget:[4], pausa:"1'15''", note:"@80% ondas 345" },
+    6: { series:8, repsTarget:[2], pausa:"1'30''", note:"@85% descarga técnica" }
   },
-  // Fuerza 1: 5×3, pausa 3'. Último bloque deload (3×5 con pausa más corta).
+  // ── 4º Mesociclo · Fuerza 1 (BIIO 5 micros × A+B) ──
+  // 4×4 progresión RPE 7/8 → 8/9 → 9/10 → 10 (% 80/82.5/85/87.5), micro 5 = descarga 8×3 @75%.
+  // Mapeo: slots 1-4 = BIIO 1-4, slots 5-6 = descarga.
   'Fuerza 1': {
-    1: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
-    2: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
-    3: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
-    4: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
-    5: { series:5, repsTarget:[2,2,2,2,2],   pausa:"3'00''" }, // pico
-    6: { series:3, repsTarget:[5,5,5],       pausa:"2'00''" }  // deload
+    1: { series:4, repsTarget:[4], pausa:"3'00''", note:"@80% RPE 7/8" },
+    2: { series:4, repsTarget:[4], pausa:"3'00''", note:"@82.5% RPE 8/9" },
+    3: { series:4, repsTarget:[4], pausa:"3'00''", note:"@85% RPE 9/10" },
+    4: { series:4, repsTarget:[4], pausa:"3'00''", note:"@87.5% RPE 10" },
+    5: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% descarga técnica" },
+    6: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% descarga técnica" }
   },
-  // Fuerza 2: 5×5 todo el meso (la intensidad sube en kg, no en reps).
-  // El entreno "Maximales" se mantiene aparte y no lo tocamos.
+  // ── 5º Mesociclo · Fuerza 2 (BIIO 4 micros × A+B+C + maximales) ──
+  // CLUSTER 8×1 Rest-Pause @87.5%/90%/92.5%/95% (cada serie = 8 simples con 15-25" entre cada rep).
+  // Micro 4 = descarga 10×1 @95% normal. Maximales en entreno aparte (no tocar).
+  // Mapeo: slots 1-2 BIIO1, 3 BIIO2, 4 BIIO3, 5-6 BIIO4 descarga.
   'Fuerza 2': {
-    1: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
-    2: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
-    3: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
-    4: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
-    5: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
-    6: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" }
+    1: { series:3, repsTarget:[8],  pausa:"4'00''", note:"@87.5% cluster RP 15\"" },
+    2: { series:3, repsTarget:[8],  pausa:"4'00''", note:"@87.5% cluster RP 15\"" },
+    3: { series:3, repsTarget:[8],  pausa:"4'00''", note:"@90% cluster RP 20\"" },
+    4: { series:2, repsTarget:[8],  pausa:"4'00''", note:"@92.5% cluster RP 25\"" },
+    5: { series:10, repsTarget:[1], pausa:"2'00''", note:"@95% descarga técnica" },
+    6: { series:10, repsTarget:[1], pausa:"2'00''", note:"@95% descarga técnica" }
   },
-  // Híbrido: 9 reps (en tres clusters 3+3+3, pausa 15-20s entre tandas).
-  // Pico en 5×6, último bloque deload.
+  // ── 6º Mesociclo · Híbrido (BIIO 3 micros × A+B+C) ──
+  // 3×4/6/8 + DROP al fallo (85/75/65% del 1RM). Micro 2 = Rest Pause 20 reps total (70% 1RM).
+  // Micro 3 = descarga parcial 3×4/6/8 a 2'30.
   'Hibrido': {
-    1: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
-    2: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
-    3: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
-    4: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
-    5: { series:5, repsTarget:[6,6,6,6,6],   pausa:"3'00''" }, // pico
-    6: { series:3, repsTarget:[9,9,9],       pausa:"2'00''" }  // deload
+    1: { series:3, repsTarget:[4,6,8], pausa:"2'00''", note:"85/75/65% 1RM + DROP al fallo" },
+    2: { series:3, repsTarget:[4,6,8], pausa:"2'00''", note:"85/75/65% 1RM + DROP al fallo" },
+    3: { series:2, repsTarget:[20],    pausa:"3'00''", note:"Rest-Pause 20 reps @70% 1RM" },
+    4: { series:2, repsTarget:[20],    pausa:"3'00''", note:"Rest-Pause 20 reps @70% 1RM" },
+    5: { series:3, repsTarget:[4,6,8], pausa:"2'30''", note:"descarga parcial" },
+    6: { series:3, repsTarget:[4,6,8], pausa:"2'30''", note:"descarga parcial" }
   },
-  // Hipertrofia: 8-15 reps con ondas, pausa 1'30.
+  // ── 7º Mesociclo · Hipertrofia (BIIO 3 micros × A+B+C) ──
+  // 3×8/6/4 al fallo + Rest Pause 20"/20" (75% del 1RM inicial).
+  // Micro 2 = +1% peso si reps target alcanzadas. Micro 3 = descarga parcial.
   'Hipertrofia': {
-    1: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
-    2: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
-    3: { series:4, repsTarget:[8,8,8,8],     pausa:"1'30''" },
-    4: { series:4, repsTarget:[8,8,8,8],     pausa:"1'30''" },
-    5: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" },
-    6: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" }
+    1: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"@75% 1RM al fallo + RP 20\"" },
+    2: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"@75% 1RM al fallo + RP 20\"" },
+    3: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"+1% si reps target alcanzadas" },
+    4: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"+1% si reps target alcanzadas" },
+    5: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@75% descarga parcial" },
+    6: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@75% descarga parcial" }
   },
-  // Calidad muscular: pump alto, pausas cortas. (Nota: en BIIO original Entreno A
-  // es bombeo y Entreno B fuerza media. Aquí aplicamos el patrón de bombeo a
-  // ambos por simplicidad; el entrenador puede editar el B si quiere bajar reps.)
+  // ── 8º Mesociclo · Calidad Muscular (BIIO 6 micros × A+B+C) ──
+  // CLUSTER 8×2 alternando 8×3 a @75% (micros 1-3) / @77.5% (micros 4-6).
+  // Tempo: 3232 (3s eccéntrica · 2s pausa abajo · 3s concéntrica · 2s pausa arriba).
+  // Accesorios en SUPERSERIE / TRISERIE con MAX PUMP.
   'Calidad muscular': {
-    1: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    2: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    3: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    4: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    5: { series:4, repsTarget:[20,20,20,20], pausa:"45''"   },
-    6: { series:4, repsTarget:[20,20,20,20], pausa:"45''"   }
+    1: { series:8, repsTarget:[2], pausa:"1'00''", note:"@75% tempo 3232" },
+    2: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% tempo 3232" },
+    3: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% tempo 3232" },
+    4: { series:8, repsTarget:[2], pausa:"1'00''", note:"@77.5% tempo 3232" },
+    5: { series:8, repsTarget:[3], pausa:"1'00''", note:"@77.5% tempo 3232" },
+    6: { series:8, repsTarget:[3], pausa:"1'00''", note:"@77.5% tempo 3232" }
   }
 };
 
@@ -362,6 +375,34 @@ function tobLoad(){
     tobDB.plantillas = tobBuildSeedPlantillas();
     tobSave(true);
   }
+
+  // Re-aplicar backfill de descripciones y planes oficiales BIIO después del
+  // seed — porque el seed usa valores antiguos. Esto asegura que aunque sea
+  // primera carga, las plantillas quedan con los textos y planes correctos.
+  let postSeedBackfilled = false;
+  tobDB.plantillas.forEach(p => {
+    if(p.categoria && TOB_DESC_CATEGORIAS[p.categoria] && p._descV !== TOB_DESC_VERSION){
+      p.descripcion = TOB_DESC_CATEGORIAS[p.categoria];
+      p._descV = TOB_DESC_VERSION;
+      postSeedBackfilled = true;
+    }
+    if(p.categoria && TOB_FIXED_PLANS[p.categoria] && (p._planV || 0) < TOB_PLAN_VERSION){
+      const fix = TOB_FIXED_PLANS[p.categoria];
+      (p.entrenos||[]).forEach(en => {
+        if(en.letra === 'MX' || (en.nombre||'').toLowerCase().includes('maximal')) return;
+        (en.ejercicios||[]).forEach(ej => {
+          if(ej.tipo === 'circuito') return;
+          if(ej.subtitle && /m[aá]xim/i.test(ej.subtitle)) return;
+          ej.planByMicro = JSON.parse(JSON.stringify(fix));
+          delete ej.planBase;
+        });
+      });
+      p._planV = TOB_PLAN_VERSION;
+      postSeedBackfilled = true;
+    }
+  });
+  if(postSeedBackfilled) tobSave(true);
+
   tobRenderClientes();
   tobRenderPlantillas();
 }
@@ -405,8 +446,10 @@ function tobPlanFor(ej, microNum){
   return ej.planBase || { series:3, repsTarget:[10], pausa:'' };
 }
 function tobPlanLabel(plan){
+  if(plan.label) return plan.label;  // override completo (raro)
   const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
-  return `${plan.series}×${reps}`;
+  const note = plan.note ? ' ' + plan.note : '';
+  return `${plan.series}×${reps}${note}`;
 }
 
 // ═══ CLIENTES ═══
