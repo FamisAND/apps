@@ -7930,6 +7930,8 @@ function rollSelectPata(btn){
     b.style.background  = active ? '#c084fc22' : 'transparent';
     b.style.color       = active ? '#c084fc' : '#5a7a9a';
   });
+  // Re-calcular preview con la pata seleccionada (el crédito original cambia)
+  rollCalc();
 }
 
 function _getRollPata(){
@@ -7937,12 +7939,55 @@ function _getRollPata(){
   return active?.getAttribute('data-val') || 'todo';
 }
 
+// Mapeo del selector de "pata" del roll → kinds de a.legs.
+// Usado para derivar el crédito original de la pata rolada (en lugar del
+// crédito total de la posición) cuando hay detalle por pata guardado.
+//   'todo'    → toda la posición (no hay subset de legs)
+//   'pcs'     → put spread (short_put + long_put) del IC
+//   'ccs'     → call spread (short_call + long_call) del IC/PMCC
+//   'put'     → put vendido (short_put) del JL
+//   'put_l'   → long_put del DPS
+//   'put_c'   → short_put del DPS / 112
+//   'call_l'  → long_call del PMCC (el LEAP)
+//   'call_c'  → short_call del PMCC (el corto vendido)
+const ROLL_PATA_TO_KINDS = {
+  'pcs':   ['short_put', 'long_put'],
+  'ccs':   ['short_call', 'long_call'],
+  'put':   ['short_put'],
+  'put_l': ['long_put'],
+  'put_c': ['short_put'],
+  'call_l':['long_call'],
+  'call_c':['short_call'],
+};
+
+// Calcula el crédito original ($/share neto, sign-aware) de la pata que se
+// está rolando, a partir de a.legs[]. Si la pata es 'todo' o si no hay
+// detalle de legs suficiente, devuelve null (el caller usa a.pCredito*100).
+// Retorna { pcShare: number, kinds: string[] } o null.
+function rollLegOriginalCred(a, pata){
+  if(pata === 'todo') return null;
+  const kinds = ROLL_PATA_TO_KINDS[pata];
+  if(!kinds || !Array.isArray(a.legs) || !a.legs.length) return null;
+  let net = 0; let found = 0;
+  kinds.forEach(k => {
+    const m = a.legs.find(l => l.kind === k);
+    if(m && m.prima != null){
+      net += (k.startsWith('short_') ? +m.prima : -m.prima);
+      found++;
+    }
+  });
+  if(found === 0) return null;
+  return { pcShare: net, kinds };
+}
+
 function rollCalc(){
   if(_rollIdx==null) return;
   const a       = ACTIVAS[_rollIdx];
-  // pCredito está en escala /100 (ej: 0.0123 = $1.23/share)
-  // Convertimos a $/share para operar en la misma escala que pcl
-  const pc_share  = (a.pCredito||0) * 100;
+  const pata    = _getRollPata();
+  // Crédito original: si la pata rolada coincide con detalle de a.legs,
+  // usamos el crédito de SOLO esa pata; si no, el crédito total de la posición.
+  const legInfo = rollLegOriginalCred(a, pata);
+  const pc_share  = legInfo ? legInfo.pcShare : (a.pCredito||0) * 100;
   const pcl_share = parseFloat(document.getElementById('roll_pcl').value)||0;  // $/share
   const comiCl    = parseFloat(document.getElementById('roll_comi_close').value)||0;
   const newCred_share = parseFloat(document.getElementById('roll_newcred').value)||0;  // $/share
@@ -7964,7 +8009,8 @@ function rollCalc(){
 
   const col = v => v>=0?'#3fb68b':'#f04545';
   const fmt = v => (v>=0?'+':'')+v.toFixed(2);
-  document.getElementById('roll_prev_close').innerHTML  = '<span style="color:'+col(pnlClose)+'">'+fmt(pnlClose)+'$</span>';
+  document.getElementById('roll_prev_close').innerHTML  = '<span style="color:'+col(pnlClose)+'">'+fmt(pnlClose)+'$</span>'
+    + (legInfo ? `<span style="color:#3a5468;font-size:8px;display:block;margin-top:2px">cred. pata: $${pc_share.toFixed(2)}/share (de legs)</span>` : '');
   document.getElementById('roll_prev_accum').innerHTML  = '<span style="color:'+col(accumAfter)+'">'+fmt(accumAfter)+'$</span>';
   document.getElementById('roll_prev_net').innerHTML    = '<span style="color:'+col(rollNet)+'">'+fmt(rollNet)+'$</span>';
 }
@@ -7972,8 +8018,11 @@ function rollCalc(){
 function confirmRoll(){
   if(_rollIdx==null) return;
   const a         = ACTIVAS[_rollIdx];
-  // pCredito en /100, los inputs del modal en $/share
-  const pc_share  = (a.pCredito||0) * 100;
+  const pata      = _getRollPata();
+  // Crédito original: si la pata rolada coincide con detalle de a.legs, usamos
+  // el crédito SOLO de esa pata. Si no, el crédito total de la posición.
+  const legInfo   = rollLegOriginalCred(a, pata);
+  const pc_share  = legInfo ? legInfo.pcShare : (a.pCredito||0) * 100;
   const pcl_share = parseFloat(document.getElementById('roll_pcl').value)||0;  // $/share
   const comiCl    = parseFloat(document.getElementById('roll_comi_close').value)||0;
   const newCred_share = parseFloat(document.getElementById('roll_newcred').value)||0;  // $/share
@@ -8003,10 +8052,14 @@ function confirmRoll(){
 
   // Para guardar en hist mantenemos escala /100 (formato pCredito antiguo)
   const pcl_storage = pcl_share / 100;
+  // pCredito guardado en HIST: si tenemos info de pata por legs, guardamos
+  // el crédito SOLO de esa pata (más correcto para auditoría). Si no, el total.
+  const pcredHist_storage = legInfo ? (pc_share / 100) : (a.pCredito||0);
   // totalNetoOvr en escala "prima" (/100), pNetoOvr per contract en escala "prima"
   const totalNetoOvrPrima = pnlClose / 100;
   const pNetoOvrPrima = totalNetoOvrPrima / ctr;
 
+  const pataLabelFull = pata !== 'todo' ? '-'+pata.toUpperCase() : '';
   const histEntry = {
     id:          Date.now(),
     idOp:        String(a.idOp||''),
@@ -8020,15 +8073,11 @@ function confirmRoll(){
     delta:       a.delta||null,
     iv:          a.iv||null,
     ivr:         a.ivr||null,
-    pCredito:    a.pCredito||0,    // mantener escala /100 original
+    pCredito:    pcredHist_storage,  // crédito de la pata rolada (si hay legs) o total
     pDebito:     0,
-    pCierre:     pcl_storage,       // /100 para coincidir con pCredito
+    pCierre:     pcl_storage,        // /100 para coincidir con pCredito
     comi:        comiCl,
-    nota:        (()=>{
-      const pata = _getRollPata();
-      const pataLabel = pata !== 'todo' ? '-'+pata.toUpperCase() : '';
-      return nota ? '[ROLL'+pataLabel+'] '+nota : '[ROLL'+pataLabel+']';
-    })(),
+    nota:        nota ? '[ROLL'+pataLabelFull+'] '+nota : '[ROLL'+pataLabelFull+']',
     pNetoOvr:    parseFloat(pNetoOvrPrima.toFixed(4)),
     totalNetoOvr:parseFloat(totalNetoOvrPrima.toFixed(4)),
     profitOpOvr: a.maxRisk ? parseFloat((pnlClose/a.maxRisk*100).toFixed(2)) : null,
@@ -8036,30 +8085,54 @@ function confirmRoll(){
     dteIni:      dteIni,
     tiempoOp:    tOp,
     stratGroup:  a.strat||'NP',
+    // Marcadores de roll parcial — útiles para auditoría
+    rollPata:    pata !== 'todo' ? pata : null,
+    parentIdOp:  pata !== 'todo' ? String(a.idOp||'') : null
   };
 
   HIST.unshift(histEntry);
   histSave();
 
-  // 2. Update the activa with new leg data
-  // newCred guardado en escala /100 para mantener consistencia con pCredito
+  // 2. Update the activa con la nueva pata.
+  // Si fue un roll parcial CON detalle de legs: el nuevo a.pCredito = (créditos
+  //   de las patas NO roladas conservadas) + newCred. Las patas roladas se
+  //   quitan de a.legs (el usuario puede re-añadirlas si quiere detalle de la
+  //   nueva pata desde el modal de edición).
+  // Si fue un roll 'todo' o sin legs: comportamiento clásico — newCred sustituye
+  //   todo el pCredito y vaciamos a.legs (la posición es nueva).
   const newCred_storage = newCred_share / 100;
+  let nextLegs = a.legs;
+  let nextPCredito = newCred_storage;
+  if(legInfo && Array.isArray(a.legs) && a.legs.length){
+    // Roll parcial: quitamos las patas roladas, sumamos el resto + newCred
+    const killSet = new Set(legInfo.kinds);
+    const survivors = a.legs.filter(l => !killSet.has(l.kind));
+    // Crédito de las patas supervivientes ($/share neto, sign-aware)
+    let survivCred = 0;
+    survivors.forEach(l => {
+      if(l.prima == null) return;
+      survivCred += (l.kind.startsWith('short_') ? +l.prima : -l.prima);
+    });
+    nextLegs = survivors;
+    nextPCredito = (survivCred + newCred_share) / 100;
+  } else if(pata === 'todo'){
+    // Roll completo: la posición es nueva, los legs viejos ya no aplican
+    nextLegs = undefined;
+  }
+
   ACTIVAS[_rollIdx] = Object.assign({}, a, {
     apertura:     cierre,
     exp:          newExp,
     strat:        newStrat,
-    pCredito:     newCred_storage,
+    pCredito:     nextPCredito,
     priceCurrent: null,
     strike:       newStrike || a.strike,
     delta:        newDelta,
     iv:           newIv,
     ivr:          newIvr,
-    nota:         (()=>{
-      const pata = _getRollPata();
-      const pataLabel = pata !== 'todo' ? '-'+pata.toUpperCase() : '';
-      return nota ? '[ROLL→'+pataLabel+'] '+nota : ('[ROLL→'+pataLabel+']'+(a.nota?' '+a.nota:''));
-    })(),
+    nota:         nota ? '[ROLL→'+pataLabelFull+'] '+nota : ('[ROLL→'+pataLabelFull+']'+(a.nota?' '+a.nota:'')),
     comi:         comiOp,
+    legs:         nextLegs
   });
   activasSave();
 
@@ -8067,9 +8140,9 @@ function confirmRoll(){
   renderActivas();
   renderDash();
   const pnlStr = (pnlClose>=0?'+':'')+pnlClose.toFixed(2);
-  const _pataFinal = _getRollPata();
-  const _pataMsg   = _pataFinal !== 'todo' ? ' — '+_pataFinal.toUpperCase() : '';
-  toast('✔ Roll registrado'+_pataMsg+'. Cerrada: '+pnlStr+'$, nueva exp '+newExp);
+  const pataMsg = pata !== 'todo' ? ' — '+pata.toUpperCase() : '';
+  const legNote = legInfo ? ' (cred. pata desde legs)' : '';
+  toast('✔ Roll registrado'+pataMsg+legNote+'. Cerrada: '+pnlStr+'$, nueva exp '+newExp);
 }
 
 (function init(){
