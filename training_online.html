@@ -98,7 +98,7 @@
       <div class="tob-tools-row">
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfUltimaRutina()" title="PDF resumen de la última rutina con las gráficas de progreso por ejercicio">📄 Última rutina</button>
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfHistorico()" title="PDF histórico completo (rutinas y/o mediciones)">📄 Histórico</button>
-        <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal">📄 Evolución</button>
+        <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal" data-i18n="ficha.btnMedicion">📄 Medición</button>
         <button class="tob-action ghost btn-xs" onclick="tobShareWhatsAppFicha()" title="Compartir por WhatsApp (el PDF se descarga automáticamente para que lo adjuntes)">📲 WhatsApp</button>
         <button class="tob-action ghost btn-xs" onclick="tobEditCliente(tobCurrentFichaId)" title="Editar datos del cliente">✏️ Editar</button>
       </div>
@@ -250,7 +250,14 @@
     </div>
     <div class="tob-row col-2">
       <div><label class="tob-lbl">Fecha de nacimiento (opcional · para la edad en el PDF)</label><input class="tob-input" type="date" id="tobCliNacimiento"></div>
-      <div></div>
+      <div>
+        <label class="tob-lbl">Idioma de los PDFs</label>
+        <select class="tob-select" id="tobCliIdioma" title="Idioma en el que se generan rutina BIIO, informe último-rutina, histórico y mediciones para este cliente">
+          <option value="ca">Català (per defecte)</option>
+          <option value="es">Castellano</option>
+          <option value="en">English</option>
+        </select>
+      </div>
     </div>
     <div>
       <label class="tob-lbl">Asignar plantilla inicial (opcional)</label>

@@ -139,15 +139,157 @@ const TOB_EJ_ALIASES = {
 };
 
 // Campos de medición (composición corporal — antropometría tipo ISAK,
-// formato del informe Full Training). key interna → etiqueta visible.
+// formato del informe Full Training). [key interna, {ca, es, en}].
+// La etiqueta visible depende del idioma del cliente (cli.idioma).
 const TOB_MED_PLECS = [
-  ['triceps','Tríceps'], ['subescapular','Subescapular'], ['supraespinal','Supraespinal'],
-  ['abdominal','Abdominal'], ['cuixa','Cuixa Mitjana'], ['panxell','Panxell Mitjà']
+  ['triceps',     { ca:'Tríceps',      es:'Tríceps',       en:'Triceps' }],
+  ['subescapular',{ ca:'Subescapular', es:'Subescapular',  en:'Subscapular' }],
+  ['supraespinal',{ ca:'Supraespinal', es:'Supraespinal',  en:'Suprailiac' }],
+  ['abdominal',   { ca:'Abdominal',    es:'Abdominal',     en:'Abdominal' }],
+  ['cuixa',       { ca:'Cuixa Mitjana',es:'Muslo Medio',   en:'Mid-Thigh' }],
+  ['panxell',     { ca:'Panxell Mitjà',es:'Pantorrilla Media', en:'Mid-Calf' }]
 ];
 const TOB_MED_PERIM = [
-  ['mesoesternal','Mesoesternal'], ['brac','Braç en Tensió'], ['cintura','Cintura'],
-  ['malucs','Malucs'], ['cuixa','Cuixa Mitjana'], ['panxell','Panxell Mitjà']
+  ['mesoesternal',{ ca:'Mesoesternal', es:'Mesoesternal',  en:'Mesosternal' }],
+  ['brac',        { ca:'Braç en Tensió', es:'Brazo en Tensión', en:'Flexed Arm' }],
+  ['cintura',     { ca:'Cintura',      es:'Cintura',       en:'Waist' }],
+  ['malucs',      { ca:'Malucs',       es:'Caderas',       en:'Hips' }],
+  ['cuixa',       { ca:'Cuixa Mitjana',es:'Muslo Medio',   en:'Mid-Thigh' }],
+  ['panxell',     { ca:'Panxell Mitjà',es:'Pantorrilla Media', en:'Mid-Calf' }]
 ];
+// Helper: devuelve la etiqueta visible de un campo de medición según idioma.
+function tobMedLabel(def, lang){
+  const m = def[1];
+  if(typeof m === 'string') return m;  // compatibilidad con formato viejo
+  return m[lang] || m.ca || m.es || def[0];
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// i18n de los PDFs entregables al cliente.
+// Cada cliente tiene cli.idioma ('ca' | 'es' | 'en'). Default 'ca'.
+// tobT(key, lang, params) → string con interpolación tipo "{var}".
+// ─────────────────────────────────────────────────────────────────────
+const TOB_PDF_I18N = {
+  // Cover y comunes
+  'cover.iteracion':     { ca:'Iteració {numero}',     es:'Iteración {numero}',  en:'Iteration {numero}' },
+  'cover.inicio':        { ca:'Inici: {fecha}',        es:'Inicio: {fecha}',     en:'Start: {fecha}' },
+  'cover.periodo':       { ca:'Període: {desde}  -  {hasta}', es:'Período: {desde}  -  {hasta}', en:'Period: {desde}  -  {hasta}' },
+  'unit.kg':             { ca:' kg',  es:' kg',  en:' kg' },
+  'unit.mm':             { ca:' mm',  es:' mm',  en:' mm' },
+  'unit.cm':             { ca:' cm',  es:' cm',  en:' cm' },
+  'error.no_grafica':    { ca:'(gràfica no disponible)', es:'(gráfica no disponible)', en:'(chart not available)' },
+
+  // PDF rutina interactiva (tobGeneratePdf)
+  'it.entreno':          { ca:'ENTRENAMENT {letra}', es:'ENTRENAMIENTO {letra}', en:'WORKOUT {letra}' },
+  'it.label.fecha':      { ca:'Data:',     es:'Fecha:',  en:'Date:' },
+  'it.label.plan':       { ca:'Pla:',      es:'Plan:',   en:'Plan:' },
+  'it.ej.serie':         { ca:'{n}a Sèrie',  es:'{n}ª Serie',  en:'Set {n}' },
+  'it.ej.circuito_linea':{ ca:'{n}è Ej.',    es:'{n}º Ej.',    en:'Ex. {n}' },
+  'it.aer.tipo':         { ca:'Aeròbic tipus', es:'Aeróbica tipo', en:'Cardio type' },
+  'it.aer.tiempo':       { ca:'  temps',       es:'  tiempo',       en:'  time' },
+  'it.aer.intensidad':   { ca:'  intensitat',  es:'  intensidad',   en:'  intensity' },
+
+  // PDF mediciones
+  'med.cover.titulo':    { ca:"INFORME D'EVOLUCIÓ - COMPOSICIÓ CORPORAL", es:'INFORME DE EVOLUCIÓN - COMPOSICIÓN CORPORAL', en:'EVOLUTION REPORT - BODY COMPOSITION' },
+  'med.kpi.mediciones':  { ca:'MESURES',     es:'MEDICIONES',  en:'MEASUREMENTS' },
+  'med.kpi.peso_actual': { ca:'PES ACTUAL',  es:'PESO ACTUAL', en:'CURRENT WEIGHT' },
+  'med.kpi.suma_6_plecs':{ ca:'SUMA 6 PLECS',es:'SUMA 6 PLIEGUES', en:'SUM OF 6 SKINFOLDS' },
+  'med.kpi.vs_inicio':   { ca:' vs inici',   es:' vs inicio',  en:' vs start' },
+  'med.evol.titulo':     { ca:'EVOLUCIÓ DE MESURES', es:'EVOLUCIÓN DE MEDIDAS', en:'EVOLUTION OF MEASUREMENTS' },
+  'med.evol.peso_corporal':{ ca:'PES CORPORAL (kg)',     es:'PESO CORPORAL (kg)',  en:'BODY WEIGHT (kg)' },
+  'med.evol.sum_plecs':  { ca:'SUMATORI DE PLECS (mm)',  es:'SUMATORIO DE PLIEGUES (mm)', en:'SUM OF SKINFOLDS (mm)' },
+  'med.evol.ratio_plecs_pes':   { ca:'RATIO PLECS / PES',    es:'RATIO PLIEGUES / PESO', en:'SKINFOLDS / WEIGHT RATIO' },
+  'med.evol.ratio_cintura_maluc':{ ca:'RATIO CINTURA / MALUC', es:'RATIO CINTURA / CADERA', en:'WAIST / HIP RATIO' },
+  'med.comp.titulo':     { ca:'COMPOSICIÓ - INICI vs ACTUAL', es:'COMPOSICIÓN - INICIO vs ACTUAL', en:'COMPOSITION - START vs CURRENT' },
+  'med.comp.perimetros': { ca:'PERÍMETRES (cm)',  es:'PERÍMETROS (cm)',  en:'GIRTHS (cm)' },
+  'med.comp.plecs_cutanis':{ ca:'PLECS CUTANIS (mm)', es:'PLIEGUES CUTÁNEOS (mm)', en:'SKINFOLDS (mm)' },
+  'med.sexo.dona':       { ca:'Dona',  es:'Mujer',  en:'Female' },
+  'med.sexo.home':       { ca:'Home',  es:'Hombre', en:'Male' },
+  'med.detalle.titulo':  { ca:'COMPOSICIÓ CORPORAL', es:'COMPOSICIÓN CORPORAL', en:'BODY COMPOSITION' },
+  'med.detalle.nombre':  { ca:'Nom',   es:'Nombre',  en:'Name' },
+  'med.detalle.edad':    { ca:'Edat',  es:'Edad',    en:'Age' },
+  'med.detalle.sexo':    { ca:'Sexe',  es:'Sexo',    en:'Sex' },
+  'med.detalle.peso':    { ca:'Pes (kg)',       es:'Peso (kg)',       en:'Weight (kg)' },
+  'med.detalle.estatura':{ ca:'Estatura (cm)',  es:'Estatura (cm)',   en:'Height (cm)' },
+  'med.detalle.data_medicion':{ ca:'Data mesura',  es:'Fecha medición', en:'Date measured' },
+  'med.tabla.plecs_titulo':{ ca:'PLECS (mm)',   es:'PLIEGUES (mm)',   en:'SKINFOLDS (mm)' },
+  'med.tabla.suma6plecs':{ ca:'Suma 6 Plecs',   es:'Suma 6 Pliegues', en:'Sum of 6 Skinfolds' },
+  'med.ratio.cintura_maluc':{ ca:'Ratio Cintura/Maluc: {val}',  es:'Ratio Cintura/Cadera: {val}', en:'Waist/Hip Ratio: {val}' },
+  'med.ratio.plecs_pes': { ca:'Ratio Plecs/Pes: {val}',  es:'Ratio Pliegues/Peso: {val}', en:'Skinfolds/Weight Ratio: {val}' },
+  'med.detalle.notas':   { ca:'Notes: {texto}',  es:'Notas: {texto}',  en:'Notes: {texto}' },
+
+  // PDF resumen última rutina
+  'resum.cover.titulo':  { ca:'RESUM DE LA RUTINA',  es:'RESUMEN DE LA RUTINA',  en:'ROUTINE SUMMARY' },
+  'resum.kpi.sesiones':  { ca:'SESSIONS',    es:'SESIONES',    en:'SESSIONS' },
+  'resum.kpi.iteraciones':{ ca:'ITERACIONS', es:'ITERACIONES', en:'ITERATIONS' },
+  'resum.kpi.estado':    { ca:'ESTAT',       es:'ESTADO',      en:'STATUS' },
+  'resum.estado.en_curso':{ ca:'en curs',    es:'en curso',    en:'in progress' },
+  'resum.records.titulo':{ ca:'RÈCORDS DE LA RUTINA', es:'RÉCORDS DE LA RUTINA', en:'ROUTINE RECORDS' },
+  'resum.progres.titulo':{ ca:'PROGRÉS PER EXERCICI - VOLUM (kg x reps)', es:'PROGRESO POR EJERCICIO - VOLUMEN (kg x reps)', en:'PROGRESS BY EXERCISE - VOLUME (kg x reps)' },
+  'resum.progres.titulo_cont':{ ca:'PROGRÉS PER EXERCICI (cont.)', es:'PROGRESO POR EJERCICIO (cont.)', en:'PROGRESS BY EXERCISE (cont.)' },
+  'resum.progres.titulo_vacio':{ ca:'PROGRÉS PER EXERCICI', es:'PROGRESO POR EJERCICIO', en:'PROGRESS BY EXERCISE' },
+  'resum.progres.vacio_msg':{ ca:'Encara no hi ha sessions amb dades registrades en aquesta rutina.', es:'Aún no hay sesiones con datos registrados en esta rutina.', en:"No sessions with data have been recorded in this routine yet." },
+  'resum.notas.titulo':  { ca:"NOTES DE L'ENTRENADOR", es:'NOTAS DEL ENTRENADOR', en:'COACH NOTES' },
+
+  // PDF rutina BIIO con histórico
+  'rut.kpi.sesiones_reg':{ ca:'SESSIONS REGISTRADES', es:'SESIONES REGISTRADAS', en:'RECORDED SESSIONS' },
+  'rut.kpi.de_x':        { ca:'de {total} ({micros} microcicles × {entrenos} entrenaments)', es:'de {total} ({micros} microciclos × {entrenos} entrenos)', en:'of {total} ({micros} microcycles × {entrenos} workouts)' },
+  'rut.desc.titulo':     { ca:'LA RUTINA',  es:'LA RUTINA',  en:'THE ROUTINE' },
+  'rut.page.entrenamiento':{ ca:'ENTRENAMENT {letra}{sufijo}', es:'ENTRENAMIENTO {letra}{sufijo}', en:'WORKOUT {letra}{sufijo}' },
+  'rut.page.entrenamiento_cont':{ ca:'ENTRENAMENT {letra} (cont.)', es:'ENTRENAMIENTO {letra} (cont.)', en:'WORKOUT {letra} (cont.)' },
+  'rut.col.fecha':       { ca:'Data',         es:'Fecha',         en:'Date' },
+  'rut.col.microciclo':  { ca:'Microcicle',   es:'Microciclo',    en:'Microcycle' },
+  'rut.col.series':      { ca:'Sèries',       es:'Series',        en:'Sets' },
+  'rut.col.kg':          { ca:'Kg',           es:'Kg',            en:'Kg' },
+  'rut.col.reps':        { ca:'Reps',         es:'Reps',          en:'Reps' },
+  'rut.col.descanso':    { ca:'Descans',      es:'Descanso',      en:'Rest' },
+  'rut.aer.tipo':        { ca:'Tipus',        es:'Tipo',          en:'Type' },
+  'rut.aer.tiempo':      { ca:'Temps',        es:'Tiempo',        en:'Time' },
+  'rut.aer.intensidad':  { ca:'Intensitat',   es:'Intensidad',    en:'Intensity' },
+  'rut.aer.linea':       { ca:'Aeròbic · {label}',  es:'Aeróbica · {label}',  en:'Cardio · {label}' },
+  'rut.aer.linea_cont':  { ca:'         · {label}', es:'         · {label}',  en:'         · {label}' },
+
+  // PDF histórico
+  'hist.cover.titulo':   { ca:'HISTÒRIC COMPLET',   es:'HISTÓRICO COMPLETO',   en:'COMPLETE HISTORY' },
+  'hist.kpi.rutinas':    { ca:'RUTINES',       es:'RUTINAS',       en:'ROUTINES' },
+  'hist.kpi.sesiones':   { ca:'SESSIONS',      es:'SESIONES',      en:'SESSIONS' },
+  'hist.kpi.mediciones': { ca:'MESURES',       es:'MEDICIONES',    en:'MEASUREMENTS' },
+  'hist.kpi.peso_actual':{ ca:'PES ACTUAL',    es:'PESO ACTUAL',   en:'CURRENT WEIGHT' },
+  'hist.pr.titulo':      { ca:'RÈCORDS PERSONALS', es:'RÉCORDS PERSONALES', en:'PERSONAL RECORDS' },
+  'hist.pr.subtitulo':   { ca:'PR màxim aconseguit per exercici · comparat amb la primera rutina de l\'històric', es:'PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico', en:'Max PR achieved per exercise · compared to the first routine in history' },
+  'hist.pr.kg_pr':       { ca:'kg PR',  es:'kg PR',  en:'kg PR' },
+  'hist.pr.en_asig':     { ca:'a {rutina}',  es:'en {rutina}',  en:'in {rutina}' },
+  'hist.pr.vs_asig':     { ca:'vs {rutina} ({kg} kg)',  es:'vs {rutina} ({kg} kg)',  en:'vs {rutina} ({kg} kg)' },
+  'hist.pr.ultima':      { ca:'Última: {fecha}',  es:'Última: {fecha}',  en:'Last: {fecha}' },
+  'hist.rutinas.titulo': { ca:'HISTORIAL DE RUTINES',     es:'HISTORIAL DE RUTINAS',     en:'ROUTINE HISTORY' },
+  'hist.rutinas.titulo_cont':{ ca:'HISTORIAL DE RUTINES (cont.)', es:'HISTORIAL DE RUTINAS (cont.)', en:'ROUTINE HISTORY (cont.)' },
+  'hist.rutinas.subtitulo':{ ca:'Línia de temps cronològica · cada rutina amb els seus PRs principals', es:'Línea de tiempo cronológica · cada rutina con sus PRs principales', en:'Chronological timeline · each routine with its main PRs' },
+  'hist.estado.en_curso':{ ca:'en curs', es:'en curso', en:'in progress' },
+  'hist.rutinas.col.sesiones':   { ca:'Sessions',     es:'Sesiones',     en:'Sessions' },
+  'hist.rutinas.col.iteraciones':{ ca:'Iteracions',   es:'Iteraciones',  en:'Iterations' },
+  'hist.rutinas.col.prs':        { ca:'PRs DE LA RUTINA', es:'PRS DE LA RUTINA', en:'ROUTINE PRs' },
+  'hist.progres.titulo':         { ca:'PROGRESSIÓ PER EXERCICI — VOLUM (kg × reps)', es:'PROGRESIÓN POR EJERCICIO — VOLUMEN (kg × reps)', en:'PROGRESS BY EXERCISE — VOLUME (kg × reps)' },
+  'hist.progres.titulo_cont':    { ca:'PROGRESSIÓ PER EXERCICI (cont.)', es:'PROGRESIÓN POR EJERCICIO (cont.)', en:'PROGRESS BY EXERCISE (cont.)' },
+  'hist.progres.subtitulo':      { ca:'Una línia per exercici · totes les sessions del client · pic marcat en taronja', es:'Una línea por ejercicio · todas las sesiones del cliente · pico marcado en naranja', en:'One line per exercise · all client sessions · peak marked in orange' },
+  'hist.vacio_msg':              { ca:'Aquest client encara no té rutines ni mesures registrades.', es:'Este cliente aún no tiene rutinas ni mediciones registradas.', en:'This client has no recorded routines or measurements yet.' }
+};
+
+// Devuelve el idioma del cliente, con fallback a 'ca' (catalán por defecto).
+function tobLangOf(cli){ return (cli && cli.idioma) || 'ca'; }
+
+// Traduce una key con interpolación tipo "{var}". Si la key no existe,
+// devuelve la propia key como fallback visible (para detectar typos).
+function tobT(key, lang, params){
+  const entry = TOB_PDF_I18N[key];
+  if(!entry){ console.warn('[i18n] key faltante:', key); return key; }
+  let s = entry[lang] || entry.ca || entry.es || key;
+  if(params){
+    Object.keys(params).forEach(k => {
+      s = s.replace(new RegExp('\\{'+k+'\\}','g'), params[k] == null ? '' : String(params[k]));
+    });
+  }
+  return s;
+}
 
 let tobDB = { clientes: [], plantillas: [] };
 let tobCurrentAsig = null;     // {clienteId, asigId}
@@ -419,6 +561,8 @@ function tobOpenClienteModal(cli){
   document.getElementById('tobCliContacto').value = cli?.contacto || '';
   document.getElementById('tobCliAlta').value = cli?.alta || new Date().toISOString().slice(0,10);
   document.getElementById('tobCliNacimiento').value = cli?.nacimiento || '';
+  // Idioma de los PDFs (default 'ca' catalán para clientes nuevos)
+  document.getElementById('tobCliIdioma').value = cli?.idioma || 'ca';
   const sel = document.getElementById('tobCliPlantilla');
   sel.innerHTML = '<option value="">— Ninguna —</option>' +
     tobDB.plantillas.map(p => `<option value="${p.id}">${tobEsc(p.nombre)}</option>`).join('');
@@ -445,7 +589,9 @@ function tobSaveCliente(){
     sexo: document.getElementById('tobCliSexo').value,
     contacto: document.getElementById('tobCliContacto').value.trim(),
     alta: document.getElementById('tobCliAlta').value,
-    nacimiento: document.getElementById('tobCliNacimiento').value || ''
+    nacimiento: document.getElementById('tobCliNacimiento').value || '',
+    // Idioma de los PDFs entregables ('ca' / 'es' / 'en'). Default catalán.
+    idioma: document.getElementById('tobCliIdioma').value || 'ca'
   };
   const editId = document.getElementById('tobClienteModalBg').dataset.editId;
   if(editId){
@@ -1255,18 +1401,19 @@ async function tobGeneratePdf(){
   }
   function gap(n){ y -= n; if(y < 60){ page = doc.addPage([W,H]); y = H - 30; } }
 
-  text(`${cli?.nombre||''} — ${tobRutinaShortName(pl)}  ·  Iteración ${it?.numero||1}`, { bold:true, size:13 });
+  const L = tobLangOf(cli);
+  text(`${cli?.nombre||''} — ${tobRutinaShortName(pl)}  ·  ${tobT('cover.iteracion', L, { numero: it?.numero||1 })}`, { bold:true, size:13 });
   gap(20);
 
   const microHeaders = Array.from({length: tobNumMicroOf(a?.rutina)}, (_,i)=>i+1);
 
   (a.rutina?.entrenos||[]).forEach(en => {
     if(y < 200){ page = doc.addPage([W,H]); y = H - 30; }
-    text(`ENTRENO ${en.letra}`, { bold:true, size:11, color: rgb(0.96,0.65,0.13) });
+    text(tobT('it.entreno', L, { letra: en.letra }), { bold:true, size:11, color: rgb(0.96,0.65,0.13) });
     gap(15);
 
     // Fila fechas
-    text('Fecha:', { size: 8 });
+    text(tobT('it.label.fecha', L), { size: 8 });
     microHeaders.forEach((mn, i) => {
       const x = MX + 80 + i*120;
       const tf = form.createTextField(`fecha_${mn}_${en.id}`);
@@ -1281,7 +1428,7 @@ async function tobGeneratePdf(){
       text(ej.nombre + (ej.subtitle ? ' — ' + ej.subtitle : ''), { bold:true, size:9 });
       gap(13);
       // Plan
-      text('Plan:', { size: 7, color: rgb(0.4,0.4,0.4) });
+      text(tobT('it.label.plan', L), { size: 7, color: rgb(0.4,0.4,0.4) });
       microHeaders.forEach((mn, i) => {
         const x = MX + 80 + i*120;
         const plan = tobPlanFor(ej, mn);
@@ -1296,7 +1443,9 @@ async function tobGeneratePdf(){
 
       for(let s=0; s<linesN; s++){
         if(y < 30){ page = doc.addPage([W,H]); y = H - 30; }
-        const lbl = isCirc ? (ej.circuitoLineas?.[s] || `${s+1}º Ej.`) : `${s+1}ª Serie`;
+        const lbl = isCirc
+          ? (ej.circuitoLineas?.[s] || tobT('it.ej.circuito_linea', L, { n: s+1 }))
+          : tobT('it.ej.serie', L, { n: s+1 });
         page.drawText(lbl, { x: MX, y, size: 8, font, color: rgb(0.3,0.3,0.3) });
         microHeaders.forEach((mn, i) => {
           const x = MX + 80 + i*120;
@@ -1317,7 +1466,11 @@ async function tobGeneratePdf(){
     // Aeróbica
     ['tipo','tiempo','intensidad'].forEach(field => {
       if(y < 30){ page = doc.addPage([W,H]); y = H - 30; }
-      const lblMap = {tipo:'Aeróbica tipo',tiempo:'  tiempo',intensidad:'  intensidad'};
+      const lblMap = {
+        tipo:       tobT('it.aer.tipo', L),
+        tiempo:     tobT('it.aer.tiempo', L),
+        intensidad: tobT('it.aer.intensidad', L)
+      };
       text(lblMap[field], { size:7, color: rgb(0.4,0.4,0.4) });
       microHeaders.forEach((mn, i) => {
         const x = MX + 80 + i*120;
@@ -3150,21 +3303,23 @@ async function tobBuildPdfMediciones(cli){
   const { font, fontB, fontO, ORANGE, BLACK, GRAY, GRAY_DK, W, H, rgb } = ctx;
   const meds = tobMedsSorted(cli);
   const first = meds[0], last = meds[meds.length-1];
+  const L = tobLangOf(cli);
+  const vsInicio = tobT('med.kpi.vs_inicio', L);
 
   // ─── COVER ───
   let page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: 60, height: H, color: ORANGE });
   page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: 100, y: H-156, size: 56, font: fontB, color: BLACK });
-  page.drawText("INFORME D'EVOLUCIO - COMPOSICIO CORPORAL", { x: 100, y: H-180, size: 12, font, color: GRAY });
+  page.drawText(tobT('med.cover.titulo', L), { x: 100, y: H-180, size: 12, font, color: GRAY });
   page.drawText(cli.nombre || '-', { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
-  page.drawText(`Periode: ${first.fecha || '?'}  -  ${last.fecha || '?'}`, { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
+  page.drawText(tobT('cover.periodo', L, { desde: first.fecha || '?', hasta: last.fecha || '?' }), { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
   const pesDelta = (last.pes != null && first.pes != null) ? (+last.pes - +first.pes) : null;
   const sumDelta = tobMedSum(last) - tobMedSum(first);
   const kpisCover = [
-    ['MEDICIONS', String(meds.length), ''],
-    ['PES ACTUAL', (last.pes != null ? last.pes : '-') + ' kg', pesDelta != null ? `${pesDelta>=0?'+':''}${(+pesDelta.toFixed(1))} kg` : ''],
-    ['SUMA 6 PLECS', tobMedSum(last).toFixed(1) + ' mm', `${sumDelta>=0?'+':''}${sumDelta.toFixed(1)} mm`]
+    [tobT('med.kpi.mediciones', L), String(meds.length), ''],
+    [tobT('med.kpi.peso_actual', L), (last.pes != null ? last.pes : '-') + tobT('unit.kg', L), pesDelta != null ? `${pesDelta>=0?'+':''}${(+pesDelta.toFixed(1))}${tobT('unit.kg', L)}` : ''],
+    [tobT('med.kpi.suma_6_plecs', L), tobMedSum(last).toFixed(1) + tobT('unit.mm', L), `${sumDelta>=0?'+':''}${sumDelta.toFixed(1)}${tobT('unit.mm', L)}`]
   ];
   const kpiW = 200, kpiH = 88, kpiGap = 16, kpiY = 165;
   kpisCover.forEach((kp, i) => {
@@ -3173,7 +3328,7 @@ async function tobBuildPdfMediciones(cli){
     page.drawRectangle({ x, y: kpiY+kpiH-4, width: kpiW, height: 4, color: ORANGE });
     page.drawText(kp[0], { x: x+14, y: kpiY+kpiH-26, size: 9, font: fontB, color: GRAY });
     page.drawText(kp[1], { x: x+14, y: kpiY+32, size: 24, font: fontB, color: BLACK });
-    if(kp[2]) page.drawText(kp[2] + ' vs inici', { x: x+14, y: kpiY+14, size: 8, font, color: GRAY });
+    if(kp[2]) page.drawText(kp[2] + vsInicio, { x: x+14, y: kpiY+14, size: 8, font, color: GRAY });
   });
   page.drawText('FULL TRAINING - BIIO System', { x: W-230, y: 40, size: 9, font: fontO, color: GRAY });
 
@@ -3203,19 +3358,20 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
   const meds = tobMedsSorted(cli);
   if(!meds.length) return;
   const cfgs = tobBuildMedChartConfigs(cli, true);
+  const L = tobLangOf(cli);
 
   // ─── PÁGINA EVOLUCIÓN: 4 line charts 2×2 ───
   let page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'EVOLUCIO DE MESURES', cli.nombre || '', W, H);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('med.evol.titulo', L), cli.nombre || '', W, H);
   {
     const chW = 380, chH = 215, gapX = 30, gapY = 24;
     const ox = (W - (chW*2 + gapX)) / 2;
     const oy = H - 80;
     const slots = [
-      ['peso',  'PES CORPORAL (kg)'],
-      ['plecs', 'SUMATORI DE PLECS (mm)'],
-      ['pp',    'RATIO PLECS / PES'],
-      ['cc',    'RATIO CINTURA / MALUC']
+      ['peso',  tobT('med.evol.peso_corporal', L)],
+      ['plecs', tobT('med.evol.sum_plecs', L)],
+      ['pp',    tobT('med.evol.ratio_plecs_pes', L)],
+      ['cc',    tobT('med.evol.ratio_cintura_maluc', L)]
     ];
     for(let i = 0; i < slots.length; i++){
       const [k, title] = slots[i];
@@ -3227,19 +3383,19 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
       try {
         const png = await tobChartToPng(cfgs[k], 760, 430);
         page.drawImage(await doc.embedPng(png), { x, y: yTop - chH, width: chW, height: chH });
-      } catch(e){ console.warn('chart', k, e); page.drawText('(grafica no disponible)', { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
+      } catch(e){ console.warn('chart', k, e); page.drawText(tobT('error.no_grafica', L), { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
     }
   }
 
   // ─── PÁGINA COMPOSICIÓN: perim bar + radar plecs ───
   page = doc.addPage([W, H]);
-  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPOSICIO - INICI vs ACTUAL', cli.nombre || '', W, H);
+  drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('med.comp.titulo', L), cli.nombre || '', W, H);
   {
     const chW = 380, chH = 380, gapX = 30;
     const ox = (W - (chW*2 + gapX)) / 2;
     const yTop = H - 90;
-    page.drawText('PERIMETRES (cm)', { x: ox, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
-    page.drawText('PLECS CUTANIS (mm)', { x: ox + chW + gapX, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+    page.drawText(tobT('med.comp.perimetros', L), { x: ox, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+    page.drawText(tobT('med.comp.plecs_cutanis', L), { x: ox + chW + gapX, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
     try {
       const png1 = await tobChartToPng(cfgs.perim, 700, 700);
       page.drawImage(await doc.embedPng(png1), { x: ox, y: yTop - chH, width: chW, height: chH });
@@ -3251,20 +3407,29 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
   }
 
   // ─── PÁGINAS DETALLE: una por medición (más reciente primero) ───
-  const sexoTxt = cli.sexo === 'M' ? 'Dona' : cli.sexo === 'H' ? 'Home' : '-';
+  // Convención de datos: H=Hombre/Home/Male, M=Mujer/Dona/Female.
+  const sexoTxt = cli.sexo === 'M' ? tobT('med.sexo.dona', L) : cli.sexo === 'H' ? tobT('med.sexo.home', L) : '-';
   for(let idx = meds.length - 1; idx >= 0; idx--){
     const m = meds[idx];
     const prev = idx > 0 ? meds[idx-1] : null;
     page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'COMPOSICIO CORPORAL', `${cli.nombre || ''}  -  ${m.fecha || ''}`, W, H);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('med.detalle.titulo', L), `${cli.nombre || ''}  -  ${m.fecha || ''}`, W, H);
 
     let yy = H - 78;
     page.drawRectangle({ x: 30, y: yy-66, width: W-60, height: 66, color: rgb(0.97,0.97,0.97) });
     page.drawRectangle({ x: 30, y: yy-4, width: W-60, height: 4, color: ORANGE });
     const edat = tobMedAge(cli, m.fecha);
-    const dadesA = [['Nom', cli.nombre || '-'], ['Edat', edat != null ? String(edat) : '-'], ['Sexe', sexoTxt]];
+    const dadesA = [
+      [tobT('med.detalle.nombre', L), cli.nombre || '-'],
+      [tobT('med.detalle.edad', L),   edat != null ? String(edat) : '-'],
+      [tobT('med.detalle.sexo', L),   sexoTxt]
+    ];
     const pesTxt = (m.pes != null ? m.pes : '-') + (prev && m.pes!=null && prev.pes!=null ? `   (${(+m.pes - +prev.pes)>=0?'+':''}${(+(m.pes - prev.pes)).toFixed(1)})` : '');
-    const dadesB = [['Pes (kg)', pesTxt], ['Estatura (cm)', m.estatura != null ? m.estatura : '-'], ['Data de medicio', m.fecha || '-']];
+    const dadesB = [
+      [tobT('med.detalle.peso', L),         pesTxt],
+      [tobT('med.detalle.estatura', L),     m.estatura != null ? m.estatura : '-'],
+      [tobT('med.detalle.data_medicion', L), m.fecha || '-']
+    ];
     dadesA.forEach((d, i) => {
       page.drawText(d[0], { x: 48, y: yy-22-i*16, size: 8, font: fontB, color: GRAY });
       page.drawText(String(d[1]), { x: 135, y: yy-22-i*16, size: 9, font, color: BLACK });
@@ -3281,7 +3446,9 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
       page.drawRectangle({ x, y: tableTop-2, width: w, height: 18, color: ORANGE });
       page.drawText(title, { x: x+10, y: tableTop+3, size: 9, font: fontB, color: BLACK });
       let ry = tableTop - 18;
-      defs.forEach(([k, label], i) => {
+      defs.forEach((def, i) => {
+        const k = def[0];
+        const label = tobMedLabel(def, L);  // L = idioma del cliente (en scope)
         if(i % 2 === 1) page.drawRectangle({ x, y: ry-4, width: w, height: 15, color: rgb(0.96,0.96,0.96) });
         const cur = valObj?.[k];
         const pv  = prevObj?.[k];
@@ -3304,14 +3471,16 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
       return ry;
     };
     const sum = tobMedSum(m), prevSum = prev ? tobMedSum(prev) : null;
-    drawMetricTable(30, colW, 'PLECS (mm)', TOB_MED_PLECS, m.plecs, prev?.plecs,
-      ['Suma 6 Plecs', sum.toFixed(1), prevSum != null ? +(sum - prevSum).toFixed(1) : null]);
-    drawMetricTable(30 + colW + 30, colW, 'PERIMETRES (cm)', TOB_MED_PERIM, m.perimetres, prev?.perimetres, null);
+    drawMetricTable(30, colW, tobT('med.tabla.plecs_titulo', L), TOB_MED_PLECS, m.plecs, prev?.plecs,
+      [tobT('med.tabla.suma6plecs', L), sum.toFixed(1), prevSum != null ? +(sum - prevSum).toFixed(1) : null]);
+    drawMetricTable(30 + colW + 30, colW, tobT('med.comp.perimetros', L), TOB_MED_PERIM, m.perimetres, prev?.perimetres, null);
 
     const r = tobMedRatios(m);
-    const rTxt = `Ratio Cintura/Maluc: ${r.cinturaCadera != null ? r.cinturaCadera.toFixed(2) : '-'}        Ratio Plecs/Pes: ${r.plecsPes != null ? r.plecsPes.toFixed(2) : '-'}`;
+    const cm = r.cinturaCadera != null ? r.cinturaCadera.toFixed(2) : '-';
+    const pp = r.plecsPes != null ? r.plecsPes.toFixed(2) : '-';
+    const rTxt = `${tobT('med.ratio.cintura_maluc', L, { val: cm })}        ${tobT('med.ratio.plecs_pes', L, { val: pp })}`;
     page.drawText(rTxt, { x: 30, y: 58, size: 9, font: fontB, color: GRAY_DK });
-    if(m.notas) page.drawText('Notes: ' + tobTrunc(m.notas, 120), { x: 30, y: 42, size: 8, font: fontO, color: GRAY });
+    if(m.notas) page.drawText(tobT('med.detalle.notas', L, { texto: tobTrunc(m.notas, 120) }), { x: 30, y: 42, size: 8, font: fontO, color: GRAY });
   }
 }
 
@@ -3351,6 +3520,7 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
   const W = 842, H = 595;
   const rutinaShort = tobRutinaShortName(pl);
   const stats = tobCalcAsigStats(a);
+  const L = tobLangOf(cli);
 
   // ─── COVER ───
   let page = doc.addPage([W, H]);
@@ -3358,16 +3528,16 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
   const LX = 80;
   page.drawText('FULL', { x: LX, y: H-95, size: 48, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: LX, y: H-143, size: 48, font: fontB, color: BLACK });
-  page.drawText('RESUM DE LA RUTINA', { x: LX, y: H-165, size: 12, font, color: GRAY });
+  page.drawText(tobT('resum.cover.titulo', L), { x: LX, y: H-165, size: 12, font, color: GRAY });
   page.drawText(cli?.nombre || '-', { x: LX, y: H-220, size: 30, font: fontB, color: BLACK });
   page.drawText(rutinaShort, { x: LX, y: H-246, size: 14, font, color: GRAY_DK });
   if(pl) page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' - ' : ''}${pl.categoria || ''}`, { x: LX, y: H-264, size: 10, font: fontO, color: GRAY });
-  page.drawText(`Periode: ${a.fechaInicio || '?'}  -  ${stats.ultimaFecha || '?'}`, { x: LX, y: H-282, size: 10, font, color: GRAY_DK });
+  page.drawText(tobT('cover.periodo', L, { desde: a.fechaInicio || '?', hasta: stats.ultimaFecha || '?' }), { x: LX, y: H-282, size: 10, font, color: GRAY_DK });
 
   const kpis = [
-    ['SESSIONS', String(stats.sesiones)],
-    ['ITERACIONS', String((a.iteraciones||[]).length)],
-    ['ESTAT', (a.estado || 'en curs').replace('_',' ').toUpperCase()]
+    [tobT('resum.kpi.sesiones', L),    String(stats.sesiones)],
+    [tobT('resum.kpi.iteraciones', L), String((a.iteraciones||[]).length)],
+    [tobT('resum.kpi.estado', L),      (a.estado || tobT('resum.estado.en_curso', L)).replace('_',' ').toUpperCase()]
   ];
   const kpiW = 180, kpiH = 84, kpiGap = 16, kpiY = 170;
   kpis.forEach((kp, i) => {
@@ -3380,11 +3550,11 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
 
   const prs = Object.entries(stats.maxByEj).slice(0, 6);
   if(prs.length){
-    page.drawText('RECORDS DE LA RUTINA', { x: W-330, y: H-95, size: 10, font: fontB, color: ORANGE });
+    page.drawText(tobT('resum.records.titulo', L), { x: W-330, y: H-95, size: 10, font: fontB, color: ORANGE });
     prs.forEach((pr, i) => {
       const py = H-118 - i*20;
       page.drawText(tobTrunc(pr[0], 26), { x: W-330, y: py, size: 9, font, color: GRAY_DK });
-      page.drawText(`${pr[1]} kg`, { x: W-115, y: py, size: 10, font: fontB, color: BLACK });
+      page.drawText(`${pr[1]}${tobT('unit.kg', L)}`, { x: W-115, y: py, size: 10, font: fontB, color: BLACK });
     });
   }
   page.drawText('FULL TRAINING - BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
@@ -3406,14 +3576,14 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
 
   if(!chartItems.length){
     page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'PROGRES PER EXERCICI', rutinaShort, W, H);
-    page.drawText('Encara no hi ha sessions amb dades registrades en aquesta rutina.', { x: 30, y: H-90, size: 11, font: fontO, color: GRAY });
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('resum.progres.titulo_vacio', L), rutinaShort, W, H);
+    page.drawText(tobT('resum.progres.vacio_msg', L), { x: 30, y: H-90, size: 11, font: fontO, color: GRAY });
   } else {
     const perPage = 4, chW = 380, chH = 215, gapX = 30, gapY = 26;
     for(let p = 0; p < chartItems.length; p += perPage){
       page = doc.addPage([W, H]);
       drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY,
-        p === 0 ? 'PROGRES PER EXERCICI - VOLUM (kg x reps)' : 'PROGRES PER EXERCICI (cont.)', rutinaShort, W, H);
+        p === 0 ? tobT('resum.progres.titulo', L) : tobT('resum.progres.titulo_cont', L), rutinaShort, W, H);
       const slice = chartItems.slice(p, p+perPage);
       const ox = (W - (chW*2 + gapX)) / 2;
       const oy = H - 78;
@@ -3425,14 +3595,14 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
         try {
           const png = await tobChartToPng(slice[i].cfg, 760, 430);
           page.drawImage(await doc.embedPng(png), { x, y: yTop - chH, width: chW, height: chH });
-        } catch(e){ console.warn('chart', slice[i].name, e); page.drawText('(grafica no disponible)', { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
+        } catch(e){ console.warn('chart', slice[i].name, e); page.drawText(tobT('error.no_grafica', L), { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
       }
     }
   }
 
   if(a.notas){
     page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'NOTES DE LENTRENADOR', rutinaShort, W, H);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('resum.notas.titulo', L), rutinaShort, W, H);
     let ny = H - 90;
     tobWrapText(a.notas, font, 11, W-80).forEach(l => { page.drawText(l, { x: 40, y: ny, size: 11, font, color: GRAY_DK }); ny -= 16; });
   }
@@ -3537,6 +3707,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
 
   // Nombre rutina sin sufijo "— Hombre"/"— Mujer"
   const rutinaShort = tobRutinaShortName(pl);
+  const L = tobLangOf(cli);
 
   // ─── PÁGINA 1: COVER en 2 columnas ─────
   // Izquierda: logo + cliente + rutina + KPI. Derecha: descripción completa.
@@ -3551,19 +3722,19 @@ async function tobBuildPdfRutina(cli, a, pl, it){
 
   page.drawText(cli?.nombre || '—', { x: LX, y: H_L - 230, size: 30, font: fontB, color: BLACK });
   page.drawText(rutinaShort, { x: LX, y: H_L - 256, size: 14, font, color: GRAY_DK });
-  page.drawText(`Iteración ${it?.numero || 1}  ·  Inicio: ${a.fechaInicio || ''}`, { x: LX, y: H_L - 274, size: 10, font: fontO, color: GRAY });
+  page.drawText(`${tobT('cover.iteracion', L, { numero: it?.numero || 1 })}  ·  ${tobT('cover.inicio', L, { fecha: a.fechaInicio || '' })}`, { x: LX, y: H_L - 274, size: 10, font: fontO, color: GRAY });
 
   // KPI sesiones
   const statsIt = tobCalcItStats(a, it);
   const kpiX = LX, kpiY = 180, kpiW = 230, kpiH = 100;
   page.drawRectangle({ x: kpiX, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
   page.drawRectangle({ x: kpiX, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
-  page.drawText('SESIONES REGISTRADAS', { x: kpiX+16, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
+  page.drawText(tobT('rut.kpi.sesiones_reg', L), { x: kpiX+16, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
   page.drawText(String(statsIt.sesiones), { x: kpiX+16, y: kpiY+30, size: 40, font: fontB, color: BLACK });
   // Total dinámico: numMicro × número de entrenos (varía por plantilla)
   const _Npdf = tobNumMicroOf(a.rutina);
   const _Epdf = (a.rutina?.entrenos || []).length || 2;
-  page.drawText(`de ${_Npdf * _Epdf} (${_Npdf} microciclos × ${_Epdf} entrenos)`, { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
+  page.drawText(tobT('rut.kpi.de_x', L, { total: _Npdf * _Epdf, micros: _Npdf, entrenos: _Epdf }), { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
 
   page.drawText('FULL TRAINING · BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
 
@@ -3572,7 +3743,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
     const RX = 360;
     const rightW = W_L - RX - 50;
     page.drawRectangle({ x: RX - 20, y: 50, width: 1.5, height: H_L - 130, color: rgb(0.88,0.88,0.88) });
-    page.drawText('LA RUTINA', { x: RX, y: H_L - 70, size: 16, font: fontB, color: ORANGE });
+    page.drawText(tobT('rut.desc.titulo', L), { x: RX, y: H_L - 70, size: 16, font: fontB, color: ORANGE });
     let dy = H_L - 100;
     dy = tobRenderDescription(page, pl.descripcion, RX, dy, rightW, font, fontB, ORANGE, GRAY_DK, rgb);
   }
@@ -3580,7 +3751,8 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   // ─── PÁGINAS DETALLE POR ENTRENO (con FORM FIELDS editables) ───
   (a.rutina?.entrenos||[]).forEach(en => {
     page = doc.addPage([W_L, H_L]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra}${en.nombre && en.nombre !== ('Entreno '+en.letra) ? ' — ' + en.nombre : ''}`, rutinaShort, W_L, H_L);
+    const sufijo = (en.nombre && en.nombre !== ('Entreno '+en.letra)) ? ' — ' + en.nombre : '';
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento', L, { letra: en.letra, sufijo }), rutinaShort, W_L, H_L);
     let y = H_L - 90;
 
     const _N = tobNumMicroOf(a?.rutina);
@@ -3592,7 +3764,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
     const tableRight = startX + colW * _N;
 
     // Fila Fecha (form field editable)
-    page.drawText('Fecha', { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
+    page.drawText(tobT('rut.col.fecha', L), { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
     microHeaders.forEach((mn, i) => {
       const cellX = startX + i*colW;
       const ses = it?.sesiones[mn]?.[en.id];
@@ -3603,7 +3775,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
     y -= 24;
 
     // Fila Microciclo
-    page.drawText('Microciclo', { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
+    page.drawText(tobT('rut.col.microciclo', L), { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
     microHeaders.forEach((mn, i) => {
       const cellX = startX + i*colW;
       page.drawText(`${mn}º`, { x: cellX+5, y, size: 11, font: fontB, color: ORANGE });
@@ -3636,7 +3808,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
       // 40pt de margen inferior: paginación + descanso del último ejercicio
       if(y - _blockH < 40){
         page = doc.addPage([W_L, H_L]);
-        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra} (cont.)`, rutinaShort, W_L, H_L);
+        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento_cont', L, { letra: en.letra }), rutinaShort, W_L, H_L);
         y = H_L - 90;
       }
       // Header ejercicio
@@ -3665,11 +3837,11 @@ async function tobBuildPdfRutina(cli, a, pl, it){
       y -= 16;
 
       // Cabecera Kg/Reps por columna
-      page.drawText('Series', { x: 30, y, size: 7, font: fontB, color: GRAY_MD });
+      page.drawText(tobT('rut.col.series', L), { x: 30, y, size: 7, font: fontB, color: GRAY_MD });
       microHeaders.forEach((mn, i) => {
         const cellX = startX + i*colW;
-        page.drawText('Kg', { x: cellX+8, y, size: 7, font: fontB, color: GRAY_MD });
-        page.drawText('Reps', { x: cellX+55, y, size: 7, font: fontB, color: GRAY_MD });
+        page.drawText(tobT('rut.col.kg', L), { x: cellX+8, y, size: 7, font: fontB, color: GRAY_MD });
+        page.drawText(tobT('rut.col.reps', L), { x: cellX+55, y, size: 7, font: fontB, color: GRAY_MD });
       });
       y -= 10;
 
@@ -3679,7 +3851,9 @@ async function tobBuildPdfRutina(cli, a, pl, it){
       const arrName = isCirc ? 'lineas' : 'series';
 
       for(let s = 0; s < linesN; s++){
-        const lbl = isCirc ? (ej.circuitoLineas?.[s] || `${s+1}º`) : `${s+1}ª Serie`;
+        const lbl = isCirc
+          ? (ej.circuitoLineas?.[s] || tobT('it.ej.circuito_linea', L, { n: s+1 }))
+          : tobT('it.ej.serie', L, { n: s+1 });
         page.drawText(lbl.length > 18 ? lbl.slice(0,16)+'…' : lbl, { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
         microHeaders.forEach((mn, i) => {
           const cellX = startX + i*colW;
@@ -3698,7 +3872,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
       }
 
       // Pausa (color visible, NO gris claro)
-      page.drawText('Descanso', { x: 30, y, size: 8, font: fontB, color: rgb(0.6,0.4,0.05) });
+      page.drawText(tobT('rut.col.descanso', L), { x: 30, y, size: 8, font: fontB, color: rgb(0.6,0.4,0.05) });
       microHeaders.forEach((mn, i) => {
         const plan = tobPlanFor(ej, mn);
         page.drawText(plan.pausa || '—', { x: startX + i*colW + 5, y, size: 8, font: fontB, color: BLACK });
@@ -3715,9 +3889,13 @@ async function tobBuildPdfRutina(cli, a, pl, it){
 
     // Aeróbica con form fields
     if(y > 40){
-      ['Tipo', 'Tiempo', 'Intensidad'].forEach((label, fi) => {
+      const aerLabels = [tobT('rut.aer.tipo', L), tobT('rut.aer.tiempo', L), tobT('rut.aer.intensidad', L)];
+      aerLabels.forEach((label, fi) => {
         if(y < 30) return;
-        page.drawText(fi === 0 ? 'Aeróbica · ' + label : '         · ' + label, { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
+        const lineTxt = fi === 0
+          ? tobT('rut.aer.linea', L, { label })
+          : tobT('rut.aer.linea_cont', L, { label });
+        page.drawText(lineTxt, { x: 30, y, size: 8, font: fontB, color: GRAY_DK });
         const field = ['tipo','tiempo','intensidad'][fi];
         microHeaders.forEach((mn, i) => {
           const cellX = startX + i*colW;
@@ -4045,26 +4223,27 @@ async function tobBuildPdfHistorico(cli){
   const hasMediciones = (cli.mediciones  ||[]).length > 0;
   const meds = tobMedsSorted(cli);
   const lastMed = meds[meds.length-1];
+  const L = tobLangOf(cli);
 
   // ─── COVER adaptativa según lo que tenga el cliente ────
   let page = doc.addPage([W, H]);
   page.drawRectangle({ x: 0, y: 0, width: 60, height: H, color: ORANGE });
   page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: 100, y: H-156, size: 56, font: fontB, color: BLACK });
-  page.drawText('HISTÓRICO COMPLETO', { x: 100, y: H-180, size: 13, font, color: GRAY });
+  page.drawText(tobT('hist.cover.titulo', L), { x: 100, y: H-180, size: 13, font, color: GRAY });
   page.drawText(cli.nombre || '—', { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
   const periodo = tobCalcPeriodo(cli);
-  page.drawText(`Período: ${periodo.desde}  —  ${periodo.hasta}`, { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
+  page.drawText(tobT('cover.periodo', L, { desde: periodo.desde, hasta: periodo.hasta }), { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
 
   // KPIs adaptativos
   const kpisCover = [];
   if(hasRutinas){
-    kpisCover.push(['RUTINAS', String((cli.asignaciones||[]).length)]);
-    kpisCover.push(['SESIONES', String(tobCountSesiones(cli))]);
+    kpisCover.push([tobT('hist.kpi.rutinas', L), String((cli.asignaciones||[]).length)]);
+    kpisCover.push([tobT('hist.kpi.sesiones', L), String(tobCountSesiones(cli))]);
   }
   if(hasMediciones){
-    kpisCover.push(['MEDICIONES', String(meds.length)]);
-    if(lastMed?.pes != null) kpisCover.push(['PESO ACTUAL', lastMed.pes + ' kg']);
+    kpisCover.push([tobT('hist.kpi.mediciones', L), String(meds.length)]);
+    if(lastMed?.pes != null) kpisCover.push([tobT('hist.kpi.peso_actual', L), lastMed.pes + tobT('unit.kg', L)]);
   }
   const n = kpisCover.length;
   const kpiW = n <= 2 ? 220 : (n === 3 ? 200 : 160);
@@ -4085,8 +4264,8 @@ async function tobBuildPdfHistorico(cli){
   if(hasRutinas){
     // ─── PR CARDS con contexto (rutina donde se hizo el PR y delta vs inicio) ─
     page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'RÉCORDS PERSONALES', cli.nombre || '', W, H);
-    page.drawText('PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico',
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('hist.pr.titulo', L), cli.nombre || '', W, H);
+    page.drawText(tobT('hist.pr.subtitulo', L),
       { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
     const fichaData = tobBuildFichaData(cli);
     const cardW = 240, prCardH = 150, gap = 20;
@@ -4111,24 +4290,24 @@ async function tobBuildPdfHistorico(cli){
       page.drawRectangle({ x, y: yy - 5, width: cardW, height: 5, color: ORANGE });
       page.drawText(name.toUpperCase(), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
       page.drawText(`${maxPoint.kg}`, { x: x + 14, y: yy - 72, size: 36, font: fontB, color: BLACK });
-      page.drawText('kg PR', { x: x + 14 + tobTextWidth(`${maxPoint.kg}`, 36, fontB) + 6, y: yy - 62, size: 11, font, color: GRAY });
-      page.drawText(`en ${tobTrunc(maxPoint.asigLabel, 28)}`,
+      page.drawText(tobT('hist.pr.kg_pr', L), { x: x + 14 + tobTextWidth(`${maxPoint.kg}`, 36, fontB) + 6, y: yy - 62, size: 11, font, color: GRAY });
+      page.drawText(tobT('hist.pr.en_asig', L, { rutina: tobTrunc(maxPoint.asigLabel, 28) }),
         { x: x + 14, y: yy - 90, size: 8, font: fontO, color: GRAY_DK });
       const deltaColor = deltaKg > 0 ? rgb(0.18, 0.6, 0.4) : deltaKg < 0 ? rgb(0.85, 0.25, 0.25) : GRAY;
       const arrow = deltaKg > 0 ? '+' : deltaKg < 0 ? '-' : '=';
-      page.drawText(`${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))} kg  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%)`,
+      page.drawText(`${arrow} ${deltaKg>=0?'+':''}${(+deltaKg.toFixed(1))}${tobT('unit.kg', L)}  (${deltaPct>=0?'+':''}${deltaPct.toFixed(0)}%)`,
         { x: x + 14, y: yy - 110, size: 9, font: fontB, color: deltaColor });
-      page.drawText(`vs ${tobTrunc(firstPoint.asigLabel, 22)} (${firstPoint.kg} kg)`,
+      page.drawText(tobT('hist.pr.vs_asig', L, { rutina: tobTrunc(firstPoint.asigLabel, 22), kg: firstPoint.kg }),
         { x: x + 14, y: yy - 124, size: 7, font, color: GRAY });
-      page.drawText(`Última: ${lastPoint.fecha || '—'}`,
+      page.drawText(tobT('hist.pr.ultima', L, { fecha: lastPoint.fecha || '—' }),
         { x: x + 14, y: yy - 138, size: 7, font, color: GRAY });
       cardIdx++;
     });
 
     // ─── HISTORIAL DE RUTINAS — cronológico ──
     page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS', cli.nombre || '', W, H);
-    page.drawText('Línea de tiempo cronológica · cada rutina con sus PRs principales',
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('hist.rutinas.titulo', L), cli.nombre || '', W, H);
+    page.drawText(tobT('hist.rutinas.subtitulo', L),
       { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
     let y = H - 90;
     const sorted = [...cli.asignaciones].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
@@ -4136,7 +4315,7 @@ async function tobBuildPdfHistorico(cli){
     sorted.forEach((a, i) => {
       if(y < 95){
         page = doc.addPage([W, H]);
-        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTORIAL DE RUTINAS (cont.)', cli.nombre||'', W, H);
+        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('hist.rutinas.titulo_cont', L), cli.nombre||'', W, H);
         y = H - 90;
       }
       const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
@@ -4158,21 +4337,21 @@ async function tobBuildPdfHistorico(cli){
       }
       const dates = `${a.fechaInicio || '?'}  —  ${stats.ultimaFecha || '?'}`;
       page.drawText(dates, { x: 80, y: y-52, size: 9, font, color: GRAY_DK });
-      const estLbl = (a.estado || 'en curso').toUpperCase();
+      const estLbl = (a.estado || tobT('hist.estado.en_curso', L)).toUpperCase();
       page.drawText(estLbl, { x: 80, y: y-66, size: 8, font: fontB, color: sideColor });
       const midX = 360;
-      page.drawText('Sesiones', { x: midX, y: y-20, size: 7, font, color: GRAY });
+      page.drawText(tobT('hist.rutinas.col.sesiones', L), { x: midX, y: y-20, size: 7, font, color: GRAY });
       page.drawText(String(stats.sesiones), { x: midX, y: y-38, size: 18, font: fontB, color: BLACK });
-      page.drawText('Iteraciones', { x: midX + 80, y: y-20, size: 7, font, color: GRAY });
+      page.drawText(tobT('hist.rutinas.col.iteraciones', L), { x: midX + 80, y: y-20, size: 7, font, color: GRAY });
       page.drawText(String(itN), { x: midX + 80, y: y-38, size: 18, font: fontB, color: BLACK });
       const prsArr = Object.entries(stats.maxByEj).slice(0, 3);
       if(prsArr.length){
-        page.drawText('PRS DE LA RUTINA', { x: W - 280, y: y-20, size: 7, font: fontB, color: ORANGE });
+        page.drawText(tobT('hist.rutinas.col.prs', L), { x: W - 280, y: y-20, size: 7, font: fontB, color: ORANGE });
         prsArr.forEach((pr, j) => {
           const px = W - 280, py = y - 36 - j*14;
           const ejAbbr = (pr[0].length > 18 ? pr[0].slice(0,17)+'…' : pr[0]);
           page.drawText(ejAbbr, { x: px, y: py, size: 9, font, color: GRAY_DK });
-          page.drawText(`${pr[1]} kg`, { x: px + 165, y: py, size: 9, font: fontB, color: BLACK });
+          page.drawText(`${pr[1]}${tobT('unit.kg', L)}`, { x: px + 165, y: py, size: 9, font: fontB, color: BLACK });
         });
       }
       y -= (cardH + 10);
@@ -4192,9 +4371,9 @@ async function tobBuildPdfHistorico(cli){
       for(let p = 0; p < volChartItems.length; p += perPage){
         page = doc.addPage([W, H]);
         drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY,
-          p === 0 ? 'PROGRESIÓN POR EJERCICIO — VOLUMEN (kg × reps)' : 'PROGRESIÓN POR EJERCICIO (cont.)',
+          p === 0 ? tobT('hist.progres.titulo', L) : tobT('hist.progres.titulo_cont', L),
           cli.nombre || '', W, H);
-        page.drawText('Una línea por ejercicio · todas las sesiones del cliente · pico marcado en naranja',
+        page.drawText(tobT('hist.progres.subtitulo', L),
           { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
         const slice = volChartItems.slice(p, p+perPage);
         const ox = (W - (vchW*2 + vgapX)) / 2;
@@ -4209,7 +4388,7 @@ async function tobBuildPdfHistorico(cli){
             page.drawImage(await doc.embedPng(png), { x, y: yTop - vchH, width: vchW, height: vchH });
           } catch(e){
             console.warn('vol chart', slice[i].name, e);
-            page.drawText('(gráfica no disponible)', { x, y: yTop - vchH/2, size: 9, font: fontO, color: GRAY });
+            page.drawText(tobT('error.no_grafica', L), { x, y: yTop - vchH/2, size: 9, font: fontO, color: GRAY });
           }
         }
       }
@@ -4224,8 +4403,8 @@ async function tobBuildPdfHistorico(cli){
   // ═══ ESTADO VACÍO ════════════════════════════════════════════
   if(!hasRutinas && !hasMediciones){
     page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, 'HISTÓRICO COMPLETO', cli.nombre || '', W, H);
-    page.drawText('Este cliente aún no tiene rutinas ni mediciones registradas.',
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('hist.cover.titulo', L), cli.nombre || '', W, H);
+    page.drawText(tobT('hist.vacio_msg', L),
       { x: 30, y: H - 100, size: 12, font: fontO, color: GRAY });
   }
 
