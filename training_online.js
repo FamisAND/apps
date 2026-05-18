@@ -142,20 +142,23 @@ const TOB_EJ_ALIASES = {
 // formato del informe Full Training). [key interna, {ca, es, en}].
 // La etiqueta visible depende del idioma del cliente (cli.idioma).
 const TOB_MED_PLECS = [
-  ['triceps',     { ca:'Tríceps',      es:'Tríceps',       en:'Triceps' }],
-  ['subescapular',{ ca:'Subescapular', es:'Subescapular',  en:'Subscapular' }],
-  ['supraespinal',{ ca:'Supraespinal', es:'Supraespinal',  en:'Suprailiac' }],
-  ['abdominal',   { ca:'Abdominal',    es:'Abdominal',     en:'Abdominal' }],
-  ['cuixa',       { ca:'Cuixa Mitjana',es:'Muslo Medio',   en:'Mid-Thigh' }],
-  ['panxell',     { ca:'Panxell Mitjà',es:'Pantorrilla Media', en:'Mid-Calf' }]
+  ['triceps',     { ca:'Tríceps',         es:'Tríceps',          en:'Triceps' }],
+  ['subescapular',{ ca:'Subescapular',    es:'Subescapular',     en:'Subscapular' }],
+  // ISAK: en inglés el sitio Supraespinale (no confundir con Suprailiac, que es
+  // un sitio distinto en otras escalas como Jackson-Pollock).
+  ['supraespinal',{ ca:'Supraespinal',    es:'Supraespinal',     en:'Supraspinale' }],
+  ['abdominal',   { ca:'Abdominal',       es:'Abdominal',        en:'Abdominal' }],
+  ['cuixa',       { ca:'Cuixa Mitjana',   es:'Muslo Medio',      en:'Mid-Thigh' }],
+  ['panxell',     { ca:'Panxell Mitjà',   es:'Pantorrilla Media',en:'Medial Calf' }]
 ];
 const TOB_MED_PERIM = [
-  ['mesoesternal',{ ca:'Mesoesternal', es:'Mesoesternal',  en:'Mesosternal' }],
-  ['brac',        { ca:'Braç en Tensió', es:'Brazo en Tensión', en:'Flexed Arm' }],
-  ['cintura',     { ca:'Cintura',      es:'Cintura',       en:'Waist' }],
-  ['malucs',      { ca:'Malucs',       es:'Caderas',       en:'Hips' }],
-  ['cuixa',       { ca:'Cuixa Mitjana',es:'Muslo Medio',   en:'Mid-Thigh' }],
-  ['panxell',     { ca:'Panxell Mitjà',es:'Pantorrilla Media', en:'Mid-Calf' }]
+  ['mesoesternal',{ ca:'Mesoesternal',    es:'Mesoesternal',     en:'Mesosternale' }],
+  // ISAK: "Arm girth, flexed and tensed" — versión completa más fiel.
+  ['brac',        { ca:'Braç en Tensió',  es:'Brazo en Tensión', en:'Arm (flexed and tensed)' }],
+  ['cintura',     { ca:'Cintura',         es:'Cintura',          en:'Waist' }],
+  ['malucs',      { ca:'Malucs',          es:'Caderas',          en:'Hips' }],
+  ['cuixa',       { ca:'Cuixa Mitjana',   es:'Muslo Medio',      en:'Mid-Thigh' }],
+  ['panxell',     { ca:'Panxell Mitjà',   es:'Pantorrilla Media',en:'Medial Calf' }]
 ];
 // Helper: devuelve la etiqueta visible de un campo de medición según idioma.
 function tobMedLabel(def, lang){
@@ -173,34 +176,45 @@ const TOB_PDF_I18N = {
   // Cover y comunes
   'cover.iteracion':     { ca:'Iteració {numero}',     es:'Iteración {numero}',  en:'Iteration {numero}' },
   'cover.inicio':        { ca:'Inici: {fecha}',        es:'Inicio: {fecha}',     en:'Start: {fecha}' },
-  'cover.periodo':       { ca:'Període: {desde}  -  {hasta}', es:'Período: {desde}  -  {hasta}', en:'Period: {desde}  -  {hasta}' },
+  'cover.periodo':       { ca:'Període: {desde}  —  {hasta}', es:'Período: {desde}  —  {hasta}', en:'Period: {desde}  —  {hasta}' },
   'unit.kg':             { ca:' kg',  es:' kg',  en:' kg' },
   'unit.mm':             { ca:' mm',  es:' mm',  en:' mm' },
   'unit.cm':             { ca:' cm',  es:' cm',  en:' cm' },
-  'error.no_grafica':    { ca:'(gràfica no disponible)', es:'(gráfica no disponible)', en:'(chart not available)' },
+  // CA: en català es diu "el gràfic" (masc.), no "la gràfica" — calc del castellà.
+  'error.no_grafica':    { ca:'(gràfic no disponible)', es:'(gráfica no disponible)', en:'(chart unavailable)' },
 
   // PDF rutina interactiva (tobGeneratePdf)
   'it.entreno':          { ca:'ENTRENAMENT {letra}', es:'ENTRENAMIENTO {letra}', en:'WORKOUT {letra}' },
   'it.label.fecha':      { ca:'Data:',     es:'Fecha:',  en:'Date:' },
   'it.label.plan':       { ca:'Pla:',      es:'Plan:',   en:'Plan:' },
-  'it.ej.serie':         { ca:'{n}a Sèrie',  es:'{n}ª Serie',  en:'Set {n}' },
-  'it.ej.circuito_linea':{ ca:'{n}è Ej.',    es:'{n}º Ej.',    en:'Ex. {n}' },
-  'it.aer.tipo':         { ca:'Aeròbic tipus', es:'Aeróbica tipo', en:'Cardio type' },
-  'it.aer.tiempo':       { ca:'  temps',       es:'  tiempo',       en:'  time' },
-  'it.aer.intensidad':   { ca:'  intensitat',  es:'  intensidad',   en:'  intensity' },
+  // Forma "Sèrie 1 / Serie 1 / Set 1" es más limpia que "1a Sèrie" y evita el
+  // problema de los ordinals catalans masc./fem. variables (1r, 2n, 3r, 4t...).
+  'it.ej.serie':         { ca:'Sèrie {n}',   es:'Serie {n}',  en:'Set {n}' },
+  // "Ex." abreviatura universal d'exercici/ejercicio/exercise; evita el ordinal
+  // catalán variable que fallaría con {n}=1 ("1è" → "1r" forma correcta).
+  'it.ej.circuito_linea':{ ca:'Ex. {n}',     es:'Ej. {n}',    en:'Ex. {n}' },
+  // Format jerárquic: primer "Aeròbic tipus" com a cabecera de la secció, després
+  // les files secundàries indentades amb 2 espais. Coincideix amb l'estil original
+  // (la font Helvetica del PDF no és monoespai, però els 2 espais visuals donen
+  // la pista jerárquica al lector).
+  'it.aer.tipo':         { ca:'Aeròbic tipus',  es:'Aeróbico tipo',   en:'Cardio type' },
+  'it.aer.tiempo':       { ca:'  temps',        es:'  tiempo',         en:'  time' },
+  'it.aer.intensidad':   { ca:'  intensitat',   es:'  intensidad',     en:'  intensity' },
 
   // PDF mediciones
-  'med.cover.titulo':    { ca:"INFORME D'EVOLUCIÓ - COMPOSICIÓ CORPORAL", es:'INFORME DE EVOLUCIÓN - COMPOSICIÓN CORPORAL', en:'EVOLUTION REPORT - BODY COMPOSITION' },
-  'med.kpi.mediciones':  { ca:'MESURES',     es:'MEDICIONES',  en:'MEASUREMENTS' },
-  'med.kpi.peso_actual': { ca:'PES ACTUAL',  es:'PESO ACTUAL', en:'CURRENT WEIGHT' },
-  'med.kpi.suma_6_plecs':{ ca:'SUMA 6 PLECS',es:'SUMA 6 PLIEGUES', en:'SUM OF 6 SKINFOLDS' },
-  'med.kpi.vs_inicio':   { ca:' vs inici',   es:' vs inicio',  en:' vs start' },
+  'med.cover.titulo':    { ca:"INFORME D'EVOLUCIÓ — COMPOSICIÓ CORPORAL", es:'INFORME DE EVOLUCIÓN — COMPOSICIÓN CORPORAL', en:'PROGRESS REPORT — BODY COMPOSITION' },
+  'med.kpi.mediciones':  { ca:'MESURES',         es:'MEDICIONES',          en:'MEASUREMENTS' },
+  'med.kpi.peso_actual': { ca:'PES ACTUAL',      es:'PESO ACTUAL',         en:'CURRENT WEIGHT' },
+  'med.kpi.suma_6_plecs':{ ca:'SUMA DE 6 PLECS', es:'SUMA DE 6 PLIEGUES',  en:'SUM OF 6 SKINFOLDS' },
+  // CA "vs inici" (sust. inicio) / ES "vs inicio" / EN "vs baseline" (terme
+  // habitual en fitness reports en anglès).
+  'med.kpi.vs_inicio':   { ca:' vs inici',       es:' vs inicio',          en:' vs baseline' },
   'med.evol.titulo':     { ca:'EVOLUCIÓ DE MESURES', es:'EVOLUCIÓN DE MEDIDAS', en:'EVOLUTION OF MEASUREMENTS' },
-  'med.evol.peso_corporal':{ ca:'PES CORPORAL (kg)',     es:'PESO CORPORAL (kg)',  en:'BODY WEIGHT (kg)' },
+  'med.evol.peso_corporal':{ ca:'PES CORPORAL (kg)',  es:'PESO CORPORAL (kg)',  en:'BODY WEIGHT (kg)' },
   'med.evol.sum_plecs':  { ca:'SUMATORI DE PLECS (mm)',  es:'SUMATORIO DE PLIEGUES (mm)', en:'SUM OF SKINFOLDS (mm)' },
-  'med.evol.ratio_plecs_pes':   { ca:'RATIO PLECS / PES',    es:'RATIO PLIEGUES / PESO', en:'SKINFOLDS / WEIGHT RATIO' },
-  'med.evol.ratio_cintura_maluc':{ ca:'RATIO CINTURA / MALUC', es:'RATIO CINTURA / CADERA', en:'WAIST / HIP RATIO' },
-  'med.comp.titulo':     { ca:'COMPOSICIÓ - INICI vs ACTUAL', es:'COMPOSICIÓN - INICIO vs ACTUAL', en:'COMPOSITION - START vs CURRENT' },
+  'med.evol.ratio_plecs_pes':   { ca:'RÀTIO PLECS / PES',    es:'RATIO PLIEGUES / PESO', en:'SKINFOLDS / WEIGHT RATIO' },
+  'med.evol.ratio_cintura_maluc':{ ca:'RÀTIO CINTURA / MALUC', es:'RATIO CINTURA / CADERA', en:'WAIST / HIP RATIO' },
+  'med.comp.titulo':     { ca:'COMPOSICIÓ — INICIAL vs ACTUAL', es:'COMPOSICIÓN — INICIAL vs ACTUAL', en:'COMPOSITION — INITIAL vs CURRENT' },
   'med.comp.perimetros': { ca:'PERÍMETRES (cm)',  es:'PERÍMETROS (cm)',  en:'GIRTHS (cm)' },
   'med.comp.plecs_cutanis':{ ca:'PLECS CUTANIS (mm)', es:'PLIEGUES CUTÁNEOS (mm)', en:'SKINFOLDS (mm)' },
   'med.sexo.dona':       { ca:'Dona',  es:'Mujer',  en:'Female' },
@@ -209,13 +223,13 @@ const TOB_PDF_I18N = {
   'med.detalle.nombre':  { ca:'Nom',   es:'Nombre',  en:'Name' },
   'med.detalle.edad':    { ca:'Edat',  es:'Edad',    en:'Age' },
   'med.detalle.sexo':    { ca:'Sexe',  es:'Sexo',    en:'Sex' },
-  'med.detalle.peso':    { ca:'Pes (kg)',       es:'Peso (kg)',       en:'Weight (kg)' },
-  'med.detalle.estatura':{ ca:'Estatura (cm)',  es:'Estatura (cm)',   en:'Height (cm)' },
-  'med.detalle.data_medicion':{ ca:'Data mesura',  es:'Fecha medición', en:'Date measured' },
-  'med.tabla.plecs_titulo':{ ca:'PLECS (mm)',   es:'PLIEGUES (mm)',   en:'SKINFOLDS (mm)' },
-  'med.tabla.suma6plecs':{ ca:'Suma 6 Plecs',   es:'Suma 6 Pliegues', en:'Sum of 6 Skinfolds' },
-  'med.ratio.cintura_maluc':{ ca:'Ratio Cintura/Maluc: {val}',  es:'Ratio Cintura/Cadera: {val}', en:'Waist/Hip Ratio: {val}' },
-  'med.ratio.plecs_pes': { ca:'Ratio Plecs/Pes: {val}',  es:'Ratio Pliegues/Peso: {val}', en:'Skinfolds/Weight Ratio: {val}' },
+  'med.detalle.peso':    { ca:'Pes (kg)',          es:'Peso (kg)',           en:'Weight (kg)' },
+  'med.detalle.estatura':{ ca:'Estatura (cm)',     es:'Estatura (cm)',       en:'Height (cm)' },
+  'med.detalle.data_medicion':{ ca:'Data de la mesura', es:'Fecha de medición', en:'Measurement date' },
+  'med.tabla.plecs_titulo':{ ca:'PLECS (mm)',      es:'PLIEGUES (mm)',       en:'SKINFOLDS (mm)' },
+  'med.tabla.suma6plecs':{ ca:'Suma de 6 Plecs',   es:'Suma de 6 Pliegues',  en:'Sum of 6 Skinfolds' },
+  'med.ratio.cintura_maluc':{ ca:'Ràtio Cintura/Maluc: {val}', es:'Ratio Cintura/Cadera: {val}', en:'Waist/Hip Ratio: {val}' },
+  'med.ratio.plecs_pes': { ca:'Ràtio Plecs/Pes: {val}',  es:'Ratio Pliegues/Peso: {val}', en:'Skinfolds/Weight Ratio: {val}' },
   'med.detalle.notas':   { ca:'Notes: {texto}',  es:'Notas: {texto}',  en:'Notes: {texto}' },
 
   // PDF resumen última rutina
@@ -246,7 +260,9 @@ const TOB_PDF_I18N = {
   'rut.aer.tipo':        { ca:'Tipus',        es:'Tipo',          en:'Type' },
   'rut.aer.tiempo':      { ca:'Temps',        es:'Tiempo',        en:'Time' },
   'rut.aer.intensidad':  { ca:'Intensitat',   es:'Intensidad',    en:'Intensity' },
-  'rut.aer.linea':       { ca:'Aeròbic · {label}',  es:'Aeróbica · {label}',  en:'Cardio · {label}' },
+  // Unificat amb "Aeròbic" / "Aeróbico" (masc., elidint "exercici"/"ejercicio")
+  // per consistència amb 'it.aer.tipo'.
+  'rut.aer.linea':       { ca:'Aeròbic · {label}',  es:'Aeróbico · {label}',  en:'Cardio · {label}' },
   'rut.aer.linea_cont':  { ca:'         · {label}', es:'         · {label}',  en:'         · {label}' },
 
   // PDF histórico
@@ -256,18 +272,20 @@ const TOB_PDF_I18N = {
   'hist.kpi.mediciones': { ca:'MESURES',       es:'MEDICIONES',    en:'MEASUREMENTS' },
   'hist.kpi.peso_actual':{ ca:'PES ACTUAL',    es:'PESO ACTUAL',   en:'CURRENT WEIGHT' },
   'hist.pr.titulo':      { ca:'RÈCORDS PERSONALS', es:'RÉCORDS PERSONALES', en:'PERSONAL RECORDS' },
-  'hist.pr.subtitulo':   { ca:'PR màxim aconseguit per exercici · comparat amb la primera rutina de l\'històric', es:'PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico', en:'Max PR achieved per exercise · compared to the first routine in history' },
+  'hist.pr.subtitulo':   { ca:"PR màxim assolit per exercici · comparat amb la primera rutina de l'històric", es:'PR máximo alcanzado por ejercicio · comparado con la primera rutina del histórico', en:'Max PR achieved per exercise · compared to the first routine on record' },
   'hist.pr.kg_pr':       { ca:'kg PR',  es:'kg PR',  en:'kg PR' },
   'hist.pr.en_asig':     { ca:'a {rutina}',  es:'en {rutina}',  en:'in {rutina}' },
   'hist.pr.vs_asig':     { ca:'vs {rutina} ({kg} kg)',  es:'vs {rutina} ({kg} kg)',  en:'vs {rutina} ({kg} kg)' },
-  'hist.pr.ultima':      { ca:'Última: {fecha}',  es:'Última: {fecha}',  en:'Last: {fecha}' },
+  // CA: "Darrera" és la forma genuïna catalana per "última" (préstec del castellà).
+  'hist.pr.ultima':      { ca:'Darrera: {fecha}',  es:'Última: {fecha}',  en:'Latest: {fecha}' },
   'hist.rutinas.titulo': { ca:'HISTORIAL DE RUTINES',     es:'HISTORIAL DE RUTINAS',     en:'ROUTINE HISTORY' },
   'hist.rutinas.titulo_cont':{ ca:'HISTORIAL DE RUTINES (cont.)', es:'HISTORIAL DE RUTINAS (cont.)', en:'ROUTINE HISTORY (cont.)' },
   'hist.rutinas.subtitulo':{ ca:'Línia de temps cronològica · cada rutina amb els seus PRs principals', es:'Línea de tiempo cronológica · cada rutina con sus PRs principales', en:'Chronological timeline · each routine with its main PRs' },
   'hist.estado.en_curso':{ ca:'en curs', es:'en curso', en:'in progress' },
   'hist.rutinas.col.sesiones':   { ca:'Sessions',     es:'Sesiones',     en:'Sessions' },
   'hist.rutinas.col.iteraciones':{ ca:'Iteracions',   es:'Iteraciones',  en:'Iterations' },
-  'hist.rutinas.col.prs':        { ca:'PRs DE LA RUTINA', es:'PRS DE LA RUTINA', en:'ROUTINE PRs' },
+  // Unificat amb "PRs" en minúscula la 's' (convenció tipogràfica): més net que "PRS".
+  'hist.rutinas.col.prs':        { ca:'PRs DE LA RUTINA', es:'PRs DE LA RUTINA', en:'ROUTINE PRs' },
   'hist.progres.titulo':         { ca:'PROGRESSIÓ PER EXERCICI — VOLUM (kg × reps)', es:'PROGRESIÓN POR EJERCICIO — VOLUMEN (kg × reps)', en:'PROGRESS BY EXERCISE — VOLUME (kg × reps)' },
   'hist.progres.titulo_cont':    { ca:'PROGRESSIÓ PER EXERCICI (cont.)', es:'PROGRESIÓN POR EJERCICIO (cont.)', en:'PROGRESS BY EXERCISE (cont.)' },
   'hist.progres.subtitulo':      { ca:'Una línia per exercici · totes les sessions del client · pic marcat en taronja', es:'Una línea por ejercicio · todas las sesiones del cliente · pico marcado en naranja', en:'One line per exercise · all client sessions · peak marked in orange' },
@@ -3774,11 +3792,29 @@ async function tobBuildPdfRutina(cli, a, pl, it){
     });
     y -= 24;
 
-    // Fila Microciclo
+    // Fila Microciclo — ordinal sensible al idioma:
+    //   CA masc. → 1r, 2n, 3r, 4t, 5è, 6è, 7è
+    //   ES masc. → 1º, 2º, 3º…
+    //   EN       → 1st, 2nd, 3rd, 4th…
+    const microOrdinal = (n) => {
+      if(L === 'ca'){
+        const map = { 1:'1r', 2:'2n', 3:'3r', 4:'4t', 5:'5è', 6:'6è', 7:'7è' };
+        return map[n] || (n + 'è');
+      }
+      if(L === 'en'){
+        const j = n % 10, k = n % 100;
+        if(k >= 11 && k <= 13) return n + 'th';
+        if(j === 1) return n + 'st';
+        if(j === 2) return n + 'nd';
+        if(j === 3) return n + 'rd';
+        return n + 'th';
+      }
+      return n + 'º';  // es
+    };
     page.drawText(tobT('rut.col.microciclo', L), { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
     microHeaders.forEach((mn, i) => {
       const cellX = startX + i*colW;
-      page.drawText(`${mn}º`, { x: cellX+5, y, size: 11, font: fontB, color: ORANGE });
+      page.drawText(microOrdinal(mn), { x: cellX+5, y, size: 11, font: fontB, color: ORANGE });
     });
     y -= 16;
 
