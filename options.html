@@ -2324,12 +2324,15 @@ function openEntryModal(id=null){
 
   hfCompute();
   document.getElementById('hOverlay').classList.add('on');
-  document.getElementById('hf_pCredito').addEventListener('input', hfCompute);
-  document.getElementById('hf_pCierre').addEventListener('input', hfCompute);
-  document.getElementById('hf_comiOpen').addEventListener('input', hfCompute);
-  document.getElementById('hf_comiClose').addEventListener('input', hfCompute);
-  document.getElementById('hf_contracts').addEventListener('input', hfCompute);
-  document.getElementById('hf_maxRisk').addEventListener('input', hfCompute);
+  // .oninput = (no addEventListener) para no acumular listeners cada vez que
+  // se abre el modal — antes hfCompute se llamaba N veces por keystroke tras
+  // N aperturas.
+  document.getElementById('hf_pCredito').oninput = hfCompute;
+  document.getElementById('hf_pCierre').oninput = hfCompute;
+  document.getElementById('hf_comiOpen').oninput = hfCompute;
+  document.getElementById('hf_comiClose').oninput = hfCompute;
+  document.getElementById('hf_contracts').oninput = hfCompute;
+  document.getElementById('hf_maxRisk').oninput = hfCompute;
   // Cargar patas si la operación las tiene
   if(typeof legsLoad === 'function') legsLoad('hf_legs_container', e.legs || []);
   const hfLegsSec = document.getElementById('hf_legs_section');
@@ -2343,8 +2346,10 @@ function hfCompute(){
   const pd  = 0;
   const pcl = document.getElementById('hf_pCierre')?.value;
   const pCierre = pcl!==''&&pcl!=null ? parseFloat(pcl) : null;
-  const comiOpen = parseFloat(document.getElementById('hf_comiOpen')?.value)||0;
-  const comiClose = parseFloat(document.getElementById('hf_comiClose')?.value)||0;
+  // Comisiones siempre positivas (un valor negativo significa que cobras
+  // comisión, lo cual es imposible — protege contra typos).
+  const comiOpen = Math.max(0, parseFloat(document.getElementById('hf_comiOpen')?.value)||0);
+  const comiClose = Math.max(0, parseFloat(document.getElementById('hf_comiClose')?.value)||0);
   const comi = comiOpen + comiClose; // total
   const contracts = parseInt(document.getElementById('hf_contracts')?.value)||1;
   const maxRisk = parseFloat(document.getElementById('hf_maxRisk')?.value)||0;
@@ -4020,6 +4025,25 @@ const LEGS_FIELD_MAP = {
   'hf_legs_container': { delta:'hf_delta', prima:'hf_pCredito', comi:'hf_comiOpen', primaScale:100 }
 };
 
+// Mapeo único pata-código (SC/SP/LC/LP) ↔ kind de a.legs.
+// Usado tanto en alcm (cerrar pata) como en confirmRoll (limpiar legs tras roll).
+const LEG_CODE_TO_KIND = { 'SC':'short_call', 'SP':'short_put', 'LC':'long_call', 'LP':'long_put' };
+
+// Recalcula a.pCredito desde la suma sign-aware de a.legs[].prima.
+// Usar después de modificar a.legs (cerrar pata, roll parcial) para que el
+// crédito total quede consistente con el detalle.
+// Devuelve null si no hay legs con prima (caller mantiene pCredito previo).
+function legsSumCredit(legs){
+  if(!Array.isArray(legs) || !legs.length) return null;
+  let net = 0; let any = false;
+  legs.forEach(l => {
+    if(l.prima == null) return;
+    net += (l.kind.startsWith('short_') ? +l.prima : -l.prima);
+    any = true;
+  });
+  return any ? net : null;
+}
+
 // Suma los datos de las patas y rellena los campos globales del modal.
 // Sign convention para delta y prima:
 //   short_put  → delta:+|d|, prima:+p (cobramos)
@@ -5019,7 +5043,7 @@ function confirmClosePosition(){
   const tOp    = (openD&&closeD) ? Math.ceil((closeD-openD)/(86400000)) : null;
 
   const newHist = {
-    id: HIST.length>0 ? Math.max(...HIST.map(e=>e.id||0))+1 : 1,
+    id: HIST.length>0 ? HIST.reduce((m,e)=>Math.max(m,e.id||0),0)+1 : 1,
     idOp:      String(a.idOp||''),
     activo:    a.activo,
     strat:     a.strat,
@@ -5190,7 +5214,7 @@ function confirmCloseLeg(){
 
   // Entry en historial — strat = estrategia ORIGINAL para mantener trazabilidad.
   const histEntry = {
-    id: HIST.length > 0 ? Math.max(...HIST.map(e => e.id||0)) + 1 : 1,
+    id: HIST.length > 0 ? HIST.reduce((m,e)=>Math.max(m,e.id||0),0) + 1 : 1,
     idOp:       String(a.idOp||''),
     activo:     a.activo,
     strat:      a.strat,
@@ -5233,27 +5257,34 @@ function confirmCloseLeg(){
   a.legCloseHistory.push({ legType, fecha: fecha_leg, pcred_leg, pclose_leg, comi_leg, totalNeto: totalneto });
 
   // Si la posición tiene patas detalladas (a.legs), quitamos la cerrada y
-  // recalculamos el delta neto a partir de las que quedan. Así la pata
-  // restante queda con sus datos correctos sin tener que tocarlos.
+  // recalculamos delta neto + pCredito a partir de las que quedan. Así la
+  // pata restante queda con sus datos correctos sin tener que tocarlos.
   if(Array.isArray(a.legs) && a.legs.length){
-    const LEG_CODE_TO_KIND = { 'SC':'short_call', 'SP':'short_put', 'LC':'long_call', 'LP':'long_put' };
     const killKind = LEG_CODE_TO_KIND[legType];
     if(killKind){
-      const ix = a.legs.findIndex(l => l.kind === killKind);
-      if(ix >= 0) a.legs.splice(ix, 1);
+      // filter (no findIndex): si hubiera varias patas del mismo kind (raro,
+      // pero p.ej. dos short_put en un strangle ratio) se quitan todas.
+      a.legs = a.legs.filter(l => l.kind !== killKind);
     }
     // Recalcular delta neto desde las patas restantes
     if(a.legs.length){
-      let netDelta = 0; let any = false;
+      let netDelta = 0; let anyD = false;
       a.legs.forEach(l => {
         if(l.delta == null) return;
         const isShort = l.kind.startsWith('short_');
         const isPut   = l.kind.endsWith('_put');
         const sign = (isShort && isPut) || (!isShort && !isPut) ? +1 : -1;
         netDelta += sign * Math.abs(l.delta);
-        any = true;
+        anyD = true;
       });
-      if(any) a.delta = parseFloat(netDelta.toFixed(2));
+      if(anyD) a.delta = parseFloat(netDelta.toFixed(2));
+      // Recalcular pCredito desde primas supervivientes (sign-aware → /100)
+      const survCred = legsSumCredit(a.legs);
+      if(survCred != null) a.pCredito = survCred / 100;
+    } else {
+      // No quedan legs: limpiar el array vacío para que la UI no muestre
+      // "detalle por pata" abierto sin filas.
+      delete a.legs;
     }
   }
   activasSave();
@@ -7970,11 +8001,11 @@ function rollLegOriginalCred(a, pata){
   if(!kinds || !Array.isArray(a.legs) || !a.legs.length) return null;
   let net = 0; let found = 0;
   kinds.forEach(k => {
-    const m = a.legs.find(l => l.kind === k);
-    if(m && m.prima != null){
+    // filter (no find): suma TODAS las patas del kind (p.ej. ratio spreads).
+    a.legs.filter(l => l.kind === k && l.prima != null).forEach(m => {
       net += (k.startsWith('short_') ? +m.prima : -m.prima);
       found++;
-    }
+    });
   });
   if(found === 0) return null;
   return { pcShare: net, kinds };
@@ -8104,19 +8135,21 @@ function confirmRoll(){
   let nextLegs = a.legs;
   let nextPCredito = newCred_storage;
   if(legInfo && Array.isArray(a.legs) && a.legs.length){
-    // Roll parcial: quitamos las patas roladas, sumamos el resto + newCred
+    // Roll parcial CON match en legs: quitamos las patas roladas, sumamos
+    // el resto + newCred. Las supervivientes mantienen sus datos.
     const killSet = new Set(legInfo.kinds);
     const survivors = a.legs.filter(l => !killSet.has(l.kind));
-    // Crédito de las patas supervivientes ($/share neto, sign-aware)
-    let survivCred = 0;
-    survivors.forEach(l => {
-      if(l.prima == null) return;
-      survivCred += (l.kind.startsWith('short_') ? +l.prima : -l.prima);
-    });
-    nextLegs = survivors;
-    nextPCredito = (survivCred + newCred_share) / 100;
+    const survivCred = legsSumCredit(survivors);
+    nextLegs = survivors.length ? survivors : undefined;
+    nextPCredito = ((survivCred || 0) + newCred_share) / 100;
   } else if(pata === 'todo'){
-    // Roll completo: la posición es nueva, los legs viejos ya no aplican
+    // Roll completo: la posición es nueva, los legs viejos ya no aplican.
+    nextLegs = undefined;
+  } else if(Array.isArray(a.legs) && a.legs.length){
+    // Roll parcial SIN match en legs (p.ej. selector 'ala_inf' del BWB que no
+    // mapea 1:1, o usuario no rellenó la pata específica): los legs viejos
+    // probablemente ya no reflejan la posición tras el roll → limpiar para
+    // evitar datos zombi. El usuario puede re-añadir detalle desde edición.
     nextLegs = undefined;
   }
 

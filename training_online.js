@@ -2237,7 +2237,7 @@ function tobSeedJean(){
         [ids['B:PESO MUERTO']]:                  { series: data.pesoMuerto[mn-1] },
         [ids['B:PRESS MILITAR']]:                { series: data.pressMilitar[mn-1] },
         [ids['B:DOMINADAS']]:                    { series: data.dominadas[mn-1] },
-        [ids['B:PRENSA 45º + CRUNCH + FONDOS']]: { lineas: data.circ[mn-1] }
+        [ids['B:PRENSA + CRUNCH + FONDOS']]: { lineas: data.circ[mn-1] }
       }
     };
   }
@@ -2247,7 +2247,8 @@ function tobSeedJean(){
   it1.numero = 1;
   const dA1 = { boxSquat: boxSquat1, pressBanca: pressBanca1, remo: remo1, circ: circA1 };
   const dB1 = { pesoMuerto: pesoMuerto1, pressMilitar: pressMilitar1, dominadas: dominadas1, circ: circB1 };
-  for(let mn=1; mn<=6; mn++){
+  const _N = tobNumMicroOf(asig.rutina);
+  for(let mn=1; mn<=_N; mn++){
     buildSesionA(it1, mn, fechaA1, dA1);
     buildSesionB(it1, mn, fechaB1, dB1);
   }
@@ -2257,7 +2258,7 @@ function tobSeedJean(){
   asig.iteraciones.push(it2);
   const dA2 = { boxSquat: boxSquat2, pressBanca: pressBanca2, remo: remo2, circ: circA2 };
   const dB2 = { pesoMuerto: pesoMuerto2, pressMilitar: pressMilitar2, dominadas: dominadas2, circ: circB2 };
-  for(let mn=1; mn<=6; mn++){
+  for(let mn=1; mn<=_N; mn++){
     buildSesionA(it2, mn, fechaA2, dA2, aerA2);
     buildSesionB(it2, mn, fechaB2, dB2, aerB2);
   }
@@ -2322,8 +2323,10 @@ function tobFakeSeedRemaining(cli){
 
     const boost = CAT_BOOST[pl.categoria] || 0;
 
-    // 6 microciclos × 2 entrenos. Fechas: A en lunes, B en jueves (aprox)
-    for(let mn=1; mn<=6; mn++){
+    // Recorre los microciclos de ESTA plantilla (3-7 según categoría).
+    // Fechas: primer entreno en lunes, segundo en jueves (aprox).
+    const _Npl = tobNumMicroOf(pl);
+    for(let mn=1; mn<=_Npl; mn++){
       pl.entrenos.forEach(en => {
         const dayOffset = (mn-1) * 7 + (en.letra === 'A' ? 0 : 2);
         const f = new Date(cursor); f.setDate(f.getDate() + dayOffset);
@@ -2379,8 +2382,8 @@ function tobFakeSeedRemaining(cli){
     }
 
     cli.asignaciones.push(asig);
-    // Avanzar el cursor a 5 semanas después (para que cada mesociclo no se solape)
-    cursor = new Date(cursor); cursor.setDate(cursor.getDate() + 35);
+    // Avanzar el cursor (numMicro + 1) semanas para que cada mesociclo no se solape
+    cursor = new Date(cursor); cursor.setDate(cursor.getDate() + (_Npl + 1) * 7);
   });
 }
 
@@ -3635,7 +3638,10 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   page.drawRectangle({ x: kpiX, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
   page.drawText('SESIONES REGISTRADAS', { x: kpiX+16, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
   page.drawText(String(statsIt.sesiones), { x: kpiX+16, y: kpiY+30, size: 40, font: fontB, color: BLACK });
-  page.drawText(`de 12 (6 microciclos × 2 entrenos)`, { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
+  // Total dinámico: numMicro × número de entrenos (varía por plantilla)
+  const _Npdf = tobNumMicroOf(a.rutina);
+  const _Epdf = (a.rutina?.entrenos || []).length || 2;
+  page.drawText(`de ${_Npdf * _Epdf} (${_Npdf} microciclos × ${_Epdf} entrenos)`, { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
 
   page.drawText('FULL TRAINING · BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
 

@@ -37,9 +37,22 @@ function getCachedSha(){ return _origGetItem.call(localStorage, CACHE_SHA); }
 function setCachedSha(s){ _origSetItem.call(localStorage, CACHE_SHA, s||''); }
 
 function b64encode(str){
-  // Codificar UTF-8 → bytes → base64
-  const utf8 = unescape(encodeURIComponent(str));
-  return btoa(utf8);
+  // Codificar UTF-8 → bytes → base64 con TextEncoder (no rompe con emojis,
+  // CJK ni surrogate pairs — `unescape` está deprecado y los corrompe).
+  try {
+    const bytes = new TextEncoder().encode(str);
+    // btoa requiere binary string; chunk para no romper el call stack con
+    // strings muy grandes.
+    let bin = '';
+    const CHUNK = 0x8000;
+    for(let i = 0; i < bytes.length; i += CHUNK){
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i+CHUNK));
+    }
+    return btoa(bin);
+  } catch(e){
+    console.warn('[GitHubSync] b64encode TextEncoder falló, fallback:', e);
+    return btoa(unescape(encodeURIComponent(str)));
+  }
 }
 
 function b64decode(str){
