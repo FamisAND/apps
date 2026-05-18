@@ -1155,11 +1155,22 @@ function tobRenderCharts(){
         label: 'It. ' + it.numero,
         data: points,
         _labels: labels,
-        // Estilo barra (más limpio que línea con pocos puntos por iteración).
-        backgroundColor: color + 'cc',
-        borderColor: color, borderWidth: 1.5,
-        borderRadius: 4, borderSkipped: false,
-        categoryPercentage: 0.85, barPercentage: 0.9
+        borderColor: color, borderWidth: 2.5,
+        // Relleno en degradado igual que mediciones.
+        backgroundColor: (c) => {
+          const ch = c.chart, area = ch.chartArea;
+          if(!area) return color + '22';
+          const g = ch.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+          g.addColorStop(0, color + '55');
+          g.addColorStop(1, color + '08');
+          return g;
+        },
+        pointBackgroundColor: '#13130f',
+        pointBorderColor: color,
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 7,
+        tension: 0.3, fill: true, spanGaps: true
       });
     });
 
@@ -1193,10 +1204,11 @@ function tobRenderCharts(){
     }
 
     tobCharts[ej.id] = new Chart(canvas, {
-      type: 'bar',
+      type: 'line',
       data: { labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 20, right: 14, left: 4, bottom: 2 } },
         plugins: {
           legend: { labels: { color:'#cbd5e1', font:{size:10}, boxWidth:12 }, position:'top', align:'end' },
           tooltip: { mode:'index', intersect:false },
@@ -1204,7 +1216,7 @@ function tobRenderCharts(){
             color: ctx => ctx.dataset.borderColor,
             font: { size: 9, weight:'600' },
             align: 'top',
-            offset: 4,
+            offset: 6,
             formatter: v => v == null ? '' : v
           }
         },
@@ -3802,12 +3814,24 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
         : `It. ${it.numero}`;
       datasets.push({
         label: dsLabel, _points: points, _color: color,
-        // Estilo barra: relleno semitransparente, borde del color, esquinas redondeadas.
-        backgroundColor: color + (isCurrent ? 'cc' : '99'),
-        borderColor: color, borderWidth: 1.5,
-        borderRadius: 4, borderSkipped: false,
-        // Compactar grupos de barras (más juntas entre datasets en la misma fecha)
-        categoryPercentage: 0.85, barPercentage: 0.9
+        borderColor: color,
+        borderWidth: isCurrent ? 3 : 2.2,
+        // Relleno en degradado igual que mediciones — más legible que barras
+        // con pocos puntos sueltos.
+        backgroundColor: (c) => {
+          const ch = c.chart, area = ch.chartArea;
+          if(!area) return color + '22';
+          const g = ch.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+          g.addColorStop(0, color + (isCurrent ? '55' : '33'));
+          g.addColorStop(1, color + '08');
+          return g;
+        },
+        pointBackgroundColor: '#ffffff',
+        pointBorderColor: color,
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.3, fill: true, spanGaps: true
       });
     });
   });
@@ -3822,10 +3846,7 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
     delete ds._points;
   });
   return {
-    // Barras agrupadas (una por iteración) por fecha de sesión. Más claro
-    // que líneas cuando hay pocos puntos por iteración (no salen cruces sueltos
-    // en los extremos del eje).
-    type: 'bar', data: { labels, datasets },
+    type: 'line', data: { labels, datasets },
     options: {
       layout: { padding: { top: 22, right: 16, left: 4, bottom: 2 } },
       plugins: {
