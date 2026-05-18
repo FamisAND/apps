@@ -40,7 +40,10 @@
  */
 
 const TOB_KEY = 'tob_online_v2';
-const TOB_NUM_MICRO = 6;
+const TOB_NUM_MICRO = 6;  // default histórico — cada plantilla puede tener su propio numMicro (3-7 según BIIO)
+// Devuelve el número de microciclos de una plantilla o de la rutina copiada en
+// una asignación. Fallback a 6 (asignaciones antiguas sin el campo numMicro).
+function tobNumMicroOf(o){ return (o && o.numMicro) || TOB_NUM_MICRO; }
 const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
 
 // Versión de las descripciones. Al subirla, el backfill reaplica los textos.
@@ -115,13 +118,11 @@ const TOB_DESC_CATEGORIAS = {
     'CONSEJOS: 3 entrenos por semana. División A+B+C. El tempo 3232 es lo que da la calidad — sin él pierdes el objetivo. En el último ejercicio de cada grupo se hacen STRIPPING (drop sets) para apurar.'
 };
 
-// Versión del plan oficial (series/reps/pausa por microciclo) por categoría —
-// transcrito desde los PDFs originales BIIO MODIFICADO 1º macrociclo.
-// IMPORTANTE: BIIO usa entre 3 y 7 microciclos según el mesociclo. La app usa
-// 6 slots de microciclo, así que mapeamos cada micro BIIO a 1-2 slots.
-// "note" se muestra junto a "series×reps" (p.ej. "@75%", "+DROP", "RP15"").
-// Los circuitos y "Maximales" (Fuerza 2) NO se tocan en el backfill.
-const TOB_PLAN_VERSION = 3;
+// Versión del plan oficial. v4 reemplaza ENTERAMENTE entrenos+ejercicios+
+// planByMicro+numMicro desde TOB_BIIO_DATA (más fiel al BIIO real: 3-7 micros
+// y 2-3 entrenos según el mesociclo). TOB_FIXED_PLANS solo se conserva como
+// fallback para versiones anteriores y para migraciones suaves.
+const TOB_PLAN_VERSION = 4;
 const TOB_FIXED_PLANS = {
   // ── 1º Mesociclo · Reacondicionamiento (BIIO 6 micros × A+B) ──
   // Onda 15/12/10 → 12/10/8 → 10/8/6, pausa creciente 1'30 → 2'00.
@@ -277,7 +278,7 @@ function tobLoad(){
     if(p.categoria !== 'Fuerza 2') return;
     if((p.entrenos||[]).find(e => e.letra === 'MX')) return;
     const planMax = {};
-    for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+    for(let mn=1; mn<=tobNumMicroOf(p); mn++){
       planMax[mn] = { series: 1, repsTarget: [1], pausa: "5'00''" };
     }
     const maxNames = ['BOX SQUAT', 'PRESS BANCA', 'PESO MUERTO', 'PRESS MILITAR', 'REMO', 'DOMINADAS'];
@@ -318,25 +319,30 @@ function tobLoad(){
     }
   });
 
-  // Backfill: planes oficiales BIIO por categoría. Si la plantilla no está en
-  // la versión actual de TOB_PLAN_VERSION, se reaplica el plan correcto a TODOS
-  // los ejercicios PRINCIPALES (no circuito y no maximales). Esto corrige las
-  // plantillas que se sembraron con series/reps/descansos incorrectos.
-  // Las asignaciones ya creadas no se tocan — tienen su propia copia de la rutina.
+  // Backfill v4: reemplaza ENTERAMENTE entrenos+ejercicios+planByMicro+numMicro
+  // desde TOB_BIIO_DATA, que tiene la estructura BIIO real (3-7 micros, 2-3
+  // entrenos A+B+C, planes por-ejercicio reales). Preserva el id de la plantilla
+  // y su macrociclo/nombre/sexo. Las asignaciones ya creadas no se tocan —
+  // tienen su propia copia de la rutina.
   tobDB.plantillas.forEach(p => {
-    if(!p.categoria || !TOB_FIXED_PLANS[p.categoria]) return;
+    if(!p.categoria || !TOB_BIIO_DATA[p.categoria]) return;
     if((p._planV || 0) >= TOB_PLAN_VERSION) return;
-    const fix = TOB_FIXED_PLANS[p.categoria];
-    (p.entrenos||[]).forEach(en => {
-      // No tocar el entreno "Maximales" (Fuerza 2)
-      if(en.letra === 'MX' || (en.nombre||'').toLowerCase().includes('maximal')) return;
-      (en.ejercicios||[]).forEach(ej => {
-        if(ej.tipo === 'circuito') return;
-        if(ej.subtitle && /m[aá]xim/i.test(ej.subtitle)) return;
-        ej.planByMicro = JSON.parse(JSON.stringify(fix));
-        delete ej.planBase;
-      });
-    });
+    const data = TOB_BIIO_DATA[p.categoria];
+    p.numMicro = data.numMicro;
+    p.entrenos = data.entrenos.map(en => ({
+      id: en.letra,
+      letra: en.letra,
+      nombre: en.nombre || ('Entreno ' + en.letra),
+      ejercicios: en.ejercicios.map((ej, i) => ({
+        id: tobUid('ej'),
+        orden: i,
+        nombre: ej.nombre,
+        subtitle: ej.subtitle || '',
+        tipo: ej.tipo || 'normal',
+        ...(ej.tipo === 'circuito' ? { circuitoLineas: ej.circuitoLineas || [] } : {}),
+        planByMicro: JSON.parse(JSON.stringify(ej.planByMicro))
+      }))
+    }));
     p._planV = TOB_PLAN_VERSION;
     backfilled = true;
   });
@@ -386,17 +392,24 @@ function tobLoad(){
       p._descV = TOB_DESC_VERSION;
       postSeedBackfilled = true;
     }
-    if(p.categoria && TOB_FIXED_PLANS[p.categoria] && (p._planV || 0) < TOB_PLAN_VERSION){
-      const fix = TOB_FIXED_PLANS[p.categoria];
-      (p.entrenos||[]).forEach(en => {
-        if(en.letra === 'MX' || (en.nombre||'').toLowerCase().includes('maximal')) return;
-        (en.ejercicios||[]).forEach(ej => {
-          if(ej.tipo === 'circuito') return;
-          if(ej.subtitle && /m[aá]xim/i.test(ej.subtitle)) return;
-          ej.planByMicro = JSON.parse(JSON.stringify(fix));
-          delete ej.planBase;
-        });
-      });
+    // V4: reemplaza entrenos completos desde TOB_BIIO_DATA (BIIO real)
+    if(p.categoria && TOB_BIIO_DATA[p.categoria] && (p._planV || 0) < TOB_PLAN_VERSION){
+      const data = TOB_BIIO_DATA[p.categoria];
+      p.numMicro = data.numMicro;
+      p.entrenos = data.entrenos.map(en => ({
+        id: en.letra,
+        letra: en.letra,
+        nombre: en.nombre || ('Entreno ' + en.letra),
+        ejercicios: en.ejercicios.map((ej, i) => ({
+          id: tobUid('ej'),
+          orden: i,
+          nombre: ej.nombre,
+          subtitle: ej.subtitle || '',
+          tipo: ej.tipo || 'normal',
+          ...(ej.tipo === 'circuito' ? { circuitoLineas: ej.circuitoLineas || [] } : {}),
+          planByMicro: JSON.parse(JSON.stringify(ej.planByMicro))
+        }))
+      }));
       p._planV = TOB_PLAN_VERSION;
       postSeedBackfilled = true;
     }
@@ -563,7 +576,9 @@ function tobCreateAsignacion(plantId){
     fechaInicio: new Date().toISOString().slice(0,10),
     estado: 'en_curso',
     notas: '',
-    rutina: JSON.parse(JSON.stringify({ entrenos: pl.entrenos })),
+    // Copia el numMicro de la plantilla (3-7) para que la asignación use las
+    // columnas correctas en su tabla aunque luego la plantilla cambie.
+    rutina: JSON.parse(JSON.stringify({ entrenos: pl.entrenos, numMicro: tobNumMicroOf(pl) })),
     iteraciones: [
       { id: tobUid('it'), numero: 1, sesiones: {} }
     ]
@@ -1001,7 +1016,7 @@ function tobRenderEntreno(){
   if(!en){ document.getElementById('tobEntContent').innerHTML = '<div class="tob-card">Selecciona un entreno</div>'; return; }
 
   const it = tobIt();
-  const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i) => i+1);
+  const microHeaders = Array.from({length: tobNumMicroOf(a.rutina)}, (_,i) => i+1);
   const micros = microHeaders.map(n => `${n}º`);
 
   const ejercicios = (en.ejercicios||[]).sort((x,y) => (x.orden||0)-(y.orden||0));
@@ -1213,7 +1228,7 @@ function tobRenderCharts(){
       const color = TOB_IT_COLORS[idx % TOB_IT_COLORS.length];
       const points = [];
       const labels = [];
-      for(let mn = 1; mn <= TOB_NUM_MICRO; mn++){
+      for(let mn = 1; mn <= tobNumMicroOf(a.rutina); mn++){
         const ses = it.sesiones[mn]?.[entId];
         if(!ses) continue;
         const series = ses.ejs?.[ej.id]?.series;
@@ -1319,7 +1334,7 @@ async function tobGeneratePdf(){
   text(`${cli?.nombre||''} — ${tobRutinaShortName(pl)}  ·  Iteración ${it?.numero||1}`, { bold:true, size:13 });
   gap(20);
 
-  const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i)=>i+1);
+  const microHeaders = Array.from({length: tobNumMicroOf(a?.rutina)}, (_,i)=>i+1);
 
   (a.rutina?.entrenos||[]).forEach(en => {
     if(y < 200){ page = doc.addPage([W,H]); y = H - 30; }
@@ -1570,187 +1585,453 @@ function tobConfirm(title, msg, cb){
 function tobCloseConfirm(){ document.getElementById('tobConfirmBg').classList.remove('on'); }
 
 // ═══ SEED PLANTILLAS — 16 mesociclos con estructura BIIO real ═══
+// ═════════════════════════════════════════════════════════════════
+// BIIO MODIFICADO — DATA TRANSCRITA DE LOS PDFs ORIGINALES
+// 1º Macrociclo / Roberto Amorosi Hernandez
+// ═════════════════════════════════════════════════════════════════
+// Cada categoría define su numMicro (3-7), su lista de entrenos (A+B o
+// A+B+C, +MX para Fuerza 2) y por cada ejercicio sus planByMicro reales.
+// Para reducir repetición, definimos plans compartidos por categoría.
+const TOB_BIIO_DATA = (() => {
+  // Helpers para hacer plans con menos repetición
+  const mk = (s, r, p, n) => ({ series: s, repsTarget: Array.isArray(r)?r:[r], pausa: p, ...(n ? { note: n } : {}) });
+  const repeat = (obj, count) => {
+    const out = {};
+    for(let i = 1; i <= count; i++) out[i] = obj;
+    return out;
+  };
+  // ─── 1º Reacondicionamiento (6 micros × A+B) ──
+  const rea_main = {
+    1: mk(3,[15,12,10],"1'30''"), 2: mk(3,[15,12,10],"1'30''"),
+    3: mk(3,[12,10,8], "1'45''"), 4: mk(3,[12,10,8], "1'45''"),
+    5: mk(3,[10,8,6],  "2'00''"), 6: mk(3,[10,8,6],  "2'00''")
+  };
+  const rea_jump = {
+    1: mk(2,12,'30"'),
+    2: mk(3,12,'30"'), 3: mk(3,12,'30"'), 4: mk(3,12,'30"'), 5: mk(3,12,'30"'), 6: mk(3,12,'30"')
+  };
+
+  // ─── 2º Preparación Fuerza (3 micros × A+B+C) ──
+  // Bloque 1 = micro 1, Bloque 2 = micro 2, Descarga técnica = micro 3
+  const pf_main = {
+    1: mk(3,[8,6,4],"2'00''","RPE 10 al fallo"),
+    2: mk(3,[8,6,4],"2'30''","RPE 10 al fallo"),
+    3: mk(8,3,"1'00''","@8RM · descarga técnica")
+  };
+  const pf_support = {
+    1: mk(3,10,"2'00''"), 2: mk(3,8,"2'00''"), 3: mk(2,6,"3'00''")
+  };
+  const pf_box_squat = {
+    1: mk(6,2,"1'00''","@8RM · Pausa 2\" intraserie"),
+    2: mk(6,2,"1'00''","@8RM · Pausa 2\" intraserie"),
+    3: mk(1,'MAX','-',"@8RM · Sin Pausa")
+  };
+  const pf_dead = {
+    1: mk(4,[8,6,4,2],"2'00''","RPE 10 al fallo"),
+    2: mk(4,[8,6,4,2],"2'30''","RPE 10 al fallo"),
+    3: mk(8,3,"1'00''","@8RM · descarga técnica")
+  };
+  const pf_jump_calf = { 1: mk(3,20,"1'00\""), 2: mk(4,20,'45"'), 3: mk(2,20,'30"') };
+  const pf_jump_hip  = { 1: mk(3,12,"1'00\""), 2: mk(4,12,'45"'), 3: mk(2,12,'30"') };
+  const pf_jump_c    = { 1: mk(3,12,'45"'),    2: mk(4,12,'30"'), 3: mk(2,12,'15"') };
+
+  // ─── 3º Especialización Técnica (7 micros × A+B) ──
+  // ONDAS 345 BUFFER: 8×3@75% → 7×4@75% → 6×5@75% → 8×3@80% → 7×4@80% → 6×5@80% → 8×2@85% descarga
+  const esp_main = {
+    1: mk(8,3,"1'00''","@75% ondas 345"),
+    2: mk(7,4,"1'15''","@75% ondas 345"),
+    3: mk(6,5,"1'30''","@75% ondas 345"),
+    4: mk(8,3,"1'00''","@80% ondas 345"),
+    5: mk(7,4,"1'15''","@80% ondas 345"),
+    6: mk(6,5,"1'30''","@80% ondas 345"),
+    7: mk(8,2,"1'30''","@85% descarga técnica")
+  };
+  const esp_jump_a = {  // REMO BARRA "T" + FONDOS TRICEPS — ondas 4x8 / 3x10 alternadas
+    1: mk(4,8,'45"'), 2: mk(3,10,'45"'),
+    3: mk(4,8,'45"'), 4: mk(3,10,'45"'),
+    5: mk(4,8,'45"'), 6: mk(3,10,'45"'),
+    7: mk(2,12,'60"')
+  };
+  const esp_triserie = {  // CALF + PRENSA 45 + CURL — triserie 3×20/10/8 descendente
+    1: mk(3,[20,10,8],'30"'), 2: mk(3,[20,10,8],'30"'),
+    3: mk(3,[20,10,8],'30"'), 4: mk(3,[20,10,8],'30"'),
+    5: mk(3,[20,10,8],'30"'), 6: mk(3,[20,10,8],'30"'),
+    7: mk(1,[20,10,10],'30"')
+  };
+  const esp_jump_b = {  // PRESS FRANCES + DOMINADAS / CRUNCH + GLUTE HAM
+    1: mk(3,20,'45"'), 2: mk(3,20,'45"'),
+    3: mk(3,20,'45"'), 4: mk(3,20,'45"'),
+    5: mk(3,20,'45"'), 6: mk(3,20,'45"'),
+    7: mk(1,20,'60"')
+  };
+
+  // ─── 4º Fuerza 1 (5 micros × A+B) ──
+  const f1_main = {
+    1: mk(4,4,"3'00''","@80% RPE 7/8"),
+    2: mk(4,4,"3'00''","@82.5% RPE 8/9"),
+    3: mk(4,4,"3'00''","@85% RPE 9/10"),
+    4: mk(4,4,"3'00''","@87.5% RPE 10"),
+    5: mk(8,3,"1'00''","@75% descarga técnica")
+  };
+  const f1_triserie = {
+    1: mk(3,12,'30"'), 2: mk(3,12,'30"'), 3: mk(3,12,'30"'),
+    4: mk(2,12,'30"'), 5: mk(1,12,'30"')
+  };
+
+  // ─── 5º Fuerza 2 (4 micros × A+B+C + entreno MX) ──
+  // Cluster: 8 reps simples con rest-pause 15"/20"/25", descarga 10×1 @95%
+  const f2_main = {
+    1: mk(3,8,"4'00''","@87.5% cluster RP 15\""),
+    2: mk(3,8,"4'00''","@90% cluster RP 20\""),
+    3: mk(2,8,"4'00''","@92.5% cluster RP 25\""),
+    4: mk(10,1,"2'00''","@95% Normal · descarga técnica")
+  };
+  const f2_estrecho = {
+    1: mk(3,8,"4'00''","@85% cluster RP 15\""),
+    2: mk(3,8,"4'00''","@87.5% cluster RP 20\""),
+    3: mk(2,8,"4'00''","@90% cluster RP 25\""),
+    4: mk(10,1,"2'00''","@92.5% Normal · descarga")
+  };
+  const f2_accesorio = {
+    1: mk(5,8,'30"',"RPE 8"),
+    2: mk(5,8,'30"',"RPE 9"),
+    3: mk(4,8,'30"',"RPE 10"),
+    4: mk(2,'MAX','60"',"al fallo")
+  };
+  const f2_calf_box = {
+    1: mk(5,12,'30"',"12RM · 4 @70%"),
+    2: mk(5,12,'30"',"12RM · 4 @70%"),
+    3: mk(4,12,'30"',"12RM · 4 @70%"),
+    4: mk(2,12,'60"',"12RM · 5 @70%")
+  };
+  const f2_max = repeat(mk(1,1,"5'00''","Intento máximo (1RM)"), 4);
+
+  // ─── 6º Híbrido (3 micros × A+B+C) ──
+  const hib_main = {
+    1: mk(3,[4,6,8],"2'00''","85/75/65% 1RM + DROP al fallo"),
+    2: mk(3,[4,6,8],"2'00''","+1% si reps target alcanzadas + DROP"),
+    3: mk(2,[4,6,8],"2'30''","descarga parcial")
+  };
+  const hib_sec = {
+    1: mk(3,8,"2'00''","última serie DROP"),
+    2: mk(2,8,"2'00''","última serie DROP"),
+    3: mk(1,8,"2'30''")
+  };
+  const hib_dead = {
+    1: mk(3,[4,6,20],"2'00''","85/75/55% 1RM + Rest-Pause final"),
+    2: mk(2,20,"3'00''","@70% Rest-Pause 20 reps"),
+    3: mk(8,3,"1'00''","@75% descarga")
+  };
+  const hib_apert = {
+    1: mk(3,10,"1'30''"), 2: mk(2,10,"1'30''"), 3: mk(1,12,"1'30''")
+  };
+  const hib_jump_a = { 1: mk(3,25,'30"'), 2: mk(3,25,'30"'), 3: mk(2,25,'30"') };
+  const hib_jump_b = { 1: mk(3,[20,12],'30"'), 2: mk(3,[20,12],'30"'), 3: mk(2,[20,15],'30"') };
+  const hib_jump_c = { 1: mk(3,['MAX',15],'30"'), 2: mk(3,['MAX',15],'30"'), 3: mk(2,['MAX',15],'30"') };
+
+  // ─── 7º Hipertrofia (3 micros × A+B+C) ──
+  const hip_squat = {
+    1: mk(2,20,"3'00''","@70% Rest-Pause 20 reps"),
+    2: mk(3,[8,6,4],"2'00''","@75% 1RM al fallo + RP 20\""),
+    3: mk(1,20,"2'00''","@70% Rest-Pause descarga")
+  };
+  const hip_main = {
+    1: mk(3,[8,6,4],"2'00''","@75% 1RM al fallo + RP 20\""),
+    2: mk(3,[8,6,4],"2'00''","+1% si reps target alcanzadas"),
+    3: mk(2,8,"2'00''","descarga parcial")
+  };
+  const hip_dead = {
+    1: mk(3,[8,6,4],"2'00''","@75% 1RM al fallo + RP 20\""),
+    2: mk(3,[8,6,20],"2'00''","+ Rest-Pause final"),
+    3: mk(8,3,"1'00''","@75% descarga parcial")
+  };
+  const hip_burns = {
+    1: mk(2,10,"2'00''","última serie BURNS"),
+    2: mk(3,10,"2'00''","última serie BURNS"),
+    3: mk(1,12,"2'00''")
+  };
+  const hip_apert = {
+    1: mk(3,10,"1'30''"), 2: mk(2,10,"1'30''"), 3: mk(1,10,"1'30''")
+  };
+  const hip_lat_burns = {
+    1: mk(4,10,'30"',"unilateral · BURNS"),
+    2: mk(3,10,'30"',"unilateral · BURNS"),
+    3: mk(2,12,'30"',"unilateral")
+  };
+  const hip_jump_a = { 1: mk(3,15,'30"'), 2: mk(3,15,'30"'), 3: mk(2,15,'30"') };
+  const hip_jump_b = { 1: mk(3,[20,12],'30"'), 2: mk(3,[20,12],'30"'), 3: mk(2,[20,15],'30"') };
+  const hip_chop   = { 1: mk(3,[20,30],'30"'), 2: mk(3,[20,30],'30"'), 3: mk(1,[20,30],'30"') };
+
+  // ─── 8º Calidad Muscular (6 micros × A+B+C) ──
+  const cm_main = {
+    1: mk(8,2,"1'00''","@75% tempo 3232"),
+    2: mk(8,3,"1'00''","@75% tempo 3232"),
+    3: mk(8,3,"1'00''","@75% tempo 3232"),
+    4: mk(8,2,"1'00''","@77.5% tempo 3232"),
+    5: mk(8,3,"1'00''","@77.5% tempo 3232"),
+    6: mk(8,3,"1'00''","@77.5% tempo 3232")
+  };
+  const cm_pump = repeat(mk(3,'MAX',"1'30''","MAX PUMP 10-12"), 6);
+  const cm_calf_strip = {
+    1: mk(3,'Stripping','2\'00"',"2-3 stripping"),
+    2: mk(3,'Stripping','2\'00"',"2-3 stripping"),
+    3: mk(2,'Stripping','2\'00"',"1-2 stripping"),
+    4: mk(3,'Stripping','2\'00"',"2-3 stripping"),
+    5: mk(3,'Stripping','2\'00"',"2-3 stripping"),
+    6: mk(2,'Stripping','2\'00"',"1-2 stripping")
+  };
+  const cm_crunch = repeat(mk(3,15,"1'30''"), 6);
+
+  // ─────────── DATOS DE LAS 8 CATEGORÍAS ───────────
+  return {
+    'Reacondicionamiento': {
+      numMicro: 6,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Simil Full Body 1', ejercicios:[
+          { nombre:'BOX SQUAT', subtitle:'1" Pausa en Box', tipo:'normal', planByMicro: rea_main },
+          { nombre:'PRESS BANCA', subtitle:'1" Pausa al Pecho', tipo:'normal', planByMicro: rea_main },
+          { nombre:'REMO', subtitle:'Espalda Recta · o Seal Row', tipo:'normal', planByMicro: rea_main },
+          { nombre:'CURL + HIPEREXT + CALF', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CURL con BARRA','HIPEREXTENSION','CALF MACHINE'], planByMicro: rea_jump }
+        ]},
+        { letra:'B', nombre:'Entreno B · Simil Full Body 2', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'Espalda Neutra', tipo:'normal', planByMicro: rea_main },
+          { nombre:'PRESS MILITAR', subtitle:'Hasta las Clavículas', tipo:'normal', planByMicro: rea_main },
+          { nombre:'DOMINADAS', subtitle:'Tocando el Pecho · o Lat Machine', tipo:'normal', planByMicro: rea_main },
+          { nombre:'PRENSA + CRUNCH + FONDOS', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['PRENSA 45º','CRUNCH INVERSO','FONDOS TRICEPS'], planByMicro: rea_jump }
+        ]}
+      ]
+    },
+    'Preparación fuerza': {
+      numMicro: 3,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Piernas-Hombros', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Control Espalda Baja', tipo:'normal', planByMicro: pf_main },
+          { nombre:'LEG CURL', subtitle:'Lento y Controlado', tipo:'normal', planByMicro: pf_support },
+          { nombre:'PRESS MILITAR', subtitle:'Hasta las Clavículas', tipo:'normal', planByMicro: pf_main },
+          { nombre:'PRESS con MANCUERNAS', subtitle:'Recorrido Completo', tipo:'normal', planByMicro: pf_support },
+          { nombre:'CALF + CRUNCH INVERSO', subtitle:'[JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CALF MACHINE','CRUNCH INVERSO'], planByMicro: pf_jump_calf }
+        ]},
+        { letra:'B', nombre:'Entreno B · Pecho-Tríceps', ejercicios:[
+          { nombre:'PRESS BANCA', subtitle:'1" Pausa al Pecho', tipo:'normal', planByMicro: pf_main },
+          { nombre:'PRESS INCLINADO 45º', subtitle:'Brazos en Plano Sagital', tipo:'normal', planByMicro: pf_support },
+          { nombre:'PRESS TRICEPS o FONDOS', subtitle:'Codos cerrados', tipo:'normal', planByMicro: pf_main },
+          { nombre:'BOX SQUAT', subtitle:'Controlar Butt Wink', tipo:'normal', planByMicro: pf_box_squat },
+          { nombre:'HIPEREXT + CALF EN PRENSA', subtitle:'[JUMP SET]', tipo:'circuito',
+            circuitoLineas:['HIPEREXTENSION 45º','CALF en PRENSA'], planByMicro: pf_jump_hip }
+        ]},
+        { letra:'C', nombre:'Entreno C · Espalda-Bíceps', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'Espalda Neutra · No rebotar abajo · Concéntricas', tipo:'normal', planByMicro: pf_dead },
+          { nombre:'DOMINADAS', subtitle:'Tocar el Pecho · o Lat Machine', tipo:'normal', planByMicro: pf_main },
+          { nombre:'CURL con BARRA', subtitle:'Control Escápulas', tipo:'normal', planByMicro: pf_main },
+          { nombre:'CRUNCH + LEG EXT + REMO', subtitle:'[JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CRUNCH INVERTIDO','LEG EXTENSION','REMO o SEAL ROW'], planByMicro: pf_jump_c }
+        ]}
+      ]
+    },
+    'Especialización técnica': {
+      numMicro: 7,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Posterior', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'Concéntricas - Pausa 1" arriba/abajo', tipo:'normal', planByMicro: esp_main },
+          { nombre:'PRESS MILITAR', subtitle:'Concéntricas - Pausa 1" arriba/abajo', tipo:'normal', planByMicro: esp_main },
+          { nombre:'REMO + FONDOS', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['REMO BARRA "T" o MANCUERNA','FONDOS TRICEPS'], planByMicro: esp_jump_a },
+          { nombre:'CALF + PRENSA + CURL', subtitle:'Triserie [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CALF MACHINE o PRENSA','PRENSA 45º o LUNGE','CURL con BARRA'], planByMicro: esp_triserie }
+        ]},
+        { letra:'B', nombre:'Entreno B · Anterior', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Concéntricas - Pausa 1" arriba/abajo', tipo:'normal', planByMicro: esp_main },
+          { nombre:'PRESS BANCA', subtitle:'Concéntricas - Pausa 1" arriba/abajo', tipo:'normal', planByMicro: esp_main },
+          { nombre:'PRESS FRANCES + DOMINADAS', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['PRESS FRANCES','DOMINADAS'], planByMicro: esp_jump_b },
+          { nombre:'CRUNCH + GLUTE HAM', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CRUNCH INVERSO','GLUTE HAM RAISE o LEG CURL'], planByMicro: esp_jump_b }
+        ]}
+      ]
+    },
+    'Fuerza 1': {
+      numMicro: 5,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Anterior', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Control Exc - Subir Explosivo', tipo:'normal', planByMicro: f1_main },
+          { nombre:'PRESS BANCA', subtitle:'1" Pausa - Subida Explosiva', tipo:'normal', planByMicro: f1_main },
+          { nombre:'REMO', subtitle:'Espalda neutra - Explosivo · o Seal Row', tipo:'normal', planByMicro: f1_main },
+          { nombre:'CRUNCH + HIPEREXT + CURL', subtitle:'Triserie [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CRUNCH INVERSO','HIPEREXTENSION o LEG CURL','CURL CON BARRA'], planByMicro: f1_triserie }
+        ]},
+        { letra:'B', nombre:'Entreno B · Posterior', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'Arrancadas - No rebote', tipo:'normal', planByMicro: f1_main },
+          { nombre:'PRESS MILITAR SENTADO', subtitle:'Arrancadas - No rebote', tipo:'normal', planByMicro: f1_main },
+          { nombre:'DOMINADAS SUPINAS', subtitle:'Explosivo Hasta Pecho', tipo:'normal', planByMicro: f1_main },
+          { nombre:'PRENSA + CALF + FONDOS', subtitle:'Triserie [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['PRENSA 45º o LEG EXTENSION','CALF MACHINE o DONKEY','FONDOS TRICEPS'], planByMicro: f1_triserie }
+        ]}
+      ]
+    },
+    'Fuerza 2': {
+      numMicro: 4,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Piernas-Pecho', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Control Exc - Subir Explosivo', tipo:'normal', planByMicro: f2_main },
+          { nombre:'PRESS BANCA', subtitle:'1" Pausa - Subida Explosiva', tipo:'normal', planByMicro: f2_main },
+          { nombre:'CURL + LEG EXT', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CURL con BARRA','LEG EXTENSION o PRENSA 45º'], planByMicro: f2_accesorio }
+        ]},
+        { letra:'B', nombre:'Entreno B · Espalda-Dorsal', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'Arrancadas - No rebote', tipo:'normal', planByMicro: f2_main },
+          { nombre:'DOMINADAS SUPINAS', subtitle:'Explosivo Hasta Pecho', tipo:'normal', planByMicro: f2_main },
+          { nombre:'LEG CURL + CRUNCH', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['LEG CURL o GLUTE HAM RAISE','CRUNCH INVERTIDO'], planByMicro: f2_accesorio }
+        ]},
+        { letra:'C', nombre:'Entreno C · Hombros-Tríceps + Squat técnica', ejercicios:[
+          { nombre:'PRESS MILITAR SENTADO', subtitle:'Arrancadas - No rebote', tipo:'normal', planByMicro: f2_main },
+          { nombre:'PRESS AGARRE ESTRECHO', subtitle:'1" Pausa al pecho · o FONDOS TRICEPS', tipo:'normal', planByMicro: f2_estrecho },
+          { nombre:'CALF + BOX SQUAT', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CALF en PRENSA','BOX SQUAT (2" pausa)'], planByMicro: f2_calf_box }
+        ]},
+        { letra:'MX', nombre:'Maximales · 2 sesiones aparte de la rutina', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Maximal (1ª sesión)', tipo:'normal', planByMicro: f2_max },
+          { nombre:'PRESS MILITAR SENTADO', subtitle:'Maximal (1ª sesión)', tipo:'normal', planByMicro: f2_max },
+          { nombre:'PRESS AGARRE ESTRECHO', subtitle:'Maximal (1ª sesión)', tipo:'normal', planByMicro: f2_max },
+          { nombre:'PESO MUERTO', subtitle:'Maximal (2ª sesión)', tipo:'normal', planByMicro: f2_max },
+          { nombre:'REMO BARRA INVERTIDO', subtitle:'Maximal (2ª sesión) · o JALONES INVERTIDOS', tipo:'normal', planByMicro: f2_max },
+          { nombre:'CURL CON BARRA', subtitle:'Maximal (2ª sesión)', tipo:'normal', planByMicro: f2_max }
+        ]}
+      ]
+    },
+    'Hibrido': {
+      numMicro: 3,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Piernas-Hombros-Abdomen', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Al fallo técnico - 85/75/65% 1RM', tipo:'normal', planByMicro: hib_main },
+          { nombre:'PRENSA 45º o LEG EXTENSION', subtitle:'última serie DROP', tipo:'normal', planByMicro: hib_sec },
+          { nombre:'PRESS MILITAR SENTADO', subtitle:'Al fallo técnico', tipo:'normal', planByMicro: hib_main },
+          { nombre:'PRESS CON MANCUERNAS', subtitle:'última serie DROP', tipo:'normal', planByMicro: hib_sec },
+          { nombre:'CRUNCH + CALF', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CRUNCH INVERTIDO','CALF MACHINE'], planByMicro: hib_jump_a }
+        ]},
+        { letra:'B', nombre:'Entreno B · Pecho-Tríceps', ejercicios:[
+          { nombre:'PRESS BANCA', subtitle:'Al fallo técnico - 85/75/65% 1RM', tipo:'normal', planByMicro: hib_main },
+          { nombre:'APERTURAS o CRUCES POLEA', subtitle:'', tipo:'normal', planByMicro: hib_apert },
+          { nombre:'PRESS INCLINADO', subtitle:'última serie DROP', tipo:'normal', planByMicro: hib_sec },
+          { nombre:'FONDOS o PRESS ESTRECHO', subtitle:'Al fallo técnico', tipo:'normal', planByMicro: hib_main },
+          { nombre:'HIPEREXT + REMO', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['HIPEREXTENSION 45º','REMO o SEAL ROW'], planByMicro: hib_jump_b }
+        ]},
+        { letra:'C', nombre:'Entreno C · Espalda-Bíceps-Gemelos', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'85/75/55% 1RM + Rest-Pause', tipo:'normal', planByMicro: hib_dead },
+          { nombre:'LEG CURL o GLUTE HAM RAISE', subtitle:'última serie DROP', tipo:'normal', planByMicro: hib_sec },
+          { nombre:'DOMINADAS SUPINAS', subtitle:'Al fallo técnico', tipo:'normal', planByMicro: hib_main },
+          { nombre:'CURL con BARRA', subtitle:'Al fallo técnico', tipo:'normal', planByMicro: hib_main },
+          { nombre:'PLANCHA + CALF', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['PLANCHA ABDOMEN','CALF en PRENSA'], planByMicro: hib_jump_c }
+        ]}
+      ]
+    },
+    'Hipertrofia': {
+      numMicro: 3,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Piernas-Hombros-Abdomen', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Rest-Pause 20 reps inicial', tipo:'normal', planByMicro: hip_squat },
+          { nombre:'LEG CURL o GLUTE HAM RAISE', subtitle:'última serie BURNS', tipo:'normal', planByMicro: hip_burns },
+          { nombre:'PRESS MILITAR SENTADO', subtitle:'Al fallo + Rest-Pause', tipo:'normal', planByMicro: hip_main },
+          { nombre:'ELEVACIONES LATERALES', subtitle:'unilateral en polea baja · BURNS', tipo:'normal', planByMicro: hip_lat_burns },
+          { nombre:'CRUNCH + CALF', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CRUNCH INVERTIDO','CALF MACHINE'], planByMicro: hip_jump_a }
+        ]},
+        { letra:'B', nombre:'Entreno B · Pecho-Bíceps-Abdomen', ejercicios:[
+          { nombre:'PRESS BANCA', subtitle:'Al fallo + Rest-Pause', tipo:'normal', planByMicro: hip_main },
+          { nombre:'APERTURAS o CRUCES POLEA', subtitle:'', tipo:'normal', planByMicro: hip_apert },
+          { nombre:'PRESS INCLINADO', subtitle:'última serie BURNS', tipo:'normal', planByMicro: hip_burns },
+          { nombre:'CURL con BARRA', subtitle:'Al fallo + Rest-Pause', tipo:'normal', planByMicro: hip_main },
+          { nombre:'HIPEREXT + REMO', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['HIPEREXTENSION 45º','REMO o SEAL ROW'], planByMicro: hip_jump_b }
+        ]},
+        { letra:'C', nombre:'Entreno C · Espalda-Tríceps-Gemelos', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'75/75/55% + RP final', tipo:'normal', planByMicro: hip_dead },
+          { nombre:'LEG EXTENSIÓN o PRENSA 45º', subtitle:'última serie BURNS', tipo:'normal', planByMicro: hip_burns },
+          { nombre:'DOMINADAS SUPINAS', subtitle:'Al fallo + Rest-Pause', tipo:'normal', planByMicro: hip_main },
+          { nombre:'FONDOS o PRESS ESTRECHO', subtitle:'Al fallo + Rest-Pause', tipo:'normal', planByMicro: hip_main },
+          { nombre:'CHOP + CALF', subtitle:'Arrodillado · Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CHOP CON BARRA','CALF en PRENSA'], planByMicro: hip_chop }
+        ]}
+      ]
+    },
+    'Calidad muscular': {
+      numMicro: 6,
+      entrenos: [
+        { letra:'A', nombre:'Entreno A · Lunes · Piernas-Hombros-Gemelos', ejercicios:[
+          { nombre:'SQUAT', subtitle:'Tempo 3232 · cluster', tipo:'normal', planByMicro: cm_main },
+          { nombre:'LEG-EXT + LEG-CURL + PRENSA', subtitle:'Triserie [MAX PUMP 12]', tipo:'circuito',
+            circuitoLineas:['LEG-EXTENSION','LEG-CURL','PRENSA 45º'], planByMicro: cm_pump },
+          { nombre:'PRESS MILITAR con BARRA', subtitle:'Tempo 3232 · cluster', tipo:'normal', planByMicro: cm_main },
+          { nombre:'ELEVACIONES + PRESS MANCUERNAS', subtitle:'Superserie [MAX PUMP 10]', tipo:'circuito',
+            circuitoLineas:['ELEVACIONES Laterales','PRESS con Mancuernas'], planByMicro: cm_pump },
+          { nombre:'CALF en Prensa', subtitle:'Stripping', tipo:'normal', planByMicro: cm_calf_strip }
+        ]},
+        { letra:'B', nombre:'Entreno B · Miércoles · Pecho-Bíceps-Tríceps', ejercicios:[
+          { nombre:'PRESS HORIZONTAL', subtitle:'Tempo 3232 · cluster', tipo:'normal', planByMicro: cm_main },
+          { nombre:'APERTURAS + PRESS INCLINADO', subtitle:'Superserie [MAX PUMP 10]', tipo:'circuito',
+            circuitoLineas:['APERTURAS Banco Horizontal','PRESS Banco Inclinado'], planByMicro: cm_pump },
+          { nombre:'CURL con BARRA', subtitle:'Tempo 3232 · cluster', tipo:'normal', planByMicro: cm_main },
+          { nombre:'CURL 45º + SPIDER CURL', subtitle:'Superserie [MAX PUMP 10]', tipo:'circuito',
+            circuitoLineas:['CURL 45º','SPIDER CURL'], planByMicro: cm_pump },
+          { nombre:'PRESS FRANCÉS + FONDOS', subtitle:'Superserie [MAX PUMP 10]', tipo:'circuito',
+            circuitoLineas:['PRESS FRANCÉS','FONDOS ESTRECHOS o Press Estrecho'], planByMicro: cm_pump }
+        ]},
+        { letra:'C', nombre:'Entreno C · Viernes · Espalda-Femoral-Abdomen', ejercicios:[
+          { nombre:'PESO MUERTO', subtitle:'Tempo 3232 · cluster', tipo:'normal', planByMicro: cm_main },
+          { nombre:'LEG-CURL + HIPEREXT + LUNGES', subtitle:'Triserie [MAX PUMP 12]', tipo:'circuito',
+            circuitoLineas:['LEG-CURL','HIPEREXTENSION','LUNGES o SPLIT SQUAT'], planByMicro: cm_pump },
+          { nombre:'TRACCIONES Agarre Estrecho', subtitle:'Tempo 3232 · cluster', tipo:'normal', planByMicro: cm_main },
+          { nombre:'PULL DOWN + TRACCIONES + REMO', subtitle:'Triserie [MAX PUMP 10]', tipo:'circuito',
+            circuitoLineas:['PULL DOWN','TRACCIONES agarre ANCHO','REMO o SEAL ROW'], planByMicro: cm_pump },
+          { nombre:'CRUNCH INVERTIDO + CRUNCH', subtitle:'Superserie', tipo:'circuito',
+            circuitoLineas:['CRUNCH INVERTIDO','CRUNCH'], planByMicro: cm_crunch }
+        ]}
+      ]
+    }
+  };
+})();
+
+
 function tobBuildSeedPlantillas(){
-  // Helper para construir un ejercicio normal con plan distinto por microciclo
-  function ej(nombre, subtitle, planByMicro){
-    return {
-      id: tobUid('ej'),
-      nombre, subtitle: subtitle||'',
-      tipo: 'normal',
-      planByMicro
-    };
-  }
-  function ejBase(nombre, subtitle, planBase){
-    return { id: tobUid('ej'), nombre, subtitle: subtitle||'', tipo: 'normal', planBase };
-  }
-  function ejCirc(nombre, subtitle, lineas, planBase){
-    return { id: tobUid('ej'), nombre, subtitle: subtitle||'', tipo: 'circuito', circuitoLineas: lineas, planBase };
-  }
-  // Plan típico Full Training Reacondicionamiento: 3x15/12/10 → 3x12/10/8 → 3x10/8/6 (en pares)
-  const planRea = {
-    1: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
-    2: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
-    3: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
-    4: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
-    5: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" },
-    6: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" }
-  };
-  const planCircRea = {
-    1: { series:2, repsTarget:[12], pausa:'30"' },
-    2: { series:3, repsTarget:[12], pausa:'30"' },
-    3: { series:3, repsTarget:[12], pausa:'30"' },
-    4: { series:3, repsTarget:[12], pausa:'30"' },
-    5: { series:3, repsTarget:[12], pausa:'30"' },
-    6: { series:3, repsTarget:[12], pausa:'30"' }
-  };
-
-  function entA_rea(){
-    const ejs = [
-      { ...ej('BOX SQUAT', '1" Pausa en Box', planRea), orden: 0 },
-      { ...ej('PRESS BANCA', '1" Pausa al Pecho', planRea), orden: 1 },
-      { ...ej('REMO', 'Espalda Recta · o Seal Row', planRea), orden: 2 },
-      { ...ejCirc('CURL + HIPEREXT + CALF', 'Alternados', ['CURL con BARRA','HIPEREXTENSION','CALF MACHINE'], { series:3, repsTarget:[12], pausa:'30"' }), planByMicro: planCircRea, orden: 3 }
-    ];
-    // Aplicar planByMicro al circuit
-    ejs[3].planByMicro = planCircRea; delete ejs[3].planBase;
-    return { id:'A', letra:'A', nombre:'Entreno A', ejercicios: ejs };
-  }
-  function entB_rea(){
-    const ejs = [
-      { ...ej('PESO MUERTO', 'Espalda Neutra', planRea), orden: 0 },
-      { ...ej('PRESS MILITAR', 'Hasta las Claviculas', planRea), orden: 1 },
-      { ...ej('DOMINADAS', 'Tocando el Pecho (peso + lastre) · o Lat Machine', planRea), orden: 2 },
-      { ...ejCirc('PRENSA 45º + CRUNCH + FONDOS', 'Alternados', ['PRENSA 45º','CRUNCH INVERSO','FONDOS TRICEPS'], { series:3, repsTarget:[12], pausa:'30"' }), orden: 3 }
-    ];
-    ejs[3].planByMicro = planCircRea; delete ejs[3].planBase;
-    return { id:'B', letra:'B', nombre:'Entreno B', ejercicios: ejs };
-  }
-
-  // ═══ Resto de categorías ═══
-  // Cada categoría con plan distinto. Sólo Reacondicionamiento con datos exactos
-  // del PDF; las demás con plan razonable. Sergio puede editar.
-
-  // Preparación fuerza (2º meso): series altas, %RM, ondas
-  const planPF = {
-    1: { series:3, repsTarget:[5,5,5], pausa:"2'00''" },
-    2: { series:3, repsTarget:[5,5,5], pausa:"2'00''" },
-    3: { series:3, repsTarget:[5,5,5], pausa:"2'30''" },
-    4: { series:3, repsTarget:[5,5,5], pausa:"2'30''" },
-    5: { series:3, repsTarget:[3,3,3], pausa:"3'00''" },
-    6: { series:3, repsTarget:[3,3,3], pausa:"3'00''" }
-  };
-  // Especialización (3º): pausas y técnica
-  const planEsp = {
-    1: { series:4, repsTarget:[6,6,6,6], pausa:"2'00''" },
-    2: { series:4, repsTarget:[6,6,6,6], pausa:"2'00''" },
-    3: { series:4, repsTarget:[5,5,5,5], pausa:"2'30''" },
-    4: { series:4, repsTarget:[5,5,5,5], pausa:"2'30''" },
-    5: { series:4, repsTarget:[4,4,4,4], pausa:"3'00''" },
-    6: { series:4, repsTarget:[4,4,4,4], pausa:"3'00''" }
-  };
-  // Fuerza 1 (4º): isométrico
-  const planF1 = {
-    1: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
-    2: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
-    3: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
-    4: { series:5, repsTarget:[3,3,3,3,3], pausa:"3'00''" },
-    5: { series:4, repsTarget:[2,2,2,2], pausa:"3'00''" },
-    6: { series:4, repsTarget:[2,2,2,2], pausa:"3'00''" }
-  };
-  // Fuerza 2 (5º): 20/20
-  const planF2 = {
-    1: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
-    2: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
-    3: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
-    4: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
-    5: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" },
-    6: { series:5, repsTarget:[5,5,5,5,5], pausa:"2'30''" }
-  };
-  // Híbrido (7º): clusters
-  const planHib = {
-    1: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
-    2: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
-    3: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
-    4: { series:4, repsTarget:[9,9,9,9], pausa:"3'00''" },
-    5: { series:4, repsTarget:[6,6,6,6], pausa:"3'00''" },
-    6: { series:4, repsTarget:[6,6,6,6], pausa:"3'00''" }
-  };
-  // Hipertrofia (10º): volumen
-  const planHip = {
-    1: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
-    2: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
-    3: { series:4, repsTarget:[8,8,8,8], pausa:"1'30''" },
-    4: { series:4, repsTarget:[8,8,8,8], pausa:"1'30''" },
-    5: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" },
-    6: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" }
-  };
-  // Calidad muscular (11º): pump alto
-  const planCM = {
-    1: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    2: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    3: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    4: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
-    5: { series:4, repsTarget:[20,20,20,20], pausa:"45''" },
-    6: { series:4, repsTarget:[20,20,20,20], pausa:"45''" }
-  };
-
-  function makeStandard(catName, planBase){
-    const A = { id:'A', letra:'A', nombre:'Entreno A', ejercicios: [
-      { id: tobUid('ej'), orden:0, nombre:'BOX SQUAT',       subtitle:'', tipo:'normal', planByMicro: planBase },
-      { id: tobUid('ej'), orden:1, nombre:'PRESS BANCA',     subtitle:'', tipo:'normal', planByMicro: planBase },
-      { id: tobUid('ej'), orden:2, nombre:'REMO',            subtitle:'', tipo:'normal', planByMicro: planBase },
-      { id: tobUid('ej'), orden:3, nombre:'CURL + HIPEREXT + CALF', subtitle:'Alternados', tipo:'circuito',
-        circuitoLineas:['CURL con BARRA','HIPEREXTENSION','CALF MACHINE'], planByMicro: planCircRea }
-    ]};
-    const B = { id:'B', letra:'B', nombre:'Entreno B', ejercicios: [
-      { id: tobUid('ej'), orden:0, nombre:'PESO MUERTO',     subtitle:'', tipo:'normal', planByMicro: planBase },
-      { id: tobUid('ej'), orden:1, nombre:'PRESS MILITAR',   subtitle:'', tipo:'normal', planByMicro: planBase },
-      { id: tobUid('ej'), orden:2, nombre:'DOMINADAS',       subtitle:'', tipo:'normal', planByMicro: planBase },
-      { id: tobUid('ej'), orden:3, nombre:'PRENSA + CRUNCH + FONDOS', subtitle:'Alternados', tipo:'circuito',
-        circuitoLineas:['PRENSA 45º','CRUNCH INVERSO','FONDOS TRICEPS'], planByMicro: planCircRea }
-    ]};
-    return [A, B];
-  }
-
+  // Construye las plantillas H + M para cada categoría de TOB_BIIO_DATA.
+  // numMicro, entrenos (con su letra/nombre/ejercicios), planByMicro real BIIO.
   const out = [];
   const MACRO = '1º Powerbuilding';
   const DESC = TOB_DESC_CATEGORIAS;
-  // (descripciones detalladas en TOB_DESC_CATEGORIAS arriba)
-  // 1. Reacondicionamiento (exacto del PDF)
-  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Hombre', categoria:'Reacondicionamiento', sexo:'H', descripcion: DESC['Reacondicionamiento'], _descV: TOB_DESC_VERSION, entrenos:[entA_rea(), entB_rea()] });
-  out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:'Reacondicionamiento — Mujer',  categoria:'Reacondicionamiento', sexo:'M', descripcion: DESC['Reacondicionamiento'], _descV: TOB_DESC_VERSION, entrenos:[entA_rea(), entB_rea()] });
-  // 2-8
-  [
-    ['Preparación fuerza',     planPF],
-    ['Especialización técnica',planEsp],
-    ['Fuerza 1',                planF1],
-    ['Fuerza 2',                planF2],
-    ['Hibrido',                 planHib],
-    ['Hipertrofia',             planHip],
-    ['Calidad muscular',        planCM]
-  ].forEach(([cat, plan]) => {
-    ['H','M'].forEach(sx => {
-      const entrenos = makeStandard(cat, plan);
-      // Maximales: solo en Fuerza 2. 3º entreno con 6 ejercicios principales,
-      // plan 1×1 (intento de 1RM). El cliente apunta el max alcanzado.
-      if(cat === 'Fuerza 2'){
-        const planMax = {};
-        for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
-          planMax[mn] = { series: 1, repsTarget: [1], pausa: "5'00''" };
-        }
-        const maxNames = ['BOX SQUAT', 'PRESS BANCA', 'PESO MUERTO', 'PRESS MILITAR', 'REMO', 'DOMINADAS'];
-        const ejMax = maxNames.map((n, i) => ({
-          id: tobUid('ej'), orden: i, nombre: n,
-          subtitle: 'Intento máximo (1RM)',
-          tipo: 'normal',
-          planByMicro: planMax
-        }));
-        entrenos.push({
-          id: 'MX', letra: 'MX', nombre: 'Maximales',
-          ejercicios: ejMax
-        });
-      }
-      out.push({ id: tobUid('pl'), macrociclo: MACRO, nombre:`${cat} — ${sx==='H'?'Hombre':'Mujer'}`, categoria: cat, sexo: sx, descripcion: DESC[cat] || '', _descV: TOB_DESC_VERSION, entrenos });
+  Object.entries(TOB_BIIO_DATA).forEach(([categoria, data]) => {
+    ['H','M'].forEach(sexo => {
+      const entrenos = data.entrenos.map(en => ({
+        id: en.letra,
+        letra: en.letra,
+        nombre: en.nombre || ('Entreno ' + en.letra),
+        ejercicios: en.ejercicios.map((ej, i) => ({
+          id: tobUid('ej'),
+          orden: i,
+          nombre: ej.nombre,
+          subtitle: ej.subtitle || '',
+          tipo: ej.tipo || 'normal',
+          ...(ej.tipo === 'circuito' ? { circuitoLineas: ej.circuitoLineas || [] } : {}),
+          planByMicro: JSON.parse(JSON.stringify(ej.planByMicro))
+        }))
+      }));
+      out.push({
+        id: tobUid('pl'),
+        macrociclo: MACRO,
+        nombre: `${categoria} — ${sexo === 'H' ? 'Hombre' : 'Mujer'}`,
+        categoria,
+        sexo,
+        numMicro: data.numMicro,
+        descripcion: DESC[categoria] || '',
+        _descV: TOB_DESC_VERSION,
+        _planV: TOB_PLAN_VERSION,
+        entrenos
+      });
     });
   });
   return out;
@@ -3372,10 +3653,13 @@ async function tobBuildPdfRutina(cli, a, pl, it){
     drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra}${en.nombre && en.nombre !== ('Entreno '+en.letra) ? ' — ' + en.nombre : ''}`, rutinaShort, W_L, H_L);
     let y = H_L - 90;
 
-    const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i)=>i+1);
-    const colW = 105;
+    const _N = tobNumMicroOf(a?.rutina);
+    const microHeaders = Array.from({length: _N}, (_,i)=>i+1);
     const startX = 110;
-    const tableRight = startX + colW * TOB_NUM_MICRO;
+    // Columnas se ajustan al numMicro de la plantilla: con 3 micros son anchas,
+    // con 7 más estrechas. Margen derecho de 30pt para que respiren.
+    const colW = Math.floor((W_L - startX - 30) / _N);
+    const tableRight = startX + colW * _N;
 
     // Fila Fecha (form field editable)
     page.drawText('Fecha', { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
@@ -3398,7 +3682,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
 
     // Líneas separadoras verticales entre microciclos
     const drawVertSeparators = (yTop, yBottom) => {
-      for(let i=0; i<=TOB_NUM_MICRO; i++){
+      for(let i=0; i<=_N; i++){
         const lx = startX + i*colW - 2;
         page.drawLine({ start:{x:lx, y:yTop}, end:{x:lx, y:yBottom}, thickness:0.5, color: rgb(0.85,0.85,0.85) });
       }
@@ -3583,7 +3867,7 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
       const color = TOB_IT_COLORS[globalIdx % TOB_IT_COLORS.length];
       globalIdx++;
       const points = [];
-      for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+      for(let mn=1; mn<=tobNumMicroOf(aa.rutina); mn++){
         const ses = it.sesiones[mn]?.[entId];
         const series = ses?.ejs?.[ej.id]?.series;
         if(!series || !series.length) continue;
@@ -4113,8 +4397,12 @@ function tobSaveEj(){
     ? document.getElementById('tobEjEditCircLineas').value.split('\n').map(s => s.trim()).filter(Boolean)
     : null;
 
+  // Construir planByMicro para el numMicro de la plantilla/rutina que contiene este ejercicio
+  const _ctx = _tobEditingEj.context === 'plantilla'
+    ? tobDB.plantillas.find(p => p.id === _tobEditingEj.plantillaId)
+    : tobAsig()?.rutina;
   const planByMicro = {};
-  for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+  for(let mn=1; mn<=tobNumMicroOf(_ctx); mn++){
     planByMicro[mn] = { series, repsTarget, pausa };
   }
 
