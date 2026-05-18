@@ -1228,16 +1228,11 @@ function tobRenderCharts(){
         label: 'It. ' + it.numero,
         data: points,
         _labels: labels,
-        borderColor: color,
-        backgroundColor: color + '22',
-        pointBackgroundColor: color,
-        pointBorderColor: color,
-        pointStyle: 'crossRot',
-        pointRadius: 5,
-        pointHoverRadius: 7,
-        tension: 0.05,
-        fill: false,
-        borderWidth: 2
+        // Estilo barra (más limpio que línea con pocos puntos por iteración).
+        backgroundColor: color + 'cc',
+        borderColor: color, borderWidth: 1.5,
+        borderRadius: 4, borderSkipped: false,
+        categoryPercentage: 0.85, barPercentage: 0.9
       });
     });
 
@@ -1260,7 +1255,6 @@ function tobRenderCharts(){
       });
       ds.data = labels.map(l => map[l] != null ? map[l] : null);
       delete ds._labels;
-      ds.spanGaps = true;
     });
 
     if(!datasets.length){
@@ -1272,7 +1266,7 @@ function tobRenderCharts(){
     }
 
     tobCharts[ej.id] = new Chart(canvas, {
-      type: 'line',
+      type: 'bar',
       data: { labels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -3606,19 +3600,12 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
         : `It. ${it.numero}`;
       datasets.push({
         label: dsLabel, _points: points, _color: color,
-        borderColor: color, borderWidth: isCurrent ? 2.8 : 2,
-        backgroundColor: (c) => {
-          const ch = c.chart, area = ch.chartArea;
-          if(!area) return color + '22';
-          const g = ch.ctx.createLinearGradient(0, area.top, 0, area.bottom);
-          g.addColorStop(0, color + (isCurrent ? '66' : '40'));
-          g.addColorStop(1, color + '08');
-          return g;
-        },
-        pointBackgroundColor: color, pointBorderColor: color,
-        pointStyle: 'circle', pointRadius: isCurrent ? 5 : 4, pointBorderWidth: 2,
-        tension: 0.25, fill: true,
-        borderDash: (multi && !isCurrent) ? [4, 3] : []
+        // Estilo barra: relleno semitransparente, borde del color, esquinas redondeadas.
+        backgroundColor: color + (isCurrent ? 'cc' : '99'),
+        borderColor: color, borderWidth: 1.5,
+        borderRadius: 4, borderSkipped: false,
+        // Compactar grupos de barras (más juntas entre datasets en la misma fecha)
+        categoryPercentage: 0.85, barPercentage: 0.9
       });
     });
   });
@@ -3630,11 +3617,13 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
   datasets.forEach(ds => {
     const map = {}; ds._points.forEach(p => { map[p.label] = p.val; });
     ds.data = labels.map(l => map[l] != null ? map[l] : null);
-    ds.spanGaps = true;
     delete ds._points;
   });
   return {
-    type: 'line', data: { labels, datasets },
+    // Barras agrupadas (una por iteración) por fecha de sesión. Más claro
+    // que líneas cuando hay pocos puntos por iteración (no salen cruces sueltos
+    // en los extremos del eje).
+    type: 'bar', data: { labels, datasets },
     options: {
       layout: { padding: { top: 22, right: 16, left: 4, bottom: 2 } },
       plugins: {
@@ -4286,22 +4275,18 @@ async function tobShareWhatsAppRutina(){
 }
 
 // ═══ WhatsApp share core ════════════════════════════════════
+// Solo abre el chat. NO pre-rellena texto — el trainer escribe lo que quiera
+// y adjunta el PDF que se ha descargado automáticamente justo antes.
 function tobShareWhatsApp(cli, kind, extraText){
   if(!cli){ tobToast('Sin cliente', 'red'); return; }
   const phone = (cli.contacto || '').replace(/[^\d+]/g, '').replace(/^\+/,'');
-  let msg;
-  if(kind === 'historico'){
-    msg = `Hola ${cli.nombre}! Aquí tu histórico de entrenamientos. ${extraText||''} 💪`;
-  } else if(kind === 'rutina'){
-    msg = `Hola ${cli.nombre}! Aquí tu rutina completada. ${extraText||''} ¡Buen trabajo! 💪`;
-  } else {
-    msg = `Hola ${cli.nombre}! ${extraText||''}`;
-  }
-  const url = phone
-    ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
-    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  const url = phone ? `https://wa.me/${phone}` : `https://wa.me/`;
   window.open(url, '_blank');
-  if(!phone) tobToast('Sin contacto guardado — abre WhatsApp y elige destinatario', '');
+  if(!phone){
+    tobToast('Sin contacto guardado — abre WhatsApp y elige destinatario', '');
+  } else {
+    tobToast('✓ WhatsApp abierto · adjunta el PDF que se acaba de descargar', 'green');
+  }
 }
 
 // Auto-init
