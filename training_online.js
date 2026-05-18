@@ -44,7 +44,9 @@ const TOB_NUM_MICRO = 6;  // default histórico — cada plantilla puede tener s
 // Devuelve el número de microciclos de una plantilla o de la rutina copiada en
 // una asignación. Fallback a 6 (asignaciones antiguas sin el campo numMicro).
 function tobNumMicroOf(o){ return (o && o.numMicro) || TOB_NUM_MICRO; }
-const TOB_IT_COLORS = ['#f5a623','#e0e0e0','#60a5fa','#3fb68b','#dc2626','#a78bfa','#fb923c','#22d3ee'];
+// Colores por iteración (informe sobre fondo blanco → It. 2 antes era #e0e0e0 = invisible).
+// It. 1 ámbar, It. 2 violeta, It. 3 azul, It. 4 verde, It. 5 rojo, It. 6 turquesa, It. 7 naranja, It. 8 fucsia.
+const TOB_IT_COLORS = ['#f5a623','#8b5cf6','#2563eb','#10b981','#dc2626','#06b6d4','#f97316','#db2777'];
 
 // Versión de las descripciones. Al subirla, el backfill reaplica los textos.
 const TOB_DESC_VERSION = 5;

@@ -3993,6 +3993,13 @@ function legsAdd(containerId, leg){
     head.innerHTML = `<div style="text-align:left">Tipo</div><div>Strike</div><div>Delta</div><div>Prima</div><div>Comi</div><div></div>`;
     container.appendChild(head);
   }
+  // Auto-recalcular totales (delta neto, prima neta, comi total) al editar
+  // cualquier campo de las patas. Si el usuario rellena las patas, los
+  // campos globales se rellenan solos.
+  row.querySelectorAll('[data-f]').forEach(input => {
+    const evt = input.tagName === 'SELECT' ? 'change' : 'input';
+    input.addEventListener(evt, () => legsRecalcTotals(containerId));
+  });
   // Botón eliminar
   row.querySelector('button').onclick = ()=>{
     row.remove();
@@ -4000,8 +4007,74 @@ function legsAdd(containerId, leg){
     if(container.children.length === 1 && container.children[0].classList.contains('leg-header')){
       container.children[0].remove();
     }
+    legsRecalcTotals(containerId);
   };
   container.appendChild(row);
+}
+
+// Mapeo container → IDs de los campos globales del modal
+// (el am_legs vive en el modal "Nueva posición activa", el hf_legs en el
+// modal del historial).
+const LEGS_FIELD_MAP = {
+  'am_legs_container': { delta:'am_delta', prima:'am_pcred', comi:'am_comi', primaScale:1 },
+  'hf_legs_container': { delta:'hf_delta', prima:'hf_pCredito', comi:'hf_comiOpen', primaScale:100 }
+};
+
+// Suma los datos de las patas y rellena los campos globales del modal.
+// Sign convention para delta y prima:
+//   short_put  → delta:+|d|, prima:+p (cobramos)
+//   long_put   → delta:-|d|, prima:-p (pagamos)
+//   short_call → delta:-|d|, prima:+p
+//   long_call  → delta:+|d|, prima:-p
+// comi: siempre suma (siempre se paga).
+//
+// Solo escribe en un campo global si hay al menos UNA pata con ese dato
+// (delta, prima o comi) rellenado — así no aplasta valores que el usuario
+// haya escrito manualmente cuando no estaba usando las patas.
+function legsRecalcTotals(containerId){
+  const map = LEGS_FIELD_MAP[containerId];
+  if(!map) return;
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  const rows = container.querySelectorAll('.leg-row');
+  if(!rows.length) return;
+  let netDelta = 0, netPrima = 0, totComi = 0;
+  let hasDelta = false, hasPrima = false, hasComi = false;
+  rows.forEach(row => {
+    const get = f => {
+      const el = row.querySelector(`[data-f="${f}"]`);
+      if(!el) return null;
+      const v = el.value.trim();
+      if(v === '') return null;
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const kind = row.querySelector('[data-f="kind"]')?.value || 'short_put';
+    const isShort = kind.startsWith('short_');
+    const isPut   = kind.endsWith('_put');
+    // Sign para delta: short_put y long_call son delta+; los otros delta-.
+    const deltaSign = (isShort && isPut) || (!isShort && !isPut) ? +1 : -1;
+    // Sign para prima: short → +cobramos, long → -pagamos.
+    const primaSign = isShort ? +1 : -1;
+    const d = get('delta');
+    const p = get('prima');
+    const c = get('comi');
+    if(d != null){ netDelta += deltaSign * Math.abs(d); hasDelta = true; }
+    if(p != null){ netPrima += primaSign * p;            hasPrima = true; }
+    if(c != null){ totComi  += c;                        hasComi  = true; }
+  });
+  const setIf = (id, val, decimals) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.value = (decimals != null) ? val.toFixed(decimals) : String(val);
+    el.dispatchEvent(new Event('input', { bubbles: true })); // dispara recalcs externos (p.ej. updateAccMaxRisk)
+  };
+  if(hasDelta) setIf(map.delta, netDelta, 2);
+  if(hasPrima){
+    // hf_pCredito está en escala ×100 (cents/dollars-per-contract), am_pcred en escala /share.
+    setIf(map.prima, netPrima * map.primaScale, 2);
+  }
+  if(hasComi)  setIf(map.comi,  totComi, 2);
 }
 
 function legsClear(containerId){
@@ -5031,6 +5104,32 @@ function openActLegCloseModal(idx){
   const legEl = document.getElementById('alcm_leg');
   const legSuggest = { 'CSS':'SC', 'PCS':'SP', 'CCS':'SC', 'IC':'SC', '112':'SP', 'JL':'SC' };
   if(legSuggest[a.strat]) legEl.value = legSuggest[a.strat];
+
+  // ── Pre-rellenar crédito original de la pata desde a.legs ─────────
+  // Si la posición tiene patas detalladas guardadas (a.legs), buscamos la
+  // que coincide con la pata seleccionada y rellenamos automáticamente
+  // alcm_pcred_leg con la prima de apertura de esa pata. Así, al cerrar
+  // o rolar una pata, el usuario solo tiene que poner el coste de cierre
+  // y la comisión de cierre.
+  const LEG_CODE_TO_KIND = { 'SC':'short_call', 'SP':'short_put', 'LC':'long_call', 'LP':'long_put' };
+  const fillFromLeg = () => {
+    if(!Array.isArray(a.legs) || !a.legs.length) return;
+    const code = legEl.value;
+    const wantKind = LEG_CODE_TO_KIND[code];
+    if(!wantKind) return;
+    const match = a.legs.find(l => l.kind === wantKind);
+    const pcredEl = document.getElementById('alcm_pcred_leg');
+    if(match && match.prima != null){
+      // Solo si está vacío — no machacar lo que el usuario ya haya escrito
+      if(!pcredEl.value){
+        pcredEl.value = match.prima;
+        // dispara el preview
+        pcredEl.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+  };
+  legEl.onchange = fillFromLeg;
+  fillFromLeg(); // intento inicial con la pata sugerida
   // Resumen posición
   const ctr = a.contracts || 1;
   const pc_share = (a.pCredito||0) * 100;
@@ -5132,6 +5231,31 @@ function confirmCloseLeg(){
   a.nota = (a.nota ? a.nota + ' · ' : '') + stamp;
   a.legCloseHistory = a.legCloseHistory || [];
   a.legCloseHistory.push({ legType, fecha: fecha_leg, pcred_leg, pclose_leg, comi_leg, totalNeto: totalneto });
+
+  // Si la posición tiene patas detalladas (a.legs), quitamos la cerrada y
+  // recalculamos el delta neto a partir de las que quedan. Así la pata
+  // restante queda con sus datos correctos sin tener que tocarlos.
+  if(Array.isArray(a.legs) && a.legs.length){
+    const LEG_CODE_TO_KIND = { 'SC':'short_call', 'SP':'short_put', 'LC':'long_call', 'LP':'long_put' };
+    const killKind = LEG_CODE_TO_KIND[legType];
+    if(killKind){
+      const ix = a.legs.findIndex(l => l.kind === killKind);
+      if(ix >= 0) a.legs.splice(ix, 1);
+    }
+    // Recalcular delta neto desde las patas restantes
+    if(a.legs.length){
+      let netDelta = 0; let any = false;
+      a.legs.forEach(l => {
+        if(l.delta == null) return;
+        const isShort = l.kind.startsWith('short_');
+        const isPut   = l.kind.endsWith('_put');
+        const sign = (isShort && isPut) || (!isShort && !isPut) ? +1 : -1;
+        netDelta += sign * Math.abs(l.delta);
+        any = true;
+      });
+      if(any) a.delta = parseFloat(netDelta.toFixed(2));
+    }
+  }
   activasSave();
 
   closeActLegCloseModal();
