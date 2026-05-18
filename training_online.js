@@ -116,6 +116,91 @@ const TOB_DESC_CATEGORIAS = {
     'CONSEJOS: Entrena entre 3 y 5 días por semana. Es una rutina ideal cuando quieres verte más marcado. En el último ejercicio de cada grupo se hacen "bajadas de peso" (sigues haciendo repeticiones con menos peso) para apurar al máximo.'
 };
 
+// Versión del plan oficial (series/reps/pausa por microciclo) por categoría.
+// Cuando subimos TOB_PLAN_VERSION, tobLoad reaplica los planes de TOB_FIXED_PLANS
+// a las plantillas guardadas — para corregir errores de pase del catálogo BIIO.
+// IMPORTANTE: los ejercicios en circuito y los "Maximales" (Fuerza 2) NO se tocan.
+const TOB_PLAN_VERSION = 2;
+const TOB_FIXED_PLANS = {
+  // Reacondicionamiento: progresión clásica 15/12/10 → 12/10/8 → 10/8/6, pausa creciente.
+  'Reacondicionamiento': {
+    1: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
+    2: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
+    3: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
+    4: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
+    5: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" },
+    6: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" }
+  },
+  // Preparación fuerza: 5 reps todo, picos en intensidad, último bloque deload.
+  // Descansos 2' a 2'30, NO 3'00 (el bloque final es suave de recuperación).
+  'Preparación fuerza': {
+    1: { series:3, repsTarget:[5,5,5],       pausa:"2'00''" },
+    2: { series:3, repsTarget:[5,5,5],       pausa:"2'00''" },
+    3: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
+    4: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
+    5: { series:4, repsTarget:[5,5,5,5],     pausa:"2'30''" },
+    6: { series:3, repsTarget:[6,6,6],       pausa:"1'45''" }   // deload
+  },
+  // Especialización técnica: 4-6 reps, pausa hasta 2'30 (no 3').
+  'Especialización técnica': {
+    1: { series:4, repsTarget:[6,6,6,6],     pausa:"2'00''" },
+    2: { series:4, repsTarget:[6,6,6,6],     pausa:"2'00''" },
+    3: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
+    4: { series:4, repsTarget:[5,5,5,5],     pausa:"2'15''" },
+    5: { series:4, repsTarget:[4,4,4,4],     pausa:"2'30''" },
+    6: { series:4, repsTarget:[4,4,4,4],     pausa:"2'30''" }
+  },
+  // Fuerza 1: 5×3, pausa 3'. Último bloque deload (3×5 con pausa más corta).
+  'Fuerza 1': {
+    1: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
+    2: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
+    3: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
+    4: { series:5, repsTarget:[3,3,3,3,3],   pausa:"3'00''" },
+    5: { series:5, repsTarget:[2,2,2,2,2],   pausa:"3'00''" }, // pico
+    6: { series:3, repsTarget:[5,5,5],       pausa:"2'00''" }  // deload
+  },
+  // Fuerza 2: 5×5 todo el meso (la intensidad sube en kg, no en reps).
+  // El entreno "Maximales" se mantiene aparte y no lo tocamos.
+  'Fuerza 2': {
+    1: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
+    2: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
+    3: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
+    4: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
+    5: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" },
+    6: { series:5, repsTarget:[5,5,5,5,5],   pausa:"2'30''" }
+  },
+  // Híbrido: 9 reps (en tres clusters 3+3+3, pausa 15-20s entre tandas).
+  // Pico en 5×6, último bloque deload.
+  'Hibrido': {
+    1: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
+    2: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
+    3: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
+    4: { series:4, repsTarget:[9,9,9,9],     pausa:"3'00''" },
+    5: { series:5, repsTarget:[6,6,6,6,6],   pausa:"3'00''" }, // pico
+    6: { series:3, repsTarget:[9,9,9],       pausa:"2'00''" }  // deload
+  },
+  // Hipertrofia: 8-15 reps con ondas, pausa 1'30.
+  'Hipertrofia': {
+    1: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
+    2: { series:4, repsTarget:[10,10,10,10], pausa:"1'30''" },
+    3: { series:4, repsTarget:[8,8,8,8],     pausa:"1'30''" },
+    4: { series:4, repsTarget:[8,8,8,8],     pausa:"1'30''" },
+    5: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" },
+    6: { series:4, repsTarget:[12,12,12,12], pausa:"1'30''" }
+  },
+  // Calidad muscular: pump alto, pausas cortas. (Nota: en BIIO original Entreno A
+  // es bombeo y Entreno B fuerza media. Aquí aplicamos el patrón de bombeo a
+  // ambos por simplicidad; el entrenador puede editar el B si quiere bajar reps.)
+  'Calidad muscular': {
+    1: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    2: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    3: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    4: { series:4, repsTarget:[15,15,15,15], pausa:"1'00''" },
+    5: { series:4, repsTarget:[20,20,20,20], pausa:"45''"   },
+    6: { series:4, repsTarget:[20,20,20,20], pausa:"45''"   }
+  }
+};
+
 // Aliases de ejercicios: nombres equivalentes mapeados a un nombre canónico.
 // Se aplica en tobLoad() por backfill — preserva IDs (sesiones quedan intactas).
 const TOB_EJ_ALIASES = {
@@ -220,6 +305,29 @@ function tobLoad(){
     }
   });
 
+  // Backfill: planes oficiales BIIO por categoría. Si la plantilla no está en
+  // la versión actual de TOB_PLAN_VERSION, se reaplica el plan correcto a TODOS
+  // los ejercicios PRINCIPALES (no circuito y no maximales). Esto corrige las
+  // plantillas que se sembraron con series/reps/descansos incorrectos.
+  // Las asignaciones ya creadas no se tocan — tienen su propia copia de la rutina.
+  tobDB.plantillas.forEach(p => {
+    if(!p.categoria || !TOB_FIXED_PLANS[p.categoria]) return;
+    if((p._planV || 0) >= TOB_PLAN_VERSION) return;
+    const fix = TOB_FIXED_PLANS[p.categoria];
+    (p.entrenos||[]).forEach(en => {
+      // No tocar el entreno "Maximales" (Fuerza 2)
+      if(en.letra === 'MX' || (en.nombre||'').toLowerCase().includes('maximal')) return;
+      (en.ejercicios||[]).forEach(ej => {
+        if(ej.tipo === 'circuito') return;
+        if(ej.subtitle && /m[aá]xim/i.test(ej.subtitle)) return;
+        ej.planByMicro = JSON.parse(JSON.stringify(fix));
+        delete ej.planBase;
+      });
+    });
+    p._planV = TOB_PLAN_VERSION;
+    backfilled = true;
+  });
+
   // Backfill: normalizar nombres de ejercicios con aliases.
   // Preserva IDs — las sesiones logueadas siguen vinculadas.
   const renameEj = (ej) => {
@@ -321,9 +429,9 @@ function tobRenderClientes(){
       <td class="num">${(c.asignaciones||[]).length}</td>
       <td>${lastInfo}</td>
       <td class="actions">
-        <button class="tob-action" style="padding:5px 10px;" onclick="tobAbrirUltimaRutina('${c.id}')" title="Abrir la última rutina del cliente">🏋 Rutina</button>
-        <button class="tob-action" style="padding:5px 10px;" onclick="tobAbrirMediciones('${c.id}')" title="Ver/añadir mediciones de composición corporal">📏 Mediciones</button>
-        <button class="tob-action ghost" style="padding:5px 10px;" onclick="tobOpenFicha('${c.id}')" title="Ficha general — rutinas + mediciones + histórico">📋 Ficha</button>
+        <button class="tob-action btn-xs" onclick="tobAbrirUltimaRutina('${c.id}')" title="Abrir la última rutina del cliente">🏋 Rutina</button>
+        <button class="tob-action btn-xs" onclick="tobAbrirMediciones('${c.id}')" title="Ver/añadir mediciones de composición corporal">📏 Med</button>
+        <button class="tob-action ghost btn-xs" onclick="tobOpenFicha('${c.id}')" title="Ficha general — rutinas + mediciones + histórico">📋 Ficha</button>
       </td>
     </tr>`;
   }).join('');
@@ -450,6 +558,37 @@ function tobAbrirMediciones(cliId){
     const block = document.getElementById('tobFichaMedicionesBlock');
     if(block) block.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 100);
+}
+
+// Botón "+ Rutina" desde la ficha: abre el selector de plantillas.
+function tobNuevaRutinaDesdeFicha(){
+  if(!tobCurrentFichaId) return;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(cli) tobOpenAsignarModal(cli);
+}
+
+// Botón "✓ Completar y abrir nueva rutina": cuando la rutina actual aún no
+// está marcada como completada, la marca y abre el selector para la siguiente.
+// Si ya está completada, abre el selector directamente.
+function tobCompletarYNuevaRutina(){
+  if(!tobCurrentFichaId) return;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const sorted = [...(cli.asignaciones||[])].sort((a,b) => (b.fechaInicio||'').localeCompare(a.fechaInicio||''));
+  const lastA = sorted[0];
+  if(lastA && lastA.estado !== 'completada'){
+    const pl = tobDB.plantillas.find(p => p.id === lastA.plantillaId);
+    tobConfirm('Completar y abrir nueva rutina',
+      `Voy a marcar <strong>${tobEsc(tobRutinaShortName(pl))}</strong> como completada y abrir el selector para asignar una rutina nueva. ¿Continuar?`,
+      () => {
+        lastA.estado = 'completada';
+        tobSave();
+        tobRenderFicha();
+        tobOpenAsignarModal(cli);
+      });
+  } else {
+    tobOpenAsignarModal(cli);
+  }
 }
 
 function tobBackToFicha(){
@@ -709,7 +848,7 @@ function tobOpenAsignacion(cliId, asigId){
   document.getElementById('tobTabAsig').classList.add('active');
 
   document.getElementById('tobAsigTitulo').textContent = `${cli.nombre} — ${tobRutinaShortName(pl)}`;
-  document.getElementById('tobAsigSubtitulo').textContent = (pl?.categoria || '') + (pl?.sexo === 'M' ? ' · ♀' : pl?.sexo === 'H' ? ' · ♂' : '');
+  document.getElementById('tobAsigSubtitulo').textContent = pl?.categoria || '';
 
   document.getElementById('tobAsigEstado').value = asig.estado;
   document.getElementById('tobAsigNotas').value = asig.notas || '';
@@ -1972,6 +2111,16 @@ function tobRenderFicha(){
   if(cli.contacto) metaParts.push(cli.contacto);
   document.getElementById('tobFichaMeta').textContent = metaParts.join('  ·  ');
 
+  // ── Botón "✓ Completar y abrir nueva": visible si la última rutina aún
+  // no está marcada como completada (para que cerrar y empezar otra sea evidente).
+  const sortedAsigsForCompletar = [...(cli.asignaciones||[])]
+    .sort((a,b) => (b.fechaInicio||'').localeCompare(a.fechaInicio||''));
+  const lastAsig = sortedAsigsForCompletar[0];
+  const completarBtn = document.getElementById('tobCompletarBtn');
+  if(completarBtn){
+    completarBtn.style.display = (lastAsig && lastAsig.estado !== 'completada') ? '' : 'none';
+  }
+
   // ── KPIs adaptativos: rutinas, mediciones, o ambas ──
   const kpiCards = [];
   if(hasRutinas){
@@ -2369,12 +2518,25 @@ function tobOpenMedicionModal(medId){
   document.getElementById('tobMedPes').value = med?.pes ?? '';
   document.getElementById('tobMedEstatura').value = med?.estatura ?? lastMed?.estatura ?? '';
   document.getElementById('tobMedNotas').value = med?.notas || '';
-  document.getElementById('tobMedPlecsRow').innerHTML = TOB_MED_PLECS.map(([k,label]) =>
-    `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPlec_${k}" value="${med?.plecs?.[k] ?? ''}" placeholder="mm"></div>`
-  ).join('');
-  document.getElementById('tobMedPerimRow').innerHTML = TOB_MED_PERIM.map(([k,label]) =>
-    `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPerim_${k}" value="${med?.perimetres?.[k] ?? ''}" placeholder="cm"></div>`
-  ).join('');
+  // Para una NUEVA medición, mostrar bajo cada input el valor de la anterior
+  // (clicable para copiarlo). Si estamos editando, se ocultan los hints porque
+  // los valores ya están en los inputs.
+  const showPrev = !med;
+  const refMed = showPrev ? lastMed : null;
+  document.getElementById('tobMedPlecsRow').innerHTML = TOB_MED_PLECS.map(([k,label]) => {
+    const prev = refMed?.plecs?.[k];
+    const hint = (prev != null)
+      ? `<div class="tob-med-prev" onclick="tobMedFillPrev('tobMedPlec_${k}',${prev})" title="Clic para usar el valor de la medición anterior (${refMed.fecha})">ant: <b>${prev}</b> mm</div>`
+      : '';
+    return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPlec_${k}" value="${med?.plecs?.[k] ?? ''}" placeholder="mm">${hint}</div>`;
+  }).join('');
+  document.getElementById('tobMedPerimRow').innerHTML = TOB_MED_PERIM.map(([k,label]) => {
+    const prev = refMed?.perimetres?.[k];
+    const hint = (prev != null)
+      ? `<div class="tob-med-prev" onclick="tobMedFillPrev('tobMedPerim_${k}',${prev})" title="Clic para usar el valor de la medición anterior (${refMed.fecha})">ant: <b>${prev}</b> cm</div>`
+      : '';
+    return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPerim_${k}" value="${med?.perimetres?.[k] ?? ''}" placeholder="cm">${hint}</div>`;
+  }).join('');
   document.getElementById('tobMedDelBtn').style.display = med ? '' : 'none';
   document.getElementById('tobMedicionModalBg').dataset.editId = med?.id || '';
   document.getElementById('tobMedicionModalBg').classList.add('on');
@@ -2425,6 +2587,77 @@ function tobDelMedicion(medId){
     tobRenderFicha();
     tobToast('Eliminada', 'green');
   });
+}
+
+// Rellena un input del modal con el valor de la medición anterior (clic en hint).
+function tobMedFillPrev(id, v){
+  const el = document.getElementById(id);
+  if(el){ el.value = v; el.focus(); }
+}
+
+// ── Comparar 2 mediciones lado a lado ──
+function tobOpenMedCompare(){
+  if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const meds = tobMedsSorted(cli);
+  if(meds.length < 2){ tobToast('Necesitas al menos 2 mediciones para comparar', 'red'); return; }
+  const opts = meds.map(m => `<option value="${m.id}">${m.fecha}  ·  ${m.pes != null ? m.pes + ' kg' : '—'}</option>`).join('');
+  document.getElementById('tobMedCmpA').innerHTML = opts;
+  document.getElementById('tobMedCmpB').innerHTML = opts;
+  document.getElementById('tobMedCmpA').value = meds[0].id;
+  document.getElementById('tobMedCmpB').value = meds[meds.length-1].id;
+  tobRenderMedCmp();
+  document.getElementById('tobMedCompareBg').classList.add('on');
+}
+function tobCloseMedCompare(){ document.getElementById('tobMedCompareBg').classList.remove('on'); }
+function tobRenderMedCmp(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const idA = document.getElementById('tobMedCmpA').value;
+  const idB = document.getElementById('tobMedCmpB').value;
+  const A = (cli.mediciones||[]).find(m => m.id === idA);
+  const B = (cli.mediciones||[]).find(m => m.id === idB);
+  const body = document.getElementById('tobMedCmpBody');
+  if(!A || !B){ body.innerHTML = '<div style="color:var(--mute);">Selecciona dos mediciones</div>'; return; }
+  const fmtV = (v, dec=1) => v == null ? '—' : (Math.round(+v * Math.pow(10,dec)) / Math.pow(10,dec));
+  const row = (label, a, b, unit, dec=1, sub=false) => {
+    const av = a != null ? +a : null;
+    const bv = b != null ? +b : null;
+    const d = (av != null && bv != null) ? (bv - av) : null;
+    const dStr = d == null ? '—' : `${d>0?'+':''}${Math.round(d*Math.pow(10,dec))/Math.pow(10,dec)}`;
+    const dCol = d == null || Math.abs(d) < Math.pow(10,-dec)/2 ? 'var(--mute)' : 'var(--acc2)';
+    return `<tr${sub?' class="subrow"':''}>
+      <td>${label}</td>
+      <td class="num">${fmtV(av,dec)}${unit?' '+unit:''}</td>
+      <td class="num">${fmtV(bv,dec)}${unit?' '+unit:''}</td>
+      <td class="num" style="color:${dCol};font-weight:700">${dStr}${unit?' '+unit:''}</td>
+    </tr>`;
+  };
+  const sectionRow = (label) => `<tr class="section"><td colspan="4">${label}</td></tr>`;
+  const sumA = tobMedSum(A), sumB = tobMedSum(B);
+  const rA = tobMedRatios(A), rB = tobMedRatios(B);
+  body.innerHTML = `<table class="tob-med-cmp">
+    <thead><tr>
+      <th>Métrica</th>
+      <th class="num">${A.fecha || '?'}</th>
+      <th class="num">${B.fecha || '?'}</th>
+      <th class="num">Δ (B − A)</th>
+    </tr></thead>
+    <tbody>
+      ${sectionRow('Datos')}
+      ${row('Peso', A.pes, B.pes, 'kg')}
+      ${row('Estatura', A.estatura, B.estatura, 'cm')}
+      ${sectionRow('Pliegues (mm)')}
+      ${TOB_MED_PLECS.map(([k,l]) => row(l, A.plecs?.[k], B.plecs?.[k], 'mm', 1, true)).join('')}
+      <tr class="total">${row('Σ 6 Pliegues', sumA, sumB, 'mm').replace(/<tr[^>]*>/,'').replace(/<\/tr>/,'')}</tr>
+      ${sectionRow('Perímetros (cm)')}
+      ${TOB_MED_PERIM.map(([k,l]) => row(l, A.perimetres?.[k], B.perimetres?.[k], 'cm', 1, true)).join('')}
+      ${sectionRow('Ratios')}
+      ${row('Cintura / Cadera', rA.cinturaCadera, rB.cinturaCadera, '', 2)}
+      ${row('Pliegues / Peso', rA.plecsPes, rB.plecsPes, '', 2)}
+    </tbody>
+  </table>`;
 }
 
 // ── Tabla + gráficas de mediciones en la ficha ──
@@ -3142,7 +3375,15 @@ async function tobBuildPdfRutina(cli, a, pl, it){
 
     // Ejercicios
     (en.ejercicios||[]).sort((x,y)=>(x.orden||0)-(y.orden||0)).forEach(ej => {
-      if(y < 80){
+      // Calcular alto aproximado del bloque (header + plan + kg/reps + N filas + descanso + separador)
+      // para saber si cabe entero en la página actual; si no, salto a una nueva.
+      const _maxS = Math.max(...microHeaders.map(mn => tobPlanFor(ej, mn).series || 1));
+      const _linesN = ej.tipo === 'circuito'
+        ? (ej.circuitoLineas?.length || 3)
+        : Math.max(1, _maxS);
+      const _blockH = 24 + 16 + 10 + _linesN*16 + 18 + 6;
+      // 40pt de margen inferior: paginación + descanso del último ejercicio
+      if(y - _blockH < 40){
         page = doc.addPage([W_L, H_L]);
         drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, `ENTRENAMIENTO ${en.letra} (cont.)`, rutinaShort, W_L, H_L);
         y = H_L - 90;
@@ -3370,6 +3611,74 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
             grid:{ color:'#ececec', drawTicks: false }, border:{ display: false } },
         y:{ ticks:{ color:'#555', font:{ size: 9 }, padding: 6 },
             grid:{ color:'#ececec', drawTicks: false }, beginAtZero: true, border:{ display: false } }
+      }
+    }
+  };
+}
+
+// Config Chart.js de volumen por ejercicio cruzando TODAS las asignaciones del
+// cliente (independientemente de la plantilla). Usa el nombre del ejercicio como
+// identificador unificador. Útil para el PDF Histórico: una línea por ejercicio
+// con toda la trayectoria histórica del cliente.
+function tobBuildEjChartConfigByName(cli, ejNombre){
+  const points = [];
+  (cli.asignaciones||[]).forEach(a => {
+    (a.iteraciones||[]).forEach(it => {
+      Object.values(it.sesiones||{}).forEach(microSes => {
+        Object.entries(microSes).forEach(([entId, s]) => {
+          const en = a.rutina?.entrenos.find(e => e.id === entId);
+          if(!en) return;
+          en.ejercicios.forEach(ej => {
+            if(ej.nombre !== ejNombre || ej.tipo === 'circuito') return;
+            const series = s.ejs?.[ej.id]?.series;
+            if(!series || !series.length) return;
+            const vol = series.reduce((sum,sr) => sum + (sr.kg||0)*(sr.reps||0), 0);
+            if(vol <= 0 || !s.fecha) return;
+            points.push({ fecha: s.fecha, vol });
+          });
+        });
+      });
+    });
+  });
+  if(!points.length) return null;
+  points.sort((a,b) => a.fecha.localeCompare(b.fecha));
+  const labels = points.map(p => p.fecha.split('-').reverse().join('/'));
+  const data = points.map(p => p.vol);
+  const maxVal = Math.max(...data);
+  const color = '#f5a623';
+  return {
+    type: 'line',
+    data: { labels, datasets: [{
+      label: ejNombre, data,
+      borderColor: color, borderWidth: 2.8,
+      backgroundColor: (c) => {
+        const ch = c.chart, area = ch.chartArea;
+        if(!area) return color + '33';
+        const g = ch.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+        g.addColorStop(0, color + '55');
+        g.addColorStop(1, color + '08');
+        return g;
+      },
+      pointBackgroundColor: data.map(v => v === maxVal ? color : '#ffffff'),
+      pointBorderColor: color, pointBorderWidth: 2,
+      pointRadius: data.map(v => v === maxVal ? 6 : 4),
+      tension: 0.2, fill: true, spanGaps: true
+    }]},
+    options: {
+      layout: { padding: { top: 22, right: 14, left: 4, bottom: 2 } },
+      plugins: {
+        legend: { display: false },
+        datalabels: window.ChartDataLabels ? {
+          color: (c) => data[c.dataIndex] === maxVal ? color : '#555',
+          font: (c) => ({ size: data[c.dataIndex] === maxVal ? 10 : 8, weight: '700' }),
+          align: 'top', offset: 4, formatter: v => v
+        } : undefined
+      },
+      scales:{
+        x:{ ticks:{ color:'#555', font:{ size: 9 }, maxRotation: 50, minRotation: 35 },
+            grid:{ color:'#ececec', drawTicks: false }, border:{ display: false } },
+        y:{ ticks:{ color:'#555', font:{ size: 9 } }, grid:{ color:'#ececec', drawTicks: false },
+            beginAtZero: true, border:{ display: false } }
       }
     }
   };
@@ -3613,6 +3922,43 @@ async function tobBuildPdfHistorico(cli){
       }
       y -= (cardH + 10);
     });
+
+    // ─── PROGRESIÓN POR EJERCICIO · VOLUMEN (toda la trayectoria del cliente) ──
+    const ejNamesSet = new Set();
+    (cli.asignaciones||[]).forEach(a => (a.rutina?.entrenos||[]).forEach(en =>
+      (en.ejercicios||[]).forEach(ej => { if(ej.tipo !== 'circuito') ejNamesSet.add(ej.nombre); })));
+    const volChartItems = [];
+    [...ejNamesSet].forEach(name => {
+      const cfg = tobBuildEjChartConfigByName(cli, name);
+      if(cfg) volChartItems.push({ name, cfg });
+    });
+    if(volChartItems.length){
+      const perPage = 4, vchW = 380, vchH = 215, vgapX = 30, vgapY = 26;
+      for(let p = 0; p < volChartItems.length; p += perPage){
+        page = doc.addPage([W, H]);
+        drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY,
+          p === 0 ? 'PROGRESIÓN POR EJERCICIO — VOLUMEN (kg × reps)' : 'PROGRESIÓN POR EJERCICIO (cont.)',
+          cli.nombre || '', W, H);
+        page.drawText('Una línea por ejercicio · todas las sesiones del cliente · pico marcado en naranja',
+          { x: 30, y: H - 70, size: 9, font: fontO, color: GRAY });
+        const slice = volChartItems.slice(p, p+perPage);
+        const ox = (W - (vchW*2 + vgapX)) / 2;
+        const oy = H - 92;
+        for(let i = 0; i < slice.length; i++){
+          const col = i % 2, row = Math.floor(i / 2);
+          const x = ox + col*(vchW+vgapX);
+          const yTop = oy - row*(vchH+vgapY);
+          page.drawText(slice[i].name.toUpperCase(), { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+          try {
+            const png = await tobChartToPng(slice[i].cfg, 760, 430);
+            page.drawImage(await doc.embedPng(png), { x, y: yTop - vchH, width: vchW, height: vchH });
+          } catch(e){
+            console.warn('vol chart', slice[i].name, e);
+            page.drawText('(gráfica no disponible)', { x, y: yTop - vchH/2, size: 9, font: fontO, color: GRAY });
+          }
+        }
+      }
+    }
   }
 
   // ═══ SECCIÓN MEDICIONES ══════════════════════════════════════
@@ -3855,21 +4201,44 @@ function tobResetJean(){
   tobToast('✓ Jean reseteado', 'green');
 }
 
-function tobShareWhatsAppFicha(){
+// Compartir histórico: genera y descarga el PDF, y a continuación abre WhatsApp
+// con el mensaje. wa.me no permite adjuntar archivos por URL, así que la única
+// forma de "enviar" el PDF es teniéndolo descargado para arrastrarlo manualmente
+// al chat. Esto deja el archivo listo para adjuntar.
+async function tobShareWhatsAppFicha(){
   if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  tobToast('⏳ Generando PDF Histórico para enviar...', '');
+  try {
+    await tobBuildPdfHistorico(cli);
+  } catch(e){
+    console.warn('PDF Histórico falló:', e);
+    tobToast('No pude generar el PDF, abro WhatsApp solo con el mensaje', 'red');
+  }
+  // Pequeño delay para que el navegador procese la descarga antes de abrir el chat
+  await new Promise(r => setTimeout(r, 400));
   const stats = tobCalcGlobalKPIs(cli);
-  const extra = `Tienes ${(cli.asignaciones||[]).length} rutinas registradas con ${stats.completadas} completadas. Te paso el PDF — recuerda adjuntarlo manualmente cuando se abra el chat.`;
+  const extra = `${(cli.asignaciones||[]).length} rutinas registradas, ${stats.completadas} completadas. El PDF se acaba de descargar — adjúntalo al chat.`;
   tobShareWhatsApp(cli, 'historico', extra);
 }
 
-function tobShareWhatsAppRutina(){
+async function tobShareWhatsAppRutina(){
   const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
   const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
   const it = tobIt();
+  if(!cli) return;
+  tobToast('⏳ Generando PDF resumen para enviar...', '');
+  try {
+    await tobBuildPdfResumenRutina(cli, a, pl);
+  } catch(e){
+    console.warn('PDF Resumen falló:', e);
+    tobToast('No pude generar el PDF, abro WhatsApp solo con el mensaje', 'red');
+  }
+  await new Promise(r => setTimeout(r, 400));
   const stats = tobCalcItStats(a, it);
-  const extra = `Rutina: ${tobRutinaShortName(pl)}${a.iteraciones.length > 1 ? ` (it.${it?.numero})` : ''}. ${stats.sesiones} sesiones registradas.`;
+  const extra = `Rutina: ${tobRutinaShortName(pl)}${a.iteraciones.length > 1 ? ` (it.${it?.numero})` : ''}. ${stats.sesiones} sesiones registradas. El PDF se acaba de descargar — adjúntalo al chat.`;
   tobShareWhatsApp(cli, 'rutina', extra);
 }
 

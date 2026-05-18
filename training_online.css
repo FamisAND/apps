@@ -93,6 +93,10 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-action.ghost:hover{color:var(--acc);border-color:var(--acc);}
 .tob-action.danger{border-color:#5a1a1a;color:#fca5a5;background:transparent;font-weight:400;}
 .tob-action.danger:hover{background:#2d0d0d;}
+.tob-action.btn-sm{padding:5px 10px;font-size:.72rem;letter-spacing:.03em;}
+.tob-action.btn-xs{padding:3px 8px;font-size:.66rem;letter-spacing:.02em;}
+.tob-tools-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.tob-tools-row + .tob-tools-row{margin-top:6px;}
 
 /* ── Badges ── */
 .tob-badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:.65rem;
@@ -300,6 +304,17 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-kpi .delta.up{color:var(--green);}
 .tob-kpi .delta.down{color:var(--orange);}
 .tob-med-d{font-size:.66rem;font-family:'DM Mono',monospace;color:var(--mute2);margin-left:4px;}
+.tob-med-prev{font-size:.62rem;color:var(--mute2);font-family:'DM Mono',monospace;margin-top:3px;cursor:pointer;letter-spacing:.04em;user-select:none;}
+.tob-med-prev:hover{color:var(--acc);}
+.tob-med-prev b{color:var(--acc2);font-weight:700;}
+.tob-med-cmp{width:100%;border-collapse:separate;border-spacing:0;font-size:.78rem;}
+.tob-med-cmp th{background:#0e0d0a;color:var(--acc2);padding:7px 10px;text-align:left;font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid var(--acc);}
+.tob-med-cmp th.num{text-align:right;}
+.tob-med-cmp td{padding:5px 10px;border-bottom:1px solid var(--border);}
+.tob-med-cmp td.num{text-align:right;font-family:'DM Mono',monospace;}
+.tob-med-cmp tr.section td{background:#13110d;color:var(--acc);font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;font-weight:700;}
+.tob-med-cmp tr.subrow td:first-child{padding-left:24px;color:var(--mute);}
+.tob-med-cmp tr.total td{border-top:1.5px solid var(--acc2);font-weight:700;color:var(--text);background:#0e0d0a;}
 #tobFichaMedTable .tob-table{font-size:.82rem;}
 #tobFichaMedTable .tob-table td{white-space:nowrap;}
 

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Training Online — BIIO System. Plantillas, asignaciones, registro de kg/reps por microciclo e iteración, gráfica de volumen.">
-<title>Training Online — Full Training</title>
+<meta name="description" content="BIIO + Mediciones — Full Training. Rutinas BIIO (plantillas, asignaciones, registro de kg/reps por microciclo) + Mediciones de composición corporal.">
+<title>BIIO + Mediciones — Full Training</title>
 <link rel="stylesheet" href="design-system.css">
 <link rel="stylesheet" href="training_online.css">
 <link rel="manifest" href="manifest.json">
@@ -18,7 +18,7 @@
   <div class="tob-logo">
     <span class="full">FULL</span>
     <span>TRAINING</span>
-    <span class="tag">// BIIO ONLINE</span>
+    <span class="tag">// BIIO + MEDICIONES</span>
   </div>
   <div class="tob-tabs">
     <button class="tob-tab active" onclick="tobShowTab('clientes',this)">Clientes</button>
@@ -88,12 +88,20 @@
     <div class="name" id="tobFichaNombre">—</div>
     <div class="meta" id="tobFichaMeta">—</div>
     <div class="tools">
-      <button class="tob-action" onclick="tobOpenMedicionModal()" title="Registrar una nueva medición de composición corporal">📏 + Medición</button>
-      <button class="tob-action ghost" onclick="tobGeneratePdfUltimaRutina()" title="PDF resumen de la última rutina solo — con las gráficas de progreso por ejercicio. Para entregar los resultados de esa rutina.">📄 PDF Última rutina</button>
-      <button class="tob-action ghost" onclick="tobGeneratePdfHistorico()" title="PDF completo con todo el histórico de rutinas, KPIs y gráficas">📄 PDF Histórico</button>
-      <button class="tob-action ghost" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal con gráficas">📄 PDF Evolución</button>
-      <button class="tob-action ghost" onclick="tobShareWhatsAppFicha()" title="Abre WhatsApp con un mensaje preformateado para enviarle el histórico (adjunta el PDF manualmente)">📲 WhatsApp</button>
-      <button class="tob-action ghost" onclick="tobEditCliente(tobCurrentFichaId)">✏️ Editar datos</button>
+      <!-- Acciones primarias -->
+      <div class="tob-tools-row">
+        <button class="tob-action btn-sm" onclick="tobOpenMedicionModal()" title="Registrar una nueva medición de composición corporal">📏 + Medición</button>
+        <button class="tob-action btn-sm" onclick="tobNuevaRutinaDesdeFicha()" title="Asignar una rutina nueva al cliente">🏋 + Rutina</button>
+        <button class="tob-action btn-sm" id="tobCompletarBtn" onclick="tobCompletarYNuevaRutina()" title="Marcar la rutina actual como completada y abrir el selector para empezar una nueva" style="display:none;background:#2f7355;border-color:#2f7355;color:#fff;">✓ Completar y abrir nueva</button>
+      </div>
+      <!-- Exportar / compartir / editar -->
+      <div class="tob-tools-row">
+        <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfUltimaRutina()" title="PDF resumen de la última rutina con las gráficas de progreso por ejercicio">📄 Última rutina</button>
+        <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfHistorico()" title="PDF histórico completo (rutinas y/o mediciones)">📄 Histórico</button>
+        <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal">📄 Evolución</button>
+        <button class="tob-action ghost btn-xs" onclick="tobShareWhatsAppFicha()" title="Compartir por WhatsApp (el PDF se descarga automáticamente para que lo adjuntes)">📲 WhatsApp</button>
+        <button class="tob-action ghost btn-xs" onclick="tobEditCliente(tobCurrentFichaId)" title="Editar datos del cliente">✏️ Editar</button>
+      </div>
     </div>
   </div>
 
@@ -138,7 +146,10 @@
     <div class="tob-card">
       <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <span>📏 Mediciones · composición corporal</span>
-        <button class="tob-action" style="padding:5px 12px;font-size:.72rem;" onclick="tobOpenMedicionModal()">+ Añadir medición</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="tob-action ghost btn-xs" onclick="tobOpenMedCompare()" title="Compara dos mediciones lado a lado">📊 Comparar</button>
+          <button class="tob-action btn-xs" onclick="tobOpenMedicionModal()">+ Añadir medición</button>
+        </div>
       </div>
       <div class="tob-cmp-wrap" id="tobFichaMedTable"></div>
     </div>
@@ -279,6 +290,21 @@
         <button class="tob-action ghost" onclick="tobCloseMedicionModal()">Cancelar</button>
         <button class="tob-action" onclick="tobSaveMedicion()">💾 Guardar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL COMPARAR MEDICIONES ════════ -->
+<div class="tob-modal-bg" id="tobMedCompareBg">
+  <div class="tob-modal" style="max-width:820px;">
+    <h3>Comparar mediciones</h3>
+    <div class="tob-row col-2">
+      <div><label class="tob-lbl">Medición A (referencia)</label><select class="tob-select" id="tobMedCmpA" onchange="tobRenderMedCmp()"></select></div>
+      <div><label class="tob-lbl">Medición B</label><select class="tob-select" id="tobMedCmpB" onchange="tobRenderMedCmp()"></select></div>
+    </div>
+    <div id="tobMedCmpBody" style="margin-top:14px;max-height:60vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="tobCloseMedCompare()">Cerrar</button>
     </div>
   </div>
 </div>

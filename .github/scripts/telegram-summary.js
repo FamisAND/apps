@@ -53,7 +53,7 @@ async function main() {
   const FORCE = process.env.FORCE === 'true';
   if (!PAT) { console.error('Falta APPDATA_PAT secret'); process.exit(1); }
 
-  const data = await fetchAppData(PAT);
+  const { data, sha } = await fetchAppData(PAT);
   const notif = data.__notif;
   if (!notif || !notif.bot_token || !notif.chat_id) {
     console.log('__notif sin bot_token/chat_id. Salida.');
@@ -64,7 +64,12 @@ async function main() {
     return;
   }
 
-  // Schedule check (Madrid time)
+  // Schedule check (Madrid time).
+  // El cron de GitHub Actions se dispara CADA HORA en :15, pero los runs
+  // programados pueden retrasarse o saltarse (limitación conocida de GitHub).
+  // Por eso usamos una "ventana" desde la hora configurada en lugar de match
+  // exacto, y dedupe por __notif._lastSent (fecha YYYY-MM-DD) para no enviar
+  // dos veces el mismo día.
   const now = new Date();
   const madridStr = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false
@@ -76,15 +81,25 @@ async function main() {
   const dow = new Date(madridDateStr + 'T12:00:00Z').getUTCDay();
   const todayCode = DAY_CODES[dow];
 
+  const WINDOW_HOURS = 5; // hasta 5h después de la hora configurada
+
   if (!FORCE) {
     const cfgHour = parseInt((notif.time || '09:00').split(':')[0], 10);
     const cfgDays = notif.days || ['mon','tue','wed','thu','fri','sat','sun'];
-    if (madridHour !== cfgHour) {
-      console.log(`Madrid ${madridStr} != notif.time ${notif.time}. Salida.`);
+    // Ya enviado hoy → no repetir.
+    if (notif._lastSent === madridDateStr) {
+      console.log(`Ya enviado hoy (${madridDateStr}). Salida.`);
       return;
     }
+    // Día no incluido → no enviar.
     if (!cfgDays.includes(todayCode)) {
       console.log(`Hoy ${todayCode} no en days=[${cfgDays.join(',')}]. Salida.`);
+      return;
+    }
+    // Fuera de la ventana de envío.
+    const diff = madridHour - cfgHour;
+    if (diff < 0 || diff > WINDOW_HOURS) {
+      console.log(`Madrid ${madridStr} fuera de la ventana (${cfgHour}:00 .. ${cfgHour+WINDOW_HOURS}:59). Salida.`);
       return;
     }
   }
@@ -112,6 +127,17 @@ async function main() {
   const d = await res.json();
   if (!d.ok) { console.error('Telegram error:', d); process.exit(1); }
   console.log('✓ Enviado. message_id:', d.result.message_id);
+
+  // Persistir __notif._lastSent para no reenviar hoy si el cron dispara otra
+  // vez dentro de la ventana. Si falla la escritura no es crítico — el
+  // siguiente run dentro de la ventana volverá a enviar y duplicará.
+  try {
+    notif._lastSent = madridDateStr;
+    await saveAppData(PAT, data, sha, `chore(__notif): _lastSent=${madridDateStr}`);
+    console.log('✓ __notif._lastSent guardado:', madridDateStr);
+  } catch(e){
+    console.warn('No pude guardar _lastSent (no bloquea):', e.message);
+  }
 }
 
 // ───────────────────────────────────────────────────────────
@@ -1209,15 +1235,37 @@ async function fetchAppData(PAT) {
   });
   if (!res.ok) { console.error('Fetch fallo:', res.status); process.exit(1); }
   const meta = await res.json();
+  const sha = meta.sha;
   let raw;
   if (meta.content) raw = Buffer.from(meta.content, 'base64').toString('utf-8');
-  else if (meta.sha) {
-    const blob = await (await fetch(`https://api.github.com/repos/${APPDATA_REPO}/git/blobs/${meta.sha}`, {
+  else if (sha) {
+    const blob = await (await fetch(`https://api.github.com/repos/${APPDATA_REPO}/git/blobs/${sha}`, {
       headers: { Authorization: `token ${PAT}`, Accept: 'application/vnd.github.v3+json' }
     })).json();
     raw = Buffer.from(blob.content, 'base64').toString('utf-8');
   } else { console.error('No content'); process.exit(1); }
-  return JSON.parse(raw);
+  return { data: JSON.parse(raw), sha };
+}
+
+// Escribe data.json en appdata (PUT a contents API). Devuelve el nuevo sha.
+async function saveAppData(PAT, data, sha, message) {
+  const body = JSON.stringify(data, null, 2);
+  const content = Buffer.from(body, 'utf-8').toString('base64');
+  const res = await fetch(`https://api.github.com/repos/${APPDATA_REPO}/contents/${FILE}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `token ${PAT}`,
+      Accept: 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ message: message || 'update data.json', content, sha })
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('saveAppData ' + res.status + ': ' + err.slice(0, 200));
+  }
+  const j = await res.json();
+  return j.content?.sha;
 }
 
 // ───────────────────────────────────────────────────────────
