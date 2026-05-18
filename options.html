@@ -4876,7 +4876,9 @@ function saveActPosition(){
     iv:       document.getElementById('am_iv').value!==''?+document.getElementById('am_iv').value:null,
     ivr:      document.getElementById('am_ivr').value!==''?+document.getElementById('am_ivr').value:null,
     nota:     document.getElementById('am_nota').value,
-    priceCurrent: _actEditIdx!=null ? (ACTIVAS[_actEditIdx].priceCurrent||null) : null,
+    // ?? null (no || null) preserva priceCurrent === 0 (precio actual cero al
+    // expirar OTM); con || null lo convertíamos a null y se perdía el dato.
+    priceCurrent: _actEditIdx!=null ? (ACTIVAS[_actEditIdx].priceCurrent ?? null) : null,
     underlying: document.getElementById('am_underlying')?.value!==''?+document.getElementById('am_underlying')?.value||null:null,
     comi: +document.getElementById('am_comi')?.value||1.30
   };
@@ -4903,7 +4905,7 @@ function saveActPosition(){
   if(_actEditIdx!=null){
     // Preserve image and priceCurrent from existing entry
     const _old = ACTIVAS[_actEditIdx];
-    if(_old) a.priceCurrent = _old.priceCurrent || null;
+    if(_old) a.priceCurrent = _old.priceCurrent ?? null;
     ACTIVAS[_actEditIdx] = a;
   } else {
     ACTIVAS.unshift(a);
@@ -5091,6 +5093,9 @@ function deleteActPosition(idx){
   ACTIVAS.splice(idx,1);
   activasSave();
   renderActivas();
+  // El dashboard muestra P&L unrealized agregado de activas — refrescar
+  // para que no quede el delta fantasma de la posición eliminada.
+  if(typeof renderDash === 'function') renderDash();
 }
 
 document.getElementById('actModal').addEventListener('click',e=>{ if(e.target===e.currentTarget) closeActModal(); });

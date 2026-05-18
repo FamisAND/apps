@@ -122,100 +122,10 @@ const TOB_DESC_CATEGORIAS = {
 
 // Versión del plan oficial. v4 reemplaza ENTERAMENTE entrenos+ejercicios+
 // planByMicro+numMicro desde TOB_BIIO_DATA (más fiel al BIIO real: 3-7 micros
-// y 2-3 entrenos según el mesociclo). TOB_FIXED_PLANS solo se conserva como
-// fallback para versiones anteriores y para migraciones suaves.
+// y 2-3 entrenos según el mesociclo).
+// (TOB_FIXED_PLANS — la tabla legacy por categoría que se usaba antes de v4 —
+//  se eliminó: TOB_BIIO_DATA contiene los planes reales por ejercicio.)
 const TOB_PLAN_VERSION = 4;
-const TOB_FIXED_PLANS = {
-  // ── 1º Mesociclo · Reacondicionamiento (BIIO 6 micros × A+B) ──
-  // Onda 15/12/10 → 12/10/8 → 10/8/6, pausa creciente 1'30 → 2'00.
-  'Reacondicionamiento': {
-    1: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
-    2: { series:3, repsTarget:[15,12,10], pausa:"1'30''" },
-    3: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
-    4: { series:3, repsTarget:[12,10,8],  pausa:"1'45''" },
-    5: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" },
-    6: { series:3, repsTarget:[10,8,6],   pausa:"2'00''" }
-  },
-  // ── 2º Mesociclo · Preparación Fuerza (BIIO 3 micros × A+B+C) ──
-  // Onda 8/6/4 en grandes (RPE10 al fallo). Micro 3 = descarga técnica 8×3 @8RM.
-  // Mapeo: slots 1-2 → BIIO micro 1, slots 3-4 → BIIO micro 2, slots 5-6 → descarga.
-  'Preparación fuerza': {
-    1: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"RPE 10 al fallo" },
-    2: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"RPE 10 al fallo" },
-    3: { series:3, repsTarget:[8,6,4], pausa:"2'30''", note:"RPE 10 al fallo" },
-    4: { series:3, repsTarget:[8,6,4], pausa:"2'30''", note:"RPE 10 al fallo" },
-    5: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@8RM · descarga técnica" },
-    6: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@8RM · descarga técnica" }
-  },
-  // ── 3º Mesociclo · Especialización Técnica (BIIO 7 micros × A+B) ──
-  // ONDAS 345 BUFFER: 8×3 → 7×4 → 6×5 a @75%, luego repite a @80%. Micro 7 = descarga 8×2 @85%.
-  // 7 micros BIIO mapeados a 6 slots: 1-2-3 @75%, 4-5 @80%, 6 = descarga.
-  'Especialización técnica': {
-    1: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% ondas 345" },
-    2: { series:7, repsTarget:[4], pausa:"1'15''", note:"@75% ondas 345" },
-    3: { series:6, repsTarget:[5], pausa:"1'30''", note:"@75% ondas 345" },
-    4: { series:8, repsTarget:[3], pausa:"1'00''", note:"@80% ondas 345" },
-    5: { series:7, repsTarget:[4], pausa:"1'15''", note:"@80% ondas 345" },
-    6: { series:8, repsTarget:[2], pausa:"1'30''", note:"@85% descarga técnica" }
-  },
-  // ── 4º Mesociclo · Fuerza 1 (BIIO 5 micros × A+B) ──
-  // 4×4 progresión RPE 7/8 → 8/9 → 9/10 → 10 (% 80/82.5/85/87.5), micro 5 = descarga 8×3 @75%.
-  // Mapeo: slots 1-4 = BIIO 1-4, slots 5-6 = descarga.
-  'Fuerza 1': {
-    1: { series:4, repsTarget:[4], pausa:"3'00''", note:"@80% RPE 7/8" },
-    2: { series:4, repsTarget:[4], pausa:"3'00''", note:"@82.5% RPE 8/9" },
-    3: { series:4, repsTarget:[4], pausa:"3'00''", note:"@85% RPE 9/10" },
-    4: { series:4, repsTarget:[4], pausa:"3'00''", note:"@87.5% RPE 10" },
-    5: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% descarga técnica" },
-    6: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% descarga técnica" }
-  },
-  // ── 5º Mesociclo · Fuerza 2 (BIIO 4 micros × A+B+C + maximales) ──
-  // CLUSTER 8×1 Rest-Pause @87.5%/90%/92.5%/95% (cada serie = 8 simples con 15-25" entre cada rep).
-  // Micro 4 = descarga 10×1 @95% normal. Maximales en entreno aparte (no tocar).
-  // Mapeo: slots 1-2 BIIO1, 3 BIIO2, 4 BIIO3, 5-6 BIIO4 descarga.
-  'Fuerza 2': {
-    1: { series:3, repsTarget:[8],  pausa:"4'00''", note:"@87.5% cluster RP 15\"" },
-    2: { series:3, repsTarget:[8],  pausa:"4'00''", note:"@87.5% cluster RP 15\"" },
-    3: { series:3, repsTarget:[8],  pausa:"4'00''", note:"@90% cluster RP 20\"" },
-    4: { series:2, repsTarget:[8],  pausa:"4'00''", note:"@92.5% cluster RP 25\"" },
-    5: { series:10, repsTarget:[1], pausa:"2'00''", note:"@95% descarga técnica" },
-    6: { series:10, repsTarget:[1], pausa:"2'00''", note:"@95% descarga técnica" }
-  },
-  // ── 6º Mesociclo · Híbrido (BIIO 3 micros × A+B+C) ──
-  // 3×4/6/8 + DROP al fallo (85/75/65% del 1RM). Micro 2 = Rest Pause 20 reps total (70% 1RM).
-  // Micro 3 = descarga parcial 3×4/6/8 a 2'30.
-  'Hibrido': {
-    1: { series:3, repsTarget:[4,6,8], pausa:"2'00''", note:"85/75/65% 1RM + DROP al fallo" },
-    2: { series:3, repsTarget:[4,6,8], pausa:"2'00''", note:"85/75/65% 1RM + DROP al fallo" },
-    3: { series:2, repsTarget:[20],    pausa:"3'00''", note:"Rest-Pause 20 reps @70% 1RM" },
-    4: { series:2, repsTarget:[20],    pausa:"3'00''", note:"Rest-Pause 20 reps @70% 1RM" },
-    5: { series:3, repsTarget:[4,6,8], pausa:"2'30''", note:"descarga parcial" },
-    6: { series:3, repsTarget:[4,6,8], pausa:"2'30''", note:"descarga parcial" }
-  },
-  // ── 7º Mesociclo · Hipertrofia (BIIO 3 micros × A+B+C) ──
-  // 3×8/6/4 al fallo + Rest Pause 20"/20" (75% del 1RM inicial).
-  // Micro 2 = +1% peso si reps target alcanzadas. Micro 3 = descarga parcial.
-  'Hipertrofia': {
-    1: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"@75% 1RM al fallo + RP 20\"" },
-    2: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"@75% 1RM al fallo + RP 20\"" },
-    3: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"+1% si reps target alcanzadas" },
-    4: { series:3, repsTarget:[8,6,4], pausa:"2'00''", note:"+1% si reps target alcanzadas" },
-    5: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@75% descarga parcial" },
-    6: { series:8, repsTarget:[3],     pausa:"1'00''", note:"@75% descarga parcial" }
-  },
-  // ── 8º Mesociclo · Calidad Muscular (BIIO 6 micros × A+B+C) ──
-  // CLUSTER 8×2 alternando 8×3 a @75% (micros 1-3) / @77.5% (micros 4-6).
-  // Tempo: 3232 (3s eccéntrica · 2s pausa abajo · 3s concéntrica · 2s pausa arriba).
-  // Accesorios en SUPERSERIE / TRISERIE con MAX PUMP.
-  'Calidad muscular': {
-    1: { series:8, repsTarget:[2], pausa:"1'00''", note:"@75% tempo 3232" },
-    2: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% tempo 3232" },
-    3: { series:8, repsTarget:[3], pausa:"1'00''", note:"@75% tempo 3232" },
-    4: { series:8, repsTarget:[2], pausa:"1'00''", note:"@77.5% tempo 3232" },
-    5: { series:8, repsTarget:[3], pausa:"1'00''", note:"@77.5% tempo 3232" },
-    6: { series:8, repsTarget:[3], pausa:"1'00''", note:"@77.5% tempo 3232" }
-  }
-};
 
 // Aliases de ejercicios: nombres equivalentes mapeados a un nombre canónico.
 // Se aplica en tobLoad() por backfill — preserva IDs (sesiones quedan intactas).

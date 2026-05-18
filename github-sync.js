@@ -179,7 +179,18 @@ async function pullRaw(){
   return { content, sha: data.sha };
 }
 
-async function pushRaw(payload, attempt){
+// Push con retry de conflictos.
+//
+// `payload` es el contenido inicial (merge ya hecho contra el remote que
+// vio el caller). En caso de 409/422 (sha desfasado porque otra pestaña
+// pushó), re-pulleamos el remoto y:
+//   - Si `rebuild` está presente, lo llamamos pasándole el remoto fresco
+//     para que el caller pueda reconstruir el payload desde el ESTADO ACTUAL
+//     de localStorage (no del snapshot inicial). Esto evita perder cambios
+//     locales hechos entre el primer intento y el retry.
+//   - Si no hay `rebuild` (callers legacy), simplemente hacemos merge del
+//     payload original con el remoto fresco (comportamiento previo).
+async function pushRaw(payload, rebuild, attempt){
   attempt = attempt || 0;
   const branch = getBranch();
   const sha = getCachedSha();
@@ -199,8 +210,10 @@ async function pushRaw(payload, attempt){
   if((res.status === 409 || res.status === 422) && attempt < CONFLICT_RETRIES){
     const remote = await pullRaw();
     setCachedSha(remote.sha || '');
-    const merged = mergeSections(remote.content || {}, payload);
-    return pushRaw(merged, attempt + 1);
+    const nextPayload = rebuild
+      ? rebuild(remote.content || {})
+      : mergeSections(remote.content || {}, payload);
+    return pushRaw(nextPayload, rebuild, attempt + 1);
   }
 
   if(!res.ok){
@@ -401,13 +414,21 @@ async function doPush(){
   showStatus('subiendo a GitHub…', 'work');
 
   try {
-    const sectionData = {};
-    _watchedKeys.forEach(k => {
-      const v = _origGetItem.call(localStorage, k);
-      if(v === null || v === undefined) return;
-      try { sectionData[k] = JSON.parse(v); }
-      catch(e){ sectionData[k] = v; }
-    });
+    // Helper: lee TODAS las keys observadas desde localStorage al momento de
+    // llamarse. Se usa para construir el payload inicial Y para reconstruirlo
+    // en cada retry de pushRaw (si el usuario sigue editando mientras el push
+    // está en vuelo, los cambios nuevos se incluyen al reintentar).
+    const readSectionData = () => {
+      const out = {};
+      _watchedKeys.forEach(k => {
+        const v = _origGetItem.call(localStorage, k);
+        if(v === null || v === undefined) return;
+        try { out[k] = JSON.parse(v); }
+        catch(e){ out[k] = v; }
+      });
+      return out;
+    };
+    const sectionData = readSectionData();
 
     const remote = await pullRaw();
     setCachedSha(remote.sha || '');
@@ -477,7 +498,13 @@ async function doPush(){
       }
     }
 
-    await pushRaw(merged);
+    // Pasamos un `rebuild` a pushRaw: si hay conflicto (otra pestaña pushó
+    // mientras este push estaba en vuelo, o el usuario siguió editando),
+    // re-leemos sectionData desde localStorage y re-mergeamos con el remoto
+    // fresco. Sin esto, se perdían los cambios hechos entre la captura
+    // inicial y el retry.
+    const rebuild = (freshRemote) => mergeSections(freshRemote, { [_section]: readSectionData() });
+    await pushRaw(merged, rebuild);
 
     showStatus('✓ guardado '+new Date().toLocaleTimeString('es-ES'), 'ok');
   } catch(err){
