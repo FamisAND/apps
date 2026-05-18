@@ -146,6 +146,14 @@ let tobCharts = {};             // {ejId: Chart instance}
 
 function tobUid(prefix){ return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7); }
 function tobEsc(s){ return String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]); }
+// Nombre de rutina sin el sufijo " — Hombre/Mujer/Unisex" (admite em-dash,
+// en-dash o guion normal). Centralizado para que todos los PDFs y la UI
+// muestren el mismo nombre y los filenames queden limpios.
+function tobRutinaShortName(pl){
+  if(!pl) return '(plantilla eliminada)';
+  const s = String(pl.nombre || '').replace(/\s*[—–-]\s*(Hombre|Mujer|Unisex)\s*$/i, '').trim();
+  return s || '(rutina)';
+}
 
 function tobLoad(){
   // Registrar plugin datalabels (idempotente con try/catch)
@@ -700,7 +708,7 @@ function tobOpenAsignacion(cliId, asigId){
   document.querySelectorAll('.tob-tab').forEach(b => b.classList.remove('active'));
   document.getElementById('tobTabAsig').classList.add('active');
 
-  document.getElementById('tobAsigTitulo').textContent = `${cli.nombre} — ${pl?.nombre || '(plantilla eliminada)'}`;
+  document.getElementById('tobAsigTitulo').textContent = `${cli.nombre} — ${tobRutinaShortName(pl)}`;
   document.getElementById('tobAsigSubtitulo').textContent = (pl?.categoria || '') + (pl?.sexo === 'M' ? ' · ♀' : pl?.sexo === 'H' ? ' · ♂' : '');
 
   document.getElementById('tobAsigEstado').value = asig.estado;
@@ -1132,7 +1140,7 @@ async function tobGeneratePdf(){
   }
   function gap(n){ y -= n; if(y < 60){ page = doc.addPage([W,H]); y = H - 30; } }
 
-  text(`${cli?.nombre||''} — ${pl?.nombre||''}  ·  Iteración ${it?.numero||1}`, { bold:true, size:13 });
+  text(`${cli?.nombre||''} — ${tobRutinaShortName(pl)}  ·  Iteración ${it?.numero||1}`, { bold:true, size:13 });
   gap(20);
 
   const microHeaders = Array.from({length:TOB_NUM_MICRO}, (_,i)=>i+1);
@@ -1213,7 +1221,7 @@ async function tobGeneratePdf(){
   const url = URL.createObjectURL(blob);
   const a2 = document.createElement('a');
   a2.href = url;
-  a2.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${(pl?.nombre||'rutina').replace(/[^a-zA-Z0-9]/g,'_')}_it${it?.numero}.pdf`;
+  a2.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${tobRutinaShortName(pl).replace(/[^a-zA-Z0-9]/g,'_')}_it${it?.numero}.pdf`;
   a2.click();
   URL.revokeObjectURL(url);
   tobToast('✓ PDF descargado', 'green');
@@ -2064,7 +2072,7 @@ function tobRenderTimeline(cli){
     const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
     const stats = tobCalcAsigStats(a);
     const fechaFin = stats.ultimaFecha || a.fechaInicio || '';
-    const nombreShort = pl ? pl.nombre.replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '') : '(plantilla eliminada)';
+    const nombreShort = tobRutinaShortName(pl);
     const topPrs = Object.entries(stats.maxByEj).slice(0, 3);
     const prBoxes = topPrs.length
       ? topPrs.map(([n, kg]) => {
@@ -2146,7 +2154,7 @@ function tobBuildFichaData(cli){
   const sortedAsigs = [...(cli.asignaciones||[])].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
   sortedAsigs.forEach(a => {
     const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    const baseLabel = pl ? pl.nombre.replace(' — Hombre','').replace(' — Mujer','') : 'Rutina';
+    const baseLabel = tobRutinaShortName(pl);
     a.iteraciones.forEach(it => {
       const ejMaxIt = {};
       let lastFecha = '';
@@ -2863,7 +2871,7 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
   const GRAY = rgb(0.55, 0.55, 0.55);
   const GRAY_DK = rgb(0.25, 0.25, 0.25);
   const W = 842, H = 595;
-  const rutinaShort = (pl?.nombre || '(plantilla eliminada)').replace(/\s*-\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+  const rutinaShort = tobRutinaShortName(pl);
   const stats = tobCalcAsigStats(a);
 
   // ─── COVER ───
@@ -2910,7 +2918,7 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
   });
   const chartItems = [];
   mainEjs.forEach(({ ej, entId }) => {
-    const cfg = tobBuildEjChartConfig(a, ej, entId);
+    const cfg = tobBuildEjChartConfig(a, ej, entId, { cli });
     if(cfg){
       cfg.options.responsive = false;
       cfg.options.plugins.legend = { display: true, labels: { color: '#444444', font: { size: 9 }, boxWidth: 14 } };
@@ -3050,7 +3058,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   const W_L = 842, H_L = 595;  // landscape
 
   // Nombre rutina sin sufijo "— Hombre"/"— Mujer"
-  const rutinaShort = (pl?.nombre || '').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+  const rutinaShort = tobRutinaShortName(pl);
 
   // ─── PÁGINA 1: COVER en 2 columnas ─────
   // Izquierda: logo + cliente + rutina + KPI. Derecha: descripción completa.
@@ -3242,7 +3250,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${(pl?.nombre||'rutina').replace(/[^a-zA-Z0-9]/g,'_')}_it${it?.numero}_completada.pdf`;
+  link.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${tobRutinaShortName(pl).replace(/[^a-zA-Z0-9]/g,'_')}_it${it?.numero}_completada.pdf`;
   link.click();
   URL.revokeObjectURL(url);
   tobToast('✓ PDF descargado', 'green');
@@ -3272,31 +3280,63 @@ function tobCalcItStats(a, it){
 }
 
 // Config Chart.js para un ejercicio principal en una asignación: una línea por iteración
-function tobBuildEjChartConfig(a, ej, entId){
+// Config Chart.js de "volumen por ejercicio" para un asignación.
+// opts.cli: si se pasa, incluye TODAS las asignaciones del cliente con la
+// misma plantilla — para que el PDF resumen muestre el historial completo
+// del cliente con esa rutina (si la ha hecho antes, salen también esos pesos).
+// Estilo: relleno en degradado (como las gráficas de mediciones) para que las
+// líneas se diferencien bien del grid.
+function tobBuildEjChartConfig(a, ej, entId, opts){
+  // Lista de asignaciones a graficar (con su índice cronológico global).
+  let sameAsigs = [a];
+  if(opts && opts.cli){
+    const list = (opts.cli.asignaciones || [])
+      .filter(x => x.plantillaId === a.plantillaId)
+      .sort((x,y) => (x.fechaInicio||'').localeCompare(y.fechaInicio||''));
+    if(list.length > 1) sameAsigs = list;
+  }
+  const multi = sameAsigs.length > 1;
+
   const datasets = [];
   const allLabels = new Set();
-  a.iteraciones.forEach((it, idx) => {
-    const color = TOB_IT_COLORS[idx % TOB_IT_COLORS.length];
-    const points = [];
-    for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
-      const ses = it.sesiones[mn]?.[entId];
-      const series = ses?.ejs?.[ej.id]?.series;
-      if(!series || !series.length) continue;
-      const vol = series.reduce((s,sr) => s + (sr.kg||0)*(sr.reps||0), 0);
-      if(vol <= 0) continue;
-      const label = ses.fecha ? ses.fecha.split('-').reverse().join('/') : `µ${mn}`;
-      points.push({ label, val: vol });
-      allLabels.add(label);
-    }
-    if(points.length){
+  let globalIdx = 0;
+  sameAsigs.forEach((aa, aIdx) => {
+    (aa.iteraciones || []).forEach((it) => {
+      const color = TOB_IT_COLORS[globalIdx % TOB_IT_COLORS.length];
+      globalIdx++;
+      const points = [];
+      for(let mn=1; mn<=TOB_NUM_MICRO; mn++){
+        const ses = it.sesiones[mn]?.[entId];
+        const series = ses?.ejs?.[ej.id]?.series;
+        if(!series || !series.length) continue;
+        const vol = series.reduce((s,sr) => s + (sr.kg||0)*(sr.reps||0), 0);
+        if(vol <= 0) continue;
+        const label = ses.fecha ? ses.fecha.split('-').reverse().join('/') : `µ${mn}·R${aIdx+1}.${it.numero}`;
+        points.push({ label, val: vol });
+        allLabels.add(label);
+      }
+      if(!points.length) return;
+      const isCurrent = aa.id === a.id;
+      const dsLabel = multi
+        ? `R${aIdx+1} · It.${it.numero}` + (isCurrent ? ' (actual)' : '')
+        : `It. ${it.numero}`;
       datasets.push({
-        label: 'It. ' + it.numero, _points: points,
-        borderColor: color, backgroundColor: color+'22',
+        label: dsLabel, _points: points, _color: color,
+        borderColor: color, borderWidth: isCurrent ? 2.8 : 2,
+        backgroundColor: (c) => {
+          const ch = c.chart, area = ch.chartArea;
+          if(!area) return color + '22';
+          const g = ch.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+          g.addColorStop(0, color + (isCurrent ? '66' : '40'));
+          g.addColorStop(1, color + '08');
+          return g;
+        },
         pointBackgroundColor: color, pointBorderColor: color,
-        pointStyle: 'crossRot', pointRadius: 5, pointBorderWidth: 2,
-        tension: 0.05, fill: false, borderWidth: 2
+        pointStyle: 'circle', pointRadius: isCurrent ? 5 : 4, pointBorderWidth: 2,
+        tension: 0.25, fill: true,
+        borderDash: (multi && !isCurrent) ? [4, 3] : []
       });
-    }
+    });
   });
   if(!datasets.length) return null;
   const labels = [...allLabels].sort((a,b) => {
@@ -3312,18 +3352,24 @@ function tobBuildEjChartConfig(a, ej, entId){
   return {
     type: 'line', data: { labels, datasets },
     options: {
+      layout: { padding: { top: 22, right: 16, left: 4, bottom: 2 } },
       plugins: {
-        legend: { display: false },
+        legend: { display: datasets.length > 1,
+          labels: { color: '#444', font: { size: 9 }, boxWidth: 12, padding: 8 },
+          position: 'top'
+        },
         datalabels: window.ChartDataLabels ? {
-          color: ctx => ctx.dataset.borderColor, font:{size:10,weight:'700'},
-          align: 'top', offset: 4, formatter: v => v == null ? '' : v
+          color: ctx => ctx.dataset.borderColor, font:{ size: 9, weight:'700' },
+          align: 'top', offset: 5,
+          formatter: v => (v == null ? '' : v),
+          textStrokeColor: '#ffffff', textStrokeWidth: 3
         } : undefined
       },
       scales:{
-        x:{ ticks:{ color:'#444', font:{size:9}, maxRotation:60, minRotation:45 },
-            grid:{ color:'#e4e4e4' }, border:{ color:'#888' } },
-        y:{ ticks:{ color:'#444', font:{size:9} }, grid:{ color:'#e4e4e4' },
-            beginAtZero:true, border:{ color:'#888' } }
+        x:{ ticks:{ color:'#555', font:{ size: 9 }, maxRotation: 50, minRotation: 35 },
+            grid:{ color:'#ececec', drawTicks: false }, border:{ display: false } },
+        y:{ ticks:{ color:'#555', font:{ size: 9 }, padding: 6 },
+            grid:{ color:'#ececec', drawTicks: false }, beginAtZero: true, border:{ display: false } }
       }
     }
   };
@@ -3532,7 +3578,7 @@ async function tobBuildPdfHistorico(cli){
       const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
       const stats = tobCalcAsigStats(a);
       const itN = (a.iteraciones||[]).length;
-      const rutinaShort = (pl?.nombre || '(plantilla eliminada)').replace(/\s*—\s*(Hombre|Mujer|Unisex)\s*$/i, '');
+      const rutinaShort = tobRutinaShortName(pl);
       const cardH = 80;
 
       page.drawRectangle({ x: 24, y: y-cardH, width: W-48, height: cardH, color: rgb(0.98,0.98,0.98) });
@@ -3823,7 +3869,7 @@ function tobShareWhatsAppRutina(){
   const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
   const it = tobIt();
   const stats = tobCalcItStats(a, it);
-  const extra = `Rutina: ${pl?.nombre || ''}${a.iteraciones.length > 1 ? ` (it.${it?.numero})` : ''}. ${stats.sesiones} sesiones registradas.`;
+  const extra = `Rutina: ${tobRutinaShortName(pl)}${a.iteraciones.length > 1 ? ` (it.${it?.numero})` : ''}. ${stats.sesiones} sesiones registradas.`;
   tobShareWhatsApp(cli, 'rutina', extra);
 }
 
