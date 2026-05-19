@@ -6276,6 +6276,611 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ═════════════════════════════════════════════════════════════════
+// MÓDULO MENÚS — Creador (tabla días × comidas + drag&drop + macros)
+// ─────────────────────────────────────────────────────────────────
+// Estado del menú activo en memoria mientras se edita:
+//   tobMcState = {
+//     cliId, kcalObj, margenPct, protObj, semanas, comidasIds:[...],
+//     semanaActiva: 0..semanas-1,
+//     data: { [semana]: { [dia]: { [comidaId]: [recetaId, ...] } } },
+//     savedAt, _menuId (si se está editando uno guardado)
+//   }
+// Persistencia: cada cliente tiene cli.menus = [{ ...tobMcState }].
+// ═════════════════════════════════════════════════════════════════
+
+let tobMcState = null;
+const TOB_MC_DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
+const TOB_MC_DIA_FULL = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
+let _tobMcMomentoFiltro = '';  // filtro activo del panel lateral
+
+// Cuáles comidas/día tiene el cliente, según los apats rellenos en su cuestionario.
+// Devuelve array de { id, label } en orden esmorzar→sopar.
+function tobMcComidasDelCliente(cli){
+  const q = cli?.cuestionario || {};
+  const all = [
+    { id:'esmorzar', label:'Esmorzar',  qf:'apat1' },
+    { id:'mig_mati', label:'Mig matí',  qf:'apat2' },
+    { id:'dinar',    label:'Dinar',     qf:'apat3' },
+    { id:'berenar',  label:'Berenar',   qf:'apat4' },
+    { id:'sopar',    label:'Sopar',     qf:'apat5' }
+  ];
+  const filled = all.filter(c => (q[c.qf] || '').trim().length > 0);
+  // Si el cliente no tiene NINGÚN apat relleno, asumimos 3 (esmorzar/dinar/sopar)
+  return filled.length ? filled : [all[0], all[2], all[4]];
+}
+
+// Setup inicial: poblar selector de cliente + listeners
+function tobMcInit(){
+  const sel = document.getElementById('tobMcCliente');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Selecciona cliente —</option>' +
+    (tobDB.clientes || []).slice()
+      .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}))
+      .map(c => `<option value="${c.id}">${tobEsc(c.nombre)}</option>`).join('');
+  if(cur && tobDB.clientes.find(c => c.id === cur)) sel.value = cur;
+}
+
+function tobMcOnClienteChange(){
+  const cliId = document.getElementById('tobMcCliente').value;
+  if(!cliId){
+    tobMcHideWorkspace();
+    return;
+  }
+  const cli = tobDB.clientes.find(c => c.id === cliId);
+  if(!cli) return;
+  // Pre-llenar kcal/prot desde el cuestionario si no están seteados
+  const q = cli.cuestionario || {};
+  if(q.kcalObjetivo && !document.getElementById('tobMcKcal').value)
+    document.getElementById('tobMcKcal').value = q.kcalObjetivo;
+  if(q.protObjetivo && !document.getElementById('tobMcProt').value)
+    document.getElementById('tobMcProt').value = q.protObjetivo;
+
+  // Mostrar comidas/día
+  const comidas = tobMcComidasDelCliente(cli);
+  document.getElementById('tobMcComidas').textContent =
+    comidas.length + ' (' + comidas.map(c => c.label).join(' · ') + ')';
+
+  // Hint con nombre cliente
+  const hint = document.getElementById('tobMcClienteHint');
+  const meta = [];
+  if(cli.sexo) meta.push(cli.sexo === 'H' ? 'Home' : 'Dona');
+  if(cli.idioma) meta.push('idioma ' + cli.idioma);
+  hint.textContent = meta.join(' · ');
+
+  // Resumen del perfil alimentario
+  tobMcRenderPerfilResumen(cli);
+
+  // Crear estado fresh
+  const semanas = Math.max(1, parseInt(document.getElementById('tobMcSemanas').value) || 1);
+  tobMcState = {
+    cliId, semanas,
+    comidasIds: comidas.map(c => c.id),
+    semanaActiva: 0,
+    data: {}
+  };
+  // Inicializar estructura
+  for(let s = 0; s < semanas; s++){
+    tobMcState.data[s] = {};
+    for(let d = 0; d < 7; d++){
+      tobMcState.data[s][d] = {};
+      comidas.forEach(c => { tobMcState.data[s][d][c.id] = []; });
+    }
+  }
+
+  document.getElementById('tobMcWorkspace').style.display = '';
+  tobMcRenderSemanasTabs();
+  tobMcRenderGrid();
+  tobMcRenderSidePanel();
+}
+
+function tobMcHideWorkspace(){
+  document.getElementById('tobMcWorkspace').style.display = 'none';
+  document.getElementById('tobMcPerfilResumen').style.display = 'none';
+  document.getElementById('tobMcClienteHint').textContent = '';
+  document.getElementById('tobMcComidas').textContent = '—';
+  tobMcState = null;
+}
+
+// Renderiza el resumen del perfil alimentario del cliente (lectura).
+function tobMcRenderPerfilResumen(cli){
+  const q = cli.cuestionario || {};
+  const tags = q.tags || {};
+  const blocks = [];
+
+  if(tags.dieta){
+    const lbl = ({omnivor:'Omnívor', vegetaria:'Vegetarià', vega:'Vegà', pescetaria:'Pescetarià', flexitaria:'Flexitarià'})[tags.dieta] || tags.dieta;
+    blocks.push(`<strong style="color:var(--acc)">Dieta:</strong> ${tobEsc(lbl)}`);
+  }
+  const protRestric = (tags.proteina || []).filter(t => t.endsWith('_no'));
+  if(protRestric.length){
+    const lbls = protRestric.map(t => {
+      const m = { carn_no:'sin carne roja', pollastre_no:'sin pollastre', peix_no:'sin pescado', marisc_no:'sin marisco', ous_no:'sin huevos', lactis_no:'sin lácteos' };
+      return m[t] || t;
+    });
+    blocks.push(`<strong style="color:#dc6a6a">Restricciones:</strong> ${tobEsc(lbls.join(', '))}`);
+  }
+  const prefNeg = (tags.pref || []).filter(t => ['sense_gluten','sense_lactosa','sense_fruita_seca','sense_cuina'].includes(t));
+  if(prefNeg.length){
+    const lbls = prefNeg.map(t => ({sense_gluten:'sin gluten', sense_lactosa:'sin lactosa', sense_fruita_seca:'sin frutos secos', sense_cuina:'sin cocina'})[t]);
+    blocks.push(`<strong style="color:#dc6a6a">Sin:</strong> ${tobEsc(lbls.join(', '))}`);
+  }
+  const prefPos = (tags.pref || []).filter(t => !['sense_gluten','sense_lactosa','sense_fruita_seca','sense_cuina'].includes(t));
+  if(prefPos.length){
+    blocks.push(`<strong style="color:var(--acc2)">Preferencias:</strong> ${tobEsc(prefPos.join(', '))}`);
+  }
+  if(tags.custom?.length){
+    blocks.push(`<strong style="color:var(--acc2)">Etiquetas:</strong> ${tobEsc(tags.custom.join(', '))}`);
+  }
+  if(q.alergias)    blocks.push(`<strong style="color:#dc6a6a">Alergias:</strong> ${tobEsc(q.alergias)}`);
+  if(q.alimX)       blocks.push(`<strong style="color:#dc6a6a">Aliments ✗:</strong> ${tobEsc(q.alimX)}`);
+  if(q.alimOk)      blocks.push(`<strong style="color:var(--green)">Aliments ✓:</strong> ${tobEsc(q.alimOk)}`);
+  if(q.patologias)  blocks.push(`<strong style="color:#dc6a6a">Patologies:</strong> ${tobEsc(q.patologias)}`);
+
+  const el = document.getElementById('tobMcPerfilResumen');
+  if(blocks.length){
+    el.style.display = '';
+    el.innerHTML = blocks.join(' &nbsp; · &nbsp; ');
+  } else {
+    el.style.display = '';
+    el.innerHTML = '<span style="color:var(--mute2)">⚠ Este cliente no tiene cuestionario rellenado. Sin perfil no se puede filtrar bien las recetas — ve a la ficha y rellena al menos los aliments ✗/✓ y el perfil alimentari.</span>';
+  }
+}
+
+// ── Compatibilidad receta ↔ perfil del cliente ──────────────────
+// Devuelve { compat:bool, razones:[...] }. compat=false si la receta
+// contiene aliments X, alérgenos prohibidos, o no encaja con la dieta
+// del cliente (vegano/celiaco/etc).
+function tobMcCheckCompat(rec, cli){
+  if(!cli || !cli.cuestionario){ return { compat:true, razones:[] }; }
+  const q = cli.cuestionario;
+  const tags = q.tags || {};
+  const razones = [];
+
+  // 1. Aliments X / alergias / aliments que sienten mal — match por nombre
+  //    en ingredientes y nombre de receta.
+  const textosNegativos = [q.alimX, q.alergias, q.sientenMal]
+    .filter(Boolean).join(',').toLowerCase()
+    .split(/[,;\n]/).map(s => s.trim()).filter(s => s.length >= 3);
+  if(textosNegativos.length){
+    const haystack = (rec.nombre || '').toLowerCase() + ' ' +
+      (rec.ingredientes||[]).map(it => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+        return ing ? ing.nombre.toLowerCase() : (it._nombreFallback || '').toLowerCase();
+      }).join(' ');
+    textosNegativos.forEach(neg => {
+      if(haystack.includes(neg)) razones.push('contiene ' + neg);
+    });
+  }
+
+  // 2. Tipo de dieta — vegano/vegetariano/pescetariano
+  if(tags.dieta){
+    const ingNames = (rec.ingredientes||[]).map(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      return ing ? ing.nombre.toLowerCase() : '';
+    }).join(' ') + ' ' + (rec.nombre || '').toLowerCase();
+    const isCarne   = /carne|pollo|cerdo|ternera|cordero|jamón|salchich|bacon|chorizo|embutid/i.test(ingNames);
+    const isPescado = /pescado|atún|salmón|merluz|bacalao|sardin|gamba|marisc|calamar|pulpo/i.test(ingNames);
+    const isLacteo  = /leche|queso|yogur|nata|mantequilla|mantega|kéfir|requesón|crème/i.test(ingNames);
+    const isHuevo   = /huevo|ou\b|clara|yema/i.test(ingNames);
+    if(tags.dieta === 'vega'){
+      if(isCarne || isPescado || isLacteo || isHuevo) razones.push('no es vegana');
+    } else if(tags.dieta === 'vegetaria'){
+      if(isCarne || isPescado) razones.push('no es vegetariana');
+    } else if(tags.dieta === 'pescetaria'){
+      if(isCarne) razones.push('no es pescetariana');
+    }
+  }
+
+  // 3. Restricciones de proteína (carn_no, peix_no, ous_no...)
+  const protRestric = (tags.proteina || []).filter(t => t.endsWith('_no'));
+  if(protRestric.length){
+    const ingText = (rec.ingredientes||[]).map(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      return ing ? ing.nombre.toLowerCase() : '';
+    }).join(' ') + ' ' + (rec.nombre || '').toLowerCase();
+    const checks = {
+      carn_no:      { regex:/carne|ternera|cerdo|cordero|jamón/i, lbl:'carne roja' },
+      pollastre_no: { regex:/pollo|pollastre|pavo|aviar|aves/i,    lbl:'pollo' },
+      peix_no:      { regex:/pescado|atún|salmón|merluz|bacalao|sardin/i, lbl:'pescado' },
+      marisc_no:    { regex:/gamba|marisc|calamar|pulpo|mejillón|almeja/i, lbl:'marisco' },
+      ous_no:       { regex:/huevo|ou\b|clara|yema/i, lbl:'huevos' },
+      lactis_no:    { regex:/leche|queso|yogur|nata|mantequilla|mantega|kéfir/i, lbl:'lácteos' }
+    };
+    protRestric.forEach(p => {
+      const c = checks[p];
+      if(c && c.regex.test(ingText)) razones.push('contiene ' + c.lbl);
+    });
+  }
+
+  // 4. Etiquetas pref negativas (sense_gluten, sense_lactosa…) — la receta
+  //    debe tener tag correspondiente o no contener ingredientes excluidos.
+  const prefNegMap = {
+    sense_gluten:      { recTag:'sin gluten',  regex:/trigo|pan|pasta|harina(?!.*sin gluten)|gluten/i, lbl:'gluten' },
+    sense_lactosa:     { recTag:'sin lactosa', regex:/leche|queso|yogur|nata|mantequilla|mantega/i,  lbl:'lactosa' },
+    sense_fruita_seca: { recTag:'sin frutos secos', regex:/almendra|nuez|nuez|avellana|pistacho|anacardo|fruta seca|fruits secs/i, lbl:'frutos secos' }
+  };
+  Object.keys(prefNegMap).forEach(key => {
+    if((tags.pref || []).includes(key)){
+      const c = prefNegMap[key];
+      const recHasOkTag = (rec.tags || []).some(t => t.toLowerCase().includes(c.recTag));
+      if(recHasOkTag) return;  // la receta declara explícitamente que es OK
+      const ingText = (rec.ingredientes||[]).map(it => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+        return ing ? ing.nombre.toLowerCase() : '';
+      }).join(' ') + ' ' + (rec.nombre || '').toLowerCase();
+      if(c.regex.test(ingText)) razones.push('contiene ' + c.lbl);
+    }
+  });
+
+  return { compat: razones.length === 0, razones };
+}
+
+// ── Render: tabs de semanas ─────────────────────────────────────
+function tobMcRenderSemanasTabs(){
+  const cont = document.getElementById('tobMcSemanasTabs');
+  if(!cont || !tobMcState) return;
+  cont.innerHTML = '';
+  for(let i = 0; i < tobMcState.semanas; i++){
+    const btn = document.createElement('button');
+    btn.textContent = 'S' + (i+1);
+    btn.className = i === tobMcState.semanaActiva ? 'active' : '';
+    btn.onclick = () => { tobMcState.semanaActiva = i; tobMcRenderSemanasTabs(); tobMcRenderGrid(); };
+    cont.appendChild(btn);
+  }
+  document.getElementById('tobMcSemanaActiva').textContent = 'Setmana ' + (tobMcState.semanaActiva + 1);
+}
+
+// ── Render: tabla del menú (días × comidas) ────────────────────
+function tobMcRenderGrid(){
+  if(!tobMcState) return;
+  // Ajustar semanas si el usuario cambió el número
+  const semanasInput = Math.max(1, parseInt(document.getElementById('tobMcSemanas').value) || 1);
+  if(semanasInput !== tobMcState.semanas){
+    for(let s = tobMcState.semanas; s < semanasInput; s++){
+      tobMcState.data[s] = {};
+      for(let d = 0; d < 7; d++){
+        tobMcState.data[s][d] = {};
+        tobMcState.comidasIds.forEach(cid => { tobMcState.data[s][d][cid] = []; });
+      }
+    }
+    if(semanasInput < tobMcState.semanas){
+      for(let s = semanasInput; s < tobMcState.semanas; s++) delete tobMcState.data[s];
+    }
+    tobMcState.semanas = semanasInput;
+    if(tobMcState.semanaActiva >= semanasInput) tobMcState.semanaActiva = semanasInput - 1;
+    tobMcRenderSemanasTabs();
+  }
+
+  const grid = document.getElementById('tobMcGrid');
+  if(!grid) return;
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  const comidas = tobMcComidasDelCliente(cli);
+  const sem = tobMcState.semanaActiva;
+
+  // grid layout: 1 col label comida + 7 cols días = 8 columnas
+  grid.style.gridTemplateColumns = '90px repeat(7, minmax(110px, 1fr))';
+  let html = '';
+  // Fila header con días
+  html += `<div class="tob-mc-grid-row">
+    <div class="tob-mc-cell-meal-lbl"></div>
+    ${TOB_MC_DIAS.map((d, i) => `<div class="tob-mc-grid-header">${d}</div>`).join('')}
+  </div>`;
+  // Fila por comida
+  comidas.forEach(comida => {
+    html += `<div class="tob-mc-grid-row">`;
+    html += `<div class="tob-mc-cell-meal-lbl">${tobEsc(comida.label)}</div>`;
+    for(let d = 0; d < 7; d++){
+      const items = tobMcState.data[sem]?.[d]?.[comida.id] || [];
+      const itemsHtml = items.map((recId, ix) => {
+        const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+        if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><span class="nm">(eliminada)</span><button class="x" onclick="tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
+        const m = tobRecMacros(r);
+        const kcalPer = Math.round(m.kcal / (r.raciones || 1));
+        return `<div class="tob-mc-cell-item" data-rec="${recId}" title="${tobEsc(r.nombre)} · ${kcalPer} kcal/ración">
+          <span class="nm">${tobEsc(r.nombre)}</span>
+          <span class="kc">${kcalPer}</span>
+          <button class="x" onclick="tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
+        </div>`;
+      }).join('');
+      html += `<div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${itemsHtml}</div>`;
+    }
+    html += `</div>`;
+  });
+  // Fila totales del día
+  html += `<div class="tob-mc-grid-row">`;
+  html += `<div class="tob-mc-cell-meal-lbl">Total</div>`;
+  for(let d = 0; d < 7; d++){
+    html += `<div class="tob-mc-cell-totals" id="tobMcTot_${d}"><div class="row"><span class="kcal-val">—</span></div></div>`;
+  }
+  html += `</div>`;
+  grid.innerHTML = html;
+
+  // Habilitar drag&drop en cada celda
+  if(typeof Sortable !== 'undefined'){
+    grid.querySelectorAll('.tob-mc-cell').forEach(cell => {
+      new Sortable(cell, {
+        group: { name: 'menu', pull: true, put: true },
+        animation: 150,
+        ghostClass: 'tob-sortable-ghost',
+        onAdd: (ev) => {
+          const recId = ev.item.dataset.rec;
+          const day = +cell.dataset.day;
+          const meal = cell.dataset.meal;
+          if(!tobMcState.data[sem][day][meal].includes(recId)){
+            tobMcState.data[sem][day][meal].push(recId);
+          }
+          // Si vino del panel lateral, ev.item se reposiciona en la celda — re-render para limpiar
+          tobMcRenderGrid();
+          tobMcUpdateAllTotals();
+        }
+      });
+    });
+  }
+
+  tobMcUpdateAllTotals();
+}
+
+function tobMcRemoveItem(day, mealId, ix){
+  if(!tobMcState) return;
+  const arr = tobMcState.data[tobMcState.semanaActiva]?.[day]?.[mealId];
+  if(arr) arr.splice(ix, 1);
+  tobMcRenderGrid();
+  tobMcUpdateAllTotals();
+}
+
+// Recalcula totales kcal/prot/hc/grasa por día + aplica color semáforo.
+function tobMcUpdateAllTotals(){
+  if(!tobMcState) return;
+  const kcalObj  = parseFloat(document.getElementById('tobMcKcal')?.value) || 0;
+  const margen   = parseFloat(document.getElementById('tobMcMargen')?.value) || 10;
+  const sem      = tobMcState.semanaActiva;
+  for(let d = 0; d < 7; d++){
+    let kcal=0, prot=0, hc=0, gras=0;
+    tobMcState.comidasIds.forEach(mid => {
+      const arr = tobMcState.data[sem]?.[d]?.[mid] || [];
+      arr.forEach(recId => {
+        const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+        if(!r) return;
+        const m = tobRecMacros(r);
+        const rac = r.raciones || 1;
+        // Asumimos 1 ración del plato por slot
+        kcal += m.kcal / rac;
+        prot += m.proteina / rac;
+        hc   += m.hc / rac;
+        gras += m.grasa / rac;
+      });
+    });
+    const el = document.getElementById('tobMcTot_' + d);
+    if(!el) continue;
+    if(kcal <= 0){
+      el.className = 'tob-mc-cell-totals empty';
+      el.innerHTML = '<div class="row"><span class="kcal-val">—</span></div>';
+      continue;
+    }
+    // Semáforo: ok si dentro de ±margen del objetivo, warn si dentro de ±2margen, bad fuera
+    let cls = 'empty';
+    if(kcalObj > 0){
+      const delta = Math.abs(kcal - kcalObj);
+      const tol1 = kcalObj * margen / 100;
+      const tol2 = kcalObj * margen * 2 / 100;
+      if(delta <= tol1) cls = 'ok';
+      else if(delta <= tol2) cls = 'warn';
+      else cls = 'bad';
+    } else {
+      cls = '';
+    }
+    el.className = 'tob-mc-cell-totals ' + cls;
+    el.innerHTML = `
+      <div class="row"><span class="kcal-val">${Math.round(kcal)}</span><span>kcal</span></div>
+      <div class="row"><span>P</span><span>${Math.round(prot)}g</span></div>
+      <div class="row"><span>H</span><span>${Math.round(hc)}g</span></div>
+      <div class="row"><span>G</span><span>${Math.round(gras)}g</span></div>
+    `;
+  }
+}
+
+// ── Render: panel lateral con recetas ──────────────────────────
+function tobMcFilterMomento(mom, btn){
+  _tobMcMomentoFiltro = mom;
+  document.querySelectorAll('.tob-mc-mom-btn').forEach(b => b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  tobMcRenderSidePanel();
+}
+
+function tobMcRenderSidePanel(){
+  const panel = document.getElementById('tobMcSidePanel');
+  if(!panel || !tobMcState) return;
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  const search = (document.getElementById('tobMcRecSearch')?.value || '').trim().toLowerCase();
+  const filtrarPerfil = document.getElementById('tobMcFiltrarPerfil')?.checked;
+
+  let list = (tobMenusDB.recetas || []).slice();
+  if(_tobMcMomentoFiltro){
+    list = list.filter(r => (r.momentos || []).includes(_tobMcMomentoFiltro));
+  }
+  if(search){
+    list = list.filter(r => (r.nombre || '').toLowerCase().includes(search) ||
+      (r.tags || []).some(t => t.toLowerCase().includes(search)));
+  }
+
+  // Compatibilidad: cada receta evaluada vs perfil del cliente
+  const evaluadas = list.map(r => ({
+    rec: r,
+    check: cli ? tobMcCheckCompat(r, cli) : { compat:true, razones:[] }
+  }));
+  // Ordenar: compatibles primero, luego incompatibles. Dentro de cada bloque, alfabético.
+  evaluadas.sort((a,b) => {
+    if(a.check.compat !== b.check.compat) return a.check.compat ? -1 : 1;
+    return (a.rec.nombre||'').localeCompare(b.rec.nombre||'','es',{sensitivity:'base'});
+  });
+
+  // Si "filtrarPerfil" está activo, esconder incompatibles del todo
+  const visibles = filtrarPerfil ? evaluadas.filter(e => e.check.compat) : evaluadas;
+
+  const cnt = document.getElementById('tobMcRecCount');
+  if(cnt){
+    const compatN = evaluadas.filter(e => e.check.compat).length;
+    cnt.textContent = filtrarPerfil
+      ? `(${compatN} compatibles)`
+      : `(${compatN}/${evaluadas.length} compatibles)`;
+  }
+
+  panel.innerHTML = visibles.map(({rec: r, check}) => {
+    const m = tobRecMacros(r);
+    const kcalPer = Math.round(m.kcal / (r.raciones || 1));
+    const fotoStyle = r.foto ? `style="background-image:url('${r.foto.replace(/'/g,"\\'")}');"` : '';
+    const thumbInner = r.foto ? '' : (r.nombre || '?').slice(0,2).toUpperCase();
+    const incompatBadge = check.compat ? '' :
+      `<span class="badge-incompat" title="${tobEsc(check.razones.join(' · '))}">⚠</span>`;
+    const cls = check.compat ? '' : 'incompat';
+    return `<div class="tob-mc-side-item ${cls}" data-rec="${r.id}" title="${tobEsc(r.nombre)}${check.razones.length ? '\\n⚠ ' + check.razones.join(' · ') : ''}">
+      <div class="thumb" ${fotoStyle}>${tobEsc(thumbInner)}</div>
+      <div class="info">
+        <div class="nm">${tobEsc(r.nombre || '—')}</div>
+        <div class="mac">${kcalPer} kcal · ${Math.round(m.proteina / (r.raciones||1))}p</div>
+      </div>
+      ${incompatBadge}
+    </div>`;
+  }).join('');
+  if(!visibles.length){
+    panel.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:18px;font-family:DM Mono,monospace;font-size:.7rem;">Sin recetas que coincidan con los filtros.</div>';
+  }
+
+  // Habilitar drag desde el panel lateral
+  if(typeof Sortable !== 'undefined'){
+    new Sortable(panel, {
+      group: { name: 'menu', pull: 'clone', put: false },
+      sort: false,
+      animation: 150,
+      ghostClass: 'tob-sortable-ghost'
+    });
+  }
+}
+
+// ── Vaciar / guardar / cargar menús ─────────────────────────────
+function tobMcClearSemana(){
+  if(!tobMcState) return;
+  if(!confirm('Vaciar todas las celdas de esta semana?')) return;
+  const sem = tobMcState.semanaActiva;
+  Object.keys(tobMcState.data[sem] || {}).forEach(d => {
+    tobMcState.comidasIds.forEach(cid => { tobMcState.data[sem][d][cid] = []; });
+  });
+  tobMcRenderGrid();
+}
+
+function tobMcSave(){
+  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
+  if(!cli.menus) cli.menus = [];
+
+  const snapshot = {
+    id: tobMcState._menuId || tobUid('menu'),
+    fecha: new Date().toISOString().slice(0,10),
+    cliId: tobMcState.cliId,
+    semanas: tobMcState.semanas,
+    comidasIds: tobMcState.comidasIds.slice(),
+    kcalObj:  parseFloat(document.getElementById('tobMcKcal').value) || null,
+    margenPct:parseFloat(document.getElementById('tobMcMargen').value) || 10,
+    protObj:  parseFloat(document.getElementById('tobMcProt').value) || null,
+    data:     JSON.parse(JSON.stringify(tobMcState.data)),
+    savedAt:  new Date().toISOString()
+  };
+  // Update si ya existe, insert si no
+  const ix = cli.menus.findIndex(m => m.id === snapshot.id);
+  if(ix >= 0) cli.menus[ix] = snapshot;
+  else cli.menus.unshift(snapshot);
+  tobMcState._menuId = snapshot.id;
+  tobSave();
+  tobToast(`✓ Menú guardado en ${cli.nombre}`, 'green');
+}
+
+function tobMcShowList(){
+  const cliSel = document.getElementById('tobMcCliente').value;
+  if(!cliSel){ tobToast('Selecciona un cliente primero', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === cliSel);
+  if(!cli){ return; }
+  const menus = (cli.menus || []).slice().sort((a,b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+  const body = document.getElementById('tobMcListBody');
+  if(!menus.length){
+    body.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:30px;font-family:DM Mono,monospace;font-size:.8rem;">Este cliente aún no tiene menús guardados.</div>';
+  } else {
+    body.innerHTML = menus.map(m => {
+      const fecha = (m.savedAt || m.fecha || '').slice(0, 10);
+      const hora  = (m.savedAt || '').slice(11, 16);
+      // Cuenta recetas totales
+      let n = 0;
+      Object.values(m.data || {}).forEach(sem => {
+        Object.values(sem || {}).forEach(dia => {
+          Object.values(dia || {}).forEach(arr => { if(Array.isArray(arr)) n += arr.length; });
+        });
+      });
+      return `<div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;">
+        <div style="flex:1;">
+          <div style="font-weight:700;color:var(--text);font-size:.85rem;">${tobEsc(fecha)} ${tobEsc(hora)}</div>
+          <div style="font-size:.7rem;color:var(--mute);font-family:DM Mono,monospace;">${m.semanas} sem · ${n} recetas · ${m.kcalObj || '—'} kcal/día · ${m.protObj || '—'} g prot</div>
+        </div>
+        <button class="tob-action ghost btn-xs" onclick="tobMcLoadMenu('${m.id}')">Cargar</button>
+        <button class="tob-action ghost btn-xs" onclick="tobMcDeleteMenu('${m.id}')" style="color:#dc6a6a;border-color:#7a2424;">🗑</button>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('tobMcListModalBg').classList.add('on');
+}
+
+function tobMcLoadMenu(menuId){
+  const cliSel = document.getElementById('tobMcCliente').value;
+  const cli = tobDB.clientes.find(c => c.id === cliSel);
+  const m = cli?.menus?.find(x => x.id === menuId);
+  if(!m){ tobToast('Menú no encontrado', 'red'); return; }
+  tobMcState = {
+    cliId: cliSel,
+    semanas: m.semanas || 1,
+    comidasIds: m.comidasIds || tobMcComidasDelCliente(cli).map(c => c.id),
+    semanaActiva: 0,
+    data: JSON.parse(JSON.stringify(m.data || {})),
+    _menuId: m.id
+  };
+  document.getElementById('tobMcSemanas').value = m.semanas || 1;
+  if(m.kcalObj) document.getElementById('tobMcKcal').value = m.kcalObj;
+  if(m.margenPct != null) document.getElementById('tobMcMargen').value = m.margenPct;
+  if(m.protObj) document.getElementById('tobMcProt').value = m.protObj;
+  document.getElementById('tobMcWorkspace').style.display = '';
+  document.getElementById('tobMcListModalBg').classList.remove('on');
+  tobMcRenderSemanasTabs();
+  tobMcRenderGrid();
+  tobMcRenderSidePanel();
+  tobToast(`✓ Menú del ${(m.savedAt||'').slice(0,10)} cargado`, 'green');
+}
+
+function tobMcDeleteMenu(menuId){
+  const cliSel = document.getElementById('tobMcCliente').value;
+  const cli = tobDB.clientes.find(c => c.id === cliSel);
+  if(!cli || !cli.menus) return;
+  const m = cli.menus.find(x => x.id === menuId);
+  if(!m) return;
+  if(!confirm(`Eliminar menú del ${(m.savedAt||'').slice(0,10)}?`)) return;
+  cli.menus = cli.menus.filter(x => x.id !== menuId);
+  tobSave();
+  tobMcShowList();
+  tobToast('Menú eliminado', '');
+}
+
+// Hook al cambio de sub-tab "creador" — inicializa el selector cliente
+const _origTobMenuShowTab2 = tobMenuShowTab;
+tobMenuShowTab = function(name, btn){
+  _origTobMenuShowTab2(name, btn);
+  if(name === 'creador') tobMcInit();
+};
+
+// Cerrar modal de listado clicando fuera
+document.addEventListener('DOMContentLoaded', () => {
+  const bg = document.getElementById('tobMcListModalBg');
+  if(bg) bg.addEventListener('click', e => { if(e.target === bg) bg.classList.remove('on'); });
+});
+
 // Auto-init
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', () => { tobMenusLoad(); tobLoad(); });

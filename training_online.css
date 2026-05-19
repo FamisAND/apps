@@ -409,6 +409,131 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   .tob-rec-macros{grid-template-columns:repeat(3,1fr);}
 }
 
+/* ── Módulo Menús: Creador (layout días × comidas + panel) ────────── */
+.tob-mc-layout{
+  display:grid;
+  grid-template-columns:1fr 320px;
+  gap:14px;
+  align-items:start;
+}
+.tob-mc-grid-card{min-width:0;overflow:hidden;}
+.tob-mc-side{
+  position:sticky;top:80px;max-height:calc(100vh - 100px);
+  overflow-y:auto;
+}
+@media(max-width:1100px){
+  .tob-mc-layout{grid-template-columns:1fr;}
+  .tob-mc-side{position:static;max-height:none;}
+}
+
+/* Tabs de semanas */
+#tobMcSemanasTabs button{
+  background:transparent;border:1px solid var(--border);
+  color:var(--mute);font-family:'DM Mono',monospace;font-size:.7rem;
+  padding:3px 10px;border-radius:3px;cursor:pointer;transition:all .15s ease;
+}
+#tobMcSemanasTabs button.active{
+  background:var(--acc);border-color:var(--acc);color:#000;font-weight:700;
+}
+#tobMcSemanasTabs button:hover{border-color:var(--acc);color:var(--text);}
+
+/* Botones de filtro por momento en el panel lateral */
+.tob-mc-mom-btn{
+  background:transparent;border:1px solid var(--border);
+  color:var(--mute);font-family:'DM Mono',monospace;font-size:.65rem;
+  padding:3px 8px;border-radius:999px;cursor:pointer;transition:all .15s ease;
+  letter-spacing:.04em;
+}
+.tob-mc-mom-btn.active{background:var(--acc);border-color:var(--acc);color:#000;font-weight:700;}
+.tob-mc-mom-btn:hover{border-color:var(--acc);}
+
+/* Tabla días × comidas */
+.tob-mc-grid{
+  display:grid;gap:6px;
+  overflow-x:auto;
+  font-family:'DM Mono',monospace;
+  font-size:.68rem;
+}
+.tob-mc-grid-row{display:contents;}
+.tob-mc-grid-header,
+.tob-mc-cell-day-lbl{
+  background:#0e0d0a;color:var(--acc2);
+  padding:6px 8px;border-radius:3px;
+  font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  text-align:center;
+}
+.tob-mc-cell-day-lbl{text-align:left;}
+.tob-mc-cell-meal-lbl{
+  background:transparent;color:var(--mute);
+  padding:6px 4px;font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;
+  display:flex;align-items:center;
+}
+.tob-mc-cell{
+  min-height:62px;
+  background:#16140f;border:1px dashed var(--border);border-radius:4px;
+  padding:4px;display:flex;flex-direction:column;gap:3px;
+  transition:all .15s ease;
+}
+.tob-mc-cell.over{border-color:var(--acc);background:#1f1c14;}
+.tob-mc-cell-item{
+  display:flex;align-items:center;gap:5px;
+  background:var(--card2);border:1px solid var(--border);border-radius:3px;
+  padding:3px 5px;font-size:.65rem;color:var(--text);
+  cursor:grab;transition:all .15s ease;
+  position:relative;
+}
+.tob-mc-cell-item:hover{border-color:var(--acc);}
+.tob-mc-cell-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tob-mc-cell-item .kc{color:var(--acc2);font-size:.6rem;}
+.tob-mc-cell-item .x{
+  background:transparent;border:none;color:var(--mute2);cursor:pointer;
+  width:16px;height:16px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;font-size:.7rem;line-height:1;padding:0;
+}
+.tob-mc-cell-item .x:hover{background:#7a2424;color:#fff;}
+
+/* Fila de totales del día (kcal, prot, etc) */
+.tob-mc-cell-totals{
+  background:#1a1814;border:1px solid var(--border);border-radius:3px;
+  padding:4px 6px;font-size:.6rem;color:var(--mute);
+  display:flex;flex-direction:column;gap:1px;
+}
+.tob-mc-cell-totals .row{display:flex;justify-content:space-between;gap:4px;}
+.tob-mc-cell-totals .kcal-val{font-weight:700;font-size:.72rem;}
+.tob-mc-cell-totals.ok    .kcal-val{color:var(--green);}
+.tob-mc-cell-totals.warn  .kcal-val{color:#e6c14d;}
+.tob-mc-cell-totals.bad   .kcal-val{color:#dc6a6a;}
+.tob-mc-cell-totals.empty .kcal-val{color:var(--mute2);}
+
+/* Panel lateral lista de recetas */
+.tob-mc-side-list{
+  display:flex;flex-direction:column;gap:5px;
+  max-height:none;
+}
+.tob-mc-side-item{
+  display:flex;align-items:center;gap:8px;padding:5px 7px;
+  background:var(--card2);border:1px solid var(--border);border-radius:4px;
+  font-size:.7rem;color:var(--text);cursor:grab;transition:all .15s ease;
+  font-family:'DM Mono',monospace;
+}
+.tob-mc-side-item:hover{border-color:var(--acc);background:#221d14;}
+.tob-mc-side-item.incompat{opacity:.4;border-color:#7a2424;}
+.tob-mc-side-item .thumb{
+  width:32px;height:32px;border-radius:3px;background:#1a1814 center/cover;
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  color:var(--mute2);font-size:.55rem;font-weight:700;
+}
+.tob-mc-side-item .info{flex:1;min-width:0;}
+.tob-mc-side-item .info .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tob-mc-side-item .info .mac{color:var(--mute);font-size:.6rem;letter-spacing:.04em;}
+.tob-mc-side-item .badge-incompat{
+  background:#5a1818;color:#f0a0a0;font-size:.55rem;padding:1px 4px;border-radius:2px;
+  letter-spacing:.04em;text-transform:uppercase;
+}
+
+/* Item dummy mientras se arrastra (sortablejs) */
+.tob-sortable-ghost{opacity:.4;}
+
 /* ── Cuestionario / Preferencias ──────────────────────────────────── */
 .tob-quest-summary{
   cursor:pointer;list-style:none;outline:none;

@@ -13,6 +13,8 @@
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <!-- SheetJS para exportar Excel del cliente (datos + mediciones + rutinas) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- SortableJS para drag&drop de recetas en el creador de menús -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 </head>
 <body>
 
@@ -267,14 +269,104 @@
     </div>
   </div>
 
-  <!-- ── CREADOR DE MENÚS (placeholder) ── -->
+  <!-- ── CREADOR DE MENÚS ── -->
   <div id="tob-mtab-creador" class="tob-mtab-page" style="display:none;">
-    <div class="tob-card">
-      <div class="tob-card-title">📅 Creador de menús</div>
-      <div style="text-align:center;padding:40px 20px;color:var(--mute);font-family:'DM Mono',monospace;font-size:.85rem;line-height:1.6;">
-        Pendiente: drag &amp; drop de recetas, filtrado por perfil alimentario del cliente,<br>
-        cálculo en tiempo real de macros del día, exportación PDF del menú semanal.
+
+    <!-- Setup: cliente + config -->
+    <div class="tob-card" id="tobMcSetup">
+      <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>📅 Creador de menús</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="tob-action ghost btn-xs" onclick="tobMcShowList()" title="Ver menús anteriores del cliente">📂 Menús guardados</button>
+          <button class="tob-action btn-xs" id="tobMcGenerarIA" disabled title="Próximamente — generación automática con IA respetando cuestionario y objetivos">🤖 Generar con IA</button>
+        </div>
       </div>
+
+      <div class="tob-row col-2">
+        <div>
+          <label class="tob-lbl">Cliente *</label>
+          <select class="tob-select" id="tobMcCliente" onchange="tobMcOnClienteChange()">
+            <option value="">— Selecciona cliente —</option>
+          </select>
+          <div id="tobMcClienteHint" style="font-size:.7rem;color:var(--mute2);margin-top:3px;font-family:'DM Mono',monospace;"></div>
+        </div>
+        <div>
+          <label class="tob-lbl">Semanas del menú</label>
+          <input class="tob-input" type="number" min="1" max="8" id="tobMcSemanas" value="1" onchange="tobMcRenderGrid()">
+        </div>
+      </div>
+
+      <div class="tob-row col-4">
+        <div>
+          <label class="tob-lbl">Objetivo kcal/día</label>
+          <input class="tob-input" type="number" min="500" max="6000" id="tobMcKcal" placeholder="ej: 2200" oninput="tobMcUpdateAllTotals()">
+        </div>
+        <div>
+          <label class="tob-lbl">Margen ±%</label>
+          <input class="tob-input" type="number" min="0" max="30" id="tobMcMargen" value="10" oninput="tobMcUpdateAllTotals()">
+        </div>
+        <div>
+          <label class="tob-lbl">Proteína objetivo (g)</label>
+          <input class="tob-input" type="number" min="0" max="500" id="tobMcProt" placeholder="ej: 150" oninput="tobMcUpdateAllTotals()">
+        </div>
+        <div>
+          <label class="tob-lbl">Comidas/día</label>
+          <div id="tobMcComidas" style="padding:6px 0;font-size:.85rem;color:var(--text);font-family:'DM Mono',monospace;">—</div>
+        </div>
+      </div>
+
+      <!-- Resumen perfil alimentario del cliente (lectura, no editable) -->
+      <div id="tobMcPerfilResumen" style="display:none;margin-top:10px;padding:10px 14px;background:var(--card2);border-radius:6px;border-left:3px solid var(--acc);font-family:'DM Mono',monospace;font-size:.72rem;color:var(--mute);line-height:1.6;"></div>
+    </div>
+
+    <!-- Vista del menú activo -->
+    <div id="tobMcWorkspace" style="display:none;">
+      <div class="tob-mc-layout">
+        <!-- Tabla del menú (días × comidas) -->
+        <div class="tob-card tob-mc-grid-card">
+          <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span>📋 Menú · <span id="tobMcSemanaActiva">Setmana 1</span></span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              <div id="tobMcSemanasTabs" style="display:flex;gap:4px;"></div>
+              <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
+              <button class="tob-action btn-xs" onclick="tobMcSave()" title="Guardar el menú en el cliente">💾 Guardar</button>
+            </div>
+          </div>
+          <div id="tobMcGrid" class="tob-mc-grid"></div>
+        </div>
+
+        <!-- Panel lateral: recetas filtradas -->
+        <div class="tob-card tob-mc-side">
+          <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <span>🍳 Recetas <span id="tobMcRecCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
+          </div>
+          <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:.65rem;">
+            <button class="tob-mc-mom-btn active" data-mom="" onclick="tobMcFilterMomento('',this)">Todas</button>
+            <button class="tob-mc-mom-btn" data-mom="esmorzar" onclick="tobMcFilterMomento('esmorzar',this)">Esmorzar</button>
+            <button class="tob-mc-mom-btn" data-mom="mig_mati" onclick="tobMcFilterMomento('mig_mati',this)">Mig matí</button>
+            <button class="tob-mc-mom-btn" data-mom="dinar" onclick="tobMcFilterMomento('dinar',this)">Dinar</button>
+            <button class="tob-mc-mom-btn" data-mom="berenar" onclick="tobMcFilterMomento('berenar',this)">Berenar</button>
+            <button class="tob-mc-mom-btn" data-mom="sopar" onclick="tobMcFilterMomento('sopar',this)">Sopar</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--mute);margin-bottom:8px;font-family:'DM Mono',monospace;">
+            <input type="checkbox" id="tobMcFiltrarPerfil" checked onchange="tobMcRenderSidePanel()">
+            Filtrar incompatibles con perfil del cliente
+          </label>
+          <div id="tobMcSidePanel" class="tob-mc-side-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL MENÚS GUARDADOS ════════ -->
+<div class="tob-modal-bg" id="tobMcListModalBg">
+  <div class="tob-modal" style="max-width:600px;">
+    <h3>📂 Menús guardados del cliente</h3>
+    <div id="tobMcListBody" style="max-height:60vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcListModalBg').classList.remove('on')">Cerrar</button>
     </div>
   </div>
 </div>
