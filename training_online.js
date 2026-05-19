@@ -62,21 +62,21 @@ const TOB_DESC_CATEGORIAS = {
   'Reacondicionamiento': {
     es:
       'OBJETIVO: Volver al gimnasio o empezar una nueva etapa. Recuperas técnica, mueves rangos medios de repeticiones, preparas el cuerpo para mesociclos más exigentes.\n\n' +
-      'CÓMO PROGRESA: 6 microciclos (bloques) — cada pareja sube un escalón. Onda 15/12/10 → 12/10/8 → 10/8/6. Vas a tu ritmo, sin calendario fijo.\n\n' +
+      'CÓMO PROGRESA: 6 microciclos (bloques) — cada pareja sube un escalón. Onda 15/12/10 > 12/10/8 > 10/8/6. Vas a tu ritmo, sin calendario fijo.\n\n' +
       'REPETICIONES: 3 series por ejercicio principal, con onda descendente (1ª serie más reps a peso menor, 3ª serie menos reps a peso mayor).\n\n' +
       'PESOS: Que te cueste pero pudiendo completar todas las repeticiones con técnica correcta. La 1ª serie de cada par de bloques debería ser asequible — sube algo en el siguiente.\n\n' +
       'DESCANSOS: 1\'30" en los primeros bloques · 1\'45" en los del medio · 2\'00" en los últimos. El circuito accesorio con 30" entre ejercicios.\n\n' +
       'CONSEJOS: 3 entrenos por semana (Lun-Mié-Vie). División A+B (simil full body). En accesorios va circuito sin pausa (jump set). Foco en técnica y recorrido completo.',
     ca:
       'OBJECTIU: Tornar al gimnàs o començar una nova etapa. Recuperes la tècnica, treballes rangs mitjans de repeticions, prepares el cos per a mesociclos més exigents.\n\n' +
-      'COM PROGRESSA: 6 microciclos (blocs) — cada parella puja un esglaó. Ona 15/12/10 → 12/10/8 → 10/8/6. Vas al teu ritme, sense calendari fix.\n\n' +
+      'COM PROGRESSA: 6 microciclos (blocs) — cada parella puja un esglaó. Ona 15/12/10 > 12/10/8 > 10/8/6. Vas al teu ritme, sense calendari fix.\n\n' +
       'REPETICIONS: 3 sèries per exercici principal, amb ona descendent (1a sèrie més reps a pes menor, 3a sèrie menys reps a pes major).\n\n' +
       'PESOS: Que et costi però podent completar totes les repeticions amb tècnica correcta. La 1a sèrie de cada parell de blocs hauria de ser assequible — puja una mica al següent.\n\n' +
       'DESCANSOS: 1\'30" als primers blocs · 1\'45" als del mig · 2\'00" als últims. El circuit accessori amb 30" entre exercicis.\n\n' +
       'CONSELLS: 3 entrenaments per setmana (Dl-Dc-Dv). Divisió A+B (similar full body). Als accessoris va circuit sense pausa (jump set). Focus en tècnica i recorregut complet.',
     en:
       'GOAL: Get back to the gym or start a new phase. Recover technique, work mid-range reps, and prepare the body for more demanding mesocycles.\n\n' +
-      'PROGRESSION: 6 microcycles (blocks) — each pair moves up one step. Wave 15/12/10 → 12/10/8 → 10/8/6. Move at your own pace, no fixed calendar.\n\n' +
+      'PROGRESSION: 6 microcycles (blocks) — each pair moves up one step. Wave 15/12/10 > 12/10/8 > 10/8/6. Move at your own pace, no fixed calendar.\n\n' +
       'REPS: 3 sets per main exercise, with descending wave (1st set more reps at lower weight, 3rd set fewer reps at higher weight).\n\n' +
       'WEIGHTS: It should be challenging but still allow you to complete every rep with clean technique. The 1st set of each block-pair should feel manageable — bump it up in the next.\n\n' +
       'REST: 1\'30" on early blocks · 1\'45" on middle ones · 2\'00" on the last. Accessory circuit with 30" between exercises.\n\n' +
@@ -451,6 +451,51 @@ function tobT(key, lang, params){
     });
   }
   return s;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sanitiza una string para que sea seguro pasarla a pdf-lib (Helvetica
+// StandardFont usa WinAnsi y peta con chars Unicode fuera de Latin-1).
+// Mapea símbolos comunes a equivalentes ASCII/Latin-1; cualquier otro
+// char fuera de WinAnsi se elimina.
+// USAR siempre que el texto pueda contener input del usuario o símbolos
+// Unicode (descripciones, nombres custom de ejercicios, notas, etc).
+// ─────────────────────────────────────────────────────────────────────
+const TOB_PDF_CHAR_MAP = {
+  '→': '>',     // → flecha derecha (causa el error WinAnsi)
+  '←': '<',     // ← flecha izquierda
+  '↑': '^',     // ↑ flecha arriba
+  '↓': 'v',     // ↓ flecha abajo
+  '↔': '<>',    // ↔
+  '⇒': '=>',    // ⇒
+  '⇐': '<=',    // ⇐
+  '≈': '~',     // ≈ aproximadamente
+  '≤': '<=',    // ≤
+  '≥': '>=',    // ≥
+  '≠': '!=',    // ≠
+  '∞': 'inf',   // ∞
+  '✓': 'v',     // ✓ check
+  '✗': 'x',     // ✗ cross
+  '✕': 'x',     // ✕
+  '·': '·',     // · ya está en WinAnsi, mantenemos
+};
+// Chars WinAnsi-1252 que están en el rango 0x80-0x9F y son legítimos en PDF:
+// 0x80 €, 0x82 ‚, 0x83 ƒ, 0x84 „, 0x85 …, 0x86 †, 0x87 ‡, 0x88 ˆ, 0x89 ‰,
+// 0x8A Š, 0x8B ‹, 0x8C Œ, 0x8E Ž, 0x91 ‘, 0x92 ’, 0x93 “, 0x94 ”, 0x95 •,
+// 0x96 –, 0x97 —, 0x98 ˜, 0x99 ™, 0x9A š, 0x9B ›, 0x9C œ, 0x9E ž, 0x9F Ÿ.
+const TOB_PDF_WINANSI_EXTRA = new Set([
+  '€','‚','ƒ','„','…','†','‡','ˆ','‰',
+  'Š','‹','Œ','Ž','‘','’','“','”','•',
+  '–','—','˜','™','š','›','œ','ž','Ÿ'
+]);
+
+function tobPdfSafe(s){
+  if(s == null) return '';
+  return String(s).replace(/[^-ÿ]/g, ch => {
+    if(TOB_PDF_CHAR_MAP[ch] != null) return TOB_PDF_CHAR_MAP[ch];
+    if(TOB_PDF_WINANSI_EXTRA.has(ch)) return ch;
+    return '';  // strip silently — mejor que pete el PDF
+  });
 }
 
 let tobDB = { clientes: [], plantillas: [] };
@@ -1566,7 +1611,7 @@ async function tobGeneratePdf(){
   function gap(n){ y -= n; if(y < 60){ page = doc.addPage([W,H]); y = H - 30; } }
 
   const L = tobLangOf(cli);
-  text(`${cli?.nombre||''} — ${tobRutinaShortName(pl)}  ·  ${tobT('cover.iteracion', L, { numero: it?.numero||1 })}`, { bold:true, size:13 });
+  text(tobPdfSafe(`${cli?.nombre||''} — ${tobRutinaShortName(pl)}  ·  ${tobT('cover.iteracion', L, { numero: it?.numero||1 })}`), { bold:true, size:13 });
   gap(20);
 
   const microHeaders = Array.from({length: tobNumMicroOf(a?.rutina)}, (_,i)=>i+1);
@@ -1589,7 +1634,7 @@ async function tobGeneratePdf(){
 
     (en.ejercicios||[]).sort((a,b)=>(a.orden||0)-(b.orden||0)).forEach(ej => {
       if(y < 100){ page = doc.addPage([W,H]); y = H - 30; }
-      text(ej.nombre + (ej.subtitle ? ' — ' + ej.subtitle : ''), { bold:true, size:9 });
+      text(tobPdfSafe(ej.nombre + (ej.subtitle ? ' — ' + ej.subtitle : '')), { bold:true, size:9 });
       gap(13);
       // Plan
       text(tobT('it.label.plan', L), { size: 7, color: rgb(0.4,0.4,0.4) });
@@ -3485,7 +3530,7 @@ async function tobBuildPdfMediciones(cli){
   page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: 100, y: H-156, size: 56, font: fontB, color: BLACK });
   page.drawText(tobT('med.cover.titulo', L), { x: 100, y: H-180, size: 12, font, color: GRAY });
-  page.drawText(cli.nombre || '-', { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
+  page.drawText(tobPdfSafe(cli.nombre || '-'), { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
   page.drawText(tobT('cover.periodo', L, { desde: first.fecha || '?', hasta: last.fecha || '?' }), { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
   const pesDelta = (last.pes != null && first.pes != null) ? (+last.pes - +first.pes) : null;
   const sumDelta = tobMedSum(last) - tobMedSum(first);
@@ -3653,7 +3698,7 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
     const pp = r.plecsPes != null ? r.plecsPes.toFixed(2) : '-';
     const rTxt = `${tobT('med.ratio.cintura_maluc', L, { val: cm })}        ${tobT('med.ratio.plecs_pes', L, { val: pp })}`;
     page.drawText(rTxt, { x: 30, y: 58, size: 9, font: fontB, color: GRAY_DK });
-    if(m.notas) page.drawText(tobT('med.detalle.notas', L, { texto: tobTrunc(m.notas, 120) }), { x: 30, y: 42, size: 8, font: fontO, color: GRAY });
+    if(m.notas) page.drawText(tobPdfSafe(tobT('med.detalle.notas', L, { texto: tobTrunc(m.notas, 120) })), { x: 30, y: 42, size: 8, font: fontO, color: GRAY });
   }
 }
 
@@ -3702,9 +3747,9 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
   page.drawText('FULL', { x: LX, y: H-95, size: 48, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: LX, y: H-143, size: 48, font: fontB, color: BLACK });
   page.drawText(tobT('resum.cover.titulo', L), { x: LX, y: H-165, size: 12, font, color: GRAY });
-  page.drawText(cli?.nombre || '-', { x: LX, y: H-220, size: 30, font: fontB, color: BLACK });
-  page.drawText(rutinaShort, { x: LX, y: H-246, size: 14, font, color: GRAY_DK });
-  if(pl) page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' - ' : ''}${pl.categoria || ''}`, { x: LX, y: H-264, size: 10, font: fontO, color: GRAY });
+  page.drawText(tobPdfSafe(cli?.nombre || '-'), { x: LX, y: H-220, size: 30, font: fontB, color: BLACK });
+  page.drawText(tobPdfSafe(rutinaShort), { x: LX, y: H-246, size: 14, font, color: GRAY_DK });
+  if(pl) page.drawText(tobPdfSafe(`${pl.macrociclo || ''}${pl.macrociclo ? ' - ' : ''}${pl.categoria || ''}`), { x: LX, y: H-264, size: 10, font: fontO, color: GRAY });
   page.drawText(tobT('cover.periodo', L, { desde: a.fechaInicio || '?', hasta: stats.ultimaFecha || '?' }), { x: LX, y: H-282, size: 10, font, color: GRAY_DK });
 
   const kpis = [
@@ -3726,7 +3771,7 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
     page.drawText(tobT('resum.records.titulo', L), { x: W-330, y: H-95, size: 10, font: fontB, color: ORANGE });
     prs.forEach((pr, i) => {
       const py = H-118 - i*20;
-      page.drawText(tobTrunc(pr[0], 26), { x: W-330, y: py, size: 9, font, color: GRAY_DK });
+      page.drawText(tobPdfSafe(tobTrunc(pr[0], 26)), { x: W-330, y: py, size: 9, font, color: GRAY_DK });
       page.drawText(`${pr[1]}${tobT('unit.kg', L)}`, { x: W-115, y: py, size: 10, font: fontB, color: BLACK });
     });
   }
@@ -3764,7 +3809,7 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
         const col = i % 2, row = Math.floor(i / 2);
         const x = ox + col*(chW+gapX);
         const yTop = oy - row*(chH+gapY);
-        page.drawText(slice[i].name.toUpperCase(), { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+        page.drawText(tobPdfSafe(slice[i].name.toUpperCase()), { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
         try {
           const png = await tobChartToPng(slice[i].cfg, 760, 430);
           page.drawImage(await doc.embedPng(png), { x, y: yTop - chH, width: chW, height: chH });
@@ -3777,7 +3822,7 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
     page = doc.addPage([W, H]);
     drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('resum.notas.titulo', L), rutinaShort, W, H);
     let ny = H - 90;
-    tobWrapText(a.notas, font, 11, W-80).forEach(l => { page.drawText(l, { x: 40, y: ny, size: 11, font, color: GRAY_DK }); ny -= 16; });
+    tobWrapText(tobPdfSafe(a.notas), font, 11, W-80).forEach(l => { page.drawText(l, { x: 40, y: ny, size: 11, font, color: GRAY_DK }); ny -= 16; });
   }
 
   const pages = doc.getPages();
@@ -3891,10 +3936,10 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   const LX = 80;
   page.drawText('FULL', { x: LX, y: H_L - 95, size: 48, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: LX, y: H_L - 143, size: 48, font: fontB, color: BLACK });
-  page.drawText((pl?.categoria || '').toUpperCase(), { x: LX, y: H_L - 165, size: 12, font, color: GRAY });
+  page.drawText(tobPdfSafe((pl?.categoria || '').toUpperCase()), { x: LX, y: H_L - 165, size: 12, font, color: GRAY });
 
-  page.drawText(cli?.nombre || '—', { x: LX, y: H_L - 230, size: 30, font: fontB, color: BLACK });
-  page.drawText(rutinaShort, { x: LX, y: H_L - 256, size: 14, font, color: GRAY_DK });
+  page.drawText(tobPdfSafe(cli?.nombre || '—'), { x: LX, y: H_L - 230, size: 30, font: fontB, color: BLACK });
+  page.drawText(tobPdfSafe(rutinaShort), { x: LX, y: H_L - 256, size: 14, font, color: GRAY_DK });
   page.drawText(`${tobT('cover.iteracion', L, { numero: it?.numero || 1 })}  ·  ${tobT('cover.inicio', L, { fecha: a.fechaInicio || '' })}`, { x: LX, y: H_L - 274, size: 10, font: fontO, color: GRAY });
 
   // KPI sesiones
@@ -4006,12 +4051,14 @@ async function tobBuildPdfRutina(cli, a, pl, it){
         drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento_cont', L, { letra: en.letra }), rutinaShort, W_L, H_L);
         y = H_L - 90;
       }
-      // Header ejercicio
+      // Header ejercicio — sanitizamos el nombre por si tiene chars Unicode
+      // raros (flechas, emojis, símbolos) que romperían pdf-lib WinAnsi.
+      const ejNombreSafe = tobPdfSafe((ej.nombre || '').toUpperCase());
       page.drawRectangle({ x: 24, y: y-5, width: W_L-48, height: 22, color: rgb(0.08,0.08,0.08) });
-      page.drawText(ej.nombre.toUpperCase(), { x: 30, y: y+2, size: 11, font: fontB, color: ORANGE });
+      page.drawText(ejNombreSafe, { x: 30, y: y+2, size: 11, font: fontB, color: ORANGE });
       if(ej.subtitle){
-        const nameWidth = tobTextWidth(ej.nombre.toUpperCase(), 11, fontB);
-        page.drawText('· ' + ej.subtitle, { x: 30 + nameWidth + 10, y: y+3, size: 8, font: fontO, color: rgb(0.85,0.85,0.85) });
+        const nameWidth = tobTextWidth(ejNombreSafe, 11, fontB);
+        page.drawText(tobPdfSafe('· ' + ej.subtitle), { x: 30 + nameWidth + 10, y: y+3, size: 8, font: fontO, color: rgb(0.85,0.85,0.85) });
       }
       // Plan info en la derecha del header (mejor que línea "Plan" aparte)
       const planTxt = microHeaders.map(mn => {
@@ -4333,12 +4380,14 @@ function tobTrunc(s, max){
 // Renderiza una descripción multi-párrafo en el PDF. Respeta los \n del texto.
 // Detecta encabezados tipo "OBJETIVO:" y los pinta en naranja negrita.
 // Devuelve la coordenada Y final (por si quieres seguir dibujando debajo).
+// Sanitiza con tobPdfSafe() para evitar el error WinAnsi con caracteres
+// Unicode (flechas, símbolos matemáticos, emojis, etc).
 function tobRenderDescription(page, text, x, yStart, maxW, font, fontB, ORANGE, GRAY_DK, rgb){
   let dy = yStart;
   const size = 8.5;
   const lineH = 11;
   String(text||'').split('\n').forEach(para => {
-    const t = para.trim();
+    const t = tobPdfSafe(para.trim());
     if(t === ''){ dy -= 5; return; }
     // ¿Empieza con "ENCABEZADO:" en mayúsculas?
     // Acepta acentos ES (ÁÉÍÓÚÑ) y CA (ÀÈÒÏÜÇ) por si futuros headers traducidos
@@ -4403,8 +4452,10 @@ function tobWrapText(text, fontObj, size, maxWidth){
 function drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, title, subtitle, W, H){
   const { rgb } = PDFLib;   // PDFLib es global desde el CDN
   page.drawRectangle({ x: 0, y: H-50, width: W, height: 50, color: ORANGE });
-  page.drawText(title, { x: 24, y: H-32, size: 14, font: fontB, color: BLACK });
-  if(subtitle) page.drawText(subtitle, { x: 24, y: H-46, size: 9, font: fontB, color: rgb(0.18,0.18,0.18) });
+  // Sanitizamos title/subtitle por si contienen chars Unicode (subtitle suele
+  // ser el nombre del cliente — podría tener emoji).
+  page.drawText(tobPdfSafe(title), { x: 24, y: H-32, size: 14, font: fontB, color: BLACK });
+  if(subtitle) page.drawText(tobPdfSafe(subtitle), { x: 24, y: H-46, size: 9, font: fontB, color: rgb(0.18,0.18,0.18) });
   page.drawText('FULL TRAINING', { x: W - 130, y: H-32, size: 12, font: fontB, color: BLACK });
 }
 
@@ -4435,7 +4486,7 @@ async function tobBuildPdfHistorico(cli){
   page.drawText('FULL', { x: 100, y: H-100, size: 56, font: fontB, color: ORANGE });
   page.drawText('TRAINING', { x: 100, y: H-156, size: 56, font: fontB, color: BLACK });
   page.drawText(tobT('hist.cover.titulo', L), { x: 100, y: H-180, size: 13, font, color: GRAY });
-  page.drawText(cli.nombre || '—', { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
+  page.drawText(tobPdfSafe(cli.nombre || '—'), { x: 100, y: H-240, size: 32, font: fontB, color: BLACK });
   const periodo = tobCalcPeriodo(cli);
   page.drawText(tobT('cover.periodo', L, { desde: periodo.desde, hasta: periodo.hasta }), { x: 100, y: H-268, size: 13, font, color: GRAY_DK });
 
@@ -4492,7 +4543,7 @@ async function tobBuildPdfHistorico(cli){
       const deltaPct = firstPoint.kg > 0 ? (deltaKg / firstPoint.kg * 100) : 0;
       page.drawRectangle({ x, y: yy - prCardH, width: cardW, height: prCardH, color: rgb(0.98,0.98,0.98) });
       page.drawRectangle({ x, y: yy - 5, width: cardW, height: 5, color: ORANGE });
-      page.drawText(name.toUpperCase(), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
+      page.drawText(tobPdfSafe(name.toUpperCase()), { x: x + 14, y: yy - 26, size: 9, font: fontB, color: rgb(0.4,0.3,0.1) });
       page.drawText(`${maxPoint.kg}`, { x: x + 14, y: yy - 72, size: 36, font: fontB, color: BLACK });
       page.drawText(tobT('hist.pr.kg_pr', L), { x: x + 14 + tobTextWidth(`${maxPoint.kg}`, 36, fontB) + 6, y: yy - 62, size: 11, font, color: GRAY });
       page.drawText(tobT('hist.pr.en_asig', L, { rutina: tobTrunc(maxPoint.asigLabel, 28) }),
@@ -4534,9 +4585,9 @@ async function tobBuildPdfHistorico(cli){
                      : ORANGE;
       page.drawRectangle({ x: 24, y: y-cardH, width: 5, height: cardH, color: sideColor });
       page.drawText(String(i+1).padStart(2,'0'), { x: 40, y: y-30, size: 22, font: fontB, color: rgb(0.85,0.85,0.85) });
-      page.drawText(rutinaShort, { x: 80, y: y-22, size: 12, font: fontB, color: BLACK });
+      page.drawText(tobPdfSafe(rutinaShort), { x: 80, y: y-22, size: 12, font: fontB, color: BLACK });
       if(pl){
-        page.drawText(`${pl.macrociclo || ''}${pl.macrociclo ? ' · ' : ''}${pl.categoria || ''}`,
+        page.drawText(tobPdfSafe(`${pl.macrociclo || ''}${pl.macrociclo ? ' · ' : ''}${pl.categoria || ''}`),
           { x: 80, y: y-36, size: 8, font: fontO, color: GRAY });
       }
       const dates = `${a.fechaInicio || '?'}  —  ${stats.ultimaFecha || '?'}`;
@@ -4554,7 +4605,7 @@ async function tobBuildPdfHistorico(cli){
         prsArr.forEach((pr, j) => {
           const px = W - 280, py = y - 36 - j*14;
           const ejAbbr = (pr[0].length > 18 ? pr[0].slice(0,17)+'…' : pr[0]);
-          page.drawText(ejAbbr, { x: px, y: py, size: 9, font, color: GRAY_DK });
+          page.drawText(tobPdfSafe(ejAbbr), { x: px, y: py, size: 9, font, color: GRAY_DK });
           page.drawText(`${pr[1]}${tobT('unit.kg', L)}`, { x: px + 165, y: py, size: 9, font: fontB, color: BLACK });
         });
       }
@@ -4586,7 +4637,7 @@ async function tobBuildPdfHistorico(cli){
           const col = i % 2, row = Math.floor(i / 2);
           const x = ox + col*(vchW+vgapX);
           const yTop = oy - row*(vchH+vgapY);
-          page.drawText(slice[i].name.toUpperCase(), { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+          page.drawText(tobPdfSafe(slice[i].name.toUpperCase()), { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
           try {
             const png = await tobChartToPng(slice[i].cfg, 760, 430);
             page.drawImage(await doc.embedPng(png), { x, y: yTop - vchH, width: vchW, height: vchH });
