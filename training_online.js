@@ -2720,6 +2720,9 @@ function tobRenderFicha(){
   if(hasMediciones){
     tobRenderFichaMediciones(cli);
   }
+
+  // Cuestionario: siempre visible (al final). Se carga con los datos del cliente.
+  if(typeof tobQuestLoad === 'function') tobQuestLoad();
 }
 
 function tobCountSesiones(cli){
@@ -4896,9 +4899,752 @@ function tobShareWhatsApp(cli, kind, extraText){
   }
 }
 
+// ═════════════════════════════════════════════════════════════════
+// CUESTIONARIO / PREFERENCIAS DEL CLIENTE
+// ─────────────────────────────────────────────────────────────────
+// Sección colapsable en la ficha del cliente. Guarda en cli.cuestionario.
+// Schema cli.cuestionario:
+//   { pesObjetivo, sumObjetivo, kcalObjetivo, protObjetivo, hcObjetivo,
+//     grasObjetivo, pal, protocolo,
+//     alergias, sientenMal, alimX, alimOk, patologias,
+//     apat1..apat5, cuina, esport, treball, horaris, motivacio,
+//     comentari,
+//     tags: { dieta:'omnivor', proteina:['...','...'], pref:[...], custom:[...] }
+//   }
+// ═════════════════════════════════════════════════════════════════
+
+// Etiquetas predefinidas por grupo. 'neg' marca chips que son restricciones
+// (✗) y se pintan en rojo cuando se activan.
+const TOB_QUEST_CHIPS = {
+  // dieta es radio (excluyente)
+  dieta: [
+    { id:'omnivor',    label:'Omnívor' },
+    { id:'vegetaria',  label:'Vegetarià' },
+    { id:'vega',       label:'Vegà' },
+    { id:'pescetaria', label:'Pescetarià' },
+    { id:'flexitaria', label:'Flexitarià' }
+  ],
+  // proteina: pares ✓/✗ — uno excluye al otro
+  proteina: [
+    { id:'carn_si',     label:'✓ Carn vermella',    excludes:'carn_no' },
+    { id:'carn_no',     label:'✗ Sense carn vermella', neg:true, excludes:'carn_si' },
+    { id:'pollastre_si',label:'✓ Pollastre i aviram', excludes:'pollastre_no' },
+    { id:'pollastre_no',label:'✗ Sense pollastre',  neg:true, excludes:'pollastre_si' },
+    { id:'peix_si',     label:'✓ Peix',             excludes:'peix_no' },
+    { id:'peix_no',     label:'✗ Sense peix',       neg:true, excludes:'peix_si' },
+    { id:'marisc_si',   label:'✓ Marisc',           excludes:'marisc_no' },
+    { id:'marisc_no',   label:'✗ Sense marisc',     neg:true, excludes:'marisc_si' },
+    { id:'ous_si',      label:'✓ Ous',              excludes:'ous_no' },
+    { id:'ous_no',      label:'✗ Sense ous',        neg:true, excludes:'ous_si' },
+    { id:'lactis_si',   label:'✓ Lactis',           excludes:'lactis_no' },
+    { id:'lactis_no',   label:'✗ Sense lactis',     neg:true, excludes:'lactis_si' }
+  ],
+  pref: [
+    { id:'sense_gluten',   label:'Sense gluten',    neg:true },
+    { id:'sense_lactosa',  label:'Sense lactosa',   neg:true },
+    { id:'sense_fruita_seca', label:'Sense fruita seca', neg:true },
+    { id:'fodmap',         label:'Baix FODMAP' },
+    { id:'paleo',          label:'Paleo' },
+    { id:'keto',           label:'Keto' },
+    { id:'batch',          label:'Batch cooking' },
+    { id:'rapida',         label:'Cuina ràpida (<30 min)' },
+    { id:'fora',           label:'Menja fora de casa' },
+    { id:'sense_cuina',    label:'Sense accés a cuina', neg:true }
+  ]
+};
+
+// Lista de IDs de los campos simples del cuestionario (input/textarea/select).
+// Usado por load/save para iterar sin duplicar nombres.
+const TOB_QUEST_FIELDS = [
+  ['qPesObj',    'pesObjetivo',  'num'],
+  ['qSumObj',    'sumObjetivo',  'num'],
+  ['qKcalObj',   'kcalObjetivo', 'num'],
+  ['qProtObj',   'protObjetivo', 'num'],
+  ['qHCObj',     'hcObjetivo',   'num'],
+  ['qGrasObj',   'grasObjetivo', 'num'],
+  ['qPAL',       'pal',          'str'],
+  ['qProtocol',  'protocolo',    'str'],
+  ['qAlergias',  'alergias',     'str'],
+  ['qSientenMal','sientenMal',   'str'],
+  ['qAlimX',     'alimX',        'str'],
+  ['qAlimOk',    'alimOk',       'str'],
+  ['qPatologias','patologias',   'str'],
+  ['qApat1',     'apat1',        'str'],
+  ['qApat2',     'apat2',        'str'],
+  ['qApat3',     'apat3',        'str'],
+  ['qApat4',     'apat4',        'str'],
+  ['qApat5',     'apat5',        'str'],
+  ['qCuina',     'cuina',        'str'],
+  ['qEsport',    'esport',       'str'],
+  ['qTreball',   'treball',      'str'],
+  ['qHoraris',   'horaris',      'str'],
+  ['qMotivacio', 'motivacio',    'str'],
+  ['qComentari', 'comentari',    'str']
+];
+
+let _tobQuestSaveTimer = null;
+
+// Carga el cuestionario del cliente actual a la UI.
+function tobQuestLoad(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const q = cli.cuestionario || {};
+  TOB_QUEST_FIELDS.forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.value = q[key] != null ? q[key] : '';
+    // Listener auto-save (debounced) — solo se engancha una vez
+    if(!el._qBound){
+      el.addEventListener('input', () => tobQuestScheduleSave());
+      el._qBound = true;
+    }
+  });
+  // Render chips
+  tobQuestRenderChips(q.tags || {});
+}
+
+// Render del bloque de chips para los 3 grupos predefinidos + custom.
+function tobQuestRenderChips(tags){
+  const activeDieta = tags.dieta || null;
+  const activeProt  = Array.isArray(tags.proteina) ? new Set(tags.proteina) : new Set();
+  const activePref  = Array.isArray(tags.pref) ? new Set(tags.pref) : new Set();
+  const custom      = Array.isArray(tags.custom) ? tags.custom : [];
+
+  // Dieta: radio (1 activo, excluye otros)
+  const elD = document.getElementById('qChipsDieta');
+  if(elD){
+    elD.innerHTML = TOB_QUEST_CHIPS.dieta.map(c => {
+      const on = c.id === activeDieta;
+      return `<button class="tob-quest-chip${on?' active':''}" data-id="${c.id}" onclick="tobQuestToggleDieta('${c.id}')">${tobEsc(c.label)}</button>`;
+    }).join('');
+  }
+
+  // Proteína: multi con pares ✓/✗ (excludes)
+  const elP = document.getElementById('qChipsProteina');
+  if(elP){
+    elP.innerHTML = TOB_QUEST_CHIPS.proteina.map(c => {
+      const on = activeProt.has(c.id);
+      return `<button class="tob-quest-chip${on?' active':''}${c.neg?' neg':''}" data-id="${c.id}" onclick="tobQuestToggleChip('proteina','${c.id}')">${tobEsc(c.label)}</button>`;
+    }).join('');
+  }
+
+  // Preferencias: multi simple
+  const elPr = document.getElementById('qChipsPref');
+  if(elPr){
+    elPr.innerHTML = TOB_QUEST_CHIPS.pref.map(c => {
+      const on = activePref.has(c.id);
+      return `<button class="tob-quest-chip${on?' active':''}${c.neg?' neg':''}" data-id="${c.id}" onclick="tobQuestToggleChip('pref','${c.id}')">${tobEsc(c.label)}</button>`;
+    }).join('');
+  }
+
+  // Custom: chips libres con botón × para borrar
+  const elC = document.getElementById('qChipsCustom');
+  if(elC){
+    elC.innerHTML = custom.length
+      ? custom.map((tag, i) =>
+          `<button class="tob-quest-chip custom active" onclick="tobQuestRemoveCustomChip(${i})" title="Clic per esborrar">${tobEsc(tag)}<span class="x">×</span></button>`
+        ).join('')
+      : '<span style="font-size:.7rem;color:var(--mute2);font-family:DM Mono,monospace;">cap encara</span>';
+  }
+}
+
+function tobQuestEnsureTags(cli){
+  if(!cli.cuestionario) cli.cuestionario = {};
+  if(!cli.cuestionario.tags) cli.cuestionario.tags = { dieta:null, proteina:[], pref:[], custom:[] };
+  return cli.cuestionario.tags;
+}
+
+function tobQuestToggleDieta(id){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const tags = tobQuestEnsureTags(cli);
+  tags.dieta = (tags.dieta === id) ? null : id;
+  tobQuestRenderChips(tags);
+  tobQuestScheduleSave();
+}
+
+function tobQuestToggleChip(group, id){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const tags = tobQuestEnsureTags(cli);
+  const arr = tags[group] = (tags[group] || []);
+  const ix = arr.indexOf(id);
+  if(ix >= 0){
+    arr.splice(ix, 1);
+  } else {
+    arr.push(id);
+    // Si tiene "excludes", quita el contrario automáticamente
+    const chipDef = (TOB_QUEST_CHIPS[group] || []).find(c => c.id === id);
+    if(chipDef?.excludes){
+      const exIx = arr.indexOf(chipDef.excludes);
+      if(exIx >= 0) arr.splice(exIx, 1);
+    }
+  }
+  tobQuestRenderChips(tags);
+  tobQuestScheduleSave();
+}
+
+function tobQuestAddCustomChip(ev){
+  if(ev.key !== 'Enter') return;
+  ev.preventDefault();
+  const inp = ev.target;
+  const val = (inp.value || '').trim();
+  if(!val) return;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const tags = tobQuestEnsureTags(cli);
+  tags.custom = tags.custom || [];
+  if(tags.custom.indexOf(val) === -1){
+    tags.custom.push(val);
+  }
+  inp.value = '';
+  tobQuestRenderChips(tags);
+  tobQuestScheduleSave();
+}
+
+function tobQuestRemoveCustomChip(ix){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const tags = tobQuestEnsureTags(cli);
+  tags.custom = tags.custom || [];
+  tags.custom.splice(ix, 1);
+  tobQuestRenderChips(tags);
+  tobQuestScheduleSave();
+}
+
+// Auto-guarda con debounce de 600ms (evita escribir en cada keystroke).
+function tobQuestScheduleSave(){
+  clearTimeout(_tobQuestSaveTimer);
+  const hint = document.getElementById('qSavedStatus');
+  if(hint) hint.textContent = '· editant…';
+  _tobQuestSaveTimer = setTimeout(() => tobQuestSave(false), 600);
+}
+
+function tobQuestSave(showToast){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  if(!cli.cuestionario) cli.cuestionario = {};
+  TOB_QUEST_FIELDS.forEach(([id, key, type]) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const v = el.value.trim();
+    if(v === ''){ delete cli.cuestionario[key]; return; }
+    if(type === 'num'){
+      const n = parseFloat(v);
+      cli.cuestionario[key] = Number.isFinite(n) ? n : v;
+    } else {
+      cli.cuestionario[key] = v;
+    }
+  });
+  // tags ya se actualiza vía toggle, no hace falta tocarlo aquí
+  tobSave();
+  const hint = document.getElementById('qSavedStatus');
+  if(hint){
+    hint.textContent = '✓ guardat ' + new Date().toLocaleTimeString('ca-ES');
+    setTimeout(() => { if(hint.textContent.startsWith('✓')) hint.textContent = ''; }, 3000);
+  }
+  if(showToast) tobToast('✓ Cuestionari guardat', 'green');
+}
+
+function tobQuestReset(){
+  if(!confirm('Esborrar tot el cuestionari d\'aquest client?')) return;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  delete cli.cuestionario;
+  tobSave();
+  tobQuestLoad();
+  tobToast('Cuestionari esborrat', '');
+}
+
+// ═════════════════════════════════════════════════════════════════
+// EXPORTACIÓN EXCEL DEL CLIENTE
+// ─────────────────────────────────────────────────────────────────
+// Genera un .xlsx con varias hojas:
+//   1. Resumen: datos personales + cuestionario en formato key/value
+//   2. Mediciones: una fila por medición, columnas con todos los campos
+//   3. Rutinas: una fila por (rutina × iteración × micro × entreno × ejercicio × serie)
+//      con kg/reps registrados
+//   4. PRs: máximo por ejercicio + en qué rutina lo hizo
+// Requiere SheetJS (cargado vía CDN xlsx.full.min.js en el <head>).
+// ═════════════════════════════════════════════════════════════════
+function tobExportClienteExcel(cliId){
+  if(typeof XLSX === 'undefined'){
+    tobToast('SheetJS no carregat — recarrega la pàgina', 'red');
+    return;
+  }
+  const cli = tobDB.clientes.find(c => c.id === cliId);
+  if(!cli){ tobToast('Client no trobat', 'red'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── HOJA 1: Resumen ──────────────────────────────────────────
+  const resumenRows = [
+    ['BLOC', 'Camp', 'Valor'],
+    ['PERSONAL', 'Nom', cli.nombre || ''],
+    ['PERSONAL', 'Sexe', cli.sexo === 'H' ? 'Home' : cli.sexo === 'M' ? 'Dona' : ''],
+    ['PERSONAL', 'Contacte', cli.contacto || ''],
+    ['PERSONAL', 'Data alta', cli.alta || ''],
+    ['PERSONAL', 'Data naixement', cli.nacimiento || ''],
+    ['PERSONAL', 'Idioma PDFs', cli.idioma || 'ca']
+  ];
+  const q = cli.cuestionario || {};
+  const qLabels = {
+    pesObjetivo:'Pes objectiu (kg)', sumObjetivo:'Sumatori 6 plecs objectiu (mm)',
+    kcalObjetivo:'Objectiu calòric (kcal/dia)',
+    protObjetivo:'Proteïna objectiu (g)', hcObjetivo:'Hidrats objectiu (g)', grasObjetivo:'Greixos objectiu (g)',
+    pal:"Nivell d'activitat (PAL)", protocolo:'Protocol per perdre pes',
+    alergias:'Al·lèrgies / intoleràncies', sientenMal:'Aliments que senten malament',
+    alimX:'Aliments ✗ (no menjar)', alimOk:'Aliments ✓ (preferits)',
+    patologias:'Patologies / condicions',
+    apat1:'Àpat 1 (esmorzar)', apat2:'Àpat 2 (mig matí)',
+    apat3:'Àpat 3 (dinar)', apat4:'Àpat 4 (berenar)', apat5:'Àpat 5 (sopar)',
+    cuina:'Cuina', esport:'Exercici / esport', treball:'Treball',
+    horaris:'Horaris de menjar', motivacio:'Motivació i adherència',
+    comentari:'Comentari general'
+  };
+  Object.keys(qLabels).forEach(k => {
+    if(q[k] != null && q[k] !== '') resumenRows.push(['QUESTIONARI', qLabels[k], q[k]]);
+  });
+  // Tags (perfil alimentario) — string concatenado
+  const tags = q.tags || {};
+  if(tags.dieta) resumenRows.push(['PERFIL', 'Tipus dieta', tags.dieta]);
+  if(tags.proteina?.length) resumenRows.push(['PERFIL', 'Proteïna animal', tags.proteina.join(', ')]);
+  if(tags.pref?.length) resumenRows.push(['PERFIL', 'Preferències', tags.pref.join(', ')]);
+  if(tags.custom?.length) resumenRows.push(['PERFIL', 'Etiquetes personalitzades', tags.custom.join(', ')]);
+
+  const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+  wsResumen['!cols'] = [{wch:14}, {wch:38}, {wch:60}];
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resum');
+
+  // ── HOJA 2: Mediciones ───────────────────────────────────────
+  const meds = (cli.mediciones || []).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+  if(meds.length){
+    const medHeader = [
+      'Data','Pes (kg)','Estatura (cm)',
+      'Plec Tríceps','Plec Subescapular','Plec Supraespinal',
+      'Plec Abdominal','Plec Cuixa','Plec Panxell','Suma 6 Plecs',
+      'Perímetre Mesoesternal','Perímetre Braç Tensió','Perímetre Cintura',
+      'Perímetre Malucs','Perímetre Cuixa','Perímetre Panxell',
+      'Ràtio Cintura/Maluc','Ràtio Plecs/Pes','Notes'
+    ];
+    const medRows = [medHeader];
+    meds.forEach(m => {
+      const p = m.plecs || {}, pe = m.perimetres || {};
+      const sum = (typeof tobMedSum === 'function') ? tobMedSum(m) : null;
+      const ratios = (typeof tobMedRatios === 'function') ? tobMedRatios(m) : {};
+      medRows.push([
+        m.fecha || '', m.pes ?? '', m.estatura ?? '',
+        p.triceps ?? '', p.subescapular ?? '', p.supraespinal ?? '',
+        p.abdominal ?? '', p.cuixa ?? '', p.panxell ?? '',
+        sum != null ? +sum.toFixed(1) : '',
+        pe.mesoesternal ?? '', pe.brac ?? '', pe.cintura ?? '',
+        pe.malucs ?? '', pe.cuixa ?? '', pe.panxell ?? '',
+        ratios.cinturaCadera != null ? +ratios.cinturaCadera.toFixed(2) : '',
+        ratios.plecsPes      != null ? +ratios.plecsPes.toFixed(2)      : '',
+        m.notas || ''
+      ]);
+    });
+    const wsMed = XLSX.utils.aoa_to_sheet(medRows);
+    wsMed['!cols'] = medHeader.map(h => ({ wch: h.length > 18 ? 18 : Math.max(h.length+2, 12) }));
+    XLSX.utils.book_append_sheet(wb, wsMed, 'Mesures');
+  }
+
+  // ── HOJA 3: Rutinas (sesiones, una fila por serie) ───────────
+  const rutHeader = [
+    'Rutina','Inici','Estat','Iteració','Microcicle','Entreno','Data sessió',
+    'Exercici','Sèrie / línia','Kg','Reps','Volum (kg×reps)'
+  ];
+  const rutRows = [rutHeader];
+  (cli.asignaciones || []).forEach(a => {
+    const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+    const rutName = (typeof tobRutinaShortName === 'function') ? tobRutinaShortName(pl) : (pl?.nombre || '—');
+    (a.iteraciones || []).forEach(it => {
+      Object.entries(it.sesiones || {}).forEach(([mn, microSes]) => {
+        Object.entries(microSes).forEach(([entId, ses]) => {
+          const en = (a.rutina?.entrenos || []).find(e => e.id === entId);
+          const entLbl = en ? (en.letra + (en.nombre && en.nombre !== ('Entreno '+en.letra) ? ' — '+en.nombre : '')) : entId;
+          (en?.ejercicios || []).forEach(ej => {
+            const datos = ses.ejs?.[ej.id];
+            if(!datos) return;
+            const arr = datos.series || datos.lineas || [];
+            arr.forEach((sr, ix) => {
+              const kg = sr.kg ?? '';
+              const reps = sr.reps ?? '';
+              const vol = (sr.kg != null && sr.reps != null) ? +(sr.kg * sr.reps).toFixed(1) : '';
+              const lblSerie = ej.tipo === 'circuito'
+                ? (ej.circuitoLineas?.[ix] || ('Línia '+(ix+1)))
+                : ('Sèrie '+(ix+1));
+              rutRows.push([
+                rutName, a.fechaInicio || '', a.estado || 'en curs',
+                'It. '+(it.numero || 1), Number(mn), entLbl,
+                ses.fecha || '', ej.nombre || '', lblSerie, kg, reps, vol
+              ]);
+            });
+          });
+        });
+      });
+    });
+  });
+  if(rutRows.length > 1){
+    const wsRut = XLSX.utils.aoa_to_sheet(rutRows);
+    wsRut['!cols'] = [
+      {wch:30},{wch:11},{wch:12},{wch:8},{wch:10},{wch:18},{wch:11},
+      {wch:28},{wch:18},{wch:8},{wch:8},{wch:14}
+    ];
+    XLSX.utils.book_append_sheet(wb, wsRut, 'Rutines');
+  }
+
+  // ── HOJA 4: PRs (máximo por ejercicio + dónde) ───────────────
+  const prMap = {};  // ejNombre → {kg, fecha, rutina}
+  (cli.asignaciones || []).forEach(a => {
+    const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+    const rutName = (typeof tobRutinaShortName === 'function') ? tobRutinaShortName(pl) : (pl?.nombre || '—');
+    (a.iteraciones || []).forEach(it => {
+      Object.values(it.sesiones || {}).forEach(microSes => {
+        Object.entries(microSes).forEach(([entId, ses]) => {
+          const en = (a.rutina?.entrenos || []).find(e => e.id === entId);
+          (en?.ejercicios || []).forEach(ej => {
+            if(ej.tipo === 'circuito') return;
+            const series = ses.ejs?.[ej.id]?.series || [];
+            series.forEach(sr => {
+              if(sr.kg == null) return;
+              const cur = prMap[ej.nombre];
+              if(!cur || sr.kg > cur.kg){
+                prMap[ej.nombre] = { kg: sr.kg, fecha: ses.fecha || '', rutina: rutName, it: it.numero || 1 };
+              }
+            });
+          });
+        });
+      });
+    });
+  });
+  const prKeys = Object.keys(prMap).sort();
+  if(prKeys.length){
+    const prRows = [['Exercici','Kg PR','Data','Rutina','Iteració']];
+    prKeys.forEach(name => {
+      const r = prMap[name];
+      prRows.push([name, r.kg, r.fecha, r.rutina, 'It. '+r.it]);
+    });
+    const wsPr = XLSX.utils.aoa_to_sheet(prRows);
+    wsPr['!cols'] = [{wch:28},{wch:8},{wch:11},{wch:30},{wch:8}];
+    XLSX.utils.book_append_sheet(wb, wsPr, 'PRs');
+  }
+
+  const safeName = (cli.nombre || 'client').replace(/[^a-zA-Z0-9_-]/g,'_');
+  const dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `${safeName}_${dateStr}.xlsx`);
+  tobToast('✓ Excel descarregat', 'green');
+}
+
+// ═════════════════════════════════════════════════════════════════
+// MÓDULO MENÚS — Ingredientes (FASE 1: BD + CRUD + importación JSON ICNS)
+// ─────────────────────────────────────────────────────────────────
+// Storage separado del DB principal: usamos 'tob_menus' en localStorage
+// porque la BD de ingredientes puede crecer a varios miles de entradas y
+// no queremos saturar el flujo de sync con GitHub.
+// Schema:
+//   tobMenusDB = { ingredientes: [...], recetas: [...], menus: [], _v: 1 }
+// Cada ingrediente:
+//   { id:'ing_xxx', nombre, kcal, hc, proteina, grasa, fibra,
+//     tags:[...], alergenos:[...], origen:'icns'|'manual', icnsId? }
+// ═════════════════════════════════════════════════════════════════
+
+const TOB_MENUS_KEY = 'tob_menus';
+let tobMenusDB = { ingredientes: [], recetas: [], menus: [], _v: 1 };
+let tobIngEditId = null;       // null=nuevo, string=edit
+let tobIngPage = 0;
+const TOB_ING_PER_PAGE = 50;
+
+function tobMenusLoad(){
+  try {
+    const raw = localStorage.getItem(TOB_MENUS_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(parsed && typeof parsed === 'object'){
+        tobMenusDB.ingredientes = Array.isArray(parsed.ingredientes) ? parsed.ingredientes : [];
+        tobMenusDB.recetas      = Array.isArray(parsed.recetas)      ? parsed.recetas      : [];
+        tobMenusDB.menus        = Array.isArray(parsed.menus)        ? parsed.menus        : [];
+        tobMenusDB._v           = parsed._v || 1;
+      }
+    }
+  } catch(e){ console.warn('[menus] load falló:', e); }
+}
+
+function tobMenusSave(){
+  try {
+    localStorage.setItem(TOB_MENUS_KEY, JSON.stringify(tobMenusDB));
+  } catch(e){ console.warn('[menus] save falló (quizá quota):', e); tobToast('Error guardando menús (quota localStorage)', 'red'); }
+}
+
+// Sub-tabs del módulo Menús
+function tobMenuShowTab(name, btn){
+  document.querySelectorAll('.tob-mtab-page').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.tob-sub-tab').forEach(b => b.classList.remove('active'));
+  const page = document.getElementById('tob-mtab-' + name);
+  if(page) page.style.display = '';
+  if(btn) btn.classList.add('active');
+  if(name === 'ingredientes') tobIngRender();
+}
+
+// ── Recolección de etiquetas únicas (para el filtro) ─────────────
+function tobIngAllTags(){
+  const s = new Set();
+  tobMenusDB.ingredientes.forEach(i => (i.tags||[]).forEach(t => s.add(t)));
+  return [...s].sort();
+}
+
+function tobIngFillTagFilter(){
+  const sel = document.getElementById('tobIngFilterTag');
+  if(!sel) return;
+  const cur = sel.value;
+  const tags = tobIngAllTags();
+  sel.innerHTML = '<option value="">— Todas las etiquetas —</option>' +
+    tags.map(t => `<option value="${tobEsc(t)}">${tobEsc(t)}</option>`).join('');
+  if(tags.includes(cur)) sel.value = cur;
+}
+
+// ── Render ingredientes (con búsqueda + filtro + paginación) ─────
+function tobIngRender(){
+  tobIngFillTagFilter();
+  const search = (document.getElementById('tobIngSearch')?.value || '').trim().toLowerCase();
+  const tag = document.getElementById('tobIngFilterTag')?.value || '';
+  let list = tobMenusDB.ingredientes.slice();
+  if(search) list = list.filter(i => (i.nombre||'').toLowerCase().includes(search));
+  if(tag)    list = list.filter(i => (i.tags||[]).includes(tag));
+  list.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
+
+  const total = list.length;
+  const cntEl = document.getElementById('tobIngCount');
+  if(cntEl){
+    const all = tobMenusDB.ingredientes.length;
+    cntEl.textContent = total === all ? `${all} ingredientes` : `${total} de ${all}`;
+  }
+
+  const emptyEl = document.getElementById('tobIngEmpty');
+  const tableEl = document.getElementById('tobIngTable');
+  const pagerEl = document.getElementById('tobIngPager');
+
+  if(!total){
+    if(emptyEl) emptyEl.style.display = '';
+    if(tableEl) tableEl.style.display = 'none';
+    if(pagerEl) pagerEl.innerHTML = '';
+    return;
+  }
+  if(emptyEl) emptyEl.style.display = 'none';
+  if(tableEl) tableEl.style.display = '';
+
+  // Paginación
+  const pages = Math.max(1, Math.ceil(total / TOB_ING_PER_PAGE));
+  if(tobIngPage >= pages) tobIngPage = pages - 1;
+  if(tobIngPage < 0) tobIngPage = 0;
+  const start = tobIngPage * TOB_ING_PER_PAGE;
+  const slice = list.slice(start, start + TOB_ING_PER_PAGE);
+
+  const body = document.getElementById('tobIngBody');
+  if(body){
+    body.innerHTML = slice.map(i => {
+      const tagsTxt = (i.tags||[]).slice(0,3).map(t => `<span style="background:var(--card2);padding:1px 6px;border-radius:3px;font-size:.65rem;margin-right:3px;">${tobEsc(t)}</span>`).join('');
+      const moreTags = (i.tags||[]).length > 3 ? `<span style="font-size:.65rem;color:var(--mute2);">+${i.tags.length-3}</span>` : '';
+      return `<tr>
+        <td><strong>${tobEsc(i.nombre || '—')}</strong></td>
+        <td class="num">${i.kcal != null ? (+i.kcal).toFixed(1) : '—'}</td>
+        <td class="num">${i.hc != null ? (+i.hc).toFixed(1) : '—'}</td>
+        <td class="num">${i.proteina != null ? (+i.proteina).toFixed(1) : '—'}</td>
+        <td class="num">${i.grasa != null ? (+i.grasa).toFixed(1) : '—'}</td>
+        <td class="num">${i.fibra != null ? (+i.fibra).toFixed(1) : '—'}</td>
+        <td>${tagsTxt}${moreTags}</td>
+        <td style="text-align:right;white-space:nowrap;">
+          <button class="tob-action ghost btn-xs" onclick="tobIngEdit('${i.id}')" title="Editar">✏️</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  if(pagerEl){
+    if(pages <= 1){
+      pagerEl.innerHTML = '';
+    } else {
+      pagerEl.innerHTML = `
+        <button class="tob-action ghost btn-xs" ${tobIngPage===0?'disabled':''} onclick="tobIngSetPage(${tobIngPage-1})">← Anterior</button>
+        <span>página ${tobIngPage+1} / ${pages}</span>
+        <button class="tob-action ghost btn-xs" ${tobIngPage>=pages-1?'disabled':''} onclick="tobIngSetPage(${tobIngPage+1})">Siguiente →</button>
+      `;
+    }
+  }
+}
+
+function tobIngSetPage(p){ tobIngPage = p; tobIngRender(); }
+
+// ── CRUD: modal de ingrediente ──────────────────────────────────
+function tobIngOpenModal(){
+  tobIngEditId = null;
+  document.getElementById('tobIngModalTitle').textContent = 'Nuevo ingrediente';
+  document.getElementById('tobIngNombre').value = '';
+  document.getElementById('tobIngKcal').value   = '';
+  document.getElementById('tobIngHc').value     = '';
+  document.getElementById('tobIngProt').value   = '';
+  document.getElementById('tobIngGras').value   = '';
+  document.getElementById('tobIngFibra').value  = '';
+  document.getElementById('tobIngTags').value   = '';
+  document.getElementById('tobIngAlergenos').value = '';
+  document.getElementById('tobIngDelBtn').style.display = 'none';
+  document.getElementById('tobIngModalBg').classList.add('on');
+}
+
+function tobIngCloseModal(){ document.getElementById('tobIngModalBg').classList.remove('on'); }
+
+function tobIngEdit(id){
+  const ing = tobMenusDB.ingredientes.find(i => i.id === id);
+  if(!ing){ tobToast('Ingrediente no encontrado', 'red'); return; }
+  tobIngEditId = id;
+  document.getElementById('tobIngModalTitle').textContent = 'Editar ingrediente';
+  document.getElementById('tobIngNombre').value = ing.nombre || '';
+  document.getElementById('tobIngKcal').value   = ing.kcal != null ? ing.kcal : '';
+  document.getElementById('tobIngHc').value     = ing.hc != null ? ing.hc : '';
+  document.getElementById('tobIngProt').value   = ing.proteina != null ? ing.proteina : '';
+  document.getElementById('tobIngGras').value   = ing.grasa != null ? ing.grasa : '';
+  document.getElementById('tobIngFibra').value  = ing.fibra != null ? ing.fibra : '';
+  document.getElementById('tobIngTags').value   = (ing.tags || []).join(', ');
+  document.getElementById('tobIngAlergenos').value = (ing.alergenos || []).join(', ');
+  document.getElementById('tobIngDelBtn').style.display = '';
+  document.getElementById('tobIngModalBg').classList.add('on');
+}
+
+function tobIngSave(){
+  const nombre = document.getElementById('tobIngNombre').value.trim();
+  if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
+  const parseN = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+  const parseList = v => (v||'').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+
+  const data = {
+    nombre,
+    kcal:     parseN(document.getElementById('tobIngKcal').value),
+    hc:       parseN(document.getElementById('tobIngHc').value),
+    proteina: parseN(document.getElementById('tobIngProt').value),
+    grasa:    parseN(document.getElementById('tobIngGras').value),
+    fibra:    parseN(document.getElementById('tobIngFibra').value),
+    tags:     parseList(document.getElementById('tobIngTags').value),
+    alergenos:parseList(document.getElementById('tobIngAlergenos').value)
+  };
+
+  if(tobIngEditId){
+    const ing = tobMenusDB.ingredientes.find(i => i.id === tobIngEditId);
+    if(ing) Object.assign(ing, data);
+  } else {
+    data.id = tobUid('ing');
+    data.origen = 'manual';
+    tobMenusDB.ingredientes.push(data);
+  }
+  tobMenusSave();
+  tobIngCloseModal();
+  tobIngRender();
+  tobToast('✓ Ingrediente guardado', 'green');
+}
+
+function tobIngDeleteFromModal(){
+  if(!tobIngEditId) return;
+  const ing = tobMenusDB.ingredientes.find(i => i.id === tobIngEditId);
+  if(!ing) return;
+  if(!confirm(`Eliminar "${ing.nombre}"?`)) return;
+  tobMenusDB.ingredientes = tobMenusDB.ingredientes.filter(i => i.id !== tobIngEditId);
+  tobMenusSave();
+  tobIngCloseModal();
+  tobIngRender();
+  tobToast('Ingrediente eliminado', '');
+}
+
+// ── Importación JSON ICNS (multi-archivo) ───────────────────────
+// Formato ICNS por entrada: { id, nombre, kcal, hc, proteina, grasa }
+// (todos como strings). Convertimos a número y marcamos origen:'icns' +
+// icnsId para detectar duplicados al re-importar.
+async function tobIngImportFiles(ev){
+  const files = Array.from(ev.target.files || []);
+  if(!files.length) return;
+  tobToast(`Importando ${files.length} archivo(s)...`, '');
+  let added = 0, updated = 0, skipped = 0;
+
+  for(const file of files){
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed
+                  : Array.isArray(parsed.ingredientes) ? parsed.ingredientes
+                  : Array.isArray(parsed.data) ? parsed.data
+                  : null;
+      if(!items){ console.warn('[ing-import]', file.name, 'no es array'); skipped++; continue; }
+
+      items.forEach(raw => {
+        if(!raw || !raw.nombre){ skipped++; return; }
+        const icnsId = raw.id != null ? String(raw.id) : null;
+        const parseN = v => {
+          if(v == null || v === '') return null;
+          const n = parseFloat(v); return Number.isFinite(n) ? n : null;
+        };
+        const data = {
+          nombre:   String(raw.nombre).trim(),
+          kcal:     parseN(raw.kcal),
+          hc:       parseN(raw.hc),
+          proteina: parseN(raw.proteina),
+          grasa:    parseN(raw.grasa),
+          fibra:    parseN(raw.fibra),
+          tags:     Array.isArray(raw.tags) ? raw.tags : [],
+          alergenos:Array.isArray(raw.alergenos) ? raw.alergenos : []
+        };
+
+        // Detección de duplicado: por icnsId si existe, sino por nombre exacto
+        let exist = null;
+        if(icnsId) exist = tobMenusDB.ingredientes.find(i => i.icnsId === icnsId);
+        if(!exist) exist = tobMenusDB.ingredientes.find(i =>
+          (i.nombre||'').toLowerCase() === data.nombre.toLowerCase()
+        );
+        if(exist){
+          Object.assign(exist, data, { icnsId: icnsId || exist.icnsId });
+          updated++;
+        } else {
+          tobMenusDB.ingredientes.push({
+            id: tobUid('ing'), origen: 'icns', icnsId, ...data
+          });
+          added++;
+        }
+      });
+    } catch(e){
+      console.warn('[ing-import]', file.name, e);
+      skipped++;
+    }
+  }
+
+  tobMenusSave();
+  tobIngRender();
+  // Limpiar el input para permitir re-seleccionar los mismos archivos
+  ev.target.value = '';
+  tobToast(`✓ Importación: ${added} nuevos · ${updated} actualizados${skipped?' · '+skipped+' saltados':''}`, 'green');
+}
+
+// ── Exportación JSON ────────────────────────────────────────────
+function tobIngExportJson(){
+  if(!tobMenusDB.ingredientes.length){ tobToast('No hay ingredientes que exportar', 'red'); return; }
+  const blob = new Blob([JSON.stringify(tobMenusDB.ingredientes, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ingredientes_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  tobToast(`✓ ${tobMenusDB.ingredientes.length} ingredientes exportados`, 'green');
+}
+
+// Cerrar modal de ingrediente clicando fuera
+document.addEventListener('DOMContentLoaded', () => {
+  const bg = document.getElementById('tobIngModalBg');
+  if(bg){
+    bg.addEventListener('click', e => { if(e.target === bg) tobIngCloseModal(); });
+  }
+});
+
 // Auto-init
 if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', tobLoad);
+  document.addEventListener('DOMContentLoaded', () => { tobMenusLoad(); tobLoad(); });
 } else {
+  tobMenusLoad();
   tobLoad();
 }

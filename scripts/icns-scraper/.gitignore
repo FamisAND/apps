@@ -1,0 +1,5 @@
+node_modules/
+.icns-cookie.txt
+input/urls.json
+output/
+*.log

@@ -11,6 +11,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<!-- SheetJS para exportar Excel del cliente (datos + mediciones + rutinas) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -23,6 +25,7 @@
   <div class="tob-tabs">
     <button class="tob-tab active" onclick="tobShowTab('clientes',this)">Clientes</button>
     <button class="tob-tab" onclick="tobShowTab('plantillas',this)">Plantillas</button>
+    <button class="tob-tab" onclick="tobShowTab('menus',this)">Menús</button>
     <button class="tob-tab" onclick="tobShowTab('ficha',this)" id="tobTabFicha" style="display:none">Ficha</button>
     <button class="tob-tab" onclick="tobShowTab('asignacion',this)" id="tobTabAsig" style="display:none">Rutina</button>
   </div>
@@ -78,6 +81,118 @@
   </div>
 </div>
 
+<!-- ════════ MENÚS ════════ -->
+<div id="tob-menus" class="tob-page">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
+    <div>
+      <div class="tob-h">Menús</div>
+      <div class="tob-sub">Ingredientes, recetas y creador de menús para tus clientes.</div>
+    </div>
+  </div>
+
+  <!-- Sub-tabs -->
+  <div class="tob-sub-tabs" style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap;">
+    <button class="tob-sub-tab active" data-mtab="ingredientes" onclick="tobMenuShowTab('ingredientes',this)">🥦 Ingredientes</button>
+    <button class="tob-sub-tab" data-mtab="recetas" onclick="tobMenuShowTab('recetas',this)">🍳 Recetas</button>
+    <button class="tob-sub-tab" data-mtab="creador" onclick="tobMenuShowTab('creador',this)">📅 Creador de menús</button>
+  </div>
+
+  <!-- ── INGREDIENTES ── -->
+  <div id="tob-mtab-ingredientes" class="tob-mtab-page">
+    <div class="tob-card">
+      <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>🥦 Base de datos de ingredientes</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="tob-action ghost btn-xs" onclick="tobIngExportJson()" title="Descarga la BD actual en JSON">⬇ Exportar JSON</button>
+          <button class="tob-action ghost btn-xs" onclick="document.getElementById('tobIngImportFile').click()" title="Importa ingredientes desde JSON (formato ICNS: id, nombre, kcal, hc, proteina, grasa). Acepta múltiples archivos a la vez.">⬆ Importar JSON ICNS</button>
+          <input type="file" id="tobIngImportFile" accept=".json" multiple style="display:none" onchange="tobIngImportFiles(event)">
+          <button class="tob-action btn-xs" onclick="tobIngOpenModal()">+ Añadir manual</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <input class="tob-input" id="tobIngSearch" placeholder="🔍 Buscar por nombre..." style="flex:1;min-width:200px;" oninput="tobIngRender()">
+        <select class="tob-select" id="tobIngFilterTag" onchange="tobIngRender()" style="min-width:160px;">
+          <option value="">— Todas las etiquetas —</option>
+        </select>
+        <span id="tobIngCount" style="font-size:.72rem;color:var(--mute);font-family:'DM Mono',monospace;letter-spacing:.04em;"></span>
+      </div>
+      <div id="tobIngEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
+        Aún no hay ingredientes. Importa el JSON de ICNS o añade manualmente.
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="tob-table" id="tobIngTable">
+          <thead><tr>
+            <th>Nombre</th>
+            <th class="num">kcal/100g</th>
+            <th class="num">HC</th>
+            <th class="num">Prot</th>
+            <th class="num">Gras</th>
+            <th class="num">Fibra</th>
+            <th>Etiquetas</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="tobIngBody"></tbody>
+        </table>
+      </div>
+      <div id="tobIngPager" style="display:flex;justify-content:center;align-items:center;gap:10px;padding:14px 0 4px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--mute);"></div>
+    </div>
+  </div>
+
+  <!-- ── RECETAS (placeholder) ── -->
+  <div id="tob-mtab-recetas" class="tob-mtab-page" style="display:none;">
+    <div class="tob-card">
+      <div class="tob-card-title">🍳 Base de datos de recetas</div>
+      <div style="text-align:center;padding:40px 20px;color:var(--mute);font-family:'DM Mono',monospace;font-size:.85rem;line-height:1.6;">
+        Pendiente: importación de recetas detalladas desde el scraper ICNS.<br>
+        Próximamente: foto, ingredientes con cantidades, instrucciones, macros, tiempos, exportación PDF.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CREADOR DE MENÚS (placeholder) ── -->
+  <div id="tob-mtab-creador" class="tob-mtab-page" style="display:none;">
+    <div class="tob-card">
+      <div class="tob-card-title">📅 Creador de menús</div>
+      <div style="text-align:center;padding:40px 20px;color:var(--mute);font-family:'DM Mono',monospace;font-size:.85rem;line-height:1.6;">
+        Pendiente: drag &amp; drop de recetas, filtrado por perfil alimentario del cliente,<br>
+        cálculo en tiempo real de macros del día, exportación PDF del menú semanal.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL INGREDIENTE ════════ -->
+<div class="tob-modal-bg" id="tobIngModalBg">
+  <div class="tob-modal" style="max-width:560px;">
+    <h3 id="tobIngModalTitle">Nuevo ingrediente</h3>
+    <div class="tob-row col-2">
+      <div><label class="tob-lbl">Nombre *</label><input class="tob-input" id="tobIngNombre" placeholder="ej: Yogur natural"></div>
+      <div><label class="tob-lbl">kcal por 100g *</label><input class="tob-input" type="number" step="0.1" id="tobIngKcal" placeholder="ej: 61.7"></div>
+    </div>
+    <div class="tob-row col-4">
+      <div><label class="tob-lbl">HC (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngHc" placeholder="0"></div>
+      <div><label class="tob-lbl">Proteína (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngProt" placeholder="0"></div>
+      <div><label class="tob-lbl">Grasa (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngGras" placeholder="0"></div>
+      <div><label class="tob-lbl">Fibra (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngFibra" placeholder="0"></div>
+    </div>
+    <div>
+      <label class="tob-lbl">Etiquetas <span class="tob-quest-h-sub">(coma o Enter — ej: lácteo, vegetal, proteína, fruta)</span></label>
+      <input class="tob-input" id="tobIngTags" placeholder="lácteo, vegetal...">
+    </div>
+    <div>
+      <label class="tob-lbl">Alérgenos <span class="tob-quest-h-sub">(coma o Enter — ej: gluten, lactosa, huevo, frutos secos, soja)</span></label>
+      <input class="tob-input" id="tobIngAlergenos" placeholder="gluten, lactosa...">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">
+      <button class="tob-action danger" id="tobIngDelBtn" onclick="tobIngDeleteFromModal()" style="display:none;">🗑 Eliminar</button>
+      <div style="display:flex;gap:8px;margin-left:auto;">
+        <button class="tob-action ghost" onclick="tobIngCloseModal()">Cancelar</button>
+        <button class="tob-action" onclick="tobIngSave()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ════════ FICHA del cliente (histórico) ════════ -->
 <div id="tob-ficha" class="tob-page">
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">
@@ -99,6 +214,7 @@
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfUltimaRutina()" title="PDF resumen de la última rutina con las gráficas de progreso por ejercicio">📄 Última rutina</button>
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfHistorico()" title="PDF histórico completo (rutinas y/o mediciones)">📄 Histórico</button>
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal" data-i18n="ficha.btnMedicion">📄 Medición</button>
+        <button class="tob-action ghost btn-xs" onclick="tobExportClienteExcel(tobCurrentFichaId)" title="Descargar Excel (.xlsx) con todos los datos del cliente: ficha, cuestionario, mediciones y rutinas">📊 Excel</button>
         <button class="tob-action ghost btn-xs" onclick="tobShareWhatsAppFicha()" title="Compartir por WhatsApp (el PDF se descarga automáticamente para que lo adjuntes)">📲 WhatsApp</button>
         <button class="tob-action ghost btn-xs" onclick="tobEditCliente(tobCurrentFichaId)" title="Editar datos del cliente">✏️ Editar</button>
       </div>
@@ -157,6 +273,122 @@
       <div class="tob-card-title">📉 Evolución de medidas</div>
       <div class="tob-charts-grid" id="tobFichaMedCharts"></div>
     </div>
+  </div>
+
+  <!-- ── BLOQUE CUESTIONARIO / PREFERENCIAS ────────────────────────────
+       Datos que el dietista usa para personalizar menús y comunicación.
+       Colapsable. Auto-guarda al cambiar campos (debounce).
+       Para chips/etiquetas: click toggle, Enter para añadir personalizada.
+  ───────────────────────────────────────────────────────────────────── -->
+  <div class="tob-card" id="tobFichaCuestionarioBlock">
+    <details class="tob-quest-details">
+      <summary class="tob-quest-summary">
+        <span class="tob-card-title" style="margin:0;display:inline;">📋 Cuestionario / Preferencias</span>
+        <span class="tob-quest-hint" id="qSavedHint">Datos para personalizar menús y comunicación</span>
+      </summary>
+
+      <div class="tob-quest-body">
+
+        <!-- OBJETIVOS -->
+        <div class="tob-quest-section">
+          <h4 class="tob-quest-h">🎯 Objectius</h4>
+          <div class="tob-row col-3">
+            <div><label class="tob-lbl">Pes objectiu (kg)</label><input class="tob-input tob-quest-f" type="number" step="0.1" id="qPesObj" placeholder="ex: 75"></div>
+            <div><label class="tob-lbl">Sumatori 6 plecs objectiu (mm)</label><input class="tob-input tob-quest-f" type="number" step="0.5" id="qSumObj" placeholder="ex: 60"></div>
+            <div><label class="tob-lbl">Objectiu calòric (kcal/dia)</label><input class="tob-input tob-quest-f" type="number" id="qKcalObj" placeholder="ex: 2200"></div>
+          </div>
+          <div class="tob-row col-3">
+            <div><label class="tob-lbl">Proteïna (g)</label><input class="tob-input tob-quest-f" type="number" id="qProtObj" placeholder="ex: 150"></div>
+            <div><label class="tob-lbl">Hidrats (g)</label><input class="tob-input tob-quest-f" type="number" id="qHCObj" placeholder="ex: 220"></div>
+            <div><label class="tob-lbl">Greixos (g)</label><input class="tob-input tob-quest-f" type="number" id="qGrasObj" placeholder="ex: 70"></div>
+          </div>
+          <div class="tob-row col-2">
+            <div>
+              <label class="tob-lbl">Nivell d'activitat (PAL)</label>
+              <select class="tob-select tob-quest-f" id="qPAL">
+                <option value="">— sense definir —</option>
+                <option value="1.2">Sedentari (1.2)</option>
+                <option value="1.375">Activitat lleugera (1.375)</option>
+                <option value="1.55">Activitat moderada (1.55)</option>
+                <option value="1.725">Activitat alta (1.725)</option>
+                <option value="1.9">Molt actiu / atleta (1.9)</option>
+              </select>
+            </div>
+            <div><label class="tob-lbl">Protocol per perdre pes</label><input class="tob-input tob-quest-f" id="qProtocol" placeholder="ex: dèficit 500 kcal · 5 àpats..."></div>
+          </div>
+        </div>
+
+        <!-- SALUD -->
+        <div class="tob-quest-section">
+          <h4 class="tob-quest-h">⚕ Salut i restriccions</h4>
+          <div><label class="tob-lbl">Al·lèrgies / intoleràncies</label><textarea class="tob-input tob-quest-f" id="qAlergias" rows="2" placeholder="ex: lactosa, fruita seca..."></textarea></div>
+          <div><label class="tob-lbl">Aliments que et senten malament</label><textarea class="tob-input tob-quest-f" id="qSientenMal" rows="2" placeholder="ex: cebolla cruda, llegums..."></textarea></div>
+          <div class="tob-row col-2">
+            <div><label class="tob-lbl">Aliments ✗ (no menjar)</label><textarea class="tob-input tob-quest-f" id="qAlimX" rows="2" placeholder="prohibits o que no li agraden"></textarea></div>
+            <div><label class="tob-lbl">Aliments ✓ (preferits)</label><textarea class="tob-input tob-quest-f" id="qAlimOk" rows="2" placeholder="el que sí menja amb gust"></textarea></div>
+          </div>
+          <div><label class="tob-lbl">Patologies / condicions mèdiques</label><textarea class="tob-input tob-quest-f" id="qPatologias" rows="2" placeholder="ex: hipertensió, diabetis tipus 2..."></textarea></div>
+        </div>
+
+        <!-- RECORDATORI NUTRICIONAL -->
+        <div class="tob-quest-section">
+          <h4 class="tob-quest-h">🍽 Recordatori nutricional <span class="tob-quest-h-sub">(què menja habitualment)</span></h4>
+          <div><label class="tob-lbl">Àpat 1 · esmorzar</label><input class="tob-input tob-quest-f" id="qApat1" placeholder="ex: cafè amb llet, torrades..."></div>
+          <div><label class="tob-lbl">Àpat 2 · mig matí</label><input class="tob-input tob-quest-f" id="qApat2" placeholder="ex: fruita + iogurt"></div>
+          <div><label class="tob-lbl">Àpat 3 · dinar</label><input class="tob-input tob-quest-f" id="qApat3" placeholder="ex: amanida + pollastre + arròs"></div>
+          <div><label class="tob-lbl">Àpat 4 · berenar</label><input class="tob-input tob-quest-f" id="qApat4" placeholder="ex: barreta + plàtan"></div>
+          <div><label class="tob-lbl">Àpat 5 · sopar</label><input class="tob-input tob-quest-f" id="qApat5" placeholder="ex: peix al forn + verdura"></div>
+        </div>
+
+        <!-- ESTILO DE VIDA -->
+        <div class="tob-quest-section">
+          <h4 class="tob-quest-h">🏃 Estil de vida</h4>
+          <div><label class="tob-lbl">Cuina (qui cuina, temps disponible, tipus)</label><textarea class="tob-input tob-quest-f" id="qCuina" rows="2" placeholder="ex: cuino jo · disposo de 30 min · cuina mediterrània"></textarea></div>
+          <div><label class="tob-lbl">Exercici físic i esport (tipus, freqüència, intensitat)</label><textarea class="tob-input tob-quest-f" id="qEsport" rows="2" placeholder="ex: gimnàs 3 cops setmana + caminar diari"></textarea></div>
+          <div><label class="tob-lbl">Treball (tipus, horaris, sedentari/actiu)</label><textarea class="tob-input tob-quest-f" id="qTreball" rows="2" placeholder="ex: oficina 9-18h, sedentari"></textarea></div>
+          <div><label class="tob-lbl">Horaris habituals de menjar</label><input class="tob-input tob-quest-f" id="qHoraris" placeholder="ex: esmorzar 7h · dinar 14h · sopar 21h"></div>
+          <div><label class="tob-lbl">Motivació i adherència</label><textarea class="tob-input tob-quest-f" id="qMotivacio" rows="2" placeholder="ex: vol arribar a fitness per l'estiu, motivat però amb caps de setmana fluixos"></textarea></div>
+        </div>
+
+        <!-- PERFIL ALIMENTARI -->
+        <div class="tob-quest-section">
+          <h4 class="tob-quest-h">🥗 Perfil alimentari <span class="tob-quest-h-sub">(s'usa per filtrar receptes en el creador de menús)</span></h4>
+
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Tipus de dieta <span class="tob-quest-h-sub">(escull-ne una)</span></label>
+            <div class="tob-quest-chips" id="qChipsDieta"></div>
+          </div>
+
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Proteïna animal</label>
+            <div class="tob-quest-chips" id="qChipsProteina"></div>
+          </div>
+
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Preferències addicionals</label>
+            <div class="tob-quest-chips" id="qChipsPref"></div>
+          </div>
+
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Etiquetes personalitzades</label>
+            <div class="tob-quest-chips" id="qChipsCustom"></div>
+            <input class="tob-input tob-quest-f" id="qChipNew" placeholder="Escriu i prem Enter per afegir-ne una..." style="margin-top:6px;" onkeydown="tobQuestAddCustomChip(event)">
+          </div>
+        </div>
+
+        <!-- COMENTARIO GENERAL -->
+        <div class="tob-quest-section">
+          <h4 class="tob-quest-h">💬 Comentari general</h4>
+          <textarea class="tob-input tob-quest-f" id="qComentari" rows="4" placeholder="Qualsevol nota lliure que vulguis tenir present sobre aquest client..."></textarea>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:12px;border-top:1px solid var(--line);margin-top:14px;align-items:center;">
+          <span id="qSavedStatus" style="font-size:.72rem;color:var(--mute);font-family:'DM Mono',monospace;"></span>
+          <button class="tob-action ghost btn-xs" onclick="tobQuestReset()" title="Esborra tot el cuestionari d'aquest client">🗑 Buidar</button>
+          <button class="tob-action btn-xs" onclick="tobQuestSave(true)">💾 Guardar</button>
+        </div>
+      </div>
+    </details>
   </div>
 </div>
 

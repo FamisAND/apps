@@ -318,6 +318,68 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 #tobFichaMedTable .tob-table{font-size:.82rem;}
 #tobFichaMedTable .tob-table td{white-space:nowrap;}
 
+/* ── Módulo Menús: sub-tabs + tabla ingredientes ──────────────────── */
+.tob-sub-tab{
+  background:transparent;border:none;border-bottom:2px solid transparent;
+  color:var(--mute);font-family:'DM Mono',monospace;font-size:.78rem;
+  letter-spacing:.04em;padding:8px 14px;cursor:pointer;transition:all .15s ease;
+}
+.tob-sub-tab:hover{color:var(--text);}
+.tob-sub-tab.active{color:var(--acc);border-bottom-color:var(--acc);font-weight:700;}
+.tob-mtab-page{}
+
+/* ── Cuestionario / Preferencias ──────────────────────────────────── */
+.tob-quest-summary{
+  cursor:pointer;list-style:none;outline:none;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:14px;padding:4px 2px;user-select:none;
+}
+.tob-quest-summary::-webkit-details-marker{display:none;}
+.tob-quest-summary::before{
+  content:'▸';color:var(--acc);font-size:.85rem;margin-right:8px;
+  transition:transform .15s ease;display:inline-block;
+}
+details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
+.tob-quest-hint{font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;letter-spacing:.04em;}
+.tob-quest-body{padding-top:14px;margin-top:10px;border-top:1px solid var(--border);}
+.tob-quest-section{margin-bottom:20px;padding-bottom:14px;border-bottom:1px dashed var(--border);}
+.tob-quest-section:last-child{border-bottom:none;}
+.tob-quest-h{margin:0 0 12px 0;font-size:.86rem;color:var(--acc2);font-family:'DM Mono',monospace;letter-spacing:.05em;text-transform:uppercase;font-weight:700;}
+.tob-quest-h-sub{font-size:.7rem;color:var(--mute);text-transform:none;letter-spacing:.02em;font-weight:400;margin-left:8px;}
+.tob-quest-section > div{margin-bottom:10px;}
+.tob-quest-f{transition:border-color .15s ease;}
+.tob-quest-f:focus{border-color:var(--acc);outline:none;}
+
+/* Chips/etiquetas seleccionables */
+.tob-quest-chip-block{margin-bottom:14px;}
+.tob-quest-chips{
+  display:flex;flex-wrap:wrap;gap:6px;
+  padding:6px 0 2px;
+}
+.tob-quest-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 11px;border:1px solid var(--border2);
+  background:transparent;color:var(--mute);
+  border-radius:999px;font-family:'DM Mono',monospace;
+  font-size:.7rem;cursor:pointer;letter-spacing:.03em;
+  transition:all .15s ease;user-select:none;
+}
+.tob-quest-chip:hover{
+  border-color:var(--acc);color:var(--text);
+}
+.tob-quest-chip.active{
+  background:var(--acc);color:#000;border-color:var(--acc);
+  font-weight:700;
+}
+.tob-quest-chip.active.neg{
+  background:#7a2424;color:#fff;border-color:#7a2424;
+}
+.tob-quest-chip .x{
+  display:none;margin-left:3px;opacity:.6;font-weight:700;
+}
+.tob-quest-chip.custom .x{display:inline;}
+.tob-quest-chip.custom:hover .x{opacity:1;}
+
 @media(max-width:900px){
   .tob-ej-grid{font-size:.7rem;}
   .tob-ej-grid input.cell{width:45px;font-size:.7rem;}

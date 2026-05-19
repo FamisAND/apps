@@ -1,0 +1,15 @@
+{
+  "name": "icns-recipes-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scrapea recetas detalladas de ICNS (foto, ingredientes con cantidades, instrucciones, tiempos) a partir de la lista de URLs.",
+  "type": "module",
+  "scripts": {
+    "start": "node scrape.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "node-fetch": "^3.3.2",
+    "p-limit": "^5.0.0"
+  }
+}
