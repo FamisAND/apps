@@ -54,9 +54,9 @@
 
     <div id="_icns-step1">
       <div style="margin-bottom:8px;color:#9aa9ba;line-height:1.4;">
-        1. Carga el archivo <b>recetas_urls_hasta_pX.json</b> (la lista que ya tienes).
+        1. Carga <b>recetas_urls_hasta_pX.json</b> (lista de URLs) <span style="color:#5a7a9a;font-size:10px;">— o varios <code>recetas_pX*.json</code> a la vez (sintetiza URLs desde el id)</span>
       </div>
-      <input type="file" id="_icns-urls-file" accept=".json" style="margin-bottom:10px;color:#888;font-family:inherit;font-size:11px;">
+      <input type="file" id="_icns-urls-file" accept=".json" multiple style="margin-bottom:10px;color:#888;font-family:inherit;font-size:11px;">
       <div id="_icns-urls-info" style="font-size:11px;color:#5a7a9a;margin-bottom:10px;"></div>
 
       <div style="display:flex;gap:10px;margin-bottom:10px;align-items:center;font-size:11px;">
@@ -133,26 +133,58 @@
   }
 
   // ── Carga del archivo de URLs ───────────────────────────────────
+  // Acepta MULTIPLE formatos:
+  //  · { id, nombre, url }      → usa la URL directamente
+  //  · { id, nombre, kcal, ... } → sintetiza URL desde id: /receta_{id}
+  //  · array suelto o {recetas:[...]} o {data:[...]}
+  // También permite arrastrar varios archivos (multi-file).
   const fileInput = document.getElementById('_icns-urls-file');
   fileInput.addEventListener('change', async (ev) => {
-    const file = ev.target.files[0];
-    if(!file) return;
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const list = Array.isArray(parsed) ? parsed
-                 : Array.isArray(parsed.recetas) ? parsed.recetas
-                 : null;
-      if(!list){ throw new Error('Formato no esperado'); }
-      urls = list.filter(u => u && u.url);
-      document.getElementById('_icns-urls-info').textContent = `✓ Cargadas ${urls.length} URLs`;
-      document.getElementById('_icns-test-one').disabled = false;
-      document.getElementById('_icns-start').disabled = false;
-      log(`URLs cargadas: ${urls.length}`, 'ok');
-    } catch(e){
-      document.getElementById('_icns-urls-info').textContent = '✗ Error al leer: ' + e.message;
-      log('Error parsing JSON: ' + e.message, 'fail');
+    const files = Array.from(ev.target.files || []);
+    if(!files.length) return;
+    urls = [];
+    const seen = new Set();
+    let synthetized = 0, direct = 0, dropped = 0;
+    for(const file of files){
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed
+                   : Array.isArray(parsed.recetas) ? parsed.recetas
+                   : Array.isArray(parsed.data) ? parsed.data
+                   : null;
+        if(!list){ throw new Error('Formato no esperado'); }
+        for(const item of list){
+          if(!item || !item.id){ dropped++; continue; }
+          const id = String(item.id);
+          if(seen.has(id)) continue;  // duplicado entre archivos
+          seen.add(id);
+          let url = item.url;
+          if(!url){
+            // Sintetiza URL ICNS canónica desde el id
+            url = ICNS_BASE + '/receta_' + id;
+            synthetized++;
+          } else {
+            direct++;
+          }
+          urls.push({ id, nombre: item.nombre || ('Receta ' + id), url });
+        }
+      } catch(e){
+        log(`✗ ${file.name}: ${e.message}`, 'fail');
+        dropped++;
+      }
     }
+    const msg = files.length > 1
+      ? `✓ ${urls.length} URLs de ${files.length} archivos`
+      : `✓ Cargadas ${urls.length} URLs`;
+    const detail = (synthetized ? ` · ${synthetized} sintetizadas desde id` : '')
+                 + (direct ? ` · ${direct} con url directa` : '')
+                 + (dropped ? ` · ${dropped} sin id` : '');
+    document.getElementById('_icns-urls-info').innerHTML =
+      `<div>${msg}</div><div style="color:#5a7a9a;font-size:10px;margin-top:2px;">${detail}</div>`;
+    document.getElementById('_icns-test-one').disabled = urls.length === 0;
+    document.getElementById('_icns-start').disabled    = urls.length === 0;
+    log(`URLs cargadas: ${urls.length}${detail}`, urls.length ? 'ok' : 'fail');
   });
 
   // ── Parser HTML → datos ────────────────────────────────────────
