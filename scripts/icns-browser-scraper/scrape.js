@@ -236,6 +236,32 @@
     return [...set];
   }
 
+  // Helper: encuentra el siguiente sibling/descendiente con contenido
+  // significativo tras un <img> "header" de ICNS (img/lang/es/{name}.png).
+  // Devuelve el elemento, o null si no encuentra.
+  function findContentAfterIcnsHeader(doc, headerImgPath){
+    const imgs = Array.from(doc.querySelectorAll('img'));
+    const hdrImg = imgs.find(img => {
+      const src = img.getAttribute('src') || '';
+      return src.includes(headerImgPath);
+    });
+    if(!hdrImg) return null;
+    // El header está en un <span> dentro de un <div>. Subimos al div padre
+    // y cogemos el siguiente sibling div.
+    let cont = hdrImg.closest('div');
+    if(!cont) return null;
+    let next = cont.nextElementSibling;
+    while(next){
+      // Skip nodos vacíos o de utilidad
+      if(next.tagName && next.tagName !== 'SCRIPT' && next.tagName !== 'STYLE'){
+        const txt = (next.textContent || '').trim();
+        if(txt.length > 0) return next;
+      }
+      next = next.nextElementSibling;
+    }
+    return null;
+  }
+
   function parseRecipeHtml(html, urlInfo){
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const $ = (sel) => doc.querySelector(sel);
@@ -257,121 +283,90 @@
       tags: []
     };
 
-    // FOTO — ICNS lazy-loads las imágenes: el src real puede estar en
-    // data-src / data-lazy-src / data-original / srcset, no en src.
-    // Buscamos en TODOS esos atributos + también en background-image de
-    // inline styles. Filtramos a SOLO /din/recetas/fotos|chefs/ para
-    // descartar iconos del menú.
-    const ICNS_FOTO_RE = /\/din\/recetas\/(fotos|chefs)\//i;
+    // ── FOTO ───────────────────────────────────────────────────────
+    // ICNS usa URLs RELATIVAS sin "/" inicial: src="din/recetas/fotos/...".
+    // El regex anterior requería "/" inicial y fallaba en todas las recetas.
+    // Aceptamos: relativa o absoluta, sin importar el prefijo.
+    const ICNS_FOTO_RE = /(?:^|[\/"'=\s])(din\/recetas\/(fotos|chefs)\/[^\s"'<>)\\]+\.(jpg|jpeg|png|webp))/i;
     const checkAndAdd = (src) => {
       if(!src) return;
-      if(ICNS_FOTO_RE.test(src)){
-        const full = absUrl(src);
-        if(!out.fotos.includes(full)) out.fotos.push(full);
-      }
+      const m = src.match(ICNS_FOTO_RE);
+      if(!m) return;
+      const path = m[1];  // siempre relativa al base
+      const full = absUrl(path);
+      if(!out.fotos.includes(full)) out.fotos.push(full);
     };
-    // imgs con src, data-*src, srcset
+    // Selector específico ICNS: #foto > img es la foto principal
+    const fotoMain = $('#foto img');
+    if(fotoMain){
+      checkAndAdd(fotoMain.getAttribute('src'));
+    }
+    // Resto de imgs (incluyendo data-src por si lazy-load)
     $$('img').forEach(el => {
       checkAndAdd(el.getAttribute('src'));
       checkAndAdd(el.getAttribute('data-src'));
       checkAndAdd(el.getAttribute('data-lazy-src'));
       checkAndAdd(el.getAttribute('data-original'));
-      checkAndAdd(el.getAttribute('data-image'));
-      // srcset = "url1 1x, url2 2x" — cogemos la primera URL
-      const srcset = el.getAttribute('srcset');
-      if(srcset){
-        const first = srcset.split(',')[0].trim().split(/\s+/)[0];
-        checkAndAdd(first);
-      }
     });
-    // picture > source srcset
-    $$('source').forEach(el => {
-      const srcset = el.getAttribute('srcset');
-      if(srcset){
-        const first = srcset.split(',')[0].trim().split(/\s+/)[0];
-        checkAndAdd(first);
-      }
+    // Regex sobre el HTML crudo (atrapa URLs en JSON embebido, onclick, etc)
+    const htmlMatches = html.match(/(?:^|[\/"'=\s])(din\/recetas\/(?:fotos|chefs)\/[^\s"'<>)\\]+\.(?:jpg|jpeg|png|webp))/gi) || [];
+    htmlMatches.forEach(m => {
+      const clean = m.replace(/^[\/"'=\s]+/, '');
+      checkAndAdd(clean);
     });
-    // background-image en cualquier elemento con style inline
-    $$('[style*="background"]').forEach(el => {
-      const style = el.getAttribute('style') || '';
-      const m = style.match(/background(?:-image)?:\s*url\(['"]?([^'")]+)['"]?\)/i);
-      if(m) checkAndAdd(m[1]);
-    });
-    // meta og:image
-    const og = $('meta[property="og:image"]');
-    if(og){
-      checkAndAdd(og.getAttribute('content'));
-    }
-    // Buscar URLs sueltas en el HTML que machen el patrón ICNS de fotos
-    // (a veces aparecen en JSON embebido, en atributos onclick, etc.)
-    const htmlMatches = html.match(/\/din\/recetas\/(fotos|chefs)\/[^\s"'<>)\\]+\.(jpg|jpeg|png|webp)/gi) || [];
-    htmlMatches.forEach(m => checkAndAdd(m));
-
-    // Foto principal = primera de las reales (preferimos /fotos/ sobre /chefs/)
+    // Foto principal = primera de /fotos/ (la #foto img ya está priorizada
+    // al añadirse primero); fallback a primera /chefs/.
     out.foto = out.fotos.find(f => /\/fotos\//i.test(f)) || out.fotos[0] || '';
 
-    // RACIONES
-    $$('*').forEach(el => {
-      if(out.raciones != null) return;
-      const t = clean(el.textContent);
-      if(t.length > 200) return;
-      const m = t.match(/(\d+)\s*(raciones|comensales|porciones|persones|persona)/i);
-      if(m) out.raciones = +m[1];
-    });
+    // ── TÍTULO ─────────────────────────────────────────────────────
+    const tituloEl = $('#titulo_receta');
+    if(tituloEl){
+      const t = clean(tituloEl.textContent);
+      if(t && t.length < 200) out.nombre = t;  // override del urlInfo si existe
+    }
 
-    // TIEMPOS — ICNS suele dar "00:15h. Elaboración: 00:10h." en una línea.
-    // Separamos los dos tiempos buscando el "Elaboración:" en medio.
-    $$('*').forEach(el => {
-      const t = clean(el.textContent);
-      if(t.length > 100) return;
+    // ── TIEMPOS ────────────────────────────────────────────────────
+    // ICNS los muestra como divs con "Tiempo total: 00:15h." y
+    // "Elaboración: 00:15h." (con icono de reloj <i class="mdi-clock">).
+    $$('div, span').forEach(el => {
       if(out.tiempoTotal && out.tiempoElaboracion) return;
-      // Captura ambos en una sola línea: "Total: 00:15h. Elaboración: 00:10h."
-      const both = t.match(/tiempo\s*total[:\s]*([\d:hmin\s.]+?)(?:\.|\s)\s*elabor[a-zóáí]*[:\s]*([\d:hmin\s.]+)/i);
-      if(both){
-        out.tiempoTotal       = both[1].replace(/\.+$/,'').trim();
-        out.tiempoElaboracion = both[2].replace(/\.+$/,'').trim();
-        return;
-      }
-      // Capturas separadas
+      const t = clean(el.textContent);
+      if(t.length > 80) return;
       if(!out.tiempoTotal){
-        const m = t.match(/tiempo\s*total[:\s]*([\d:hmin\s.]+)/i);
-        if(m) out.tiempoTotal = m[1].replace(/\.+$/,'').trim().slice(0, 30);
+        const m = t.match(/tiempo\s*total[:\s]+([\d:hmin\s.]+?)(?:\.|$)/i);
+        if(m) out.tiempoTotal = m[1].trim().replace(/\.$/,'');
       }
       if(!out.tiempoElaboracion){
-        const m = t.match(/(?:tiempo\s*de\s*)?elabor[a-zóáí]+[:\s]*([\d:hmin\s.]+)/i);
-        if(m) out.tiempoElaboracion = m[1].replace(/\.+$/,'').trim().slice(0, 30);
+        const m = t.match(/elabor[a-zóáí]+[:\s]+([\d:hmin\s.]+?)(?:\.|$)/i);
+        if(m) out.tiempoElaboracion = m[1].trim().replace(/\.$/,'');
       }
     });
-    // Si tiempoTotal contiene "Elaboración: …", separar
-    if(out.tiempoTotal && /elabor/i.test(out.tiempoTotal)){
-      const m = out.tiempoTotal.match(/^([\d:hmin\s.]+?)(?:\.|\s)\s*elabor[a-zóáí]*[:\s]*([\d:hmin\s.]+)/i);
-      if(m){
-        out.tiempoTotal = m[1].replace(/\.+$/,'').trim();
-        if(!out.tiempoElaboracion) out.tiempoElaboracion = m[2].replace(/\.+$/,'').trim();
-      }
+
+    // ── RACIONES ───────────────────────────────────────────────────
+    // ICNS: <span class="receta_num_personas">N:</span>
+    const racEl = $('.receta_num_personas');
+    if(racEl){
+      const m = (racEl.textContent || '').match(/(\d+)/);
+      if(m) out.raciones = +m[1];
+    }
+    if(out.raciones == null){
+      // Fallback genérico
+      $$('*').forEach(el => {
+        if(out.raciones != null) return;
+        const t = clean(el.textContent);
+        if(t.length > 200) return;
+        const m = t.match(/(\d+)\s*(raciones|comensales|porciones|persones|persona)/i);
+        if(m) out.raciones = +m[1];
+      });
     }
 
-    // INGREDIENTES — buscar sección
-    const findSectionAfter = (regex) => {
-      const hdr = $$('h1, h2, h3, h4, .titulo, .section-title, [class*="title"]')
-        .find(el => regex.test(el.textContent));
-      if(!hdr) return null;
-      let next = hdr.nextElementSibling;
-      for(let safety = 0; next && safety < 10; safety++){
-        const items = next.querySelectorAll('li');
-        if(items.length) return Array.from(items);
-        next = next.nextElementSibling;
-      }
-      return null;
-    };
-
-    let ingItems = findSectionAfter(/ingredient/i);
-    if(!ingItems){
-      ingItems = $$('.ingredientes li, .ingrediente, [class*="ingredient"] li');
-    }
-    if(ingItems){
-      ingItems.forEach(li => {
+    // ── INGREDIENTES ───────────────────────────────────────────────
+    // Header: <img src="img/lang/es/ingredientes.png"> en un div.
+    // Los <li> siguientes son los ingredientes (en el div hermano o
+    // descendiente).
+    const ingCont = findContentAfterIcnsHeader(doc, 'lang/es/ingredientes.png');
+    if(ingCont){
+      ingCont.querySelectorAll('li').forEach(li => {
         const rawTxt = clean(li.textContent);
         if(!rawTxt || rawTxt.length >= 200) return;
         const cleaned = cleanIngredienteText(rawTxt);
@@ -383,100 +378,84 @@
         });
       });
     }
-
-    // INSTRUCCIONES — múltiples estrategias para encajar con ICNS
-    const INST_HDR_RE = /elabora|prepara|pasos|instruc|preparació|elaboració|cómo\s*hacer|m[oó]do\s*de\s*preparaci|c[oó]mo\s*preparar|paso\s*a\s*paso/i;
-    const instSection = $$('h1, h2, h3, h4, h5, .titulo, .section-title, [class*="title"], [class*="header"], strong, b, span')
-      .find(el => {
-        const t = clean(el.textContent);
-        return t.length < 80 && INST_HDR_RE.test(t);
+    // Fallback: cualquier lista con clase relacionada (por si ICNS cambia
+    // el HTML en futuras recetas)
+    if(!out.ingredientes.length){
+      $$('[class*="ingredient"] li, .ingredientes li').forEach(li => {
+        const rawTxt = clean(li.textContent);
+        if(rawTxt && rawTxt.length < 200){
+          const cleaned = cleanIngredienteText(rawTxt);
+          out.ingredientes.push({
+            raw: rawTxt,
+            cantidad: extractNumber(cleaned),
+            unidad:   extractUnit(cleaned),
+            nombre:   extractIngNombre(rawTxt)
+          });
+        }
       });
-    if(instSection){
-      let next = instSection.nextElementSibling || instSection.parentElement?.nextElementSibling;
-      for(let safety = 0; next && safety < 15; safety++){
-        // 1) Listas ol/ul li
-        const items = next.querySelectorAll('li');
-        if(items.length){
-          items.forEach(li => {
-            const txt = clean(li.textContent);
-            if(txt && txt.length > 10 && txt.length < 600) out.instrucciones.push(txt);
-          });
-          if(out.instrucciones.length) break;
-        }
-        // 2) Párrafos múltiples
-        const ps = next.querySelectorAll('p');
-        if(ps.length > 1){
-          ps.forEach(p => {
-            const txt = clean(p.textContent);
-            if(txt && txt.length > 15 && txt.length < 600) out.instrucciones.push(txt);
-          });
-          if(out.instrucciones.length) break;
-        }
-        // 3) Texto largo del propio nodo
-        const ownTxt = clean(next.textContent);
-        if(ownTxt && ownTxt.length > 40 && ownTxt.length < 5000 && next.tagName !== 'SCRIPT' && next.tagName !== 'STYLE'){
-          // Divide por:
-          //   - números con punto ("1.", "2.")
-          //   - "Paso N"
-          //   - dos saltos seguidos
-          //   - punto-final + mayúscula
-          const splits = ownTxt
-            .split(/(?:^|\s)(?:\d+\.\s+|paso\s+\d+[:\s]+)/i)
-            .filter(s => s && s.length > 15);
-          if(splits.length > 1){
-            splits.forEach(s => out.instrucciones.push(s.trim()));
-            break;
-          }
-        }
-        next = next.nextElementSibling;
+    }
+
+    // ── INSTRUCCIONES (Preparación) ────────────────────────────────
+    // Header: <img src="img/lang/es/preparacion.png">
+    // Las instrucciones están en el siguiente div, separadas por <br />.
+    const instCont = findContentAfterIcnsHeader(doc, 'lang/es/preparacion.png');
+    if(instCont){
+      // Reemplaza <br> por \n para preservar separación de pasos
+      const html2 = instCont.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+      const tmp = doc.createElement('div');
+      tmp.innerHTML = html2;
+      const txt = (tmp.textContent || '').trim();
+      if(txt){
+        // Divide por saltos de línea, mantén pasos significativos
+        const pasos = txt.split(/\n+/)
+          .map(s => s.trim())
+          .map(s => s.replace(/^[-·•*]\s*/, ''))  // quita bullets
+          .filter(s => s.length > 5);
+        out.instrucciones = pasos;
       }
     }
-    // Fallback más amplio: cualquier lista numerada en una sección probable
-    if(!out.instrucciones.length){
-      $$('[class*="instruc"] li, [class*="pasos"] li, [class*="elabor"] li, [class*="paso"] p, [class*="preparac"] li, [class*="step"] li, ol li').forEach(li => {
-        const txt = clean(li.textContent);
-        if(txt && txt.length > 10 && txt.length < 600) out.instrucciones.push(txt);
-      });
+
+    // ── COMENTARIOS ─────────────────────────────────────────────────
+    const comCont = findContentAfterIcnsHeader(doc, 'lang/es/comentarios.png');
+    if(comCont){
+      const txt = clean(comCont.textContent);
+      if(txt) out.comentarios = txt.slice(0, 800);
     }
-    // Último fallback: textareas (ICNS podría tener las instrucciones en
-    // un textarea editable, no en un div)
-    if(!out.instrucciones.length){
-      $$('textarea').forEach(ta => {
-        const txt = clean(ta.value || ta.textContent);
-        if(txt && txt.length > 40 && (INST_HDR_RE.test(ta.previousElementSibling?.textContent || '') ||
-                                       INST_HDR_RE.test(ta.parentElement?.previousElementSibling?.textContent || '') ||
-                                       /^(\d+[.)]|paso|primero|segundo)/i.test(txt))){
-          // Divide en pasos por números
-          const splits = txt.split(/(?:^|\n)\s*\d+\.\s+/).filter(s => s.length > 10);
-          if(splits.length > 1) splits.forEach(s => out.instrucciones.push(s.trim()));
-          else out.instrucciones.push(txt);
+
+    // ── TAGS ────────────────────────────────────────────────────────
+    // Header: <img src="img/lang/es/hashtags.png"> seguido de divs con
+    // class="tag_seleccionado_popup_receta" (con texto tipo "#Vegan").
+    $$('.tag_seleccionado_popup_receta').forEach(el => {
+      const txt = clean(el.textContent).replace(/^#/, '').trim();
+      if(txt && txt.length > 1 && !out.tags.includes(txt)) out.tags.push(txt);
+    });
+    // Fallback: cualquier elemento con #word
+    if(!out.tags.length){
+      $$('.tag, .etiqueta, .badge, [class*="categoria"], [class*="tag"]').forEach(el => {
+        const txt = clean(el.textContent);
+        if(txt && txt.length < 40 && /^#/.test(txt)){
+          const t = txt.replace(/^#/, '').trim();
+          if(t.length > 1 && !out.tags.includes(t)) out.tags.push(t);
         }
       });
     }
 
-    // AUTOR
-    const autorEl = $('[class*="autor"], [class*="author"], [class*="chef"]');
-    if(autorEl){
-      const t = clean(autorEl.textContent).slice(0, 100);
-      // Limpiar prefijos típicos "Autor: " "Por: " "Chef: "
-      out.autor = t.replace(/^(autor|por|chef|recetario)[:\s]+/i, '').trim();
+    // ── AUTOR ───────────────────────────────────────────────────────
+    // Header: <img src="img/lang/es/autor.png">
+    // Nombre: <h3 class="box-title">...</h3> en el bloque siguiente.
+    const autorCont = findContentAfterIcnsHeader(doc, 'lang/es/autor.png');
+    if(autorCont){
+      const h3 = autorCont.querySelector('h3, .box-title');
+      if(h3){
+        out.autor = clean(h3.textContent).slice(0, 100);
+      } else {
+        // Fallback: alt de la foto del chef
+        const chefImg = autorCont.querySelector('img[src*="chefs/"]');
+        if(chefImg) out.autor = chefImg.getAttribute('alt') || '';
+      }
     }
 
-    // COMENTARIOS
-    const comEl = $('[class*="coment"], .nota, .observ');
-    if(comEl) out.comentarios = clean(comEl.textContent).slice(0, 500);
-
-    // TAGS / CATEGORÍAS — quitamos `#` prefix de ICNS y filtramos basura
-    const tagsRaw = new Set();
-    $$('.tag, .etiqueta, .badge, [class*="categoria"], [class*="tag"]').forEach(el => {
-      const txt = clean(el.textContent);
-      if(txt && txt.length < 40) tagsRaw.add(txt);
-    });
-    out.tags = [...tagsRaw]
-      .map(t => t.replace(/^#/, '').trim())
-      .filter(t => t.length > 1 && !/^\d+$/.test(t));  // descarta numéricos puros
-
-    // MOMENTOS del día → derivados de los tags si no se han detectado
+    // ── MOMENTOS desde tags ────────────────────────────────────────
     out.momentos = tagsToMomentos(out.tags);
 
     return out;
