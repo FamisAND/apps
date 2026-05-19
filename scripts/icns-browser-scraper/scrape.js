@@ -65,8 +65,9 @@
         <label style="color:#888;">Limit: <input type="number" id="_icns-limit" placeholder="∞" style="width:50px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:inherit;padding:2px 4px;border-radius:3px;"></label>
       </div>
 
-      <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
         <button id="_icns-test-one" class="_icns-btn" disabled>🧪 Probar 1</button>
+        <button id="_icns-dump-html" class="_icns-btn" disabled title="Descarga el HTML crudo de la primera receta — útil para depurar selectores">💾 HTML</button>
         <button id="_icns-start" class="_icns-btn _icns-primary" disabled>▶ Start</button>
       </div>
     </div>
@@ -256,17 +257,57 @@
       tags: []
     };
 
-    // FOTO — solo aceptamos las que vienen de /din/recetas/fotos/ o
-    // /din/recetas/chefs/. El resto (iconos del menú, botones, banderas)
-    // se ignoran. Es lo que separa "fotos reales" de "navegación".
+    // FOTO — ICNS lazy-loads las imágenes: el src real puede estar en
+    // data-src / data-lazy-src / data-original / srcset, no en src.
+    // Buscamos en TODOS esos atributos + también en background-image de
+    // inline styles. Filtramos a SOLO /din/recetas/fotos|chefs/ para
+    // descartar iconos del menú.
     const ICNS_FOTO_RE = /\/din\/recetas\/(fotos|chefs)\//i;
-    $$('img').forEach(el => {
-      const src = el.getAttribute('src') || '';
+    const checkAndAdd = (src) => {
+      if(!src) return;
       if(ICNS_FOTO_RE.test(src)){
         const full = absUrl(src);
         if(!out.fotos.includes(full)) out.fotos.push(full);
       }
+    };
+    // imgs con src, data-*src, srcset
+    $$('img').forEach(el => {
+      checkAndAdd(el.getAttribute('src'));
+      checkAndAdd(el.getAttribute('data-src'));
+      checkAndAdd(el.getAttribute('data-lazy-src'));
+      checkAndAdd(el.getAttribute('data-original'));
+      checkAndAdd(el.getAttribute('data-image'));
+      // srcset = "url1 1x, url2 2x" — cogemos la primera URL
+      const srcset = el.getAttribute('srcset');
+      if(srcset){
+        const first = srcset.split(',')[0].trim().split(/\s+/)[0];
+        checkAndAdd(first);
+      }
     });
+    // picture > source srcset
+    $$('source').forEach(el => {
+      const srcset = el.getAttribute('srcset');
+      if(srcset){
+        const first = srcset.split(',')[0].trim().split(/\s+/)[0];
+        checkAndAdd(first);
+      }
+    });
+    // background-image en cualquier elemento con style inline
+    $$('[style*="background"]').forEach(el => {
+      const style = el.getAttribute('style') || '';
+      const m = style.match(/background(?:-image)?:\s*url\(['"]?([^'")]+)['"]?\)/i);
+      if(m) checkAndAdd(m[1]);
+    });
+    // meta og:image
+    const og = $('meta[property="og:image"]');
+    if(og){
+      checkAndAdd(og.getAttribute('content'));
+    }
+    // Buscar URLs sueltas en el HTML que machen el patrón ICNS de fotos
+    // (a veces aparecen en JSON embebido, en atributos onclick, etc.)
+    const htmlMatches = html.match(/\/din\/recetas\/(fotos|chefs)\/[^\s"'<>)\\]+\.(jpg|jpeg|png|webp)/gi) || [];
+    htmlMatches.forEach(m => checkAndAdd(m));
+
     // Foto principal = primera de las reales (preferimos /fotos/ sobre /chefs/)
     out.foto = out.fotos.find(f => /\/fotos\//i.test(f)) || out.fotos[0] || '';
 
@@ -344,24 +385,44 @@
     }
 
     // INSTRUCCIONES — múltiples estrategias para encajar con ICNS
-    const instSection = $$('h1, h2, h3, h4, .titulo, .section-title, [class*="title"]')
-      .find(el => /elabora|prepara|pasos|instruc|preparació|elaboració|cómo\s*hacer|m[oó]do\s*de\s*preparaci/i.test(el.textContent));
+    const INST_HDR_RE = /elabora|prepara|pasos|instruc|preparació|elaboració|cómo\s*hacer|m[oó]do\s*de\s*preparaci|c[oó]mo\s*preparar|paso\s*a\s*paso/i;
+    const instSection = $$('h1, h2, h3, h4, h5, .titulo, .section-title, [class*="title"], [class*="header"], strong, b, span')
+      .find(el => {
+        const t = clean(el.textContent);
+        return t.length < 80 && INST_HDR_RE.test(t);
+      });
     if(instSection){
-      let next = instSection.nextElementSibling;
-      for(let safety = 0; next && safety < 10; safety++){
-        const items = next.querySelectorAll('li, p');
+      let next = instSection.nextElementSibling || instSection.parentElement?.nextElementSibling;
+      for(let safety = 0; next && safety < 15; safety++){
+        // 1) Listas ol/ul li
+        const items = next.querySelectorAll('li');
         if(items.length){
           items.forEach(li => {
             const txt = clean(li.textContent);
-            if(txt && txt.length > 10) out.instrucciones.push(txt);
+            if(txt && txt.length > 10 && txt.length < 600) out.instrucciones.push(txt);
           });
           if(out.instrucciones.length) break;
         }
-        // Si el next es directamente un texto largo (no lista), también lo cogemos
+        // 2) Párrafos múltiples
+        const ps = next.querySelectorAll('p');
+        if(ps.length > 1){
+          ps.forEach(p => {
+            const txt = clean(p.textContent);
+            if(txt && txt.length > 15 && txt.length < 600) out.instrucciones.push(txt);
+          });
+          if(out.instrucciones.length) break;
+        }
+        // 3) Texto largo del propio nodo
         const ownTxt = clean(next.textContent);
-        if(ownTxt && ownTxt.length > 40 && ownTxt.length < 3000 && next.tagName !== 'SCRIPT'){
-          // Dividir por "."+espacio o saltos múltiples
-          const splits = ownTxt.split(/(?:\.\s+|[\r\n]{2,})/).filter(s => s.length > 15);
+        if(ownTxt && ownTxt.length > 40 && ownTxt.length < 5000 && next.tagName !== 'SCRIPT' && next.tagName !== 'STYLE'){
+          // Divide por:
+          //   - números con punto ("1.", "2.")
+          //   - "Paso N"
+          //   - dos saltos seguidos
+          //   - punto-final + mayúscula
+          const splits = ownTxt
+            .split(/(?:^|\s)(?:\d+\.\s+|paso\s+\d+[:\s]+)/i)
+            .filter(s => s && s.length > 15);
           if(splits.length > 1){
             splits.forEach(s => out.instrucciones.push(s.trim()));
             break;
@@ -370,11 +431,26 @@
         next = next.nextElementSibling;
       }
     }
-    // Fallback más amplio
+    // Fallback más amplio: cualquier lista numerada en una sección probable
     if(!out.instrucciones.length){
-      $$('[class*="instruc"] li, [class*="pasos"] li, [class*="elabor"] li, [class*="paso"] p, ol li').forEach(li => {
+      $$('[class*="instruc"] li, [class*="pasos"] li, [class*="elabor"] li, [class*="paso"] p, [class*="preparac"] li, [class*="step"] li, ol li').forEach(li => {
         const txt = clean(li.textContent);
-        if(txt && txt.length > 10 && txt.length < 500) out.instrucciones.push(txt);
+        if(txt && txt.length > 10 && txt.length < 600) out.instrucciones.push(txt);
+      });
+    }
+    // Último fallback: textareas (ICNS podría tener las instrucciones en
+    // un textarea editable, no en un div)
+    if(!out.instrucciones.length){
+      $$('textarea').forEach(ta => {
+        const txt = clean(ta.value || ta.textContent);
+        if(txt && txt.length > 40 && (INST_HDR_RE.test(ta.previousElementSibling?.textContent || '') ||
+                                       INST_HDR_RE.test(ta.parentElement?.previousElementSibling?.textContent || '') ||
+                                       /^(\d+[.)]|paso|primero|segundo)/i.test(txt))){
+          // Divide en pasos por números
+          const splits = txt.split(/(?:^|\n)\s*\d+\.\s+/).filter(s => s.length > 10);
+          if(splits.length > 1) splits.forEach(s => out.instrucciones.push(s.trim()));
+          else out.instrucciones.push(txt);
+        }
       });
     }
 
@@ -419,6 +495,7 @@
   }
 
   // ── Probar 1 (dumps el HTML + el parseo) ─────────────────────────
+  const dumpHtmlBtn = document.getElementById('_icns-dump-html');
   document.getElementById('_icns-test-one').addEventListener('click', async () => {
     if(!urls.length) return;
     const u = urls[0];
@@ -431,12 +508,30 @@
       log(`HTML recibido: ${html.length} chars`, 'info');
       const parsed = parseRecipeHtml(html, u);
       log(`Foto: ${parsed.foto ? '✓' : '✗'} · Ingr: ${parsed.ingredientes.length} · Instr: ${parsed.instrucciones.length}`, 'ok');
-      window._icnsLastTest = { html, parsed };
+      window._icnsLastTest = { html, parsed, urlInfo: u };
       console.log('💡 Resultado completo en window._icnsLastTest', parsed);
-      log('Resultado completo: window._icnsLastTest', 'info');
+      log('💾 HTML descargable con botón verde', 'info');
+      dumpHtmlBtn.disabled = false;
     } catch(e){
       log('Error: ' + e.message, 'fail');
     }
+  });
+
+  // ── Botón "💾 HTML" descarga el HTML crudo del último Probar 1 ──
+  // Útil para depurar selectores cuando algo no se parsea bien. Se
+  // descarga como archivo .html que se puede inspeccionar offline.
+  dumpHtmlBtn.addEventListener('click', () => {
+    const test = window._icnsLastTest;
+    if(!test || !test.html){
+      log('Primero pulsa "🧪 Probar 1"', 'fail');
+      return;
+    }
+    const blob = new Blob([test.html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `icns_html_${test.urlInfo?.id || 'receta'}.html`;
+    a.click();
+    log(`HTML descargado: icns_html_${test.urlInfo?.id || 'receta'}.html`, 'ok');
   });
 
   // ── Pipeline principal ─────────────────────────────────────────
