@@ -1703,6 +1703,9 @@ function showTab(name, btn){
 let HIST = [];
 let hSortKey='apertura', hSortDir=-1;
 let hEditId = null;
+// Referencia a la entrada actualmente editada (si la hay) — usada por hfCompute
+// para detectar si es un cierre parcial Long y aplicar la fórmula P&L correcta.
+let _hEditEntry = null;
 
 let _computedHist = null;  // cache for computeEntry results
 function _invalidateHistCache(){ _computedHist = null; }
@@ -2258,6 +2261,9 @@ function renderHist(){
 function openEntryModal(id=null){
   hEditId = id;
   const e = id!=null ? HIST.find(h=>h.id===id)||{} : {};
+  // Guardamos referencia global a la entrada que se edita para que hfCompute
+  // pueda leer flags como isPartialClose / isLong (sign-aware del P&L).
+  _hEditEntry = e;
   // Migración retrocompatible: si la entrada tiene `comi` (viejo) pero no comiOpen/Close,
   // metemos todo en comiOpen para que el usuario lo vea y lo pueda redistribuir
   if(e.comi != null && e.comiOpen == null && e.comiClose == null){
@@ -2265,7 +2271,21 @@ function openEntryModal(id=null){
     e.comiClose = 0;
   }
   const title = id!=null ? `Editar operativa ${e.idOp||''}` : 'Nueva operativa';
+  // Banner visible si es cierre parcial — el usuario debe entender que los
+  // valores reflejan SOLO la pata cerrada (no la posición completa), y que
+  // si es una Long Put/Call el signo del P&L se invierte automáticamente.
+  const legLblShort = { 'SC':'Short Call', 'SP':'Short Put', 'LC':'Long Call', 'LP':'Long Put', 'other':'pata' };
+  const partialBanner = e.isPartialClose ? `
+    <div style="background:#3a1f0a;border-left:4px solid #e69138;padding:10px 14px;margin-bottom:14px;border-radius:4px;font-family:'Courier New',monospace;font-size:10px;color:#f0c89a;line-height:1.6">
+      <div style="font-size:12px;font-weight:700;color:#e69138;margin-bottom:4px">🪓 PATA CERRADA — ${legLblShort[e.legClose] || e.legClose || 'pata'}${e.isLong ? ' · LONG (signo invertido)' : ''}</div>
+      Esta entrada es un <strong>cierre parcial</strong> de una posición ${e.parentStrat || e.strat || ''} (idOp ${e.parentIdOp || e.idOp}).
+      ${e.isLong
+        ? 'Como es una pata LONG, P&amp;L = (Cierre − Crédito) — pagaste al abrir, recibes al vender.'
+        : 'Como es una pata SHORT, P&amp;L = (Crédito − Cierre) — cobraste al abrir, pagas al recomprar.'}
+      Se EXCLUYE de las estadísticas por estrategia (no distorsiona el análisis de ${e.parentStrat || e.strat || ''}).
+    </div>` : '';
   document.getElementById('hModal').innerHTML = `
+    ${partialBanner}
     <div class="h-modal-title">${title}</div>
     <div class="h-form-grid">
       <div class="hfr"><label>ID operativa</label><input type="text" id="hf_idOp" placeholder="AAPL-2503-001" value="${e.idOp||''}"/></div>
@@ -2354,10 +2374,19 @@ function hfCompute(){
   const contracts = parseInt(document.getElementById('hf_contracts')?.value)||1;
   const maxRisk = parseFloat(document.getElementById('hf_maxRisk')?.value)||0;
 
-  const tp_raw = (pc&&pCierre!=null) ? ((pc-pCierre)/pc*100) : null;
+  // Sign-aware: si la entrada que se edita es un cierre parcial de una pata
+  // LONG (LP/LC), el P&L se invierte porque pagaste al abrir y recibes al
+  // cerrar. Para SHORTS (lo normal) la fórmula clásica (pc - pCierre) sirve.
+  const isLong = !!(_hEditEntry && _hEditEntry.isLong);
+
+  const tp_raw = (pc && pCierre != null)
+    ? (isLong ? ((pCierre - pc)/pc*100) : ((pc - pCierre)/pc*100))
+    : null;
   const tp = tp_raw!=null ? Math.min(100, Math.max(-100, tp_raw)) : null;
   // pNeto: $/share neto (sin comi, sin multiplicar por 100)
-  const pNeto = pc ? (pc - pd - (pCierre||0)) : null;
+  const pNeto = pc
+    ? (isLong ? ((pCierre||0) - pc - pd) : (pc - pd - (pCierre||0)))
+    : null;
   // Total neto en $ reales: pNeto $/share × 100 shares × contratos − comi total
   const totalNeto = pNeto!=null ? (pNeto * 100 * contracts - comi) : null;
   // ROI real
@@ -2379,6 +2408,7 @@ function hfCompute(){
 function closeEntryModal(){
   document.getElementById('hOverlay').classList.remove('on');
   hEditId=null;
+  _hEditEntry = null;
 }
 
 function saveEntry(){
@@ -2414,6 +2444,36 @@ function saveEntry(){
   // Patas (opcional)
   const _hfLegs = (typeof legsRead === 'function') ? legsRead('hf_legs_container') : null;
   if(_hfLegs) entry.legs = _hfLegs;
+
+  // ── Preservar metadatos de cierre parcial al editar ──────────────────
+  // Cuando el usuario edita una entrada creada por confirmCloseLeg, queremos
+  // mantener los flags isPartialClose/isLong/legClose/parentStrat/parentIdOp
+  // porque el modal NO los expone como inputs (vienen del flujo de cerrar
+  // pata). Sin esto, editar y guardar perdería esos campos y el aggregator
+  // ya no podría excluir la entrada de las stats de la estrategia padre.
+  if(_hEditEntry && _hEditEntry.isPartialClose){
+    entry.isPartialClose = true;
+    if(_hEditEntry.isLong != null)    entry.isLong       = _hEditEntry.isLong;
+    if(_hEditEntry.legClose)          entry.legClose     = _hEditEntry.legClose;
+    if(_hEditEntry.parentStrat)       entry.parentStrat  = _hEditEntry.parentStrat;
+    if(_hEditEntry.parentIdOp)        entry.parentIdOp   = _hEditEntry.parentIdOp;
+    // stratGroup fuerza 'LEG_CLOSE' para que aggregators puedan filtrar
+    entry.stratGroup = 'LEG_CLOSE';
+    // Recalcular Ovr con fórmula sign-aware
+    const pc = entry.pCredito || 0;
+    const pcl = entry.pCierre || 0;
+    const ctr = entry.contracts || 1;
+    const comiT = (entry.comiOpen || 0) + (entry.comiClose || 0);
+    const diffPerShare = entry.isLong ? (pcl - pc) : (pc - pcl);
+    const totalNeto = diffPerShare * 100 * ctr - comiT;
+    entry.pNetoOvr     = parseFloat(diffPerShare.toFixed(4));
+    entry.totalNetoOvr = parseFloat((totalNeto/100).toFixed(4));
+    const tpRaw = pc > 0 ? diffPerShare / pc : 0;
+    entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
+    if(entry.maxRisk){
+      entry.profitOpOvr = parseFloat((totalNeto / (entry.maxRisk * ctr) * 100).toFixed(2));
+    }
+  }
 
   if(!entry.activo){ toast('El activo es obligatorio.', 'red'); return; }
 
@@ -6360,6 +6420,14 @@ function renderStratDash(){
   }
   // If no strat: show ALL (same as main dashboard — so metrics match)
 
+  // ── Excluir cierres parciales del análisis por estrategia ────────
+  // isPartialClose marca entradas de "cierre de una pata" (LP/LC/SP/SC
+  // sueltas) que NO son resultados completos de la estrategia padre.
+  // Incluirlos en el análisis del PCS contaminaría win-rate, P&L/op,
+  // profit factor… porque son SOLO una pata, no la operativa entera.
+  // Su P&L sigue contabilizado en el dashboard global (P&L mensual etc).
+  data = data.filter(e => !e.isPartialClose);
+
   if(!data.length){
     document.getElementById('stratKpis').innerHTML =
       '<div style="color:#2a4a6a;font-family:\'Courier New\',monospace;font-size:10px;grid-column:1/-1;padding:20px 0">Sin datos para esta estrategia / período.</div>';
@@ -6671,6 +6739,11 @@ function _getStratData(){
   if(strat && strat !== 'all'){
     data = data.filter(e=>(e.strat||e.stratGroup||'NP')===strat);
   }
+
+  // Excluir cierres parciales — son SOLO una pata, no resultado completo
+  // de la estrategia. Aparecen en el historial pero no contaminan el
+  // análisis por estrategia (win-rate, profit factor, comparativa).
+  data = data.filter(e => !e.isPartialClose);
 
   return data;
 }
