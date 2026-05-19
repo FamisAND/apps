@@ -197,6 +197,44 @@
     return ICNS_BASE + (src.startsWith('/') ? '' : '/') + src;
   }
 
+  // ── Limpieza de ingrediente: quita ruido típico de ICNS ────────
+  // Patterns conocidos a strippear:
+  //   " Detalles X€ - X€"  → precios al final
+  //   " (123 gr.)"          → peso entre paréntesis al final
+  //   "Detalles" suelto
+  function cleanIngredienteText(txt){
+    return (txt || '')
+      .replace(/\s*Detalles\s+[\d.,]+€?\s*[-–]\s*[\d.,]+€?\s*$/i, '')
+      .replace(/\s*Detalles\s*$/i, '')
+      .trim();
+  }
+  // Extrae el nombre real del ingrediente quitando cantidad/unidad + paréntesis con peso.
+  // Ej: "150 gramos de tempeh (X gr.) Detalles 2€-8€" → "tempeh"
+  function extractIngNombre(txt){
+    let s = cleanIngredienteText(txt);
+    // Quitar cantidad inicial + unidad + opcional "de"
+    s = s.replace(/^[¼½¾⅓⅔⅛⅜⅝⅞\d]+(?:[.,]\d+)?\s*[a-záéíóúñ]+\s*(de\s+)?/i, '');
+    // Quitar paréntesis con peso al final: " (123 gr.)" o " (5.3 gr.)"
+    s = s.replace(/\s*\([\d.,\s]+gr\.?\)\s*$/i, '');
+    return s.trim();
+  }
+
+  // ── Mapeo de tags ICNS → momentos del día ──────────────────────
+  // ICNS usa "#Desayunos", "#Comidas", "#Cenas", "#Snacks", "#Merienda",
+  // etc. Los mapeamos a los momentos internos de la app.
+  function tagsToMomentos(tags){
+    const set = new Set();
+    tags.forEach(t => {
+      const low = t.toLowerCase().replace(/^#/, '').trim();
+      if(/desayuno|esmorzar|breakfast/i.test(low)) set.add('esmorzar');
+      if(/medi[aá]\s*ma[ñn]ana|mig\s*mat[ií]|brunch/i.test(low)) set.add('mig_mati');
+      if(/comida|almuerzo|dinar|lunch/i.test(low)) set.add('dinar');
+      if(/merienda|berenar|snack/i.test(low)){ set.add('berenar'); set.add('mig_mati'); }
+      if(/cena|sopar|dinner/i.test(low)) set.add('sopar');
+    });
+    return [...set];
+  }
+
   function parseRecipeHtml(html, urlInfo){
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const $ = (sel) => doc.querySelector(sel);
@@ -218,45 +256,60 @@
       tags: []
     };
 
-    // FOTO PRINCIPAL — múltiples estrategias
-    const imgSels = ['meta[property="og:image"]', 'img.receta-foto', '.receta-imagen img',
-                     '.foto-receta img', 'img[src*="receta"]', 'img[src*="upload"]'];
-    for(const sel of imgSels){
-      const el = $(sel);
-      if(el){
-        const src = el.getAttribute('content') || el.getAttribute('src') || '';
-        if(src){ out.foto = absUrl(src); break; }
-      }
-    }
-    // Galería
+    // FOTO — solo aceptamos las que vienen de /din/recetas/fotos/ o
+    // /din/recetas/chefs/. El resto (iconos del menú, botones, banderas)
+    // se ignoran. Es lo que separa "fotos reales" de "navegación".
+    const ICNS_FOTO_RE = /\/din\/recetas\/(fotos|chefs)\//i;
     $$('img').forEach(el => {
       const src = el.getAttribute('src') || '';
-      if(/receta|upload|comida|plato/i.test(src)){
+      if(ICNS_FOTO_RE.test(src)){
         const full = absUrl(src);
         if(!out.fotos.includes(full)) out.fotos.push(full);
       }
     });
+    // Foto principal = primera de las reales (preferimos /fotos/ sobre /chefs/)
+    out.foto = out.fotos.find(f => /\/fotos\//i.test(f)) || out.fotos[0] || '';
 
     // RACIONES
     $$('*').forEach(el => {
       if(out.raciones != null) return;
       const t = clean(el.textContent);
-      if(t.length > 200) return;  // skip large blocks
+      if(t.length > 200) return;
       const m = t.match(/(\d+)\s*(raciones|comensales|porciones|persones|persona)/i);
       if(m) out.raciones = +m[1];
     });
 
-    // TIEMPOS
+    // TIEMPOS — ICNS suele dar "00:15h. Elaboración: 00:10h." en una línea.
+    // Separamos los dos tiempos buscando el "Elaboración:" en medio.
     $$('*').forEach(el => {
       const t = clean(el.textContent);
       if(t.length > 100) return;
-      if(!out.tiempoTotal && /tiempo\s*total/i.test(t)){
-        out.tiempoTotal = t.replace(/.*tiempo\s*total[:\s]*/i, '').slice(0, 40).trim();
+      if(out.tiempoTotal && out.tiempoElaboracion) return;
+      // Captura ambos en una sola línea: "Total: 00:15h. Elaboración: 00:10h."
+      const both = t.match(/tiempo\s*total[:\s]*([\d:hmin\s.]+?)(?:\.|\s)\s*elabor[a-zóáí]*[:\s]*([\d:hmin\s.]+)/i);
+      if(both){
+        out.tiempoTotal       = both[1].replace(/\.+$/,'').trim();
+        out.tiempoElaboracion = both[2].replace(/\.+$/,'').trim();
+        return;
       }
-      if(!out.tiempoElaboracion && /tiempo\s*elabor/i.test(t)){
-        out.tiempoElaboracion = t.replace(/.*tiempo\s*elabor[a-zóáí]*[:\s]*/i, '').slice(0, 40).trim();
+      // Capturas separadas
+      if(!out.tiempoTotal){
+        const m = t.match(/tiempo\s*total[:\s]*([\d:hmin\s.]+)/i);
+        if(m) out.tiempoTotal = m[1].replace(/\.+$/,'').trim().slice(0, 30);
+      }
+      if(!out.tiempoElaboracion){
+        const m = t.match(/(?:tiempo\s*de\s*)?elabor[a-zóáí]+[:\s]*([\d:hmin\s.]+)/i);
+        if(m) out.tiempoElaboracion = m[1].replace(/\.+$/,'').trim().slice(0, 30);
       }
     });
+    // Si tiempoTotal contiene "Elaboración: …", separar
+    if(out.tiempoTotal && /elabor/i.test(out.tiempoTotal)){
+      const m = out.tiempoTotal.match(/^([\d:hmin\s.]+?)(?:\.|\s)\s*elabor[a-zóáí]*[:\s]*([\d:hmin\s.]+)/i);
+      if(m){
+        out.tiempoTotal = m[1].replace(/\.+$/,'').trim();
+        if(!out.tiempoElaboracion) out.tiempoElaboracion = m[2].replace(/\.+$/,'').trim();
+      }
+    }
 
     // INGREDIENTES — buscar sección
     const findSectionAfter = (regex) => {
@@ -274,26 +327,25 @@
 
     let ingItems = findSectionAfter(/ingredient/i);
     if(!ingItems){
-      // Fallback: cualquier lista con clase relacionada
       ingItems = $$('.ingredientes li, .ingrediente, [class*="ingredient"] li');
     }
     if(ingItems){
       ingItems.forEach(li => {
-        const txt = clean(li.textContent);
-        if(txt && txt.length < 200){
-          out.ingredientes.push({
-            raw: txt,
-            cantidad: extractNumber(txt),
-            unidad:   extractUnit(txt),
-            nombre:   txt.replace(/^\d+(?:[.,]\d+)?\s*[a-záéíóúñ]*\s*(de\s+)?/i, '').trim()
-          });
-        }
+        const rawTxt = clean(li.textContent);
+        if(!rawTxt || rawTxt.length >= 200) return;
+        const cleaned = cleanIngredienteText(rawTxt);
+        out.ingredientes.push({
+          raw: rawTxt,
+          cantidad: extractNumber(cleaned),
+          unidad:   extractUnit(cleaned),
+          nombre:   extractIngNombre(rawTxt)
+        });
       });
     }
 
-    // INSTRUCCIONES
-    const instSection = $$('h1, h2, h3, h4, .titulo, .section-title')
-      .find(el => /elabora|prepara|pasos|instruc|preparació|elaboració/i.test(el.textContent));
+    // INSTRUCCIONES — múltiples estrategias para encajar con ICNS
+    const instSection = $$('h1, h2, h3, h4, .titulo, .section-title, [class*="title"]')
+      .find(el => /elabora|prepara|pasos|instruc|preparació|elaboració|cómo\s*hacer|m[oó]do\s*de\s*preparaci/i.test(el.textContent));
     if(instSection){
       let next = instSection.nextElementSibling;
       for(let safety = 0; next && safety < 10; safety++){
@@ -305,30 +357,51 @@
           });
           if(out.instrucciones.length) break;
         }
+        // Si el next es directamente un texto largo (no lista), también lo cogemos
+        const ownTxt = clean(next.textContent);
+        if(ownTxt && ownTxt.length > 40 && ownTxt.length < 3000 && next.tagName !== 'SCRIPT'){
+          // Dividir por "."+espacio o saltos múltiples
+          const splits = ownTxt.split(/(?:\.\s+|[\r\n]{2,})/).filter(s => s.length > 15);
+          if(splits.length > 1){
+            splits.forEach(s => out.instrucciones.push(s.trim()));
+            break;
+          }
+        }
         next = next.nextElementSibling;
       }
     }
-    // Fallback: cualquier lista numerada o pasos
+    // Fallback más amplio
     if(!out.instrucciones.length){
-      $$('[class*="instruc"] li, [class*="pasos"] li, [class*="elabor"] li, ol li').forEach(li => {
+      $$('[class*="instruc"] li, [class*="pasos"] li, [class*="elabor"] li, [class*="paso"] p, ol li').forEach(li => {
         const txt = clean(li.textContent);
         if(txt && txt.length > 10 && txt.length < 500) out.instrucciones.push(txt);
       });
     }
 
     // AUTOR
-    const autorEl = $('[class*="autor"], [class*="author"]');
-    if(autorEl) out.autor = clean(autorEl.textContent).slice(0, 100);
+    const autorEl = $('[class*="autor"], [class*="author"], [class*="chef"]');
+    if(autorEl){
+      const t = clean(autorEl.textContent).slice(0, 100);
+      // Limpiar prefijos típicos "Autor: " "Por: " "Chef: "
+      out.autor = t.replace(/^(autor|por|chef|recetario)[:\s]+/i, '').trim();
+    }
 
     // COMENTARIOS
-    const comEl = $('[class*="coment"], .nota, .observ, [class*="nota"]');
+    const comEl = $('[class*="coment"], .nota, .observ');
     if(comEl) out.comentarios = clean(comEl.textContent).slice(0, 500);
 
-    // TAGS / CATEGORÍAS
+    // TAGS / CATEGORÍAS — quitamos `#` prefix de ICNS y filtramos basura
+    const tagsRaw = new Set();
     $$('.tag, .etiqueta, .badge, [class*="categoria"], [class*="tag"]').forEach(el => {
       const txt = clean(el.textContent);
-      if(txt && txt.length < 30 && !out.tags.includes(txt)) out.tags.push(txt);
+      if(txt && txt.length < 40) tagsRaw.add(txt);
     });
+    out.tags = [...tagsRaw]
+      .map(t => t.replace(/^#/, '').trim())
+      .filter(t => t.length > 1 && !/^\d+$/.test(t));  // descarta numéricos puros
+
+    // MOMENTOS del día → derivados de los tags si no se han detectado
+    out.momentos = tagsToMomentos(out.tags);
 
     return out;
   }

@@ -6165,6 +6165,53 @@ function tobRecDeleteFromModal(){
 // match por nombre (case-insensitive, normalizado). Si no encuentra,
 // guarda _nombreFallback para que el usuario pueda enlazarlo manualmente
 // después.
+// ── Sanitizadores compartidos con el browser scraper ─────────────────
+// Se aplican al importar para limpiar JSONs viejos del scraper que
+// pueden venir con ruido (precios en ingredientes, fotos con iconos,
+// tiempoTotal con elaboración pegada, tags con #, momentos vacíos).
+// Si el JSON ya está limpio (lo nuevo del scraper actualizado), no
+// rompen nada.
+function _tobCleanIngredienteText(txt){
+  return (txt || '')
+    .replace(/\s*Detalles\s+[\d.,]+€?\s*[-–]\s*[\d.,]+€?\s*$/i, '')
+    .replace(/\s*Detalles\s*$/i, '')
+    .trim();
+}
+function _tobExtractIngNombre(txt){
+  let s = _tobCleanIngredienteText(txt);
+  s = s.replace(/^[¼½¾⅓⅔⅛⅜⅝⅞\d]+(?:[.,]\d+)?\s*[a-záéíóúñ]+\s*(de\s+)?/i, '');
+  s = s.replace(/\s*\([\d.,\s]+gr\.?\)\s*$/i, '');
+  return s.trim();
+}
+const _TOB_ICNS_FOTO_RE = /\/din\/recetas\/(fotos|chefs)\//i;
+function _tobFiltrarFotos(arr){
+  return (arr || []).filter(u => _TOB_ICNS_FOTO_RE.test(u));
+}
+function _tobSepararTiempos(tt, te){
+  // Si tiempoTotal tiene "Elaboración: ..." pegado, separa.
+  if(!tt) return { total: '', elab: te || '' };
+  const m = tt.match(/^([\d:hmin\s.]+?)(?:\.|\s)\s*elabor[a-zóáí]*[:\s]*([\d:hmin\s.]+)/i);
+  if(m) return { total: m[1].replace(/\.+$/,'').trim(), elab: (te || m[2]).replace(/\.+$/,'').trim() };
+  return { total: tt.replace(/\.+$/,'').trim(), elab: (te || '').replace(/\.+$/,'').trim() };
+}
+function _tobTagsToMomentos(tags){
+  const set = new Set();
+  (tags || []).forEach(t => {
+    const low = String(t).toLowerCase().replace(/^#/, '').trim();
+    if(/desayuno|esmorzar|breakfast/i.test(low)) set.add('esmorzar');
+    if(/medi[aá]\s*ma[ñn]ana|mig\s*mat[ií]|brunch/i.test(low)) set.add('mig_mati');
+    if(/comida|almuerzo|dinar|lunch/i.test(low)) set.add('dinar');
+    if(/merienda|berenar|snack/i.test(low)){ set.add('berenar'); set.add('mig_mati'); }
+    if(/cena|sopar|dinner/i.test(low)) set.add('sopar');
+  });
+  return [...set];
+}
+function _tobCleanTags(tags){
+  return (tags || [])
+    .map(t => String(t).replace(/^#/, '').trim())
+    .filter(t => t.length > 1 && !/^\d+$/.test(t));
+}
+
 async function tobRecImportFiles(ev){
   const files = Array.from(ev.target.files || []);
   if(!files.length) return;
@@ -6176,6 +6223,7 @@ async function tobRecImportFiles(ev){
   });
   const matchIngId = (nombreIng) => {
     const key = (nombreIng||'').toLowerCase().trim();
+    if(!key) return null;
     if(ingByName.has(key)) return ingByName.get(key);
     // Match parcial: el ingrediente de la BD que más coincida con el nombre
     // (substring de palabras). Útil cuando el scraper devuelve "tomate maduro"
@@ -6204,17 +6252,22 @@ async function tobRecImportFiles(ev){
         const icnsId = raw.id != null ? String(raw.id) : null;
         const hasDetalle = Array.isArray(raw.ingredientes) || raw.instrucciones;
 
-        // Construir ingredientes
+        // Construir ingredientes — limpiando texto de basura ICNS
         let ingredientes = [];
         if(hasDetalle && Array.isArray(raw.ingredientes)){
           ingredientes = raw.ingredientes.map(ing => {
-            const nombreIng = ing.nombre || ing.raw || '';
+            // Si viene "raw" del scraper, intentamos extraer un nombre limpio
+            // de él (más fiable que el `nombre` que el scraper a veces deja
+            // con basura tipo "(123 gr.) Detalles 0.06€ - 0.49€").
+            const nombreLimpio = ing.raw
+              ? _tobExtractIngNombre(ing.raw)
+              : _tobExtractIngNombre(ing.nombre || '');
             const gramos = ing.cantidad != null ? +ing.cantidad : null;
-            const ingId = matchIngId(nombreIng);
+            const ingId = matchIngId(nombreLimpio);
             return ingId
               ? { ingId, gramos: gramos || 0 }
-              : { ingId: null, gramos: gramos || 0, _nombreFallback: nombreIng };
-          }).filter(it => it.ingId || it._nombreFallback);
+              : { ingId: null, gramos: gramos || 0, _nombreFallback: nombreLimpio };
+          }).filter(it => it.ingId || (it._nombreFallback && it._nombreFallback.length >= 2));
         }
 
         // Construir instrucciones
@@ -6225,18 +6278,28 @@ async function tobRecImportFiles(ev){
           instrucciones = raw.instrucciones;
         }
 
+        // Limpiezas de campos del scraper
+        const fotosLimpias = _tobFiltrarFotos(Array.isArray(raw.fotos) ? raw.fotos : []);
+        const fotoLimpia = _TOB_ICNS_FOTO_RE.test(raw.foto || '') ? raw.foto : (fotosLimpias[0] || '');
+        const tiempos = _tobSepararTiempos(raw.tiempoTotal, raw.tiempoElaboracion);
+        const tagsLimpios = _tobCleanTags(raw.tags);
+        const momentos = Array.isArray(raw.momentos) && raw.momentos.length
+          ? raw.momentos
+          : _tobTagsToMomentos(tagsLimpios);
+
         const data = {
           nombre: String(raw.nombre).trim(),
-          foto:   raw.foto || '',
-          momentos: Array.isArray(raw.momentos) ? raw.momentos : [],
-          tiempoTotal: raw.tiempoTotal || '',
-          tiempoElaboracion: raw.tiempoElaboracion || '',
+          foto:   fotoLimpia,
+          fotos:  fotosLimpias,
+          momentos,
+          tiempoTotal: tiempos.total,
+          tiempoElaboracion: tiempos.elab,
           raciones: raw.raciones != null ? Math.max(1, +raw.raciones) : 1,
           ingredientes,
           instrucciones,
           comentarios: raw.comentarios || '',
           autor: raw.autor || '',
-          tags: Array.isArray(raw.tags) ? raw.tags : []
+          tags: tagsLimpios
         };
 
         // Si NO hay ingredientes detallados pero hay macros simples del JSON
