@@ -2297,16 +2297,20 @@ function openEntryModal(id=null){
   // valores reflejan SOLO la pata cerrada (no la posición completa), y que
   // si es una Long Put/Call el signo del P&L se invierte automáticamente.
   const legLblShort = { 'SC':'Short Call', 'SP':'Short Put', 'LC':'Long Call', 'LP':'Long Put', 'other':'pata' };
+  // El "strat original" — la estrategia ANTES de cualquier cierre/roll parcial.
+  // Si no está explícito, fallback a parentStrat o strat actual.
+  const origStratLbl = e.originalStrat || e.parentStrat || e.strat || '';
   const partialBanner = e.isPartialClose ? `
     <div style="background:#3a1f0a;border-left:4px solid #e69138;padding:10px 14px;margin-bottom:14px;border-radius:4px;font-family:'Courier New',monospace;font-size:10px;color:#f0c89a;line-height:1.6">
       <div style="font-size:12px;font-weight:700;color:#e69138;margin-bottom:4px">🪓 PATA CERRADA — ${legLblShort[e.legClose] || e.legClose || 'pata'}${e.isLong ? ' · LONG (signo invertido)' : ''}</div>
-      Esta entrada es un <strong>cierre parcial</strong> de una posición ${e.parentStrat || e.strat || ''} (idOp ${e.parentIdOp || e.idOp}).
+      Esta entrada es un <strong>cierre parcial</strong> de la operativa original <strong style="color:#e69138">${origStratLbl}</strong> (idOp <strong>${e.parentIdOp || e.idOp}</strong>).
       ${e.isLong
         ? `Como es una pata LONG, P&amp;L = (Cierre − Crédito) — pagaste al abrir, recibes al vender.<br>
            <strong style="color:#e69138">Pon en "P. CRÉDITO" lo que pagaste al abrirla (ej: 0.16)</strong> y en
            <strong style="color:#e69138">"P. CIERRE" lo que recibiste al venderla (ej: 0.38)</strong>.`
-        : 'Como es una pata SHORT, P&amp;L = (Crédito − Cierre) — cobraste al abrir, pagas al recomprar.'}
-      Se EXCLUYE de las estadísticas por estrategia (no distorsiona el análisis de ${e.parentStrat || e.strat || ''}).
+        : 'Como es una pata SHORT, P&amp;L = (Crédito − Cierre) — cobraste al abrir, pagas al recomprar.'}<br>
+      Se EXCLUYE de las estadísticas por estrategia (no distorsiona el análisis de ${origStratLbl}).
+      Filtra por idOp <strong>${e.parentIdOp || e.idOp}</strong> para ver TODAS las patas y reconstruir el P&amp;L total del ${origStratLbl}.
     </div>` : '';
   // Labels de P. Crédito / P. Cierre adaptados si la pata es LONG (LP/LC).
   // Para shorts mantenemos "prima cobrada / recompra". Para longs cambia a
@@ -2492,12 +2496,15 @@ function saveEntry(){
   // ya no podría excluir la entrada de las stats de la estrategia padre.
   if(_hEditEntry && _hEditEntry.isPartialClose){
     entry.isPartialClose = true;
-    if(_hEditEntry.isLong != null)    entry.isLong       = _hEditEntry.isLong;
-    if(_hEditEntry.legClose)          entry.legClose     = _hEditEntry.legClose;
-    if(_hEditEntry.parentStrat)       entry.parentStrat  = _hEditEntry.parentStrat;
-    if(_hEditEntry.parentIdOp)        entry.parentIdOp   = _hEditEntry.parentIdOp;
-    // stratGroup fuerza 'LEG_CLOSE' para que aggregators puedan filtrar
-    entry.stratGroup = 'LEG_CLOSE';
+    if(_hEditEntry.isLong != null)    entry.isLong         = _hEditEntry.isLong;
+    if(_hEditEntry.legClose)          entry.legClose       = _hEditEntry.legClose;
+    if(_hEditEntry.parentStrat)       entry.parentStrat    = _hEditEntry.parentStrat;
+    if(_hEditEntry.parentIdOp)        entry.parentIdOp     = _hEditEntry.parentIdOp;
+    if(_hEditEntry.originalStrat)     entry.originalStrat  = _hEditEntry.originalStrat;
+    if(_hEditEntry.rollPata)          entry.rollPata       = _hEditEntry.rollPata;
+    // stratGroup fuerza 'LEG_CLOSE' (o 'LEG_ROLL' para rolls parciales)
+    // para que aggregators puedan filtrar.
+    entry.stratGroup = _hEditEntry.stratGroup || 'LEG_CLOSE';
     // Recalcular Ovr con fórmula sign-aware
     const pc = entry.pCredito || 0;
     const pcl = entry.pCierre || 0;
@@ -5176,6 +5183,16 @@ function confirmClosePosition(){
   if(Array.isArray(a.legs) && a.legs.length){
     newHist.legs = a.legs;
   }
+  // Si la posición había tenido cierres parciales previos, propagar
+  // originalStrat al cierre final. Permite agrupar TODAS las entries del
+  // idOp (cierres parciales + cierre final) por originalStrat para
+  // reconstruir el P&L total de la estrategia original (p.ej. el PCS
+  // completo incluso si se cerró pata a pata).
+  if(a.originalStrat){
+    newHist.originalStrat = a.originalStrat;
+    newHist.parentIdOp   = String(a.idOp||'');
+    newHist.isFinalLeg   = true;  // marca: este es el cierre de la última pata
+  }
 
   // Add to HIST, remove from ACTIVAS
   HIST.unshift(newHist);
@@ -5373,6 +5390,19 @@ function confirmCloseLeg(){
   const legLabels = { 'SC':'Short Call', 'SP':'Short Put', 'LC':'Long Call', 'LP':'Long Put', 'other':'pata' };
   const legLbl = legLabels[legType] || 'pata';
 
+  // ── originalStrat: la estrategia ORIGINAL de la posición ───────────
+  // Se preserva a través de todos los cierres parciales sucesivos del
+  // mismo idOp. La primera vez que se cierra una pata, capturamos
+  // a.strat (que aún es la original, p.ej. "PCS"). En cierres
+  // posteriores, a.strat ya habrá cambiado (p.ej. a "NP" tras cerrar
+  // el LP de un PCS) pero a.originalStrat sigue siendo "PCS".
+  //
+  // Esto permite que el usuario filtre/agrupe TODOS los cierres del
+  // PCS (ambas patas) por originalStrat='PCS' y reconstruya el P&L
+  // completo de la estrategia original.
+  if(!a.originalStrat) a.originalStrat = a.strat || '';
+  const originalStrat = a.originalStrat;
+
   // P&L de la pata — sign-aware:
   //   Short: cobraste pcred, pagas pclose → pnl = (pcred - pclose) * 100 * ctr
   //   Long:  pagaste pcred, recibes pclose → pnl = (pclose - pcred) * 100 * ctr
@@ -5434,7 +5464,9 @@ function confirmCloseLeg(){
     // Marcadores de cierre parcial — útiles para auditoría y futuras vistas
     legClose:       legType,
     parentIdOp:     String(a.idOp||''),
-    parentStrat:    a.strat||'',  // estrategia original (PCS, CSS…) para reconstrucción
+    parentStrat:    a.strat||'',          // estrategia DEL MOMENTO del cierre
+    originalStrat:  originalStrat,         // estrategia ORIGINAL (preservada a través
+                                            //   de todos los cierres del mismo idOp)
     isPartialClose: true,
     isLong:         isLong
   };
@@ -8327,11 +8359,20 @@ function confirmRoll(){
     tpOvr:       parseFloat(tpClose.toFixed(2)),
     dteIni:      dteIni,
     tiempoOp:    tOp,
-    stratGroup:  a.strat||'NP',
+    stratGroup:  pata !== 'todo' ? 'LEG_ROLL' : (a.strat||'NP'),
     // Marcadores de roll parcial — útiles para auditoría
     rollPata:    pata !== 'todo' ? pata : null,
-    parentIdOp:  pata !== 'todo' ? String(a.idOp||'') : null
+    parentIdOp:  pata !== 'todo' ? String(a.idOp||'') : null,
+    // originalStrat: si la posición ya había tenido cierres/rolls parciales,
+    // propagamos el strat original (preservado en a.originalStrat). Si no,
+    // capturamos a.strat por primera vez para futuros eventos.
+    originalStrat: (pata !== 'todo') ? (a.originalStrat || a.strat || '') : null,
+    isPartialClose: pata !== 'todo' ? true : false
   };
+  // Persistir originalStrat en la posición activa la primera vez que se hace
+  // un roll parcial, igual que en confirmCloseLeg. Así los siguientes
+  // eventos (rolls, cierres) lo propagan automáticamente.
+  if(pata !== 'todo' && !a.originalStrat) a.originalStrat = a.strat || '';
 
   HIST.unshift(histEntry);
   histSave();
