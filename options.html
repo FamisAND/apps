@@ -1749,25 +1749,48 @@ function deleteLightboxImg(){}
 
 // ══════════════════════════════════════════════════════════════════
 // COMPUTED FIELDS
+// Helper compartido: ¿esta entrada es un cierre parcial de pata LONG?
+// Mira el flag explícito, luego legClose, luego un patrón en la nota.
+// Si devuelve true, las fórmulas de P&L se invierten (long: pagaste al
+// abrir, recibes al cerrar → pnl = pCierre - pCredito).
+function _entryIsLong(e){
+  if(e.isLong === true) return true;
+  if(e.legClose === 'LP' || e.legClose === 'LC') return true;
+  if(e.nota && /PATA CERRADA[^)]*Long (Put|Call)/i.test(e.nota)) return true;
+  return false;
+}
+
 function computeEntry(e){
   const contracts = e.contracts||1;
   // stratGroup = strat directly, no OTRO grouping
-  e.stratGroup = e.strat || 'NP';
+  e.stratGroup = e.stratGroup || e.strat || 'NP';
   // DTE inicial: apertura → exp
   const dteIni = e.apertura&&e.exp ? Math.max(0,Math.round((new Date(e.exp)-new Date(e.apertura))/86400000)) : null;
   // Tiempo op: apertura → cierre
   const tiempoOp = e.apertura&&e.cierre ? Math.max(0,Math.round((new Date(e.cierre)-new Date(e.apertura))/86400000)) : null;
   // Max Risk
   const maxRisk = e.maxRisk || null;
+  // Sign-aware: long legs (LP/LC) invierten la fórmula P&L porque pagaste
+  // al abrir (pCredito en realidad es coste) y recibes al cerrar (pCierre
+  // en realidad es ingreso). Detectado vía flag, legClose o nota.
+  const isLong = _entryIsLong(e);
   // TP% — use override from spreadsheet if available
-  // TP% = % of credit captured = (credit - close_cost) / credit * 100
-  const _tp_raw = (e.pCredito && e.pCredito!=0 && e.pCierre!=null) ? ((e.pCredito - e.pCierre) / e.pCredito * 100) : null;
+  // Short: % de la prima capturada = (credit - close_cost) / credit
+  // Long:  ratio sobre el coste de apertura = (close_price - cost) / cost
+  const _tp_raw = (e.pCredito && e.pCredito!=0 && e.pCierre!=null)
+    ? (isLong ? ((e.pCierre - e.pCredito) / e.pCredito * 100)
+              : ((e.pCredito - e.pCierre) / e.pCredito * 100))
+    : null;
   const tp = e.tpOvr != null ? Math.min(100, Math.max(-100, e.tpOvr)) : (_tp_raw != null ? Math.min(100, Math.max(-100, _tp_raw)) : null);
   // P. Neto — use pre-computed override from spreadsheet if available
   // pDebito is always treated as an outflow (subtracted), regardless of sign stored
   const _deb = e.pDebito != null ? Math.abs(e.pDebito) : 0;
   // pNeto: price in $/share → ×100 = $/contract (comi is flat total $)
-  const _pNetoPerCtr = e.pCredito!=null ? (e.pCredito - _deb - (e.pCierre||0)) * 100 : null;
+  // Short: (pCredito - pDebito - pCierre); Long: (pCierre - pCredito - pDebito)
+  const _pNetoPerCtr = e.pCredito!=null
+    ? (isLong ? ((e.pCierre||0) - e.pCredito - _deb)
+              : (e.pCredito - _deb - (e.pCierre||0))) * 100
+    : null;
   const pNeto = e.pNetoOvr != null ? e.pNetoOvr : _pNetoPerCtr;
   // totalNeto: en "escala prima" ($/100). Los overrides también están en esta escala.
   // El dashboard multiplica por 100 al mostrarlos. El historial los muestra sin convertir
@@ -2420,7 +2443,8 @@ function hfCompute(){
   // Sign-aware: si la entrada que se edita es un cierre parcial de una pata
   // LONG (LP/LC), el P&L se invierte porque pagaste al abrir y recibes al
   // cerrar. Para SHORTS (lo normal) la fórmula clásica (pc - pCierre) sirve.
-  const isLong = !!(_hEditEntry && _hEditEntry.isLong);
+  // _entryIsLong mira flag, legClose o nota — cubre entries legacy.
+  const isLong = !!(_hEditEntry && _entryIsLong(_hEditEntry));
 
   const tp_raw = (pc && pCierre != null)
     ? (isLong ? ((pCierre - pc)/pc*100) : ((pc - pCierre)/pc*100))
@@ -2505,16 +2529,24 @@ function saveEntry(){
     // stratGroup fuerza 'LEG_CLOSE' (o 'LEG_ROLL' para rolls parciales)
     // para que aggregators puedan filtrar.
     entry.stratGroup = _hEditEntry.stratGroup || 'LEG_CLOSE';
-    // Recalcular Ovr con fórmula sign-aware
-    const pc = entry.pCredito || 0;
-    const pcl = entry.pCierre || 0;
-    const ctr = entry.contracts || 1;
-    const comiT = (entry.comiOpen || 0) + (entry.comiClose || 0);
-    const diffPerShare = entry.isLong ? (pcl - pc) : (pc - pcl);
-    const totalNeto = diffPerShare * 100 * ctr - comiT;
-    entry.pNetoOvr     = parseFloat(diffPerShare.toFixed(4));
-    entry.totalNetoOvr = parseFloat((totalNeto/100).toFixed(4));
-    const tpRaw = pc > 0 ? diffPerShare / pc : 0;
+    // Recalcular Ovr con fórmula sign-aware.
+    // OJO con la escala: entry.pCredito/pCierre se guardan en escala /100
+    // (legacy: si el usuario tecleó 0.16 en hf_pCredito, se guarda 0.0016).
+    // Para hacer cuentas hay que llevar a $/share multiplicando × 100.
+    const pc_share  = (entry.pCredito || 0) * 100;   // → $/share (ej: 0.16)
+    const pcl_share = (entry.pCierre  || 0) * 100;   // → $/share (ej: 0.38)
+    const ctr   = entry.contracts || 1;
+    const comiT = (entry.comiOpen || 0) + (entry.comiClose || 0);  // $ totales
+    // Short: cobraste pc, pagas pcl → pnl = (pc - pcl)
+    // Long:  pagaste pc, recibes pcl → pnl = (pcl - pc)
+    const diffPerShare = entry.isLong ? (pcl_share - pc_share) : (pc_share - pcl_share);  // $/share
+    const totalNeto    = diffPerShare * 100 * ctr - comiT;  // $ totales
+    // Overrides en escala "prima" (/100) — el resto del código del histórico
+    // los multiplica por 100 al mostrar (renderHist) o los compara contra
+    // pCredito en esa escala.
+    entry.pNetoOvr     = parseFloat(diffPerShare.toFixed(4));         // $/share
+    entry.totalNetoOvr = parseFloat((totalNeto / 100).toFixed(4));    // $/share-scale
+    const tpRaw = pc_share > 0 ? diffPerShare / pc_share : 0;
     entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
     if(entry.maxRisk){
       entry.profitOpOvr = parseFloat((totalNeto / (entry.maxRisk * ctr) * 100).toFixed(2));
