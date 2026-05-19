@@ -2261,10 +2261,24 @@ function renderHist(){
 function openEntryModal(id=null){
   hEditId = id;
   const e = id!=null ? HIST.find(h=>h.id===id)||{} : {};
-  // ── Backward-compat: inferir isLong de legClose ─────────────────────
-  // Entradas creadas por la versión anterior de confirmCloseLeg tienen
-  // legClose='LP'|'LC'|'SP'|'SC' pero NO isLong/isPartialClose. Las
-  // detectamos aquí para que hfCompute aplique la fórmula correcta.
+  // ── Backward-compat #1: inferir flags desde la NOTA si se perdieron ─
+  // Una entry creada por confirmCloseLeg (versión antigua) podía perder
+  // los flags legClose/isPartialClose al editarla y guardar con la
+  // antigua saveEntry (que reconstruía el objeto desde inputs y dropeaba
+  // campos no expuestos). La nota mantiene el patrón "🪓 PATA CERRADA
+  // (Long Put). ..." → de ahí inferimos el tipo de pata.
+  if(!e.legClose && e.nota){
+    const nota = String(e.nota);
+    if(/PATA CERRADA[^)]*Long Put/i.test(nota))       { e.legClose = 'LP'; e.isPartialClose = true; }
+    else if(/PATA CERRADA[^)]*Long Call/i.test(nota)) { e.legClose = 'LC'; e.isPartialClose = true; }
+    else if(/PATA CERRADA[^)]*Short Put/i.test(nota)) { e.legClose = 'SP'; e.isPartialClose = true; }
+    else if(/PATA CERRADA[^)]*Short Call/i.test(nota)){ e.legClose = 'SC'; e.isPartialClose = true; }
+    else if(/PATA CERRADA/i.test(nota))               { e.isPartialClose = true; }
+  }
+  // ── Backward-compat #2: inferir isLong/isPartialClose desde legClose ─
+  // Entradas creadas con confirmCloseLeg antes del flag-preserve tienen
+  // legClose pero no isLong/isPartialClose. Las detectamos aquí para que
+  // hfCompute aplique la fórmula correcta.
   if(e.legClose && e.isPartialClose == null) e.isPartialClose = true;
   if(e.legClose && e.isLong == null){
     e.isLong = (e.legClose === 'LP' || e.legClose === 'LC');
