@@ -635,14 +635,14 @@
       </div>
 
       <div class="cfg-field">
-        <label>Crédito original de esta pata ($/contrato)</label>
+        <label id="alcm_pcred_lbl">Crédito original de esta pata ($/contrato)</label>
         <input type="number" id="alcm_pcred_leg" placeholder="ej: 0.80" step="0.01"/>
-        <div style="font-size:9px;color:#3a5468;margin-top:3px;font-family:'Courier New',monospace">la prima que cobraste al abrirla</div>
+        <div id="alcm_pcred_hint" style="font-size:9px;color:#3a5468;margin-top:3px;font-family:'Courier New',monospace">la prima que cobraste al abrirla</div>
       </div>
       <div class="cfg-field">
         <label>Precio de cierre ($/contrato)</label>
         <input type="number" id="alcm_pclose_leg" placeholder="ej: 0.12" step="0.001"/>
-        <div style="font-size:9px;color:#3a5468;margin-top:3px;font-family:'Courier New',monospace">lo que pagas por recomprarla</div>
+        <div id="alcm_pclose_hint" style="font-size:9px;color:#3a5468;margin-top:3px;font-family:'Courier New',monospace">lo que pagas por recomprarla</div>
       </div>
 
       <div class="cfg-field">
@@ -5109,6 +5109,10 @@ document.getElementById('actCloseModal').addEventListener('click',e=>{ if(e.targ
 // el crédito reducido y la estrategia cambiada (p.ej. CSS → NP).
 // ══════════════════════════════════════════════════════════════════
 let _actLegCloseIdx = null;
+// Helper compartido: ¿esta pata es LONG? (LP/LC). Long legs invierten el
+// signo del P&L porque pagas al abrir y recibes al cerrar.
+function _legIsLong(legType){ return legType === 'LP' || legType === 'LC'; }
+
 function openActLegCloseModal(idx){
   _actLegCloseIdx = idx;
   const a = ACTIVAS[idx];
@@ -5134,31 +5138,69 @@ function openActLegCloseModal(idx){
   const legSuggest = { 'CSS':'SC', 'PCS':'SP', 'CCS':'SC', 'IC':'SC', '112':'SP', 'JL':'SC' };
   if(legSuggest[a.strat]) legEl.value = legSuggest[a.strat];
 
-  // ── Pre-rellenar crédito original de la pata desde a.legs ─────────
-  // Si la posición tiene patas detalladas guardadas (a.legs), buscamos la
-  // que coincide con la pata seleccionada y rellenamos automáticamente
-  // alcm_pcred_leg con la prima de apertura de esa pata. Así, al cerrar
-  // o rolar una pata, el usuario solo tiene que poner el coste de cierre
-  // y la comisión de cierre.
+  // ── Pre-rellenar TODOS los datos de la pata desde a.legs ─────────
+  // Al abrir el modal Y al cambiar el selector de pata, refrescamos
+  // los campos editables con los datos guardados de esa pata concreta:
+  // - alcm_pcred_leg: prima cobrada/pagada al abrir (leg.prima)
+  // - alcm_comi_apertura_leg: comi de apertura de la pata (leg.comi)
+  // - Guardamos leg.delta y leg.kind en dataset para que confirmCloseLeg
+  //   los meta en el histEntry sin tener que pedirlos al usuario.
+  // Importante: cada vez que cambia el selector REFRESCA (sobrescribe lo
+  // anterior). Antes solo rellenaba si el campo estaba vacío y eso causaba
+  // que al cambiar de pata los datos quedasen mezclados de la anterior.
   const LEG_CODE_TO_KIND = { 'SC':'short_call', 'SP':'short_put', 'LC':'long_call', 'LP':'long_put' };
   const fillFromLeg = () => {
-    if(!Array.isArray(a.legs) || !a.legs.length) return;
     const code = legEl.value;
     const wantKind = LEG_CODE_TO_KIND[code];
-    if(!wantKind) return;
+    const isLong = _legIsLong(code);
+    // Etiquetas que cambian según long vs short
+    const pcredLbl = document.getElementById('alcm_pcred_lbl');
+    const pcredHint = document.getElementById('alcm_pcred_hint');
+    if(pcredLbl){
+      pcredLbl.textContent = isLong
+        ? 'Coste original de esta pata ($/contrato)'
+        : 'Crédito original de esta pata ($/contrato)';
+    }
+    if(pcredHint){
+      pcredHint.textContent = isLong
+        ? 'lo que pagaste al comprarla'
+        : 'la prima que cobraste al abrirla';
+    }
+    const pcloseLbl = document.getElementById('alcm_pclose_hint');
+    if(pcloseLbl){
+      pcloseLbl.textContent = isLong
+        ? 'lo que recibes al venderla'
+        : 'lo que pagas por recomprarla';
+    }
+    // Buscar la pata en a.legs y pre-rellenar
+    if(!Array.isArray(a.legs) || !a.legs.length || !wantKind){
+      // Limpiamos los hidden de delta/comi por si venían de un cambio anterior
+      delete legEl.dataset.legDelta;
+      delete legEl.dataset.legComi;
+      delete legEl.dataset.legStrike;
+      return;
+    }
     const match = a.legs.find(l => l.kind === wantKind);
     const pcredEl = document.getElementById('alcm_pcred_leg');
-    if(match && match.prima != null){
-      // Solo si está vacío — no machacar lo que el usuario ya haya escrito
-      if(!pcredEl.value){
-        pcredEl.value = match.prima;
-        // dispara el preview
-        pcredEl.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+    if(match){
+      // Sobrescribe siempre (no respeta "if !value"): si el usuario cambia
+      // la pata seleccionada queremos los datos de la nueva pata.
+      if(match.prima != null) pcredEl.value = match.prima;
+      // Guardar delta + comi + strike en el dataset del select para luego
+      // mapearlos al histEntry en confirmCloseLeg
+      if(match.delta  != null) legEl.dataset.legDelta  = match.delta;  else delete legEl.dataset.legDelta;
+      if(match.comi   != null) legEl.dataset.legComi   = match.comi;   else delete legEl.dataset.legComi;
+      if(match.strike != null) legEl.dataset.legStrike = match.strike; else delete legEl.dataset.legStrike;
+      pcredEl.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+      delete legEl.dataset.legDelta;
+      delete legEl.dataset.legComi;
+      delete legEl.dataset.legStrike;
     }
   };
   legEl.onchange = fillFromLeg;
   fillFromLeg(); // intento inicial con la pata sugerida
+
   // Resumen posición
   const ctr = a.contracts || 1;
   const pc_share = (a.pCredito||0) * 100;
@@ -5169,26 +5211,38 @@ function openActLegCloseModal(idx){
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;line-height:1.6">
       <span style="color:#3a5468">Activo:</span><span style="color:#9aa9ba"><strong>${a.activo||'—'}</strong> · ${a.strat||'—'} · ${ctr} contrato${ctr>1?'s':''}</span>
       <span style="color:#3a5468">Apertura:</span><span style="color:#9aa9ba">${a.apertura||'—'}</span>
+      <span style="color:#3a5468">Expiración:</span><span style="color:#9aa9ba">${a.exp||'—'}</span>
       <span style="color:#3a5468">Crédito neto:</span><span style="color:#3fb68b">$${credTotal.toFixed(2)}/contrato (total — combinación de todas las patas)</span>
     </div>`;
-  // Live preview
+
+  // Live preview (sign-aware: long legs invierten la fórmula)
   const upd = () => {
     const pcred  = +document.getElementById('alcm_pcred_leg').value || 0;
     const pclose = +document.getElementById('alcm_pclose_leg').value || 0;
     const comi   = +document.getElementById('alcm_comi_leg').value || 0;
+    const isLong = _legIsLong(legEl.value);
     if(!pcred && !pclose){ document.getElementById('alcm_preview').textContent = '— introduce los datos'; return; }
-    const pnetoBruto = (pcred - pclose) * 100 * ctr;
+    // Short: cobraste pcred, pagas pclose → pnl = (pcred - pclose)
+    // Long:  pagaste pcred, recibes pclose → pnl = (pclose - pcred)
+    const diffPerShare = isLong ? (pclose - pcred) : (pcred - pclose);
+    const pnetoBruto = diffPerShare * 100 * ctr;
     const totalneto  = pnetoBruto - comi;
     const col  = totalneto >= 0 ? '#3fb68b' : '#f04545';
     const sign = totalneto >= 0 ? '+' : '';
+    const explainTxt = isLong
+      ? `($${pclose.toFixed(2)} venta − $${pcred.toFixed(2)} coste apertura) × 100 × ${ctr} − $${comi.toFixed(2)} comi`
+      : `($${pcred.toFixed(2)} cobrado − $${pclose.toFixed(2)} cierre) × 100 × ${ctr} − $${comi.toFixed(2)} comi`;
     document.getElementById('alcm_preview').innerHTML = `
       <div style="font-size:16px;color:${col}">${sign}$${totalneto.toFixed(2)}</div>
-      <div style="font-size:9px;color:#5a7a9a;font-weight:400;margin-top:3px">($${pcred.toFixed(2)} cobrado − $${pclose.toFixed(2)} cierre) × 100 × ${ctr} − $${comi.toFixed(2)} comi</div>`;
+      <div style="font-size:9px;color:#5a7a9a;font-weight:400;margin-top:3px">${explainTxt}</div>`;
   };
   ['alcm_pcred_leg','alcm_pclose_leg','alcm_comi_leg'].forEach(id => {
     const el = document.getElementById(id);
     if(el){ el.oninput = upd; }
   });
+  // Cambiar la pata también dispara el preview (porque el sign cambia)
+  legEl.addEventListener('change', upd);
+
   document.getElementById('actLegCloseModal').classList.add('on');
 }
 function closeActLegCloseModal(){ document.getElementById('actLegCloseModal').classList.remove('on'); }
@@ -5197,69 +5251,110 @@ function confirmCloseLeg(){
   if(_actLegCloseIdx == null) return;
   const a = ACTIVAS[_actLegCloseIdx];
   if(!a) return;
-  const legType    = document.getElementById('alcm_leg').value;
-  const newStrat   = document.getElementById('alcm_newstrat').value;
-  const pcred_leg  = +document.getElementById('alcm_pcred_leg').value || 0;
-  const pclose_leg = +document.getElementById('alcm_pclose_leg').value || 0;
-  const comi_leg   = +document.getElementById('alcm_comi_leg').value || 0;
-  const fecha_leg  = document.getElementById('alcm_fecha_leg').value || new Date().toISOString().split('T')[0];
-  const nota_leg   = document.getElementById('alcm_nota').value || '';
-  if(pcred_leg <= 0){ alert('Falta el crédito original de la pata'); return; }
+  const legEl     = document.getElementById('alcm_leg');
+  const legType   = legEl.value;
+  const newStrat  = document.getElementById('alcm_newstrat').value;
+  const pcred_leg = +document.getElementById('alcm_pcred_leg').value || 0;
+  const pclose_leg= +document.getElementById('alcm_pclose_leg').value || 0;
+  const comi_leg  = +document.getElementById('alcm_comi_leg').value || 0;
+  const fecha_leg = document.getElementById('alcm_fecha_leg').value || new Date().toISOString().split('T')[0];
+  const nota_leg  = document.getElementById('alcm_nota').value || '';
+  const isLong    = _legIsLong(legType);
+  // Datos de la pata recuperados de a.legs[] vía openActLegCloseModal:
+  // delta, comi (apertura) y strike. Si no había detalle por pata, quedan
+  // null y el histEntry no los lleva.
+  const legDelta  = legEl.dataset.legDelta  != null ? +legEl.dataset.legDelta  : null;
+  const legComiOp = legEl.dataset.legComi   != null ? +legEl.dataset.legComi   : null;
+  const legStrike = legEl.dataset.legStrike != null ? +legEl.dataset.legStrike : null;
+
+  if(pcred_leg <= 0){ alert(isLong ? 'Falta el coste original de la pata (lo que pagaste al comprarla)' : 'Falta el crédito original de la pata'); return; }
   if(pclose_leg < 0){ alert('Falta el precio de cierre'); return; }
 
   const ctr = a.contracts || 1;
   const legLabels = { 'SC':'Short Call', 'SP':'Short Put', 'LC':'Long Call', 'LP':'Long Put', 'other':'pata' };
   const legLbl = legLabels[legType] || 'pata';
 
-  // P&L de la pata
-  const pnetoBruto = (pcred_leg - pclose_leg) * 100 * ctr;
-  const totalneto  = pnetoBruto - comi_leg;
-  const pnetoEscalaPrima      = (pcred_leg - pclose_leg) * ctr;
-  const totalNetoEscalaPrima  = totalneto / 100;
+  // P&L de la pata — sign-aware:
+  //   Short: cobraste pcred, pagas pclose → pnl = (pcred - pclose) * 100 * ctr
+  //   Long:  pagaste pcred, recibes pclose → pnl = (pclose - pcred) * 100 * ctr
+  // Antes era "(pcred - pclose)" siempre, lo que invertía el signo de un
+  // long put cerrado con ganancia y daba P&L negativo erróneo.
+  const diffPerShare = isLong ? (pclose_leg - pcred_leg) : (pcred_leg - pclose_leg);
+  const pnetoBruto   = diffPerShare * 100 * ctr;
+  const totalneto    = pnetoBruto - comi_leg - (legComiOp || 0);
+  const pnetoEscalaPrima     = diffPerShare * ctr;
+  const totalNetoEscalaPrima = totalneto / 100;
+  // TP% = recuperación relativa sobre la prima inicial. Para shorts es
+  // (pcred - pclose) / pcred; para longs es (pclose - pcred) / pcred (puede
+  // ser >100% si recibes más de lo que pagaste, ganancia neta).
+  // TP % = recuperación sobre la prima inicial. Cap a ±100% para
+  // consistencia con confirmRoll / closeAct.
+  const tpRatioRaw = pcred_leg > 0
+    ? (isLong ? (pclose_leg - pcred_leg) / pcred_leg : (pcred_leg - pclose_leg) / pcred_leg)
+    : 0;
+  const tpRatio = Math.min(1, Math.max(-1, tpRatioRaw));
 
-  // Entry en historial — strat = estrategia ORIGINAL para mantener trazabilidad.
+  // Entry en historial.
+  // Decisión sobre strat/stratGroup:
+  // - strat: mantenemos a.strat para trazabilidad (saber a qué posición
+  //   pertenecía y poder reconciliar con la pata que queda viva)
+  // - stratGroup: 'LEG_CLOSE' — distingue de cierres totales para que
+  //   las agregaciones por estrategia puedan filtrarlos (un cierre parcial
+  //   no es un resultado completo de la estrategia parent)
+  // - isPartialClose: flag explícito para uso futuro de filtros
   const histEntry = {
     id: HIST.length > 0 ? HIST.reduce((m,e)=>Math.max(m,e.id||0),0) + 1 : 1,
     idOp:       String(a.idOp||''),
     activo:     a.activo,
     strat:      a.strat,
-    stratGroup: a.strat || 'NP',
+    stratGroup: 'LEG_CLOSE',
     contracts:  ctr,
     apertura:   a.apertura||'',
     exp:        a.exp||'',
     cierre:     fecha_leg,
     maxRisk:    null,
-    delta:      null,
+    // delta + iv + ivr: si tenemos detalle por pata (a.legs) usamos los de
+    // esa pata específica. Si no, fallback al delta global de la posición.
+    delta:      legDelta != null ? legDelta : (a.delta != null ? a.delta : null),
     iv:         a.iv||null,
     ivr:        a.ivr||null,
+    strike:     legStrike != null ? legStrike : null,
     pCredito:   pcred_leg/100,
     pDebito:    0,
     pCierre:    pclose_leg/100,
-    comi:       comi_leg,
-    comiOpen:   0,
+    comi:       comi_leg + (legComiOp || 0),  // legacy: total (apertura+cierre)
+    comiOpen:   legComiOp != null ? legComiOp : 0,  // antes era 0, ahora viene de a.legs
     comiClose:  comi_leg,
     nota:       (`🪓 PATA CERRADA (${legLbl}). ` + nota_leg).trim(),
     pNetoOvr:   parseFloat(pnetoEscalaPrima.toFixed(4)),
     totalNetoOvr: parseFloat(totalNetoEscalaPrima.toFixed(4)),
     profitOpOvr: null,
-    tpOvr:      pcred_leg > 0 ? parseFloat((((pcred_leg - pclose_leg)/pcred_leg)*100).toFixed(2)) : 0,
+    tpOvr:      parseFloat((tpRatio * 100).toFixed(2)),
     dteIni:     null,
     tiempoOp:   a.apertura ? Math.ceil((new Date(fecha_leg) - new Date(a.apertura)) / 86400000) : null,
     // Marcadores de cierre parcial — útiles para auditoría y futuras vistas
-    legClose:   legType,
-    parentIdOp: String(a.idOp||'')
+    legClose:       legType,
+    parentIdOp:     String(a.idOp||''),
+    parentStrat:    a.strat||'',  // estrategia original (PCS, CSS…) para reconstrucción
+    isPartialClose: true,
+    isLong:         isLong
   };
   HIST.unshift(histEntry);
   histSave();
 
   // Actualizar la posición activa
-  a.pCredito  = Math.max(0, (a.pCredito||0) - pcred_leg/100);
+  // a.pCredito ajustado sign-aware: SHORT cerrada → restar prima cobrada;
+  // LONG cerrada → sumar de vuelta el coste que estaba restando. Esto es
+  // el fallback cuando NO hay a.legs detalladas; si las hay, más abajo
+  // legsSumCredit() lo recalcula desde cero y sobreescribe este valor.
+  const adjustPerShare = isLong ? +pcred_leg/100 : -pcred_leg/100;
+  a.pCredito  = Math.max(0, (a.pCredito||0) + adjustPerShare);
   a.strat     = newStrat;
   a.stratGroup = newStrat;
   const stamp = `pata ${legLbl} cerrada ${fecha_leg} (${totalneto>=0?'+':''}$${totalneto.toFixed(2)})`;
   a.nota = (a.nota ? a.nota + ' · ' : '') + stamp;
   a.legCloseHistory = a.legCloseHistory || [];
-  a.legCloseHistory.push({ legType, fecha: fecha_leg, pcred_leg, pclose_leg, comi_leg, totalNeto: totalneto });
+  a.legCloseHistory.push({ legType, fecha: fecha_leg, pcred_leg, pclose_leg, comi_leg, totalNeto: totalneto, isLong });
 
   // Si la posición tiene patas detalladas (a.legs), quitamos la cerrada y
   // recalculamos delta neto + pCredito a partir de las que quedan. Así la
