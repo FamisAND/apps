@@ -491,7 +491,13 @@ const TOB_PDF_WINANSI_EXTRA = new Set([
 
 function tobPdfSafe(s){
   if(s == null) return '';
-  return String(s).replace(/[^-ÿ]/g, ch => {
+  // OJO con la regex: `[^\x20-\xFF]` (chars FUERA del rango 0x20-0xFF) —
+  // forma escapada explícita para evitar el bug del space-en-el-class.
+  // Antes era `[^ -ÿ]` (con espacio entre ^ y -) pero un edit anterior se
+  // comió el espacio y se quedó como `[^-ÿ]` que JS interpreta como "NOT
+  // (- or ÿ)", borrando todo el alfabeto y dejando solo '-' literales. Esto
+  // vaciaba PDFs enteros (nombres ejercicios, descripciones, etc).
+  return String(s).replace(/[^\x20-\xFF]/g, ch => {
     if(TOB_PDF_CHAR_MAP[ch] != null) return TOB_PDF_CHAR_MAP[ch];
     if(TOB_PDF_WINANSI_EXTRA.has(ch)) return ch;
     return '';  // strip silently — mejor que pete el PDF
