@@ -2261,6 +2261,14 @@ function renderHist(){
 function openEntryModal(id=null){
   hEditId = id;
   const e = id!=null ? HIST.find(h=>h.id===id)||{} : {};
+  // ── Backward-compat: inferir isLong de legClose ─────────────────────
+  // Entradas creadas por la versión anterior de confirmCloseLeg tienen
+  // legClose='LP'|'LC'|'SP'|'SC' pero NO isLong/isPartialClose. Las
+  // detectamos aquí para que hfCompute aplique la fórmula correcta.
+  if(e.legClose && e.isPartialClose == null) e.isPartialClose = true;
+  if(e.legClose && e.isLong == null){
+    e.isLong = (e.legClose === 'LP' || e.legClose === 'LC');
+  }
   // Guardamos referencia global a la entrada que se edita para que hfCompute
   // pueda leer flags como isPartialClose / isLong (sign-aware del P&L).
   _hEditEntry = e;
@@ -2280,10 +2288,27 @@ function openEntryModal(id=null){
       <div style="font-size:12px;font-weight:700;color:#e69138;margin-bottom:4px">🪓 PATA CERRADA — ${legLblShort[e.legClose] || e.legClose || 'pata'}${e.isLong ? ' · LONG (signo invertido)' : ''}</div>
       Esta entrada es un <strong>cierre parcial</strong> de una posición ${e.parentStrat || e.strat || ''} (idOp ${e.parentIdOp || e.idOp}).
       ${e.isLong
-        ? 'Como es una pata LONG, P&amp;L = (Cierre − Crédito) — pagaste al abrir, recibes al vender.'
+        ? `Como es una pata LONG, P&amp;L = (Cierre − Crédito) — pagaste al abrir, recibes al vender.<br>
+           <strong style="color:#e69138">Pon en "P. CRÉDITO" lo que pagaste al abrirla (ej: 0.16)</strong> y en
+           <strong style="color:#e69138">"P. CIERRE" lo que recibiste al venderla (ej: 0.38)</strong>.`
         : 'Como es una pata SHORT, P&amp;L = (Crédito − Cierre) — cobraste al abrir, pagas al recomprar.'}
       Se EXCLUYE de las estadísticas por estrategia (no distorsiona el análisis de ${e.parentStrat || e.strat || ''}).
     </div>` : '';
+  // Labels de P. Crédito / P. Cierre adaptados si la pata es LONG (LP/LC).
+  // Para shorts mantenemos "prima cobrada / recompra". Para longs cambia a
+  // "coste apertura / precio venta cierre" para evitar la confusión que el
+  // usuario tuvo (poner el neto en P. Crédito en vez del coste real).
+  const _isLongLeg = !!(e.isPartialClose && e.isLong);
+  const _lblCredito = _isLongLeg
+    ? `Coste apertura ($/contrato) <span style="color:#3a5468;font-size:7px">lo que pagaste al comprarla</span>`
+    : `P. Crédito ($/contrato) <span style="color:#3a5468;font-size:7px">prima cobrada total</span>`;
+  const _lblCierre = _isLongLeg
+    ? `Precio venta cierre ($/contrato) <span style="color:#3a5468;font-size:7px">lo que recibiste al venderla</span>`
+    : `P. Cierre ($/contrato) <span style="color:#3a5468;font-size:7px">recompra al cerrar</span>`;
+  const _phCredito = _isLongLeg ? 'ej: 16 → $16 pagados por contrato'
+                                  : 'ej: 82 → $82 por contrato';
+  const _phCierre  = _isLongLeg ? 'ej: 38 → $38 recibidos por contrato'
+                                  : 'ej: 25 → $25 pagados al cerrar';
   document.getElementById('hModal').innerHTML = `
     ${partialBanner}
     <div class="h-modal-title">${title}</div>
@@ -2311,9 +2336,9 @@ function openEntryModal(id=null){
 
       <div class="h-form-sep"></div>
 
-      <div class="hfr"><label>P. Crédito ($/contrato) <span style="color:#3a5468;font-size:7px">prima cobrada total</span></label><input type="number" id="hf_pCredito" step="0.01" placeholder="ej: 82 → $82 por contrato" value="${e.pCredito!=null?(e.pCredito*100).toFixed(4):''}" oninput="hfCompute()"/></div>
-      
-      <div class="hfr"><label>P. Cierre ($/contrato) <span style="color:#3a5468;font-size:7px">recompra al cerrar</span></label><input type="number" id="hf_pCierre" step="0.01" placeholder="ej: 25 → $25 pagados al cerrar" value="${e.pCierre!=null?(e.pCierre*100).toFixed(4):''}" oninput="hfCompute()"/></div>
+      <div class="hfr"><label>${_lblCredito}</label><input type="number" id="hf_pCredito" step="0.01" placeholder="${_phCredito}" value="${e.pCredito!=null?(e.pCredito*100).toFixed(4):''}" oninput="hfCompute()"/></div>
+
+      <div class="hfr"><label>${_lblCierre}</label><input type="number" id="hf_pCierre" step="0.01" placeholder="${_phCierre}" value="${e.pCierre!=null?(e.pCierre*100).toFixed(4):''}" oninput="hfCompute()"/></div>
       <div class="hfr"><label>Comi apertura ($) <span style="color:#3a5468;font-size:7px">al abrir</span></label><input type="number" id="hf_comiOpen" step="0.01" placeholder="ej: 1.24" value="${e.comiOpen!=null?e.comiOpen:''}" oninput="hfCompute()"/></div>
       <div class="hfr"><label>Comi cierre ($) <span style="color:#3a5468;font-size:7px">al cerrar/expirar</span></label><input type="number" id="hf_comiClose" step="0.01" placeholder="ej: 1.24 (0 si expira)" value="${e.comiClose!=null?e.comiClose:''}" oninput="hfCompute()"/></div>
 
