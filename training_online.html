@@ -138,13 +138,131 @@
     </div>
   </div>
 
-  <!-- ── RECETAS (placeholder) ── -->
+  <!-- ── RECETAS ── -->
   <div id="tob-mtab-recetas" class="tob-mtab-page" style="display:none;">
     <div class="tob-card">
-      <div class="tob-card-title">🍳 Base de datos de recetas</div>
-      <div style="text-align:center;padding:40px 20px;color:var(--mute);font-family:'DM Mono',monospace;font-size:.85rem;line-height:1.6;">
-        Pendiente: importación de recetas detalladas desde el scraper ICNS.<br>
-        Próximamente: foto, ingredientes con cantidades, instrucciones, macros, tiempos, exportación PDF.
+      <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>🍳 Base de datos de recetas</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="tob-action ghost btn-xs" onclick="tobRecExportJson()" title="Descarga la BD actual de recetas en JSON">⬇ Exportar JSON</button>
+          <button class="tob-action ghost btn-xs" onclick="document.getElementById('tobRecImportFile').click()" title="Importa recetas desde JSON (formato simple ICNS con macros, o formato detallado del scraper con ingredientes/instrucciones). Acepta múltiples archivos.">⬆ Importar JSON</button>
+          <input type="file" id="tobRecImportFile" accept=".json" multiple style="display:none" onchange="tobRecImportFiles(event)">
+          <button class="tob-action btn-xs" onclick="tobRecOpenModal()">+ Nueva receta</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+        <input class="tob-input" id="tobRecSearch" placeholder="🔍 Buscar por nombre, ingrediente, tag..." style="flex:1;min-width:240px;" oninput="tobRecRender()">
+        <select class="tob-select" id="tobRecFilterMomento" onchange="tobRecRender()" style="min-width:140px;">
+          <option value="">— Todos los momentos —</option>
+          <option value="esmorzar">Esmorzar</option>
+          <option value="mig_mati">Mig matí</option>
+          <option value="dinar">Dinar</option>
+          <option value="berenar">Berenar</option>
+          <option value="sopar">Sopar</option>
+        </select>
+        <select class="tob-select" id="tobRecFilterTag" onchange="tobRecRender()" style="min-width:160px;">
+          <option value="">— Todas las etiquetas —</option>
+        </select>
+        <span id="tobRecCount" style="font-size:.72rem;color:var(--mute);font-family:'DM Mono',monospace;letter-spacing:.04em;"></span>
+      </div>
+      <div id="tobRecEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
+        Aún no hay recetas. Crea una con <strong>+ Nueva receta</strong> o importa el JSON del scraper ICNS.
+      </div>
+      <div id="tobRecGrid" class="tob-rec-grid"></div>
+      <div id="tobRecPager" style="display:flex;justify-content:center;align-items:center;gap:10px;padding:18px 0 4px;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--mute);"></div>
+    </div>
+  </div>
+
+  <!-- ════════ MODAL RECETA ════════ -->
+  <div class="tob-modal-bg" id="tobRecModalBg">
+    <div class="tob-modal" style="max-width:880px;max-height:92vh;overflow-y:auto;">
+      <h3 id="tobRecModalTitle">Nueva receta</h3>
+
+      <div class="tob-row col-2">
+        <div>
+          <label class="tob-lbl">Nombre *</label>
+          <input class="tob-input" id="tobRecNombre" placeholder="ej: Ensaladilla rusa con atún y huevo duro">
+        </div>
+        <div>
+          <label class="tob-lbl">Foto <span class="tob-quest-h-sub">(opcional · JPG/PNG · máx 1 MB recomendado)</span></label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="file" id="tobRecFotoFile" accept="image/*" style="display:none" onchange="tobRecHandleFotoUpload(event)">
+            <button type="button" class="tob-action ghost btn-xs" onclick="document.getElementById('tobRecFotoFile').click()">📷 Subir foto</button>
+            <button type="button" class="tob-action ghost btn-xs" id="tobRecFotoDelBtn" onclick="tobRecClearFoto()" style="display:none;">🗑 Quitar</button>
+            <span id="tobRecFotoHint" style="font-size:.7rem;color:var(--mute2);font-family:'DM Mono',monospace;">sin foto</span>
+          </div>
+          <img id="tobRecFotoPreview" style="display:none;max-width:100%;max-height:140px;margin-top:6px;border-radius:4px;border:1px solid var(--border);">
+          <input type="hidden" id="tobRecFotoData">
+        </div>
+      </div>
+
+      <div class="tob-row col-4">
+        <div>
+          <label class="tob-lbl">Tiempo total</label>
+          <input class="tob-input" id="tobRecTiempoTotal" placeholder="ej: 30 min">
+        </div>
+        <div>
+          <label class="tob-lbl">Tiempo elaboración</label>
+          <input class="tob-input" id="tobRecTiempoElab" placeholder="ej: 15 min">
+        </div>
+        <div>
+          <label class="tob-lbl">Raciones</label>
+          <input class="tob-input" type="number" min="1" id="tobRecRaciones" value="1" oninput="tobRecRecalc()">
+        </div>
+        <div>
+          <label class="tob-lbl">Autor</label>
+          <input class="tob-input" id="tobRecAutor" placeholder="opcional">
+        </div>
+      </div>
+
+      <div>
+        <label class="tob-lbl">Momentos del día <span class="tob-quest-h-sub">(en qué comidas se puede servir — múltiple)</span></label>
+        <div class="tob-quest-chips" id="tobRecMomentosChips"></div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <label class="tob-lbl">Ingredientes <span class="tob-quest-h-sub">(cantidad en gramos · macros calculados al vuelo)</span></label>
+        <div id="tobRecIngredientes" class="tob-rec-ing-list"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+          <select class="tob-select" id="tobRecIngPicker" style="flex:1;min-width:220px;">
+            <option value="">— Selecciona un ingrediente —</option>
+          </select>
+          <input class="tob-input" type="number" min="0" step="1" id="tobRecIngGramos" placeholder="gramos" style="width:110px;">
+          <button type="button" class="tob-action btn-xs" onclick="tobRecAddIngrediente()">+ Añadir</button>
+        </div>
+      </div>
+
+      <!-- Macros totales de la receta — se recalculan en tiempo real -->
+      <div class="tob-rec-macros" id="tobRecMacros">
+        <div><span class="lbl">kcal</span><span class="val" id="tobRecMacroKcal">0</span><span class="per">total</span></div>
+        <div><span class="lbl">Proteína</span><span class="val" id="tobRecMacroProt">0</span><span class="per">g</span></div>
+        <div><span class="lbl">Hidratos</span><span class="val" id="tobRecMacroHc">0</span><span class="per">g</span></div>
+        <div><span class="lbl">Grasa</span><span class="val" id="tobRecMacroGras">0</span><span class="per">g</span></div>
+        <div><span class="lbl">Fibra</span><span class="val" id="tobRecMacroFibra">0</span><span class="per">g</span></div>
+        <div style="border-left:1px dashed var(--border);"><span class="lbl">/ ración</span><span class="val" id="tobRecMacroKcalPer">0</span><span class="per">kcal</span></div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <label class="tob-lbl">Instrucciones <span class="tob-quest-h-sub">(paso a paso · una línea por paso)</span></label>
+        <textarea class="tob-input" id="tobRecInstrucciones" rows="6" placeholder="1. Cuece las patatas durante 20 min...&#10;2. Pica el atún y mezcla con la mayonesa...&#10;3. ..."></textarea>
+      </div>
+
+      <div>
+        <label class="tob-lbl">Comentarios <span class="tob-quest-h-sub">(opcional)</span></label>
+        <input class="tob-input" id="tobRecComentarios" placeholder="ej: ideal para batch cooking, dura 3 días en nevera">
+      </div>
+
+      <div>
+        <label class="tob-lbl">Etiquetas <span class="tob-quest-h-sub">(coma o Enter — vegana, sin gluten, rápida, batch cooking, sin lactosa, alta proteína...)</span></label>
+        <input class="tob-input" id="tobRecTags" placeholder="vegana, sin gluten, rápida...">
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">
+        <button class="tob-action danger" id="tobRecDelBtn" onclick="tobRecDeleteFromModal()" style="display:none;">🗑 Eliminar</button>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="tob-action ghost" onclick="tobRecCloseModal()">Cancelar</button>
+          <button class="tob-action" onclick="tobRecSave()">Guardar receta</button>
+        </div>
       </div>
     </div>
   </div>

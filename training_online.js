@@ -5698,6 +5698,584 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ═════════════════════════════════════════════════════════════════
+// MÓDULO MENÚS — Recetas (CRUD + import/export + macros tiempo real)
+// ─────────────────────────────────────────────────────────────────
+// Cada receta:
+//   { id:'rec_xxx', nombre, foto:dataURL|url|'', momentos:['esmorzar',...],
+//     tiempoTotal, tiempoElaboracion, raciones,
+//     ingredientes:[{ ingId, gramos, _nombreFallback }],   // ingId enlaza con tobMenusDB.ingredientes
+//     instrucciones, comentarios, autor, tags:[...],
+//     origen:'manual'|'icns'|'scraper', icnsId?, _icnsMacros? }
+//
+// Macros TOTALES se calculan al vuelo desde ingredientes + BD. Si una
+// receta importada (formato simple ICNS) NO tiene ingredientes pero sí
+// _icnsMacros = {kcal, hc, proteina, grasa}, se muestran esos directamente.
+// ═════════════════════════════════════════════════════════════════
+
+let tobRecEditId = null;
+let tobRecPage = 0;
+const TOB_REC_PER_PAGE = 24;
+const TOB_REC_MOMENTOS = [
+  { id:'esmorzar', label:'Esmorzar' },
+  { id:'mig_mati', label:'Mig matí' },
+  { id:'dinar',    label:'Dinar' },
+  { id:'berenar',  label:'Berenar' },
+  { id:'sopar',    label:'Sopar' }
+];
+const TOB_REC_MOMENTO_LBL = { esmorzar:'Esmorzar', mig_mati:'Mig matí', dinar:'Dinar', berenar:'Berenar', sopar:'Sopar' };
+
+// ── Render lista de recetas ─────────────────────────────────────
+function tobRecAllTags(){
+  const s = new Set();
+  (tobMenusDB.recetas||[]).forEach(r => (r.tags||[]).forEach(t => s.add(t)));
+  return [...s].sort();
+}
+
+function tobRecFillTagFilter(){
+  const sel = document.getElementById('tobRecFilterTag');
+  if(!sel) return;
+  const cur = sel.value;
+  const tags = tobRecAllTags();
+  sel.innerHTML = '<option value="">— Todas las etiquetas —</option>' +
+    tags.map(t => `<option value="${tobEsc(t)}">${tobEsc(t)}</option>`).join('');
+  if(tags.includes(cur)) sel.value = cur;
+}
+
+// Calcula macros totales de una receta sumando ingredientes × gramos/100.
+// Devuelve {kcal, hc, proteina, grasa, fibra} en valores absolutos (toda
+// la receta, NO por ración).
+function tobRecMacros(rec){
+  // Si no hay ingredientes detallados pero hay _icnsMacros (importación
+  // simple), devolver esos directamente.
+  if((!rec.ingredientes || !rec.ingredientes.length) && rec._icnsMacros){
+    const m = rec._icnsMacros;
+    return {
+      kcal:     m.kcal     || 0,
+      hc:       m.hc       || 0,
+      proteina: m.proteina || 0,
+      grasa:    m.grasa    || 0,
+      fibra:    m.fibra    || 0
+    };
+  }
+  let kcal=0, hc=0, prot=0, gras=0, fib=0;
+  (rec.ingredientes||[]).forEach(it => {
+    const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+    if(!ing) return;
+    const f = (+it.gramos || 0) / 100;
+    kcal += (+ing.kcal     || 0) * f;
+    hc   += (+ing.hc       || 0) * f;
+    prot += (+ing.proteina || 0) * f;
+    gras += (+ing.grasa    || 0) * f;
+    fib  += (+ing.fibra    || 0) * f;
+  });
+  return { kcal, hc, proteina: prot, grasa: gras, fibra: fib };
+}
+
+function tobRecRender(){
+  tobRecFillTagFilter();
+  const search    = (document.getElementById('tobRecSearch')?.value || '').trim().toLowerCase();
+  const momento   = document.getElementById('tobRecFilterMomento')?.value || '';
+  const tag       = document.getElementById('tobRecFilterTag')?.value || '';
+
+  let list = (tobMenusDB.recetas||[]).slice();
+  if(search){
+    list = list.filter(r => {
+      const haystack = [r.nombre, ...(r.tags||[]),
+        ...(r.ingredientes||[]).map(it => {
+          const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+          return ing ? ing.nombre : '';
+        })].join(' ').toLowerCase();
+      return haystack.includes(search);
+    });
+  }
+  if(momento) list = list.filter(r => (r.momentos||[]).includes(momento));
+  if(tag)     list = list.filter(r => (r.tags||[]).includes(tag));
+  list.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
+
+  const total = list.length;
+  const cntEl = document.getElementById('tobRecCount');
+  if(cntEl){
+    const all = (tobMenusDB.recetas||[]).length;
+    cntEl.textContent = total === all ? `${all} recetas` : `${total} de ${all}`;
+  }
+
+  const emptyEl = document.getElementById('tobRecEmpty');
+  const gridEl  = document.getElementById('tobRecGrid');
+  const pagerEl = document.getElementById('tobRecPager');
+
+  if(!total){
+    if(emptyEl) emptyEl.style.display = '';
+    if(gridEl)  gridEl.innerHTML = '';
+    if(pagerEl) pagerEl.innerHTML = '';
+    return;
+  }
+  if(emptyEl) emptyEl.style.display = 'none';
+
+  const pages = Math.max(1, Math.ceil(total / TOB_REC_PER_PAGE));
+  if(tobRecPage >= pages) tobRecPage = pages - 1;
+  if(tobRecPage < 0) tobRecPage = 0;
+  const start = tobRecPage * TOB_REC_PER_PAGE;
+  const slice = list.slice(start, start + TOB_REC_PER_PAGE);
+
+  gridEl.innerHTML = slice.map(r => {
+    const m = tobRecMacros(r);
+    const rac = r.raciones || 1;
+    const kcalPer = m.kcal / rac;
+    const tagsHtml = (r.tags||[]).slice(0,3).map(t => `<span class="tag">${tobEsc(t)}</span>`).join('');
+    const momHtml = (r.momentos||[]).map(mm => TOB_REC_MOMENTO_LBL[mm] || mm).join(' · ');
+    const fotoStyle = r.foto
+      ? `style="background-image:url('${r.foto.replace(/'/g,"\\'")}');"`
+      : '';
+    const fotoCls = r.foto ? '' : 'placeholder';
+    const fotoTxt = r.foto ? '' : tobEsc((r.nombre||'').slice(0,40));
+    return `<div class="tob-rec-card" onclick="tobRecEdit('${r.id}')">
+      <div class="foto ${fotoCls}" ${fotoStyle}>${fotoTxt}</div>
+      <div class="body">
+        <div class="nombre">${tobEsc(r.nombre || '—')}</div>
+        <div class="macros">
+          <span><b>${Math.round(m.kcal)}</b> kcal</span>
+          <span><b>${Math.round(m.proteina)}</b>p</span>
+          <span><b>${Math.round(m.hc)}</b>h</span>
+          <span><b>${Math.round(m.grasa)}</b>g</span>
+          ${rac > 1 ? `<span style="color:var(--mute2);">· ${rac} rac</span>` : ''}
+        </div>
+        ${momHtml ? `<div class="momentos">${tobEsc(momHtml)}</div>` : ''}
+        ${tagsHtml ? `<div class="tags">${tagsHtml}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  if(pages <= 1){
+    pagerEl.innerHTML = '';
+  } else {
+    pagerEl.innerHTML = `
+      <button class="tob-action ghost btn-xs" ${tobRecPage===0?'disabled':''} onclick="tobRecSetPage(${tobRecPage-1})">← Anterior</button>
+      <span>página ${tobRecPage+1} / ${pages}</span>
+      <button class="tob-action ghost btn-xs" ${tobRecPage>=pages-1?'disabled':''} onclick="tobRecSetPage(${tobRecPage+1})">Siguiente →</button>
+    `;
+  }
+}
+function tobRecSetPage(p){ tobRecPage = p; tobRecRender(); }
+
+// ── Modal de receta: abrir / cerrar ─────────────────────────────
+function tobRecOpenModal(){
+  tobRecEditId = null;
+  document.getElementById('tobRecModalTitle').textContent = 'Nueva receta';
+  document.getElementById('tobRecNombre').value = '';
+  document.getElementById('tobRecTiempoTotal').value = '';
+  document.getElementById('tobRecTiempoElab').value = '';
+  document.getElementById('tobRecRaciones').value = '1';
+  document.getElementById('tobRecAutor').value = '';
+  document.getElementById('tobRecInstrucciones').value = '';
+  document.getElementById('tobRecComentarios').value = '';
+  document.getElementById('tobRecTags').value = '';
+  document.getElementById('tobRecFotoData').value = '';
+  tobRecClearFoto();
+  tobRecRenderMomentos([]);
+  tobRecRenderIngredientesEdit([]);
+  tobRecFillIngPicker();
+  tobRecRecalc();
+  document.getElementById('tobRecDelBtn').style.display = 'none';
+  document.getElementById('tobRecModalBg').classList.add('on');
+}
+
+function tobRecCloseModal(){ document.getElementById('tobRecModalBg').classList.remove('on'); }
+
+function tobRecEdit(id){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
+  if(!r){ tobToast('Receta no encontrada', 'red'); return; }
+  tobRecEditId = id;
+  document.getElementById('tobRecModalTitle').textContent = 'Editar receta';
+  document.getElementById('tobRecNombre').value = r.nombre || '';
+  document.getElementById('tobRecTiempoTotal').value = r.tiempoTotal || '';
+  document.getElementById('tobRecTiempoElab').value = r.tiempoElaboracion || '';
+  document.getElementById('tobRecRaciones').value = r.raciones != null ? r.raciones : 1;
+  document.getElementById('tobRecAutor').value = r.autor || '';
+  document.getElementById('tobRecInstrucciones').value = Array.isArray(r.instrucciones)
+    ? r.instrucciones.join('\n')
+    : (r.instrucciones || '');
+  document.getElementById('tobRecComentarios').value = r.comentarios || '';
+  document.getElementById('tobRecTags').value = (r.tags || []).join(', ');
+  document.getElementById('tobRecFotoData').value = r.foto || '';
+  if(r.foto){
+    const prev = document.getElementById('tobRecFotoPreview');
+    prev.src = r.foto;
+    prev.style.display = '';
+    document.getElementById('tobRecFotoHint').textContent = 'con foto';
+    document.getElementById('tobRecFotoDelBtn').style.display = '';
+  } else {
+    tobRecClearFoto();
+  }
+  tobRecRenderMomentos(r.momentos || []);
+  tobRecRenderIngredientesEdit(r.ingredientes || []);
+  tobRecFillIngPicker();
+  tobRecRecalc();
+  document.getElementById('tobRecDelBtn').style.display = '';
+  document.getElementById('tobRecModalBg').classList.add('on');
+}
+
+// ── Foto: subir / limpiar ────────────────────────────────────────
+function tobRecHandleFotoUpload(ev){
+  const file = ev.target.files && ev.target.files[0];
+  if(!file) return;
+  if(file.size > 2 * 1024 * 1024){
+    tobToast('Foto demasiado grande (>2MB) — reduce el tamaño', 'red');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    document.getElementById('tobRecFotoData').value = dataUrl;
+    const prev = document.getElementById('tobRecFotoPreview');
+    prev.src = dataUrl;
+    prev.style.display = '';
+    document.getElementById('tobRecFotoHint').textContent = '✓ foto cargada';
+    document.getElementById('tobRecFotoDelBtn').style.display = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+function tobRecClearFoto(){
+  document.getElementById('tobRecFotoData').value = '';
+  document.getElementById('tobRecFotoPreview').src = '';
+  document.getElementById('tobRecFotoPreview').style.display = 'none';
+  document.getElementById('tobRecFotoHint').textContent = 'sin foto';
+  document.getElementById('tobRecFotoDelBtn').style.display = 'none';
+  const file = document.getElementById('tobRecFotoFile');
+  if(file) file.value = '';
+}
+
+// ── Momentos: chips múltiples ───────────────────────────────────
+function tobRecRenderMomentos(activeIds){
+  const set = new Set(activeIds || []);
+  const html = TOB_REC_MOMENTOS.map(m => {
+    const on = set.has(m.id);
+    return `<button type="button" class="tob-quest-chip${on?' active':''}" data-mom="${m.id}" onclick="tobRecToggleMomento('${m.id}',this)">${tobEsc(m.label)}</button>`;
+  }).join('');
+  const el = document.getElementById('tobRecMomentosChips');
+  if(el) el.innerHTML = html;
+}
+
+function tobRecToggleMomento(id, btn){
+  btn.classList.toggle('active');
+}
+
+function tobRecGetMomentosActivos(){
+  const out = [];
+  document.querySelectorAll('#tobRecMomentosChips .tob-quest-chip.active').forEach(b => {
+    out.push(b.dataset.mom);
+  });
+  return out;
+}
+
+// ── Ingredientes: picker + lista + recálculo ────────────────────
+function tobRecFillIngPicker(){
+  const sel = document.getElementById('tobRecIngPicker');
+  if(!sel) return;
+  const list = (tobMenusDB.ingredientes||[])
+    .slice()
+    .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
+  sel.innerHTML = '<option value="">— Selecciona un ingrediente —</option>' +
+    list.map(i => `<option value="${i.id}">${tobEsc(i.nombre)}</option>`).join('');
+}
+
+// Render de la lista editable de ingredientes del modal.
+// Cada fila: nombre · gramos input · macros calculados · botón ×.
+function tobRecRenderIngredientesEdit(items){
+  const cont = document.getElementById('tobRecIngredientes');
+  if(!cont) return;
+  if(!items.length){
+    cont.innerHTML = '<div style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.72rem;padding:6px 0;">Sin ingredientes todavía. Añade con el selector de abajo.</div>';
+    return;
+  }
+  cont.innerHTML = items.map((it, ix) => {
+    const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+    const nombre = ing ? ing.nombre : (it._nombreFallback || '(ingrediente eliminado)');
+    const f = (+it.gramos || 0) / 100;
+    const kcal = ing ? Math.round((+ing.kcal || 0) * f) : 0;
+    const macrosTxt = ing
+      ? `${kcal} kcal · ${((+ing.proteina||0)*f).toFixed(0)}p / ${((+ing.hc||0)*f).toFixed(0)}h / ${((+ing.grasa||0)*f).toFixed(0)}g`
+      : 'sin macros';
+    return `<div class="tob-rec-ing-row">
+      <div class="name">${tobEsc(nombre)}</div>
+      <input class="tob-input gr" type="number" min="0" step="1" value="${it.gramos != null ? it.gramos : ''}" oninput="tobRecUpdateGramos(${ix}, this.value)" style="width:100%;padding:3px 6px;font-size:.7rem;text-align:right;">
+      <div class="macros">${macrosTxt}</div>
+      <button class="x" type="button" onclick="tobRecRemoveIngrediente(${ix})" title="Eliminar">×</button>
+    </div>`;
+  }).join('');
+}
+
+// Estado en memoria del modal (no se persiste hasta guardar).
+let _tobRecModalIngredientes = [];
+
+function tobRecAddIngrediente(){
+  const ingId = document.getElementById('tobRecIngPicker').value;
+  const gramos = parseFloat(document.getElementById('tobRecIngGramos').value);
+  if(!ingId){ tobToast('Elige un ingrediente', 'red'); return; }
+  if(!Number.isFinite(gramos) || gramos <= 0){ tobToast('Pon los gramos', 'red'); return; }
+  _tobRecModalIngredientes.push({ ingId, gramos });
+  tobRecRenderIngredientesEdit(_tobRecModalIngredientes);
+  tobRecRecalc();
+  document.getElementById('tobRecIngPicker').value = '';
+  document.getElementById('tobRecIngGramos').value = '';
+}
+
+function tobRecRemoveIngrediente(ix){
+  _tobRecModalIngredientes.splice(ix, 1);
+  tobRecRenderIngredientesEdit(_tobRecModalIngredientes);
+  tobRecRecalc();
+}
+
+function tobRecUpdateGramos(ix, val){
+  const n = parseFloat(val);
+  if(_tobRecModalIngredientes[ix]){
+    _tobRecModalIngredientes[ix].gramos = Number.isFinite(n) ? n : 0;
+  }
+  tobRecRenderIngredientesEdit(_tobRecModalIngredientes);
+  tobRecRecalc();
+}
+
+// Recalcula macros totales de la receta editándose en tiempo real.
+function tobRecRecalc(){
+  const tempRec = { ingredientes: _tobRecModalIngredientes };
+  const m = tobRecMacros(tempRec);
+  const rac = Math.max(1, parseInt(document.getElementById('tobRecRaciones')?.value) || 1);
+  const setText = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  setText('tobRecMacroKcal',    Math.round(m.kcal));
+  setText('tobRecMacroProt',    m.proteina.toFixed(1));
+  setText('tobRecMacroHc',      m.hc.toFixed(1));
+  setText('tobRecMacroGras',    m.grasa.toFixed(1));
+  setText('tobRecMacroFibra',   m.fibra.toFixed(1));
+  setText('tobRecMacroKcalPer', Math.round(m.kcal / rac));
+}
+
+// Sobrescribir tobRecRenderIngredientesEdit para que también actualice
+// la copia en memoria al cargar — usado tanto en abrir nuevo como editar.
+function _tobRecLoadIngredientesIntoModal(items){
+  _tobRecModalIngredientes = (items || []).map(it => ({ ingId: it.ingId, gramos: it.gramos, _nombreFallback: it._nombreFallback }));
+  tobRecRenderIngredientesEdit(_tobRecModalIngredientes);
+}
+// Hook: cuando se abre el modal con datos existentes (Edit), cargar
+// los ingredientes al state interno. Hacemos override de la función
+// original que el modal llamaba:
+const _origTobRecRenderIngEdit = tobRecRenderIngredientesEdit;
+tobRecRenderIngredientesEdit = function(items){
+  // Si el caller no nos pasó la lista de memoria (sino una nueva), la
+  // sincronizamos antes de renderizar
+  if(items !== _tobRecModalIngredientes){
+    _tobRecModalIngredientes = (items || []).map(it => ({ ingId: it.ingId, gramos: it.gramos, _nombreFallback: it._nombreFallback }));
+  }
+  return _origTobRecRenderIngEdit.call(this, _tobRecModalIngredientes);
+};
+
+// ── Guardar / eliminar receta ───────────────────────────────────
+function tobRecSave(){
+  const nombre = document.getElementById('tobRecNombre').value.trim();
+  if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
+  const parseList = v => (v||'').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+  const data = {
+    nombre,
+    foto:             document.getElementById('tobRecFotoData').value || '',
+    momentos:         tobRecGetMomentosActivos(),
+    tiempoTotal:      document.getElementById('tobRecTiempoTotal').value.trim(),
+    tiempoElaboracion:document.getElementById('tobRecTiempoElab').value.trim(),
+    raciones:         Math.max(1, parseInt(document.getElementById('tobRecRaciones').value) || 1),
+    ingredientes:     _tobRecModalIngredientes.slice(),
+    instrucciones:    document.getElementById('tobRecInstrucciones').value.trim(),
+    comentarios:      document.getElementById('tobRecComentarios').value.trim(),
+    autor:            document.getElementById('tobRecAutor').value.trim(),
+    tags:             parseList(document.getElementById('tobRecTags').value)
+  };
+  if(!tobMenusDB.recetas) tobMenusDB.recetas = [];
+  if(tobRecEditId){
+    const r = tobMenusDB.recetas.find(x => x.id === tobRecEditId);
+    if(r) Object.assign(r, data);
+  } else {
+    data.id = tobUid('rec');
+    data.origen = 'manual';
+    tobMenusDB.recetas.push(data);
+  }
+  tobMenusSave();
+  tobRecCloseModal();
+  tobRecRender();
+  tobToast('✓ Receta guardada', 'green');
+}
+
+function tobRecDeleteFromModal(){
+  if(!tobRecEditId) return;
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === tobRecEditId);
+  if(!r) return;
+  if(!confirm(`Eliminar receta "${r.nombre}"?`)) return;
+  tobMenusDB.recetas = tobMenusDB.recetas.filter(x => x.id !== tobRecEditId);
+  tobMenusSave();
+  tobRecCloseModal();
+  tobRecRender();
+  tobToast('Receta eliminada', '');
+}
+
+// ── Import JSON (multi-archivo) ─────────────────────────────────
+// Acepta DOS formatos:
+//   1. Simple ICNS:    { id, nombre, kcal, hc, proteina, grasa, foto }
+//   2. Scraper detallado: { id, nombre, url, foto, fotos, raciones,
+//                            tiempoTotal, tiempoElaboracion, momentos,
+//                            ingredientes:[{raw,cantidad,unidad,nombre}],
+//                            instrucciones, autor, comentarios, tags }
+// Detección por presencia de campos: si tiene `ingredientes` o
+// `instrucciones`, se trata como detallado; si solo tiene macros, simple.
+//
+// Match con ingredientes BD: cuando importa receta detallada, intenta
+// match por nombre (case-insensitive, normalizado). Si no encuentra,
+// guarda _nombreFallback para que el usuario pueda enlazarlo manualmente
+// después.
+async function tobRecImportFiles(ev){
+  const files = Array.from(ev.target.files || []);
+  if(!files.length) return;
+  tobToast(`Importando ${files.length} archivo(s)...`, '');
+  let added = 0, updated = 0, skipped = 0;
+  const ingByName = new Map();
+  (tobMenusDB.ingredientes||[]).forEach(i => {
+    ingByName.set((i.nombre||'').toLowerCase().trim(), i.id);
+  });
+  const matchIngId = (nombreIng) => {
+    const key = (nombreIng||'').toLowerCase().trim();
+    if(ingByName.has(key)) return ingByName.get(key);
+    // Match parcial: el ingrediente de la BD que más coincida con el nombre
+    // (substring de palabras). Útil cuando el scraper devuelve "tomate maduro"
+    // y la BD tiene "tomate".
+    for(const [n, id] of ingByName){
+      if(n.length >= 4 && (key.includes(n) || n.includes(key))) return id;
+    }
+    return null;
+  };
+  const parseN = v => { if(v == null || v === '') return null; const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+
+  for(const file of files){
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed
+                  : Array.isArray(parsed.recetas) ? parsed.recetas
+                  : Array.isArray(parsed.data) ? parsed.data
+                  : null;
+      if(!items){ console.warn('[rec-import]', file.name, 'no es array'); skipped++; continue; }
+
+      items.forEach(raw => {
+        if(!raw || !raw.nombre){ skipped++; return; }
+        if(raw._error){ skipped++; return; }  // entries del scraper que fallaron
+
+        const icnsId = raw.id != null ? String(raw.id) : null;
+        const hasDetalle = Array.isArray(raw.ingredientes) || raw.instrucciones;
+
+        // Construir ingredientes
+        let ingredientes = [];
+        if(hasDetalle && Array.isArray(raw.ingredientes)){
+          ingredientes = raw.ingredientes.map(ing => {
+            const nombreIng = ing.nombre || ing.raw || '';
+            const gramos = ing.cantidad != null ? +ing.cantidad : null;
+            const ingId = matchIngId(nombreIng);
+            return ingId
+              ? { ingId, gramos: gramos || 0 }
+              : { ingId: null, gramos: gramos || 0, _nombreFallback: nombreIng };
+          }).filter(it => it.ingId || it._nombreFallback);
+        }
+
+        // Construir instrucciones
+        let instrucciones = '';
+        if(Array.isArray(raw.instrucciones)){
+          instrucciones = raw.instrucciones.join('\n');
+        } else if(typeof raw.instrucciones === 'string'){
+          instrucciones = raw.instrucciones;
+        }
+
+        const data = {
+          nombre: String(raw.nombre).trim(),
+          foto:   raw.foto || '',
+          momentos: Array.isArray(raw.momentos) ? raw.momentos : [],
+          tiempoTotal: raw.tiempoTotal || '',
+          tiempoElaboracion: raw.tiempoElaboracion || '',
+          raciones: raw.raciones != null ? Math.max(1, +raw.raciones) : 1,
+          ingredientes,
+          instrucciones,
+          comentarios: raw.comentarios || '',
+          autor: raw.autor || '',
+          tags: Array.isArray(raw.tags) ? raw.tags : []
+        };
+
+        // Si NO hay ingredientes detallados pero hay macros simples del JSON
+        // ICNS, guardamos como _icnsMacros para que tobRecMacros los use.
+        if(!hasDetalle && (raw.kcal != null || raw.hc != null)){
+          data._icnsMacros = {
+            kcal:     parseN(raw.kcal),
+            hc:       parseN(raw.hc),
+            proteina: parseN(raw.proteina),
+            grasa:    parseN(raw.grasa)
+          };
+        }
+
+        // Detección de duplicado (igual que ingredientes): por icnsId o nombre
+        let exist = null;
+        if(icnsId && tobMenusDB.recetas) exist = tobMenusDB.recetas.find(r => r.icnsId === icnsId);
+        if(!exist && tobMenusDB.recetas) exist = tobMenusDB.recetas.find(r => (r.nombre||'').toLowerCase() === data.nombre.toLowerCase());
+        if(exist){
+          // Merge: nuevas claves (ingredientes detallados) ganan sobre las
+          // viejas (macros simples). Pero si ya tenía ingredientes y los
+          // nuevos vienen vacíos, mantenemos los viejos.
+          if(!ingredientes.length && exist.ingredientes && exist.ingredientes.length){
+            data.ingredientes = exist.ingredientes;
+          }
+          Object.assign(exist, data, { icnsId: icnsId || exist.icnsId });
+          updated++;
+        } else {
+          if(!tobMenusDB.recetas) tobMenusDB.recetas = [];
+          tobMenusDB.recetas.push({
+            id: tobUid('rec'),
+            origen: hasDetalle ? 'scraper' : 'icns',
+            icnsId,
+            ...data
+          });
+          added++;
+        }
+      });
+    } catch(e){
+      console.warn('[rec-import]', file.name, e);
+      skipped++;
+    }
+  }
+
+  tobMenusSave();
+  tobRecRender();
+  ev.target.value = '';
+  tobToast(`✓ Importación recetas: ${added} nuevas · ${updated} actualizadas${skipped?' · '+skipped+' saltadas':''}`, 'green');
+}
+
+function tobRecExportJson(){
+  if(!(tobMenusDB.recetas||[]).length){ tobToast('No hay recetas que exportar', 'red'); return; }
+  const blob = new Blob([JSON.stringify(tobMenusDB.recetas, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `recetas_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  tobToast(`✓ ${tobMenusDB.recetas.length} recetas exportadas`, 'green');
+}
+
+// Hook al cambio de sub-tab "recetas" para re-renderizar
+const _origTobMenuShowTab = tobMenuShowTab;
+tobMenuShowTab = function(name, btn){
+  _origTobMenuShowTab(name, btn);
+  if(name === 'recetas') tobRecRender();
+};
+
+// Cerrar modal de receta clicando fuera
+document.addEventListener('DOMContentLoaded', () => {
+  const bg = document.getElementById('tobRecModalBg');
+  if(bg){
+    bg.addEventListener('click', e => { if(e.target === bg) tobRecCloseModal(); });
+  }
+});
+
 // Auto-init
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', () => { tobMenusLoad(); tobLoad(); });
