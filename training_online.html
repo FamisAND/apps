@@ -417,6 +417,7 @@
       <div class="tob-tools-row">
         <button class="tob-action btn-sm" onclick="tobOpenMedicionModal()" title="Registrar una nueva medición de composición corporal">📏 + Medición</button>
         <button class="tob-action btn-sm" onclick="tobNuevaRutinaDesdeFicha()" title="Asignar una rutina nueva al cliente">🏋 + Rutina</button>
+        <button class="tob-action btn-sm" onclick="tobOpenCuestionario()" title="Cuestionario y preferencias del cliente — se usa para personalizar menús y comunicación" id="tobBtnCuestionario">📋 Cuestionario <span id="tobBtnCuestionarioBadge" style="display:none;font-size:.65rem;background:#7a2424;color:#fff;padding:1px 6px;border-radius:999px;margin-left:4px;font-weight:700;">!</span></button>
         <button class="tob-action btn-sm" id="tobCompletarBtn" onclick="tobCompletarYNuevaRutina()" title="Marcar la rutina actual como completada y abrir el selector para empezar una nueva" style="display:none;background:#2f7355;border-color:#2f7355;color:#fff;">✓ Completar y abrir nueva</button>
       </div>
       <!-- Exportar / compartir / editar -->
@@ -424,7 +425,6 @@
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfUltimaRutina()" title="PDF resumen de la última rutina con las gráficas de progreso por ejercicio">📄 Última rutina</button>
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfHistorico()" title="PDF histórico completo (rutinas y/o mediciones)">📄 Histórico</button>
         <button class="tob-action ghost btn-xs" onclick="tobGeneratePdfMediciones()" title="PDF informe de evolución — composición corporal" data-i18n="ficha.btnMedicion">📄 Medición</button>
-        <button class="tob-action ghost btn-xs" onclick="tobExportClienteExcel(tobCurrentFichaId)" title="Descargar Excel (.xlsx) con todos los datos del cliente: ficha, cuestionario, mediciones y rutinas">📊 Excel</button>
         <button class="tob-action ghost btn-xs" onclick="tobShareWhatsAppFicha()" title="Compartir por WhatsApp (el PDF se descarga automáticamente para que lo adjuntes)">📲 WhatsApp</button>
         <button class="tob-action ghost btn-xs" onclick="tobEditCliente(tobCurrentFichaId)" title="Editar datos del cliente">✏️ Editar</button>
       </div>
@@ -491,9 +491,9 @@
        Para chips/etiquetas: click toggle, Enter para añadir personalizada.
   ───────────────────────────────────────────────────────────────────── -->
   <div class="tob-card" id="tobFichaCuestionarioBlock">
-    <details class="tob-quest-details">
+    <details class="tob-quest-details" id="tobFichaCuestionarioDetails" open>
       <summary class="tob-quest-summary">
-        <span class="tob-card-title" style="margin:0;display:inline;">📋 Cuestionario / Preferencias</span>
+        <span class="tob-card-title" style="margin:0;display:inline;">📋 Cuestionario / Preferencias <span id="tobCuestEmptyTag" style="display:none;font-size:.65rem;background:#7a2424;color:#fff;padding:2px 8px;border-radius:999px;margin-left:8px;letter-spacing:.06em;text-transform:uppercase;font-family:'DM Mono',monospace;">vacío — rellena para personalizar menús</span></span>
         <span class="tob-quest-hint" id="qSavedHint">Datos para personalizar menús y comunicación</span>
       </summary>
 

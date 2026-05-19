@@ -5052,12 +5052,47 @@ function tobQuestLoad(){
     el.value = q[key] != null ? q[key] : '';
     // Listener auto-save (debounced) — solo se engancha una vez
     if(!el._qBound){
-      el.addEventListener('input', () => tobQuestScheduleSave());
+      el.addEventListener('input', () => { tobQuestScheduleSave(); tobUpdateCuestionarioBadge(); });
       el._qBound = true;
     }
   });
   // Render chips
   tobQuestRenderChips(q.tags || {});
+  // Actualizar badge del botón en toolbar
+  tobUpdateCuestionarioBadge();
+}
+
+// ── Botón "📋 Cuestionario" en la toolbar: scroll + abre el details ──
+// Si está vacío o casi vacío, el botón muestra un badge "!" rojo. La
+// función `tobUpdateCuestionarioBadge` recalcula ese estado al cargar
+// la ficha y al editar cualquier campo del cuestionario.
+function tobOpenCuestionario(){
+  const det = document.getElementById('tobFichaCuestionarioDetails');
+  if(det) det.open = true;
+  const block = document.getElementById('tobFichaCuestionarioBlock');
+  if(block) block.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// Considera "vacío" si el cliente no tiene cuestionario o tiene <4 campos
+// significativos rellenos (datos relevantes para el creador de menús).
+function tobUpdateCuestionarioBadge(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  const badgeBtn  = document.getElementById('tobBtnCuestionarioBadge');
+  const tagEmpty  = document.getElementById('tobCuestEmptyTag');
+  if(!cli){
+    if(badgeBtn) badgeBtn.style.display = 'none';
+    if(tagEmpty) tagEmpty.style.display = 'none';
+    return;
+  }
+  const q = cli.cuestionario || {};
+  // Campos clave que el creador de menús e IA necesitan sí o sí
+  const claves = ['kcalObjetivo','protObjetivo','alergias','alimX','alimOk','apat1','apat3','apat5'];
+  const rellenos = claves.filter(k => q[k] != null && String(q[k]).trim() !== '').length;
+  const tags = q.tags || {};
+  const tieneDieta = !!tags.dieta || (Array.isArray(tags.proteina) && tags.proteina.length > 0);
+  const vacio = rellenos < 3 && !tieneDieta;
+  if(badgeBtn) badgeBtn.style.display = vacio ? '' : 'none';
+  if(tagEmpty) tagEmpty.style.display = vacio ? '' : 'none';
 }
 
 // Render del bloque de chips para los 3 grupos predefinidos + custom.
@@ -5201,6 +5236,8 @@ function tobQuestSave(showToast){
     setTimeout(() => { if(hint.textContent.startsWith('✓')) hint.textContent = ''; }, 3000);
   }
   if(showToast) tobToast('✓ Cuestionari guardat', 'green');
+  // Refrescar el badge del botón en toolbar (visible cuando vacío)
+  if(typeof tobUpdateCuestionarioBadge === 'function') tobUpdateCuestionarioBadge();
 }
 
 function tobQuestReset(){
