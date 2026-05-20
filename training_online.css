@@ -530,6 +530,12 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   border-radius:2px;font-size:.7rem;line-height:1;padding:0;
 }
 .tob-mc-cell-item .x:hover{background:#7a2424;color:#fff;}
+.tob-mc-cell-item .swap{
+  background:transparent;border:none;cursor:pointer;
+  width:16px;height:16px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;font-size:.62rem;line-height:1;padding:0;opacity:.55;
+}
+.tob-mc-cell-item .swap:hover{opacity:1;background:var(--card);}
 
 /* Fila de totales del día (kcal, prot, etc) */
 .tob-mc-cell-totals{

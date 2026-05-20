@@ -286,7 +286,8 @@
         <span>📅 Creador de menús</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="tob-action ghost btn-xs" onclick="tobMcShowList()" title="Ver menús anteriores del cliente">📂 Menús guardados</button>
-          <button class="tob-action btn-xs" id="tobMcGenerarIA" disabled title="Próximamente — generación automática con IA respetando cuestionario y objetivos">🤖 Generar con IA</button>
+          <button class="tob-action ghost btn-xs" onclick="tobAiOpenConfig()" title="Configurar la IA (clau API)">⚙ IA</button>
+          <button class="tob-action btn-xs" id="tobMcGenerarIA" onclick="tobMcGenerarIA()" title="Generar el menú automáticamente con IA respetando cuestionario y objetivos">🤖 Generar con IA</button>
         </div>
       </div>
 
@@ -386,6 +387,49 @@
     <div id="tobMcListBody" style="max-height:60vh;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="document.getElementById('tobMcListModalBg').classList.remove('on')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL CONFIGURACIÓN IA ════════ -->
+<div class="tob-modal-bg" id="tobAiConfigBg">
+  <div class="tob-modal" style="max-width:520px;">
+    <h3>🤖 Configuració de la IA</h3>
+    <p style="font-size:.78rem;color:var(--mute);line-height:1.55;margin-bottom:12px;">
+      La IA genera el menú automàticament des del qüestionari del client.
+      Necessites una clau API — <b>Gemini</b> i <b>Groq</b> tenen nivell gratuït generós.
+    </p>
+    <div><label class="tob-lbl">Proveïdor</label>
+      <select class="tob-select" id="tobAiProvider" onchange="tobAiProviderChange()">
+        <option value="gemini">Google Gemini (gratuït)</option>
+        <option value="groq">Groq (gratuït, ràpid)</option>
+        <option value="openrouter">OpenRouter</option>
+      </select>
+    </div>
+    <div><label class="tob-lbl">Clau API</label>
+      <input class="tob-input" id="tobAiKey" type="password" placeholder="enganxa aquí la teva clau" autocomplete="off">
+      <div id="tobAiKeyHelp" style="font-size:.7rem;color:var(--mute2);margin-top:4px;line-height:1.5;"></div>
+    </div>
+    <div><label class="tob-lbl">Model <span class="tob-quest-h-sub">(opcional — buit = per defecte)</span></label>
+      <input class="tob-input" id="tobAiModel" placeholder="(per defecte)" autocomplete="off">
+    </div>
+    <div id="tobAiTestResult" style="font-size:.74rem;font-family:'DM Mono',monospace;margin-top:10px;"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="document.getElementById('tobAiConfigBg').classList.remove('on')">Tancar</button>
+      <button class="tob-action ghost" onclick="tobAiTestConfig()">🔌 Provar</button>
+      <button class="tob-action" onclick="tobAiSaveConfigFromModal()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL CAMBIAR PLATO ════════ -->
+<div class="tob-modal-bg" id="tobMcSwapBg">
+  <div class="tob-modal" style="max-width:580px;">
+    <h3>🔄 Canviar plat</h3>
+    <div id="tobMcSwapInfo" style="font-size:.78rem;color:var(--mute);margin-bottom:10px;font-family:'DM Mono',monospace;"></div>
+    <div id="tobMcSwapList" style="max-height:58vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcSwapBg').classList.remove('on')">Tancar</button>
     </div>
   </div>
 </div>

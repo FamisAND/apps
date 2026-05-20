@@ -7254,13 +7254,14 @@ function tobMcRenderGrid(){
       const items = tobMcState.data[sem]?.[d]?.[comida.id] || [];
       const itemsHtml = items.map((recId, ix) => {
         const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
-        if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><span class="nm">(eliminada)</span><button class="x" onclick="tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
+        if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><span class="nm">(eliminada)</span><button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
         const m = tobRecMacros(r);
         const kcalPer = Math.round(m.kcal / (r.raciones || 1));
         return `<div class="tob-mc-cell-item" data-rec="${recId}" title="${tobEsc(r.nombre)} · ${kcalPer} kcal/ración">
           <span class="nm">${tobEsc(r.nombre)}</span>
           <span class="kc">${kcalPer}</span>
-          <button class="x" onclick="tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
+          <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
+          <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
         </div>`;
       }).join('');
       html += `<div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${itemsHtml}</div>`;
@@ -7823,6 +7824,302 @@ async function tobMenuPdf(cliId, menuId){
   w.document.write(html);
   w.document.close();
   tobToast('✓ Menú obert — desa\'l com a PDF', 'green');
+}
+
+// ═════════════════════════════════════════════════════════════════
+// IA — configuración + generación automática de menús
+// ═════════════════════════════════════════════════════════════════
+const TOB_AI_CFG_KEY = 'tob_ai_cfg';
+const TOB_AI_DEFAULTS = {
+  gemini:     { model:'gemini-2.0-flash',          help:'Clau gratuïta a aistudio.google.com/apikey' },
+  groq:       { model:'llama-3.3-70b-versatile',   help:'Clau gratuïta a console.groq.com/keys' },
+  openrouter: { model:'google/gemini-2.0-flash-001', help:'Clau a openrouter.ai/keys (requereix crèdit)' }
+};
+function tobAiGetCfg(){
+  try { return JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
+  catch(e){ return {}; }
+}
+function tobAiSaveCfg(cfg){
+  try { localStorage.setItem(TOB_AI_CFG_KEY, JSON.stringify(cfg)); } catch(e){}
+}
+function tobAiOpenConfig(){
+  const cfg = tobAiGetCfg();
+  document.getElementById('tobAiProvider').value = cfg.provider || 'gemini';
+  document.getElementById('tobAiKey').value   = cfg.key   || '';
+  document.getElementById('tobAiModel').value = cfg.model || '';
+  document.getElementById('tobAiTestResult').textContent = '';
+  tobAiProviderChange();
+  document.getElementById('tobAiConfigBg').classList.add('on');
+}
+function tobAiProviderChange(){
+  const p = document.getElementById('tobAiProvider').value;
+  const d = TOB_AI_DEFAULTS[p] || {};
+  const help = document.getElementById('tobAiKeyHelp');
+  if(help) help.textContent = d.help || '';
+  const mi = document.getElementById('tobAiModel');
+  if(mi) mi.placeholder = d.model || '(per defecte)';
+}
+function tobAiSaveConfigFromModal(){
+  const cfg = {
+    provider: document.getElementById('tobAiProvider').value,
+    key:      document.getElementById('tobAiKey').value.trim(),
+    model:    document.getElementById('tobAiModel').value.trim()
+  };
+  if(!cfg.key){ tobToast('Falta la clau API', 'red'); return; }
+  tobAiSaveCfg(cfg);
+  document.getElementById('tobAiConfigBg').classList.remove('on');
+  tobToast('✓ Configuració de la IA guardada', 'green');
+}
+async function tobAiTestConfig(){
+  const res = document.getElementById('tobAiTestResult');
+  res.textContent = '⏳ Provant…'; res.style.color = 'var(--mute)';
+  const cfg = {
+    provider: document.getElementById('tobAiProvider').value,
+    key:      document.getElementById('tobAiKey').value.trim(),
+    model:    document.getElementById('tobAiModel').value.trim()
+  };
+  if(!cfg.key){ res.textContent = '✗ Falta la clau'; res.style.color = '#dc6a6a'; return; }
+  try {
+    await tobAiCall([{ role:'user', content:'Respon només amb aquest JSON exacte: {"ok":true}' }], cfg);
+    res.textContent = '✓ Connexió correcta — la IA respon';
+    res.style.color = '#3fb68b';
+  } catch(e){
+    res.textContent = '✗ ' + (e.message || 'error de connexió');
+    res.style.color = '#dc6a6a';
+  }
+}
+
+// Llamada genérica al LLM. messages=[{role,content}]. Devuelve texto.
+async function tobAiCall(messages, cfgOverride){
+  const cfg = cfgOverride || tobAiGetCfg();
+  if(!cfg.key) throw new Error('Falta la clau API — configura la IA');
+  const prov = cfg.provider || 'gemini';
+  if(prov === 'gemini'){
+    const model = cfg.model || TOB_AI_DEFAULTS.gemini.model;
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+                encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(cfg.key);
+    const sys = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+    const contents = messages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+    const body = { contents, generationConfig:{ temperature:0.6, responseMimeType:'application/json' } };
+    if(sys) body.systemInstruction = { parts:[{ text: sys }] };
+    const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    if(!r.ok) throw new Error('Gemini ' + r.status + ': ' + (await r.text()).slice(0,160));
+    const j = await r.json();
+    return (((j.candidates||[])[0]||{}).content||{}).parts?.[0]?.text || '';
+  }
+  const endpoints = {
+    openrouter:'https://openrouter.ai/api/v1/chat/completions',
+    groq:'https://api.groq.com/openai/v1/chat/completions'
+  };
+  const url = endpoints[prov];
+  if(!url) throw new Error('Proveïdor desconegut: ' + prov);
+  const model = cfg.model || (TOB_AI_DEFAULTS[prov] && TOB_AI_DEFAULTS[prov].model);
+  const payload = { model, messages, temperature:0.6 };
+  // response_format json_object: fiable en Groq; en OpenRouter depende del
+  // modelo, así que solo lo forzamos en Groq (el prompt ya pide "només JSON").
+  if(prov === 'groq') payload.response_format = { type:'json_object' };
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + cfg.key },
+    body: JSON.stringify(payload)
+  });
+  if(!r.ok) throw new Error(prov + ' ' + r.status + ': ' + (await r.text()).slice(0,160));
+  const j = await r.json();
+  return (((j.choices||[])[0]||{}).message||{}).content || '';
+}
+
+// Extrae el objeto JSON de la respuesta del LLM (quita ``` y texto sobrante).
+function tobAiParseJson(txt){
+  let s = String(txt || '').trim();
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if(a >= 0 && b > a) s = s.slice(a, b + 1);
+  return JSON.parse(s);
+}
+
+// Texto-resumen del perfil del cliente para el prompt de la IA.
+function tobMcPerfilTexto(cli){
+  const q = cli.cuestionario || {};
+  const t = q.tags || {};
+  const lbl = (group, id) => {
+    const g = TOB_QUEST_CHIPS[group];
+    const it = g && g.items.find(x => x.id === id);
+    return it ? it.label : id;
+  };
+  const lbls = (group, ids) => (ids||[]).map(id => lbl(group, id)).join(', ');
+  const L = [];
+  L.push('Client: ' + cli.nombre + (cli.sexo==='M'?' (dona)':cli.sexo==='H'?' (home)':''));
+  if(t.objectiu)      L.push('Objectiu: ' + lbl('objectiu', t.objectiu));
+  if(q.kcalObjetivo)  L.push('Objectiu calòric diari: ' + q.kcalObjetivo + ' kcal');
+  if(q.protObjetivo)  L.push('Proteïna objectiu diària: ' + q.protObjetivo + ' g');
+  if(t.dieta)         L.push('Tipus de dieta: ' + lbl('dieta', t.dieta));
+  if(t.proteina && t.proteina.length)   L.push('Proteïna animal: ' + lbls('proteina', t.proteina));
+  if(t.pref && t.pref.length)           L.push('Preferències: ' + lbls('pref', t.pref));
+  if(t.patologies && t.patologies.length) L.push('Patologies: ' + lbls('patologies', t.patologies));
+  if(t.alergies && t.alergies.length)   L.push('AL·LÈRGIES (evitar SEMPRE): ' + t.alergies.join(', '));
+  if(t.alimX && t.alimX.length)         L.push('Aliments que NO vol: ' + t.alimX.join(', '));
+  if(t.alimOk && t.alimOk.length)       L.push('Aliments preferits: ' + t.alimOk.join(', '));
+  if(t.sentenMal && t.sentenMal.length) L.push('Li senten malament: ' + t.sentenMal.join(', '));
+  if(t.cuina)         L.push('Qui cuina: ' + lbl('cuina', t.cuina));
+  if(t.tempsCuina)    L.push('Temps per cuinar: ' + lbl('tempsCuina', t.tempsCuina));
+  if(q.comentari)     L.push('Notes addicionals: ' + q.comentari);
+  return L.join('\n');
+}
+
+// Recetas candidatas para un momento: compatibles con el cliente + del momento.
+function tobMcCandidatas(cli, comidaId){
+  return (tobMenusDB.recetas || []).filter(r => {
+    const moms = r.momentos || [];
+    if(moms.length && !moms.includes(comidaId)) return false;
+    return tobMcCheckCompat(r, cli).compat;
+  });
+}
+
+// ── Generación automática del menú con IA ──────────────────────
+async function tobMcGenerarIA(){
+  if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  const cfg = tobAiGetCfg();
+  if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  if(!cli){ tobToast('Client no trobat', 'red'); return; }
+  const comidas = tobMcComidasDelCliente(cli);
+  if(!comidas.length){ tobToast('El client no té àpats definits al qüestionari', 'red'); return; }
+  if(!(tobMenusDB.recetas||[]).length){ tobToast('No hi ha receptes importades', 'red'); return; }
+
+  if(tobMenuCountRecetas({ data: tobMcState.data }) > 0 &&
+     !confirm('Això reemplaçarà el menú actual. Continuar?')) return;
+
+  const btn = document.getElementById('tobMcGenerarIA');
+  const btnTxt = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Generant…'; }
+  try {
+    const kcal = parseFloat(document.getElementById('tobMcKcal').value) || (cli.cuestionario||{}).kcalObjetivo || 2000;
+    const prot = parseFloat(document.getElementById('tobMcProt').value) || (cli.cuestionario||{}).protObjetivo || null;
+    const margen = parseFloat(document.getElementById('tobMcMargen').value) || 10;
+    const semanas = tobMcState.semanas;
+
+    // Catálogo compacto de recetas por momento (capado para no inflar el prompt)
+    let catalogo = '';
+    const validIds = new Set();
+    comidas.forEach(c => {
+      let cand = tobMcCandidatas(cli, c.id);
+      cand.sort((a,b) => ((b.favorito?1:0) - (a.favorito?1:0)) || (a.nombre||'').localeCompare(b.nombre||''));
+      cand = cand.slice(0, 70);
+      catalogo += '\n### ' + c.label + ' (comida_id="' + c.id + '")\n';
+      cand.forEach(r => {
+        validIds.add(r.id);
+        const mm = tobRecMacros(r); const rac = r.raciones || 1;
+        catalogo += r.id + ' | ' + r.nombre + ' | ' + Math.round(mm.kcal/rac) + ' kcal | ' + Math.round(mm.proteina/rac) + 'g prot\n';
+      });
+    });
+
+    const sys = 'Ets un dietista-nutricionista expert. Crees menús setmanals personalitzats, '
+      + 'variats i equilibrats. Respons NOMÉS amb un objecte JSON vàlid, sense text addicional.';
+    const user = [
+      'PERFIL DEL CLIENT:', tobMcPerfilTexto(cli), '',
+      'OBJECTIUS DIARIS: ' + Math.round(kcal) + ' kcal (±' + margen + '%)'
+        + (prot ? ', ' + Math.round(prot) + ' g de proteïna' : ''),
+      '',
+      'ESTRUCTURA: ' + semanas + ' setmana(es) · 7 dies (0=Dilluns … 6=Diumenge) · àpats: '
+        + comidas.map(c => '"' + c.id + '"').join(', ') + '.',
+      '',
+      'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id:',
+      catalogo, '',
+      'REGLES:',
+      '- Cada dia ha de sumar aproximadament l\'objectiu calòric (±' + margen + '%) i acostar-se a la proteïna objectiu.',
+      '- Varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
+      '- Cada àpat sol portar 1 recepta (2 si cal per arribar a les kcal).',
+      '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
+      '- Usa només id de la llista.',
+      '',
+      'FORMAT DE RESPOSTA (només JSON): un objecte amb una clau per setmana ("0","1",…). '
+        + 'Cada setmana és un array de 7 dies. Cada dia és un objecte {comida_id:[id_recepta,…]}.',
+      'Exemple d\'un dia: {' + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}'
+    ].join('\n');
+
+    tobToast('🤖 La IA està generant el menú… pot trigar uns segons', '');
+    const raw = await tobAiCall([{ role:'system', content:sys }, { role:'user', content:user }]);
+    const parsed = tobAiParseJson(raw);
+
+    let puestos = 0;
+    for(let s = 0; s < semanas; s++){
+      const wk = parsed[s] != null ? parsed[s] : parsed[String(s)];
+      if(!Array.isArray(wk)) continue;
+      if(!tobMcState.data[s]) tobMcState.data[s] = {};
+      for(let d = 0; d < 7; d++){
+        if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
+        const day = wk[d];
+        comidas.forEach(c => {
+          const ids = day && typeof day === 'object' ? day[c.id] : null;
+          const ok = Array.isArray(ids) ? ids.filter(id => validIds.has(id)) : [];
+          tobMcState.data[s][d][c.id] = ok;
+          puestos += ok.length;
+        });
+      }
+    }
+    if(!puestos) throw new Error('la IA no ha retornat receptes vàlides — torna-ho a provar');
+    tobMcRenderGrid();
+    tobMcUpdateAllTotals();
+    tobToast('✓ Menú generat amb IA — ' + puestos + ' plats. Revisa\'l i ajusta el que calgui.', 'green');
+  } catch(e){
+    console.warn('[IA menú]', e);
+    tobToast('✗ Error generant el menú: ' + (e.message || e), 'red');
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = btnTxt || '🤖 Generar con IA'; }
+  }
+}
+
+// ── Cambiar un plato del menú por una alternativa compatible ────
+let _tobMcSwapCtx = null;
+function tobMcOpenSwap(day, mealId, ix){
+  if(!tobMcState) return;
+  const sem = tobMcState.semanaActiva;
+  const arr = ((tobMcState.data[sem]||{})[day]||{})[mealId];
+  if(!arr || arr[ix] == null) return;
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  const cur = (tobMenusDB.recetas||[]).find(r => r.id === arr[ix]);
+  const curKcal = cur ? tobRecMacros(cur).kcal / (cur.raciones||1) : 0;
+  _tobMcSwapCtx = { day, mealId, ix };
+  document.getElementById('tobMcSwapInfo').textContent =
+    (TOB_REC_MOMENTO_LBL[mealId]||mealId) + ' · ' + (TOB_MC_DIAS[day]||'') +
+    ' — actual: ' + (cur ? cur.nombre : '(cap)') + (curKcal ? ' · ' + Math.round(curKcal) + ' kcal' : '');
+  let alts = tobMcCandidatas(cli, mealId).filter(r => !cur || r.id !== cur.id);
+  alts.sort((a,b) => {
+    const ka = tobRecMacros(a).kcal/(a.raciones||1), kb = tobRecMacros(b).kcal/(b.raciones||1);
+    if(curKcal){
+      const da = Math.abs(ka-curKcal), db = Math.abs(kb-curKcal);
+      if(Math.abs(da-db) > 1) return da - db;
+    }
+    return ((b.favorito?1:0)-(a.favorito?1:0)) || (a.nombre||'').localeCompare(b.nombre||'');
+  });
+  alts = alts.slice(0, 40);
+  const body = document.getElementById('tobMcSwapList');
+  body.innerHTML = alts.length ? alts.map(r => {
+    const mm = tobRecMacros(r); const rac = r.raciones || 1;
+    return `<div class="tob-menu-row" style="cursor:pointer;" onclick="tobMcDoSwap('${r.id}')">
+      <div class="tob-menu-row-info">
+        <div class="nm">${tobEsc(r.nombre)}</div>
+        <div class="meta">${Math.round(mm.kcal/rac)} kcal · ${Math.round(mm.proteina/rac)}g prot · ${Math.round(mm.hc/rac)}g HC${r.favorito?' · ★':''}</div>
+      </div>
+      <button class="tob-action ghost btn-xs">Triar</button>
+    </div>`;
+  }).join('') : '<div style="text-align:center;color:var(--mute2);padding:24px;font-family:DM Mono,monospace;font-size:.78rem;">No hi ha alternatives compatibles per aquest àpat.</div>';
+  document.getElementById('tobMcSwapBg').classList.add('on');
+}
+function tobMcDoSwap(newId){
+  if(!_tobMcSwapCtx || !tobMcState) return;
+  const { day, mealId, ix } = _tobMcSwapCtx;
+  const sem = tobMcState.semanaActiva;
+  const arr = ((tobMcState.data[sem]||{})[day]||{})[mealId];
+  if(arr && ix < arr.length) arr[ix] = newId;
+  document.getElementById('tobMcSwapBg').classList.remove('on');
+  _tobMcSwapCtx = null;
+  tobMcRenderGrid();
+  tobMcUpdateAllTotals();
+  tobToast('✓ Plat canviat', 'green');
 }
 
 // Hook al cambio de sub-tab "creador" — inicializa el selector cliente
