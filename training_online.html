@@ -507,17 +507,20 @@
         <!-- OBJETIVOS -->
         <div class="tob-quest-section">
           <h4 class="tob-quest-h">🎯 Objectius</h4>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Objectiu principal <span class="tob-quest-h-sub">(escull-ne un)</span></label>
+            <div class="tob-quest-chips" id="qChipsObjectiu"></div>
+          </div>
           <div class="tob-row col-3">
             <div><label class="tob-lbl">Pes objectiu (kg)</label><input class="tob-input tob-quest-f" type="number" step="0.1" id="qPesObj" placeholder="ex: 75"></div>
             <div><label class="tob-lbl">Sumatori 6 plecs objectiu (mm)</label><input class="tob-input tob-quest-f" type="number" step="0.5" id="qSumObj" placeholder="ex: 60"></div>
             <div><label class="tob-lbl">Objectiu calòric (kcal/dia)</label><input class="tob-input tob-quest-f" type="number" id="qKcalObj" placeholder="ex: 2200"></div>
           </div>
-          <div class="tob-row col-3">
-            <div><label class="tob-lbl">Proteïna (g)</label><input class="tob-input tob-quest-f" type="number" id="qProtObj" placeholder="ex: 150"></div>
-            <div><label class="tob-lbl">Hidrats (g)</label><input class="tob-input tob-quest-f" type="number" id="qHCObj" placeholder="ex: 220"></div>
-            <div><label class="tob-lbl">Greixos (g)</label><input class="tob-input tob-quest-f" type="number" id="qGrasObj" placeholder="ex: 70"></div>
-          </div>
           <div class="tob-row col-2">
+            <div>
+              <label class="tob-lbl">Proteïna objectiu (g) <span class="tob-quest-h-sub" id="qProtGuide"></span></label>
+              <input class="tob-input tob-quest-f" type="number" id="qProtObj" placeholder="ex: 150">
+            </div>
             <div>
               <label class="tob-lbl">Nivell d'activitat (PAL)</label>
               <select class="tob-select tob-quest-f" id="qPAL">
@@ -529,20 +532,43 @@
                 <option value="1.9">Molt actiu / atleta (1.9)</option>
               </select>
             </div>
-            <div><label class="tob-lbl">Protocol per perdre pes</label><input class="tob-input tob-quest-f" id="qProtocol" placeholder="ex: dèficit 500 kcal · 5 àpats..."></div>
+          </div>
+          <div class="tob-quest-calc" id="qKcalBase"></div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Nombre d'àpats al dia</label>
+            <div class="tob-quest-chips" id="qChipsApats"></div>
           </div>
         </div>
 
         <!-- SALUD -->
         <div class="tob-quest-section">
           <h4 class="tob-quest-h">⚕ Salut i restriccions</h4>
-          <div><label class="tob-lbl">Al·lèrgies / intoleràncies</label><textarea class="tob-input tob-quest-f" id="qAlergias" rows="2" placeholder="ex: lactosa, fruita seca..."></textarea></div>
-          <div><label class="tob-lbl">Aliments que et senten malament</label><textarea class="tob-input tob-quest-f" id="qSientenMal" rows="2" placeholder="ex: cebolla cruda, llegums..."></textarea></div>
-          <div class="tob-row col-2">
-            <div><label class="tob-lbl">Aliments ✗ (no menjar)</label><textarea class="tob-input tob-quest-f" id="qAlimX" rows="2" placeholder="prohibits o que no li agraden"></textarea></div>
-            <div><label class="tob-lbl">Aliments ✓ (preferits)</label><textarea class="tob-input tob-quest-f" id="qAlimOk" rows="2" placeholder="el que sí menja amb gust"></textarea></div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Patologies / condicions mèdiques</label>
+            <div class="tob-quest-chips" id="qChipsPatologies"></div>
           </div>
-          <div><label class="tob-lbl">Patologies / condicions mèdiques</label><textarea class="tob-input tob-quest-f" id="qPatologias" rows="2" placeholder="ex: hipertensió, diabetis tipus 2..."></textarea></div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Al·lèrgies / intoleràncies <span class="tob-quest-h-sub">(escriu i prem Enter)</span></label>
+            <div class="tob-quest-chips" id="qChipsAlergies"></div>
+            <input class="tob-input" id="qAlergiesNew" placeholder="ex: lactosa, fruita seca..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alergies',event)">
+          </div>
+          <div class="tob-row col-2">
+            <div class="tob-quest-chip-block">
+              <label class="tob-lbl">Aliments ✗ (no menjar)</label>
+              <div class="tob-quest-chips" id="qChipsAlimX"></div>
+              <input class="tob-input" id="qAlimXNew" placeholder="prohibits o que no li agraden..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alimX',event)">
+            </div>
+            <div class="tob-quest-chip-block">
+              <label class="tob-lbl">Aliments ✓ (preferits)</label>
+              <div class="tob-quest-chips" id="qChipsAlimOk"></div>
+              <input class="tob-input" id="qAlimOkNew" placeholder="el que sí menja amb gust..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alimOk',event)">
+            </div>
+          </div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Aliments que li senten malament</label>
+            <div class="tob-quest-chips" id="qChipsSentenMal"></div>
+            <input class="tob-input" id="qSentenMalNew" placeholder="ex: ceba crua, llegums..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('sentenMal',event)">
+          </div>
         </div>
 
         <!-- RECORDATORI NUTRICIONAL -->
@@ -558,11 +584,21 @@
         <!-- ESTILO DE VIDA -->
         <div class="tob-quest-section">
           <h4 class="tob-quest-h">🏃 Estil de vida</h4>
-          <div><label class="tob-lbl">Cuina (qui cuina, temps disponible, tipus)</label><textarea class="tob-input tob-quest-f" id="qCuina" rows="2" placeholder="ex: cuino jo · disposo de 30 min · cuina mediterrània"></textarea></div>
-          <div><label class="tob-lbl">Exercici físic i esport (tipus, freqüència, intensitat)</label><textarea class="tob-input tob-quest-f" id="qEsport" rows="2" placeholder="ex: gimnàs 3 cops setmana + caminar diari"></textarea></div>
-          <div><label class="tob-lbl">Treball (tipus, horaris, sedentari/actiu)</label><textarea class="tob-input tob-quest-f" id="qTreball" rows="2" placeholder="ex: oficina 9-18h, sedentari"></textarea></div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Qui cuina</label>
+            <div class="tob-quest-chips" id="qChipsCuina"></div>
+          </div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Temps disponible per cuinar</label>
+            <div class="tob-quest-chips" id="qChipsTempsCuina"></div>
+          </div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Tipus de feina</label>
+            <div class="tob-quest-chips" id="qChipsTreball"></div>
+          </div>
           <div><label class="tob-lbl">Horaris habituals de menjar</label><input class="tob-input tob-quest-f" id="qHoraris" placeholder="ex: esmorzar 7h · dinar 14h · sopar 21h"></div>
-          <div><label class="tob-lbl">Motivació i adherència</label><textarea class="tob-input tob-quest-f" id="qMotivacio" rows="2" placeholder="ex: vol arribar a fitness per l'estiu, motivat però amb caps de setmana fluixos"></textarea></div>
+          <div><label class="tob-lbl">Exercici físic i esport</label><textarea class="tob-input tob-quest-f" id="qEsport" rows="2" placeholder="ex: gimnàs 3 cops setmana + caminar diari"></textarea></div>
+          <div><label class="tob-lbl">Motivació i adherència</label><textarea class="tob-input tob-quest-f" id="qMotivacio" rows="2" placeholder="ex: motivat però amb caps de setmana fluixos"></textarea></div>
         </div>
 
         <!-- PERFIL ALIMENTARI -->
@@ -587,7 +623,7 @@
           <div class="tob-quest-chip-block">
             <label class="tob-lbl">Etiquetes personalitzades</label>
             <div class="tob-quest-chips" id="qChipsCustom"></div>
-            <input class="tob-input tob-quest-f" id="qChipNew" placeholder="Escriu i prem Enter per afegir-ne una..." style="margin-top:6px;" onkeydown="tobQuestAddCustomChip(event)">
+            <input class="tob-input" id="qChipNew" placeholder="Escriu i prem Enter per afegir-ne una..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('custom',event)">
           </div>
         </div>
 

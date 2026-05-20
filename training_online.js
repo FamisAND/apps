@@ -4961,28 +4961,43 @@ function tobShareWhatsApp(cli, kind, extraText){
 // ─────────────────────────────────────────────────────────────────
 // Sección colapsable en la ficha del cliente. Guarda en cli.cuestionario.
 // Schema cli.cuestionario:
-//   { pesObjetivo, sumObjetivo, kcalObjetivo, protObjetivo, hcObjetivo,
-//     grasObjetivo, pal, protocolo,
-//     alergias, sientenMal, alimX, alimOk, patologias,
-//     apat1..apat5, cuina, esport, treball, horaris, motivacio,
-//     comentari,
-//     tags: { dieta:'omnivor', proteina:['...','...'], pref:[...], custom:[...] }
+//   { pesObjetivo, sumObjetivo, kcalObjetivo, protObjetivo, pal,
+//     apat1..apat5, horaris, esport, motivacio, comentari,
+//     tags: {
+//       objectiu, apats, dieta, cuina, tempsCuina, treball  (radio, string|null)
+//       proteina:[], pref:[], patologies:[]                 (multi)
+//       alergies:[], alimX:[], alimOk:[], sentenMal:[], custom:[]  (listas libres)
+//     }
 //   }
+// La mayoría de datos son chips/etiquetas — así la IA los detecta sin
+// interpretar texto libre. Solo "comentari" (y recordatori/horaris) es texto.
 // ═════════════════════════════════════════════════════════════════
 
-// Etiquetas predefinidas por grupo. 'neg' marca chips que son restricciones
-// (✗) y se pintan en rojo cuando se activan.
+// Grupos de chips predefinidos. mode: 'radio' (uno solo) | 'multi' (varios).
+// 'neg' pinta el chip en rojo (restricción). 'excludes' quita el opuesto.
 const TOB_QUEST_CHIPS = {
-  // dieta es radio (excluyente)
-  dieta: [
+  objectiu: { mode:'radio', items:[
+    { id:'perdre_greix',   label:'Perdre greix' },
+    { id:'recomposicio',   label:'Recomposició corporal' },
+    { id:'guanyar_muscul', label:'Guanyar múscul' },
+    { id:'mantenir',       label:'Mantenir pes' },
+    { id:'rendiment',      label:'Rendiment esportiu' },
+    { id:'salut',          label:'Salut general' }
+  ]},
+  apats: { mode:'radio', items:[
+    { id:'3', label:'3 àpats' },
+    { id:'4', label:'4 àpats' },
+    { id:'5', label:'5 àpats' },
+    { id:'6', label:'6 àpats' }
+  ]},
+  dieta: { mode:'radio', items:[
     { id:'omnivor',    label:'Omnívor' },
     { id:'vegetaria',  label:'Vegetarià' },
     { id:'vega',       label:'Vegà' },
     { id:'pescetaria', label:'Pescetarià' },
     { id:'flexitaria', label:'Flexitarià' }
-  ],
-  // proteina: pares ✓/✗ — uno excluye al otro
-  proteina: [
+  ]},
+  proteina: { mode:'multi', items:[
     { id:'carn_si',     label:'✓ Carn vermella',    excludes:'carn_no' },
     { id:'carn_no',     label:'✗ Sense carn vermella', neg:true, excludes:'carn_si' },
     { id:'pollastre_si',label:'✓ Pollastre i aviram', excludes:'pollastre_no' },
@@ -4995,46 +5010,80 @@ const TOB_QUEST_CHIPS = {
     { id:'ous_no',      label:'✗ Sense ous',        neg:true, excludes:'ous_si' },
     { id:'lactis_si',   label:'✓ Lactis',           excludes:'lactis_no' },
     { id:'lactis_no',   label:'✗ Sense lactis',     neg:true, excludes:'lactis_si' }
-  ],
-  pref: [
+  ]},
+  pref: { mode:'multi', items:[
     { id:'sense_gluten',   label:'Sense gluten',    neg:true },
     { id:'sense_lactosa',  label:'Sense lactosa',   neg:true },
     { id:'sense_fruita_seca', label:'Sense fruita seca', neg:true },
     { id:'fodmap',         label:'Baix FODMAP' },
     { id:'paleo',          label:'Paleo' },
     { id:'keto',           label:'Keto' },
-    { id:'batch',          label:'Batch cooking' },
     { id:'rapida',         label:'Cuina ràpida (<30 min)' },
     { id:'fora',           label:'Menja fora de casa' },
     { id:'sense_cuina',    label:'Sense accés a cuina', neg:true }
-  ]
+  ]},
+  patologies: { mode:'multi', items:[
+    { id:'hipertensio',     label:'Hipertensió',          neg:true },
+    { id:'colesterol',      label:'Colesterol alt',       neg:true },
+    { id:'diabetis2',       label:'Diabetis tipus 2',     neg:true },
+    { id:'resist_insulina', label:'Resistència insulina', neg:true },
+    { id:'hipotiroides',    label:'Hipotiroïdisme',       neg:true },
+    { id:'sop',             label:'SOP / SOPQ',           neg:true },
+    { id:'acid_uric',       label:'Àcid úric alt',        neg:true },
+    { id:'anemia',          label:'Anèmia',               neg:true },
+    { id:'digestius',       label:'Problemes digestius',  neg:true },
+    { id:'renal',           label:'Problemes renals',     neg:true }
+  ]},
+  cuina: { mode:'radio', items:[
+    { id:'jo',       label:'Cuina ell/ella' },
+    { id:'parella',  label:'Cuina la parella / família' },
+    { id:'preparat', label:'Menjar preparat / càtering' },
+    { id:'combinat', label:'Combinació' }
+  ]},
+  tempsCuina: { mode:'radio', items:[
+    { id:'molt_poc', label:'<15 min' },
+    { id:'poc',      label:'15-30 min' },
+    { id:'normal',   label:'30-60 min' },
+    { id:'batch',    label:'Batch cooking cap de setmana' }
+  ]},
+  treball: { mode:'radio', items:[
+    { id:'sedentari', label:'Sedentari (oficina)' },
+    { id:'actiu',     label:'Actiu (de peu / movent-se)' },
+    { id:'fisic',     label:'Físic intens' },
+    { id:'torns',     label:'Torns / nocturn' },
+    { id:'casa',      label:'A casa / cura de família' }
+  ]}
+};
+// Container DOM (id del div .tob-quest-chips) por grupo.
+const TOB_QUEST_CHIP_EL = {
+  objectiu:'qChipsObjectiu', apats:'qChipsApats', dieta:'qChipsDieta',
+  proteina:'qChipsProteina', pref:'qChipsPref', patologies:'qChipsPatologies',
+  cuina:'qChipsCuina', tempsCuina:'qChipsTempsCuina', treball:'qChipsTreball'
+};
+// Listas de chips libres (escribir + Enter). 'migrate' = clave de texto
+// vieja que se trocea en chips la primera vez (compatibilidad).
+const TOB_QUEST_LISTS = {
+  alergies:  { el:'qChipsAlergies',  migrate:'alergias'   },
+  alimX:     { el:'qChipsAlimX',     migrate:'alimX'      },
+  alimOk:    { el:'qChipsAlimOk',    migrate:'alimOk'     },
+  sentenMal: { el:'qChipsSentenMal', migrate:'sientenMal' },
+  custom:    { el:'qChipsCustom' }
 };
 
-// Lista de IDs de los campos simples del cuestionario (input/textarea/select).
-// Usado por load/save para iterar sin duplicar nombres.
+// Lista de IDs de los campos de texto simples (input/textarea/select).
 const TOB_QUEST_FIELDS = [
   ['qPesObj',    'pesObjetivo',  'num'],
   ['qSumObj',    'sumObjetivo',  'num'],
   ['qKcalObj',   'kcalObjetivo', 'num'],
   ['qProtObj',   'protObjetivo', 'num'],
-  ['qHCObj',     'hcObjetivo',   'num'],
-  ['qGrasObj',   'grasObjetivo', 'num'],
   ['qPAL',       'pal',          'str'],
-  ['qProtocol',  'protocolo',    'str'],
-  ['qAlergias',  'alergias',     'str'],
-  ['qSientenMal','sientenMal',   'str'],
-  ['qAlimX',     'alimX',        'str'],
-  ['qAlimOk',    'alimOk',       'str'],
-  ['qPatologias','patologias',   'str'],
   ['qApat1',     'apat1',        'str'],
   ['qApat2',     'apat2',        'str'],
   ['qApat3',     'apat3',        'str'],
   ['qApat4',     'apat4',        'str'],
   ['qApat5',     'apat5',        'str'],
-  ['qCuina',     'cuina',        'str'],
-  ['qEsport',    'esport',       'str'],
-  ['qTreball',   'treball',      'str'],
   ['qHoraris',   'horaris',      'str'],
+  ['qEsport',    'esport',       'str'],
   ['qMotivacio', 'motivacio',    'str'],
   ['qComentari', 'comentari',    'str']
 ];
@@ -5052,14 +5101,69 @@ function tobQuestLoad(){
     el.value = q[key] != null ? q[key] : '';
     // Listener auto-save (debounced) — solo se engancha una vez
     if(!el._qBound){
-      el.addEventListener('input', () => { tobQuestScheduleSave(); tobUpdateCuestionarioBadge(); });
+      el.addEventListener('input', () => {
+        tobQuestScheduleSave();
+        tobUpdateCuestionarioBadge();
+        tobQuestUpdateGuides();
+      });
       el._qBound = true;
     }
   });
-  // Render chips
-  tobQuestRenderChips(q.tags || {});
-  // Actualizar badge del botón en toolbar
+  // Asegura/migra la estructura de tags antes de renderizar
+  const tags = cli.cuestionario ? tobQuestEnsureTags(cli) : (q.tags || {});
+  tobQuestRenderChips(tags);
+  tobQuestUpdateGuides();
   tobUpdateCuestionarioBadge();
+}
+
+// ── Harris-Benedict: kcal base + guía de proteína ────────────────
+// Usa la última medición del cliente (peso + estatura), su fecha de
+// nacimiento (edad) y su sexo. Devuelve {bmr, pes, est, edad} o null.
+function tobQuestComputeBMR(cli){
+  if(!cli) return null;
+  const meds = (typeof tobMedsSorted === 'function') ? tobMedsSorted(cli) : [];
+  const last = meds[meds.length - 1];
+  const pes = last ? parseFloat(last.pes) : NaN;
+  const est = last ? parseFloat(last.estatura) : NaN;
+  const edad = (typeof tobMedAge === 'function')
+    ? tobMedAge(cli, new Date().toISOString().slice(0,10)) : null;
+  if(!(pes > 0) || !(est > 0) || edad == null) return null;
+  // Harris-Benedict revisado (Roza & Shizgal, 1984)
+  const bmr = (cli.sexo === 'M')
+    ? 447.593 + 9.247*pes + 3.098*est - 4.330*edad
+    : 88.362 + 13.397*pes + 4.799*est - 5.677*edad;
+  return { bmr: Math.round(bmr), pes, est, edad };
+}
+
+// Refresca los textos guía: proteína (1.2-2 g/kg) y kcal base (HB × PAL).
+function tobQuestUpdateGuides(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  const meds = (cli && typeof tobMedsSorted === 'function') ? tobMedsSorted(cli) : [];
+  const last = meds[meds.length - 1];
+  const pes  = last ? parseFloat(last.pes) : NaN;
+
+  const protEl = document.getElementById('qProtGuide');
+  if(protEl){
+    protEl.textContent = (pes > 0)
+      ? `· guia ${Math.round(pes*1.2)}–${Math.round(pes*2)} g (1.2–2 g/kg de ${pes} kg)`
+      : '';
+  }
+  const kcalEl = document.getElementById('qKcalBase');
+  if(kcalEl){
+    const hb = tobQuestComputeBMR(cli);
+    if(!hb){
+      kcalEl.textContent = '⚠ Afegeix una medició amb pes i estatura + la data de naixement per calcular les kcal base.';
+      kcalEl.classList.remove('ok');
+    } else {
+      const pal = parseFloat((document.getElementById('qPAL') || {}).value);
+      if(pal > 0){
+        kcalEl.textContent = `≈ ${Math.round(hb.bmr*pal)} kcal/dia de manteniment · Harris-Benedict (MB ${hb.bmr} × PAL ${pal})`;
+      } else {
+        kcalEl.textContent = `Metabolisme basal ${hb.bmr} kcal/dia · escull l'activitat per veure el manteniment`;
+      }
+      kcalEl.classList.add('ok');
+    }
+  }
 }
 
 // ── Botón "📋 Cuestionario" en la toolbar: scroll + abre el details ──
@@ -5073,8 +5177,7 @@ function tobOpenCuestionario(){
   if(block) block.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
-// Considera "vacío" si el cliente no tiene cuestionario o tiene <4 campos
-// significativos rellenos (datos relevantes para el creador de menús).
+// Considera "vacío" si el cliente no tiene objectiu, ni dieta, ni kcal.
 function tobUpdateCuestionarioBadge(){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   const badgeBtn  = document.getElementById('tobBtnCuestionarioBadge');
@@ -5085,98 +5188,98 @@ function tobUpdateCuestionarioBadge(){
     return;
   }
   const q = cli.cuestionario || {};
-  // Campos clave que el creador de menús e IA necesitan sí o sí
-  const claves = ['kcalObjetivo','protObjetivo','alergias','alimX','alimOk','apat1','apat3','apat5'];
-  const rellenos = claves.filter(k => q[k] != null && String(q[k]).trim() !== '').length;
   const tags = q.tags || {};
   const tieneDieta = !!tags.dieta || (Array.isArray(tags.proteina) && tags.proteina.length > 0);
-  const vacio = rellenos < 3 && !tieneDieta;
+  const tieneObjetivo = !!tags.objectiu;
+  const tieneKcal = q.kcalObjetivo != null && String(q.kcalObjetivo).trim() !== '';
+  const vacio = !tieneObjetivo && !tieneDieta && !tieneKcal;
   if(badgeBtn) badgeBtn.style.display = vacio ? '' : 'none';
   if(tagEmpty) tagEmpty.style.display = vacio ? '' : 'none';
 }
 
-// Render del bloque de chips para los 3 grupos predefinidos + custom.
+// Render genérico de TODOS los grupos de chips + listas libres.
 function tobQuestRenderChips(tags){
-  const activeDieta = tags.dieta || null;
-  const activeProt  = Array.isArray(tags.proteina) ? new Set(tags.proteina) : new Set();
-  const activePref  = Array.isArray(tags.pref) ? new Set(tags.pref) : new Set();
-  const custom      = Array.isArray(tags.custom) ? tags.custom : [];
-
-  // Dieta: radio (1 activo, excluye otros)
-  const elD = document.getElementById('qChipsDieta');
-  if(elD){
-    elD.innerHTML = TOB_QUEST_CHIPS.dieta.map(c => {
-      const on = c.id === activeDieta;
-      return `<button class="tob-quest-chip${on?' active':''}" data-id="${c.id}" onclick="tobQuestToggleDieta('${c.id}')">${tobEsc(c.label)}</button>`;
+  tags = tags || {};
+  // Grupos predefinidos (radio / multi)
+  Object.keys(TOB_QUEST_CHIPS).forEach(group => {
+    const def = TOB_QUEST_CHIPS[group];
+    const el  = document.getElementById(TOB_QUEST_CHIP_EL[group]);
+    if(!el) return;
+    const sel = def.mode === 'radio'
+      ? tags[group]
+      : (Array.isArray(tags[group]) ? new Set(tags[group]) : new Set());
+    el.innerHTML = def.items.map(c => {
+      const on = def.mode === 'radio' ? (c.id === sel) : sel.has(c.id);
+      return `<button type="button" class="tob-quest-chip${on?' active':''}${c.neg?' neg':''}" onclick="tobQuestToggle('${group}','${c.id}')">${tobEsc(c.label)}</button>`;
     }).join('');
-  }
-
-  // Proteína: multi con pares ✓/✗ (excludes)
-  const elP = document.getElementById('qChipsProteina');
-  if(elP){
-    elP.innerHTML = TOB_QUEST_CHIPS.proteina.map(c => {
-      const on = activeProt.has(c.id);
-      return `<button class="tob-quest-chip${on?' active':''}${c.neg?' neg':''}" data-id="${c.id}" onclick="tobQuestToggleChip('proteina','${c.id}')">${tobEsc(c.label)}</button>`;
-    }).join('');
-  }
-
-  // Preferencias: multi simple
-  const elPr = document.getElementById('qChipsPref');
-  if(elPr){
-    elPr.innerHTML = TOB_QUEST_CHIPS.pref.map(c => {
-      const on = activePref.has(c.id);
-      return `<button class="tob-quest-chip${on?' active':''}${c.neg?' neg':''}" data-id="${c.id}" onclick="tobQuestToggleChip('pref','${c.id}')">${tobEsc(c.label)}</button>`;
-    }).join('');
-  }
-
-  // Custom: chips libres con botón × para borrar
-  const elC = document.getElementById('qChipsCustom');
-  if(elC){
-    elC.innerHTML = custom.length
-      ? custom.map((tag, i) =>
-          `<button class="tob-quest-chip custom active" onclick="tobQuestRemoveCustomChip(${i})" title="Clic per esborrar">${tobEsc(tag)}<span class="x">×</span></button>`
+  });
+  // Listas libres (escribir + Enter) con botón × para borrar
+  Object.keys(TOB_QUEST_LISTS).forEach(key => {
+    const el = document.getElementById(TOB_QUEST_LISTS[key].el);
+    if(!el) return;
+    const arr = Array.isArray(tags[key]) ? tags[key] : [];
+    el.innerHTML = arr.length
+      ? arr.map((tag, i) =>
+          `<button type="button" class="tob-quest-chip custom active" onclick="tobQuestRemoveListChip('${key}',${i})" title="Clic per esborrar">${tobEsc(tag)}<span class="x">×</span></button>`
         ).join('')
       : '<span style="font-size:.7rem;color:var(--mute2);font-family:DM Mono,monospace;">cap encara</span>';
-  }
+  });
 }
 
+// Asegura la estructura de tags y migra campos de texto viejos a listas.
 function tobQuestEnsureTags(cli){
   if(!cli.cuestionario) cli.cuestionario = {};
-  if(!cli.cuestionario.tags) cli.cuestionario.tags = { dieta:null, proteina:[], pref:[], custom:[] };
-  return cli.cuestionario.tags;
+  const q = cli.cuestionario;
+  if(!q.tags) q.tags = {};
+  const t = q.tags;
+  // Grupos multi → array; radio → se deja como string|null
+  Object.keys(TOB_QUEST_CHIPS).forEach(g => {
+    if(TOB_QUEST_CHIPS[g].mode === 'multi' && !Array.isArray(t[g])) t[g] = [];
+  });
+  // Listas libres → array, con migración de la clave de texto vieja
+  Object.keys(TOB_QUEST_LISTS).forEach(key => {
+    if(!Array.isArray(t[key])) t[key] = [];
+    const old = TOB_QUEST_LISTS[key].migrate;
+    if(old && q[old] && t[key].length === 0){
+      String(q[old]).split(/[,;\n]+/).map(s => s.trim()).filter(Boolean)
+        .forEach(s => { if(t[key].indexOf(s) === -1) t[key].push(s); });
+      delete q[old];
+    }
+  });
+  return t;
 }
 
-function tobQuestToggleDieta(id){
+// Toggle genérico para grupos radio / multi.
+function tobQuestToggle(group, id){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli) return;
+  const def = TOB_QUEST_CHIPS[group];
+  if(!def) return;
   const tags = tobQuestEnsureTags(cli);
-  tags.dieta = (tags.dieta === id) ? null : id;
-  tobQuestRenderChips(tags);
-  tobQuestScheduleSave();
-}
-
-function tobQuestToggleChip(group, id){
-  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
-  if(!cli) return;
-  const tags = tobQuestEnsureTags(cli);
-  const arr = tags[group] = (tags[group] || []);
-  const ix = arr.indexOf(id);
-  if(ix >= 0){
-    arr.splice(ix, 1);
+  if(def.mode === 'radio'){
+    tags[group] = (tags[group] === id) ? null : id;
   } else {
-    arr.push(id);
-    // Si tiene "excludes", quita el contrario automáticamente
-    const chipDef = (TOB_QUEST_CHIPS[group] || []).find(c => c.id === id);
-    if(chipDef?.excludes){
-      const exIx = arr.indexOf(chipDef.excludes);
-      if(exIx >= 0) arr.splice(exIx, 1);
+    if(!Array.isArray(tags[group])) tags[group] = [];
+    const arr = tags[group];
+    const ix = arr.indexOf(id);
+    if(ix >= 0){
+      arr.splice(ix, 1);
+    } else {
+      arr.push(id);
+      // Si tiene "excludes", quita el contrario automáticamente
+      const chipDef = def.items.find(c => c.id === id);
+      if(chipDef && chipDef.excludes){
+        const exIx = arr.indexOf(chipDef.excludes);
+        if(exIx >= 0) arr.splice(exIx, 1);
+      }
     }
   }
   tobQuestRenderChips(tags);
   tobQuestScheduleSave();
 }
 
-function tobQuestAddCustomChip(ev){
+// Listas libres: añadir (Enter) / quitar chip.
+function tobQuestAddListChip(key, ev){
   if(ev.key !== 'Enter') return;
   ev.preventDefault();
   const inp = ev.target;
@@ -5185,21 +5288,19 @@ function tobQuestAddCustomChip(ev){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli) return;
   const tags = tobQuestEnsureTags(cli);
-  tags.custom = tags.custom || [];
-  if(tags.custom.indexOf(val) === -1){
-    tags.custom.push(val);
-  }
+  if(!Array.isArray(tags[key])) tags[key] = [];
+  if(tags[key].indexOf(val) === -1) tags[key].push(val);
   inp.value = '';
   tobQuestRenderChips(tags);
   tobQuestScheduleSave();
 }
 
-function tobQuestRemoveCustomChip(ix){
+function tobQuestRemoveListChip(key, ix){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli) return;
   const tags = tobQuestEnsureTags(cli);
-  tags.custom = tags.custom || [];
-  tags.custom.splice(ix, 1);
+  if(!Array.isArray(tags[key])) return;
+  tags[key].splice(ix, 1);
   tobQuestRenderChips(tags);
   tobQuestScheduleSave();
 }
@@ -6754,10 +6855,15 @@ function tobMcRenderPerfilResumen(cli){
   if(tags.custom?.length){
     blocks.push(`<strong style="color:var(--acc2)">Etiquetas:</strong> ${tobEsc(tags.custom.join(', '))}`);
   }
-  if(q.alergias)    blocks.push(`<strong style="color:#dc6a6a">Alergias:</strong> ${tobEsc(q.alergias)}`);
-  if(q.alimX)       blocks.push(`<strong style="color:#dc6a6a">Aliments ✗:</strong> ${tobEsc(q.alimX)}`);
-  if(q.alimOk)      blocks.push(`<strong style="color:var(--green)">Aliments ✓:</strong> ${tobEsc(q.alimOk)}`);
-  if(q.patologias)  blocks.push(`<strong style="color:#dc6a6a">Patologies:</strong> ${tobEsc(q.patologias)}`);
+  if(tags.patologies && tags.patologies.length){
+    const items = (TOB_QUEST_CHIPS.patologies || {}).items || [];
+    const lbls = tags.patologies.map(id => { const d = items.find(c => c.id === id); return d ? d.label : id; });
+    blocks.push(`<strong style="color:#dc6a6a">Patologies:</strong> ${tobEsc(lbls.join(', '))}`);
+  }
+  if(tags.alergies && tags.alergies.length)  blocks.push(`<strong style="color:#dc6a6a">Al·lèrgies:</strong> ${tobEsc(tags.alergies.join(', '))}`);
+  if(tags.alimX && tags.alimX.length)        blocks.push(`<strong style="color:#dc6a6a">Aliments ✗:</strong> ${tobEsc(tags.alimX.join(', '))}`);
+  if(tags.alimOk && tags.alimOk.length)      blocks.push(`<strong style="color:var(--green)">Aliments ✓:</strong> ${tobEsc(tags.alimOk.join(', '))}`);
+  if(tags.sentenMal && tags.sentenMal.length) blocks.push(`<strong style="color:#dc6a6a">Senten malament:</strong> ${tobEsc(tags.sentenMal.join(', '))}`);
 
   const el = document.getElementById('tobMcPerfilResumen');
   if(blocks.length){
@@ -6779,10 +6885,13 @@ function tobMcCheckCompat(rec, cli){
   const tags = q.tags || {};
   const razones = [];
 
-  // 1. Aliments X / alergias / aliments que sienten mal — match por nombre
-  //    en ingredientes y nombre de receta.
-  const textosNegativos = [q.alimX, q.alergias, q.sientenMal]
-    .filter(Boolean).join(',').toLowerCase()
+  // 1. Aliments X / alergias / aliments que sienten mal — ahora son listas
+  //    de chips. Match por nombre en ingredientes y nombre de receta.
+  //    (q.alimX/alergias/sientenMal = compat con datos viejos sin migrar)
+  const textosNegativos = [
+    ...(tags.alimX || []), ...(tags.alergies || []), ...(tags.sentenMal || []),
+    q.alimX, q.alergias, q.sientenMal
+  ].filter(Boolean).join(',').toLowerCase()
     .split(/[,;\n]/).map(s => s.trim()).filter(s => s.length >= 3);
   if(textosNegativos.length){
     const haystack = (rec.nombre || '').toLowerCase() + ' ' +

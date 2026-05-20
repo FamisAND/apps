@@ -580,6 +580,12 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-quest-section > div{margin-bottom:10px;}
 .tob-quest-f{transition:border-color .15s ease;}
 .tob-quest-f:focus{border-color:var(--acc);outline:none;}
+/* Texto calculado (kcal base Harris-Benedict bajo el PAL) */
+.tob-quest-calc{
+  font-size:.72rem;font-family:'DM Mono',monospace;letter-spacing:.02em;
+  color:var(--mute2);margin:-2px 0 12px;line-height:1.5;
+}
+.tob-quest-calc.ok{color:var(--acc2);}
 
 /* Chips/etiquetas seleccionables */
 .tob-quest-chip-block{margin-bottom:14px;}
