@@ -21,7 +21,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v84';
+const CACHE_VERSION = 'mis-dashboards-v85';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).
@@ -63,6 +63,7 @@ const NO_CACHE_HOSTS = [
   'api.groq.com',
   'openrouter.ai',
   'generativelanguage.googleapis.com',
+  'api.anthropic.com',
   'finnhub.io',
   'api.frankfurter.app',
   'api.coingecko.com',

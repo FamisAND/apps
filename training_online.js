@@ -7879,6 +7879,7 @@ const TOB_AI_CFG_KEY = 'tob_ai_cfg';
 const TOB_AI_DEFAULTS = {
   gemini:     { model:'gemini-2.0-flash',          help:'Clau gratuïta a aistudio.google.com/apikey' },
   groq:       { model:'llama-3.3-70b-versatile',   help:'Clau gratuïta a console.groq.com/keys' },
+  anthropic:  { model:'claude-3-5-haiku-latest',   help:'Clau a console.anthropic.com → API Keys (requereix crèdit API, separat de la subscripció de Claude)' },
   openrouter: { model:'google/gemini-2.0-flash-001', help:'Clau a openrouter.ai/keys (requereix crèdit)' }
 };
 function tobAiGetCfg(){
@@ -7955,6 +7956,29 @@ async function tobAiCall(messages, cfgOverride){
     if(!r.ok) throw new Error('Gemini ' + r.status + ': ' + (await r.text()).slice(0,160));
     const j = await r.json();
     return (((j.candidates||[])[0]||{}).content||{}).parts?.[0]?.text || '';
+  }
+  if(prov === 'anthropic'){
+    const model = cfg.model || TOB_AI_DEFAULTS.anthropic.model;
+    const sys = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+    const msgs = messages.filter(m => m.role !== 'system').map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content
+    }));
+    const body = { model, max_tokens: 8000, messages: msgs };
+    if(sys) body.system = sys;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': cfg.key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify(body)
+    });
+    if(!r.ok) throw new Error('Anthropic ' + r.status + ': ' + (await r.text()).slice(0,180));
+    const j = await r.json();
+    return (((j.content||[]).find(c => c.type === 'text')) || {}).text || '';
   }
   const endpoints = {
     openrouter:'https://openrouter.ai/api/v1/chat/completions',
