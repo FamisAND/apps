@@ -5645,25 +5645,48 @@ let tobIngEditId = null;       // null=nuevo, string=edit
 let tobIngPage = 0;
 const TOB_ING_PER_PAGE = 50;
 
-function tobMenusLoad(){
-  try {
-    const raw = localStorage.getItem(TOB_MENUS_KEY);
-    if(raw){
-      const parsed = JSON.parse(raw);
-      if(parsed && typeof parsed === 'object'){
-        tobMenusDB.ingredientes = Array.isArray(parsed.ingredientes) ? parsed.ingredientes : [];
-        tobMenusDB.recetas      = Array.isArray(parsed.recetas)      ? parsed.recetas      : [];
-        tobMenusDB.menus        = Array.isArray(parsed.menus)        ? parsed.menus        : [];
-        tobMenusDB._v           = parsed._v || 1;
-      }
-    }
-  } catch(e){ console.warn('[menus] load falló:', e); }
+const TOB_MENUS_KV = 'menusDB';   // clave en el store kv de IndexedDB
+
+// Carga tobMenusDB. Primero IndexedDB; si no hay, migra del localStorage
+// viejo (donde se guardaba antes y petaba por quota con 500+ recetas).
+async function tobMenusLoad(){
+  let loaded = null, fromLS = false;
+  // 1) IndexedDB — almacenamiento principal
+  try { loaded = await tobKvGet(TOB_MENUS_KV); }
+  catch(e){ console.warn('[menus] load IndexedDB falló:', e); }
+  // 2) Migración: si IndexedDB está vacío, leer el localStorage antiguo
+  if(!loaded){
+    try {
+      const raw = localStorage.getItem(TOB_MENUS_KEY);
+      if(raw){ loaded = JSON.parse(raw); fromLS = true; }
+    } catch(e){ console.warn('[menus] load localStorage falló:', e); }
+  }
+  if(loaded && typeof loaded === 'object'){
+    tobMenusDB.ingredientes = Array.isArray(loaded.ingredientes) ? loaded.ingredientes : [];
+    tobMenusDB.recetas      = Array.isArray(loaded.recetas)      ? loaded.recetas      : [];
+    tobMenusDB.menus        = Array.isArray(loaded.menus)        ? loaded.menus        : [];
+    tobMenusDB._v           = loaded._v || 1;
+  }
+  // Si venía del localStorage viejo: persistir en IndexedDB y liberar el viejo
+  if(fromLS && loaded){
+    try {
+      await tobKvPut(TOB_MENUS_KV, tobMenusDB);
+      localStorage.removeItem(TOB_MENUS_KEY);
+      console.log('[menus] migrado de localStorage a IndexedDB');
+    } catch(e){ console.warn('[menus] migración a IndexedDB falló:', e); }
+  }
 }
 
+// Guarda tobMenusDB en IndexedDB (localStorage se queda corto con cientos
+// de recetas). IndexedDB clona el objeto al llamar a put, así que aunque
+// tobMenusDB mute después, se persiste el estado actual.
 function tobMenusSave(){
-  try {
-    localStorage.setItem(TOB_MENUS_KEY, JSON.stringify(tobMenusDB));
-  } catch(e){ console.warn('[menus] save falló (quizá quota):', e); tobToast('Error guardando menús (quota localStorage)', 'red'); }
+  tobKvPut(TOB_MENUS_KV, tobMenusDB).catch(e => {
+    console.warn('[menus] save IndexedDB falló:', e);
+    // Último recurso: localStorage (puede petar por quota)
+    try { localStorage.setItem(TOB_MENUS_KEY, JSON.stringify(tobMenusDB)); }
+    catch(e2){ tobToast('Error guardant la base de receptes', 'red'); }
+  });
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -5678,23 +5701,52 @@ function tobMenusSave(){
 // ═════════════════════════════════════════════════════════════════
 const TOB_IMGDB_NAME = 'tob_recetas_imgdb';
 const TOB_IMGDB_STORE = 'fotos';
+const TOB_KV_STORE = 'kv';   // clave/valor: aquí vive tobMenusDB completo
 let _tobImgDBPromise = null;
 
 function tobImgDB(){
   if(_tobImgDBPromise) return _tobImgDBPromise;
   _tobImgDBPromise = new Promise((resolve, reject) => {
     if(!window.indexedDB){ reject(new Error('IndexedDB no disponible')); return; }
-    const req = indexedDB.open(TOB_IMGDB_NAME, 1);
+    let settled = false;
+    const ok   = (v) => { if(!settled){ settled = true; resolve(v); } };
+    const fail = (e) => { if(!settled){ settled = true; reject(e); } };
+    // Salvaguarda: si IndexedDB se cuelga (bloqueada por otra pestaña, etc.)
+    // no dejamos la app esperando para siempre.
+    const to = setTimeout(() => fail(new Error('IndexedDB timeout')), 4000);
+    const req = indexedDB.open(TOB_IMGDB_NAME, 2);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
-      if(!db.objectStoreNames.contains(TOB_IMGDB_STORE)){
-        db.createObjectStore(TOB_IMGDB_STORE);
-      }
+      if(!db.objectStoreNames.contains(TOB_IMGDB_STORE)) db.createObjectStore(TOB_IMGDB_STORE);
+      if(!db.objectStoreNames.contains(TOB_KV_STORE))    db.createObjectStore(TOB_KV_STORE);
     };
+    req.onsuccess = () => { clearTimeout(to); ok(req.result); };
+    req.onerror   = () => { clearTimeout(to); fail(req.error); };
+    req.onblocked = () => { clearTimeout(to); fail(new Error('IndexedDB bloqueada')); };
+  });
+  // Si la apertura falla, permitir reintento en la siguiente llamada.
+  _tobImgDBPromise.catch(() => { _tobImgDBPromise = null; });
+  return _tobImgDBPromise;
+}
+
+// Key/value en IndexedDB — para datos grandes que no caben en localStorage.
+async function tobKvPut(key, value){
+  const db = await tobImgDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TOB_KV_STORE, 'readwrite');
+    tx.objectStore(TOB_KV_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+async function tobKvGet(key){
+  const db = await tobImgDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TOB_KV_STORE, 'readonly');
+    const req = tx.objectStore(TOB_KV_STORE).get(key);
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
   });
-  return _tobImgDBPromise;
 }
 
 async function tobImgPut(key, dataUrl){
@@ -7434,10 +7486,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if(bg) bg.addEventListener('click', e => { if(e.target === bg) bg.classList.remove('on'); });
 });
 
-// Auto-init
+// Auto-init — tobMenusLoad es async (IndexedDB); esperamos a que cargue
+// la BD de recetas/ingredientes antes de renderizar la app.
+function tobBoot(){
+  tobMenusLoad().catch(e => console.warn('[boot] tobMenusLoad:', e)).finally(() => tobLoad());
+}
 if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', () => { tobMenusLoad(); tobLoad(); });
+  document.addEventListener('DOMContentLoaded', tobBoot);
 } else {
-  tobMenusLoad();
-  tobLoad();
+  tobBoot();
 }
