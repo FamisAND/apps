@@ -578,6 +578,7 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-quest-h{margin:0 0 12px 0;font-size:.86rem;color:var(--acc2);font-family:'DM Mono',monospace;letter-spacing:.05em;text-transform:uppercase;font-weight:700;}
 .tob-quest-h-sub{font-size:.7rem;color:var(--mute);text-transform:none;letter-spacing:.02em;font-weight:400;margin-left:8px;}
 .tob-quest-section > div{margin-bottom:10px;}
+#qRecordatoriFields > div{margin-bottom:10px;}
 .tob-quest-f{transition:border-color .15s ease;}
 .tob-quest-f:focus{border-color:var(--acc);outline:none;}
 /* Texto calculado (kcal base Harris-Benedict bajo el PAL) */

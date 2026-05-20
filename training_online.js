@@ -4987,8 +4987,7 @@ const TOB_QUEST_CHIPS = {
   apats: { mode:'radio', items:[
     { id:'3', label:'3 àpats' },
     { id:'4', label:'4 àpats' },
-    { id:'5', label:'5 àpats' },
-    { id:'6', label:'6 àpats' }
+    { id:'5', label:'5 àpats' }
   ]},
   dieta: { mode:'radio', items:[
     { id:'omnivor',    label:'Omnívor' },
@@ -5023,16 +5022,28 @@ const TOB_QUEST_CHIPS = {
     { id:'sense_cuina',    label:'Sense accés a cuina', neg:true }
   ]},
   patologies: { mode:'multi', items:[
-    { id:'hipertensio',     label:'Hipertensió',          neg:true },
-    { id:'colesterol',      label:'Colesterol alt',       neg:true },
-    { id:'diabetis2',       label:'Diabetis tipus 2',     neg:true },
-    { id:'resist_insulina', label:'Resistència insulina', neg:true },
-    { id:'hipotiroides',    label:'Hipotiroïdisme',       neg:true },
-    { id:'sop',             label:'SOP / SOPQ',           neg:true },
-    { id:'acid_uric',       label:'Àcid úric alt',        neg:true },
-    { id:'anemia',          label:'Anèmia',               neg:true },
-    { id:'digestius',       label:'Problemes digestius',  neg:true },
-    { id:'renal',           label:'Problemes renals',     neg:true }
+    { id:'hipertensio',     label:'Hipertensió',             neg:true },
+    { id:'colesterol',      label:'Colesterol alt',          neg:true },
+    { id:'trigliceridos',   label:'Triglicèrids alts',       neg:true },
+    { id:'diabetis1',       label:'Diabetis tipus 1',        neg:true },
+    { id:'diabetis2',       label:'Diabetis tipus 2',        neg:true },
+    { id:'resist_insulina', label:'Resistència insulina',    neg:true },
+    { id:'hipotiroides',    label:'Hipotiroïdisme',          neg:true },
+    { id:'hipertiroides',   label:'Hipertiroïdisme',         neg:true },
+    { id:'sop',             label:'SOP / SOPQ',              neg:true },
+    { id:'acid_uric',       label:'Àcid úric / gota',        neg:true },
+    { id:'anemia',          label:'Anèmia',                  neg:true },
+    { id:'celiaquia',       label:'Celiaquia',               neg:true },
+    { id:'sii',             label:'Còlon irritable (SII)',   neg:true },
+    { id:'mii',             label:'Crohn / colitis',         neg:true },
+    { id:'reflux',          label:'Reflux / acidesa',        neg:true },
+    { id:'digestius',       label:'Digestió pesada / gasos', neg:true },
+    { id:'fetge_gras',      label:'Fetge gras',              neg:true },
+    { id:'renal',           label:'Problemes renals',        neg:true },
+    { id:'osteoporosi',     label:'Osteoporosi',             neg:true },
+    { id:'embaras',         label:'Embaràs' },
+    { id:'lactancia',       label:'Lactància' },
+    { id:'menopausa',       label:'Menopausa' }
   ]},
   cuina: { mode:'radio', items:[
     { id:'jo',       label:'Cuina ell/ella' },
@@ -5060,14 +5071,41 @@ const TOB_QUEST_CHIP_EL = {
   proteina:'qChipsProteina', pref:'qChipsPref', patologies:'qChipsPatologies',
   cuina:'qChipsCuina', tempsCuina:'qChipsTempsCuina', treball:'qChipsTreball'
 };
-// Listas de chips libres (escribir + Enter). 'migrate' = clave de texto
-// vieja que se trocea en chips la primera vez (compatibilidad).
+// Alimentos comunes (divisivos) — mismos chips para Aliments ✗ y ✓.
+const TOB_QUEST_ALIM_PRESETS = [
+  'Bròquil','Coliflor','Espinacs','Bolets','Ceba','All','Pebrot','Albergínia',
+  'Tomàquet','Carbassó','Llegums','Peix blau','Marisc','Ou','Formatge','Iogurt',
+  'Llet','Fruita seca','Alvocat','Olives','Picant','Fregits','Vísceres','Coco'
+];
+// Listas de chips: 'presets' = chips predefinidos (clic = on/off); además
+// se pueden añadir libres escribiendo + Enter. 'migrate' = clave de texto
+// vieja que se trocea en chips la primera vez. 'neg' = chips en rojo.
 const TOB_QUEST_LISTS = {
-  alergies:  { el:'qChipsAlergies',  migrate:'alergias'   },
-  alimX:     { el:'qChipsAlimX',     migrate:'alimX'      },
-  alimOk:    { el:'qChipsAlimOk',    migrate:'alimOk'     },
-  sentenMal: { el:'qChipsSentenMal', migrate:'sientenMal' },
+  alergies: { el:'qChipsAlergies', migrate:'alergias', neg:true, presets:[
+    'Gluten','Lactosa','Ou','Fruits secs','Cacauet','Soja','Peix',
+    'Crustacis / marisc','Mol·luscs','Sèsam','Mostassa','Api','Sulfits','Tramús'
+  ]},
+  alimX:     { el:'qChipsAlimX',     migrate:'alimX',  neg:true, presets:TOB_QUEST_ALIM_PRESETS },
+  alimOk:    { el:'qChipsAlimOk',    migrate:'alimOk',           presets:TOB_QUEST_ALIM_PRESETS },
+  sentenMal: { el:'qChipsSentenMal', migrate:'sientenMal', neg:true, presets:[
+    'Lactosa','Gluten','Llegums','Ceba i all','Crucíferes','Picant',
+    'Cafeïna','Fregits','Edulcorants','Alcohol','Cítrics','Embotits'
+  ]},
   custom:    { el:'qChipsCustom' }
+};
+// Recordatori: àpats disponibles y cuáles se muestran según el nº de àpats
+// elegido en el chip "Nombre d'àpats".
+const TOB_QUEST_APATS = [
+  { key:'apat1', label:'Esmorzar', ph:'ex: cafè amb llet, torrades...' },
+  { key:'apat2', label:'Mig matí', ph:'ex: fruita + iogurt' },
+  { key:'apat3', label:'Dinar',    ph:'ex: amanida + pollastre + arròs' },
+  { key:'apat4', label:'Berenar',  ph:'ex: barreta + plàtan' },
+  { key:'apat5', label:'Sopar',    ph:'ex: peix al forn + verdura' }
+];
+const TOB_QUEST_APATS_BY_COUNT = {
+  '3': ['apat1','apat3','apat5'],
+  '4': ['apat1','apat3','apat4','apat5'],
+  '5': ['apat1','apat2','apat3','apat4','apat5']
 };
 
 // Lista de IDs de los campos de texto simples (input/textarea/select).
@@ -5077,11 +5115,6 @@ const TOB_QUEST_FIELDS = [
   ['qKcalObj',   'kcalObjetivo', 'num'],
   ['qProtObj',   'protObjetivo', 'num'],
   ['qPAL',       'pal',          'str'],
-  ['qApat1',     'apat1',        'str'],
-  ['qApat2',     'apat2',        'str'],
-  ['qApat3',     'apat3',        'str'],
-  ['qApat4',     'apat4',        'str'],
-  ['qApat5',     'apat5',        'str'],
   ['qHoraris',   'horaris',      'str'],
   ['qEsport',    'esport',       'str'],
   ['qMotivacio', 'motivacio',    'str'],
@@ -5112,7 +5145,38 @@ function tobQuestLoad(){
   // Asegura/migra la estructura de tags antes de renderizar
   const tags = cli.cuestionario ? tobQuestEnsureTags(cli) : (q.tags || {});
   tobQuestRenderChips(tags);
+  tobQuestRenderRecordatori();
   tobQuestUpdateGuides();
+  tobUpdateCuestionarioBadge();
+}
+
+// Renderiza los campos del recordatori según el nº de àpats elegido.
+// Los valores se guardan directamente en cli.cuestionario.apatN.
+function tobQuestRenderRecordatori(){
+  const cont = document.getElementById('qRecordatoriFields');
+  if(!cont) return;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  const q = (cli && cli.cuestionario) || {};
+  const apats = (q.tags && q.tags.apats) || '5';
+  const keys = TOB_QUEST_APATS_BY_COUNT[apats] || TOB_QUEST_APATS_BY_COUNT['5'];
+  cont.innerHTML = keys.map(k => {
+    const def = TOB_QUEST_APATS.find(a => a.key === k);
+    const val = q[k] != null ? q[k] : '';
+    return `<div><label class="tob-lbl">${tobEsc(def.label)}</label>` +
+      `<input class="tob-input" value="${tobEsc(val)}" placeholder="${tobEsc(def.ph)}" ` +
+      `oninput="tobQuestApatInput('${k}', this.value)"></div>`;
+  }).join('');
+}
+
+// Guarda el valor de un àpat del recordatori (input dinámico).
+function tobQuestApatInput(key, val){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  if(!cli.cuestionario) cli.cuestionario = {};
+  const v = (val || '').trim();
+  if(v) cli.cuestionario[key] = v;
+  else  delete cli.cuestionario[key];
+  tobQuestScheduleSave();
   tobUpdateCuestionarioBadge();
 }
 
@@ -5213,16 +5277,29 @@ function tobQuestRenderChips(tags){
       return `<button type="button" class="tob-quest-chip${on?' active':''}${c.neg?' neg':''}" onclick="tobQuestToggle('${group}','${c.id}')">${tobEsc(c.label)}</button>`;
     }).join('');
   });
-  // Listas libres (escribir + Enter) con botón × para borrar
+  // Listas: chips predefinidos (toggle) + entradas libres (con × para borrar)
   Object.keys(TOB_QUEST_LISTS).forEach(key => {
-    const el = document.getElementById(TOB_QUEST_LISTS[key].el);
+    const cfg = TOB_QUEST_LISTS[key];
+    const el  = document.getElementById(cfg.el);
     if(!el) return;
     const arr = Array.isArray(tags[key]) ? tags[key] : [];
-    el.innerHTML = arr.length
-      ? arr.map((tag, i) =>
-          `<button type="button" class="tob-quest-chip custom active" onclick="tobQuestRemoveListChip('${key}',${i})" title="Clic per esborrar">${tobEsc(tag)}<span class="x">×</span></button>`
-        ).join('')
-      : '<span style="font-size:.7rem;color:var(--mute2);font-family:DM Mono,monospace;">cap encara</span>';
+    const presets = cfg.presets || [];
+    const presetSet = new Set(presets);
+    let html = '';
+    // Chips predefinidos — activos si su valor está en la lista
+    presets.forEach((p, pi) => {
+      const on = arr.includes(p);
+      html += `<button type="button" class="tob-quest-chip${on?' active':''}${(cfg.neg&&on)?' neg':''}" onclick="tobQuestToggleListPreset('${key}',${pi})">${tobEsc(p)}</button>`;
+    });
+    // Entradas libres (las que no son chips predefinidos) — con × para borrar
+    arr.forEach((v, i) => {
+      if(presetSet.has(v)) return;
+      html += `<button type="button" class="tob-quest-chip custom active${cfg.neg?' neg':''}" onclick="tobQuestRemoveListChip('${key}',${i})" title="Clic per esborrar">${tobEsc(v)}<span class="x">×</span></button>`;
+    });
+    if(!html){
+      html = '<span style="font-size:.7rem;color:var(--mute2);font-family:DM Mono,monospace;">cap encara</span>';
+    }
+    el.innerHTML = html;
   });
 }
 
@@ -5274,6 +5351,24 @@ function tobQuestToggle(group, id){
       }
     }
   }
+  tobQuestRenderChips(tags);
+  tobQuestScheduleSave();
+  // El recordatori depende del nº de àpats
+  if(group === 'apats') tobQuestRenderRecordatori();
+}
+
+// Chip predefinido de una lista: añade/quita su valor de la lista.
+function tobQuestToggleListPreset(key, pi){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  const cfg = TOB_QUEST_LISTS[key];
+  const val = cfg && cfg.presets ? cfg.presets[pi] : null;
+  if(!val) return;
+  const tags = tobQuestEnsureTags(cli);
+  if(!Array.isArray(tags[key])) tags[key] = [];
+  const ix = tags[key].indexOf(val);
+  if(ix >= 0) tags[key].splice(ix, 1);
+  else        tags[key].push(val);
   tobQuestRenderChips(tags);
   tobQuestScheduleSave();
 }
@@ -6747,6 +6842,12 @@ function tobMcComidasDelCliente(cli){
     { id:'berenar',  label:'Berenar',   qf:'apat4' },
     { id:'sopar',    label:'Sopar',     qf:'apat5' }
   ];
+  // Si el cuestionario tiene el chip "Nombre d'àpats", manda ese.
+  const apats = q.tags && q.tags.apats;
+  if(apats && TOB_QUEST_APATS_BY_COUNT[apats]){
+    const keys = TOB_QUEST_APATS_BY_COUNT[apats];
+    return all.filter(c => keys.includes(c.qf));
+  }
   const filled = all.filter(c => (q[c.qf] || '').trim().length > 0);
   // Si el cliente no tiene NINGÚN apat relleno, asumimos 3 (esmorzar/dinar/sopar)
   return filled.length ? filled : [all[0], all[2], all[4]];
