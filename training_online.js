@@ -2774,6 +2774,37 @@ function tobRenderFicha(){
 
   // Cuestionario: siempre visible (al final). Se carga con los datos del cliente.
   if(typeof tobQuestLoad === 'function') tobQuestLoad();
+  // Menús del cliente
+  if(typeof tobFichaRenderMenus === 'function') tobFichaRenderMenus();
+}
+
+// Renderiza la lista de menús del cliente en su ficha.
+function tobFichaRenderMenus(){
+  const cont = document.getElementById('tobFichaMenusList');
+  if(!cont) return;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli){ cont.innerHTML = ''; return; }
+  const menus = (cli.menus || []).slice()
+    .sort((a,b) => (b.savedAt||b.fecha||'').localeCompare(a.savedAt||a.fecha||''));
+  if(!menus.length){
+    cont.innerHTML = '<div style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.76rem;padding:8px 2px;">Aquest client encara no té cap menú assignat. Crea\'n un amb <strong>+ Nou menú</strong>.</div>';
+    return;
+  }
+  cont.innerHTML = menus.map(m => tobMenuRowHTML(cli, m)).join('');
+}
+
+// Va al creador de menús con este cliente preseleccionado.
+function tobFichaNuevoMenu(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return;
+  tobShowTab('menus', document.querySelector('.tob-tab[onclick*="\'menus\'"]'));
+  const btn = document.querySelector('.tob-sub-tab[data-mtab="creador"]');
+  tobMenuShowTab('creador', btn);
+  const sel = document.getElementById('tobMcCliente');
+  if(sel){
+    sel.value = cli.id;
+    if(typeof tobMcOnClienteChange === 'function') tobMcOnClienteChange();
+  }
 }
 
 function tobCountSesiones(cli){
@@ -5830,6 +5861,7 @@ function tobMenuShowTab(name, btn){
   if(page) page.style.display = '';
   if(btn) btn.classList.add('active');
   if(name === 'ingredientes') tobIngRender();
+  if(name === 'menus' && typeof tobMenusGuardadosRender === 'function') tobMenusGuardadosRender();
 }
 
 // ── Recolección de etiquetas únicas (para el filtro) ─────────────
@@ -6109,7 +6141,9 @@ let tobRecEditId = null;
 let _tobRecFotoChanged = false;
 let _tobRecModalFav = false; // estado del botón ★ del modal de receta
 let tobRecPage = 0;
-let tobRecOnlyFav = false;   // filtro "solo favoritas"
+let tobRecOnlyFav = false;     // filtro "solo favoritas"
+let tobRecAptCeliac = false;   // filtro "apte celíac" (sense gluten)
+let tobRecAptLactosa = false;  // filtro "apte sense lactosa"
 const TOB_REC_PER_PAGE = 24;
 const TOB_REC_MOMENTOS = [
   { id:'esmorzar', label:'Esmorzar' },
@@ -6168,6 +6202,20 @@ function tobRecMacros(rec){
   return { kcal, hc, proteina: prot, grasa: gras, fibra: fib };
 }
 
+// Aptitud de una receta derivada de sus alérgenos ICNS. Devuelve qué
+// alérgenos CONTIENE — true = la receta NO es apta para quien lo evita.
+function tobRecAptitud(rec){
+  const al = (rec && Array.isArray(rec.alergenos) ? rec.alergenos : []).join(' · ').toLowerCase();
+  return {
+    gluten:     /gluten/.test(al),
+    lactosa:    /llet|leche|l[aà]ct/.test(al),
+    ou:         /\bou\b|\bous\b|huevo|egg/.test(al),
+    fruitsSecs: /fruit[a-z]*\s*sec|fruto[a-z]*\s*seco|cacauet|cacahuet|\bnut/.test(al),
+    marisc:     /marisc|crustaci|crust[aá]ce|mol·?lusc|molusc/.test(al),
+    soja:       /soja|soia/.test(al)
+  };
+}
+
 function tobRecRender(){
   tobRecFillTagFilter();
   const search    = (document.getElementById('tobRecSearch')?.value || '').trim().toLowerCase();
@@ -6188,6 +6236,8 @@ function tobRecRender(){
   if(momento) list = list.filter(r => (r.momentos||[]).includes(momento));
   if(tag)     list = list.filter(r => (r.tags||[]).includes(tag));
   if(tobRecOnlyFav) list = list.filter(r => r.favorito);
+  if(tobRecAptCeliac)  list = list.filter(r => !tobRecAptitud(r).gluten);
+  if(tobRecAptLactosa) list = list.filter(r => !tobRecAptitud(r).lactosa);
   // Favoritas primero, luego alfabético.
   list.sort((a,b) => {
     if(!!a.favorito !== !!b.favorito) return a.favorito ? -1 : 1;
@@ -6225,6 +6275,11 @@ function tobRecRender(){
     const kcalPer = m.kcal / rac;
     const tagsHtml = (r.tags||[]).slice(0,3).map(t => `<span class="tag">${tobEsc(t)}</span>`).join('');
     const momHtml = (r.momentos||[]).map(mm => TOB_REC_MOMENTO_LBL[mm] || mm).join(' · ');
+    const apt = tobRecAptitud(r);
+    const warnHtml = [
+      apt.gluten  ? '<span class="tob-rec-warn">amb gluten</span>' : '',
+      apt.lactosa ? '<span class="tob-rec-warn">amb lactosa</span>' : ''
+    ].join('');
     // La foto se hidrata async tras el render (data-foto-rec). Render
     // inicial = placeholder con el nombre; tobHydrateFotos pone la imagen.
     const fotoTxt = tobEsc((r.nombre||'').slice(0,40));
@@ -6241,7 +6296,7 @@ function tobRecRender(){
           ${rac > 1 ? `<span style="color:var(--mute2);">· ${rac} rac</span>` : ''}
         </div>
         ${momHtml ? `<div class="momentos">${tobEsc(momHtml)}</div>` : ''}
-        ${tagsHtml ? `<div class="tags">${tagsHtml}</div>` : ''}
+        ${(warnHtml || tagsHtml) ? `<div class="tags">${warnHtml}${tagsHtml}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -6274,6 +6329,19 @@ function tobRecToggleFavFilter(){
   tobRecPage = 0;
   const btn = document.getElementById('tobRecFavBtn');
   if(btn) btn.classList.toggle('on', tobRecOnlyFav);
+  tobRecRender();
+}
+function tobRecToggleAptFilter(which){
+  tobRecPage = 0;
+  if(which === 'celiac'){
+    tobRecAptCeliac = !tobRecAptCeliac;
+    const b = document.getElementById('tobRecAptCeliacBtn');
+    if(b) b.classList.toggle('on', tobRecAptCeliac);
+  } else if(which === 'lactosa'){
+    tobRecAptLactosa = !tobRecAptLactosa;
+    const b = document.getElementById('tobRecAptLactosaBtn');
+    if(b) b.classList.toggle('on', tobRecAptLactosa);
+  }
   tobRecRender();
 }
 // Estrella del modal de receta (aplica al guardar).
@@ -7097,25 +7165,33 @@ function tobMcCheckCompat(rec, cli){
     });
   }
 
-  // 4. Etiquetas pref negativas (sense_gluten, sense_lactosa…) — la receta
-  //    debe tener tag correspondiente o no contener ingredientes excluidos.
-  const prefNegMap = {
-    sense_gluten:      { recTag:'sin gluten',  regex:/trigo|pan|pasta|harina(?!.*sin gluten)|gluten/i, lbl:'gluten' },
-    sense_lactosa:     { recTag:'sin lactosa', regex:/leche|queso|yogur|nata|mantequilla|mantega/i,  lbl:'lactosa' },
-    sense_fruita_seca: { recTag:'sin frutos secos', regex:/almendra|nuez|nuez|avellana|pistacho|anacardo|fruta seca|fruits secs/i, lbl:'frutos secos' }
+  // 4. Restricciones de alérgenos: prefs "sense_X" del perfil + lista de
+  //    al·lèrgies del cuestionario, cruzadas con los alérgenos ICNS de la
+  //    receta (tobRecAptitud). Fallback a regex de ingredientes si la
+  //    receta no trae alérgenos.
+  const apt = tobRecAptitud(rec);
+  const cliAlergies = (tags.alergies || []).join(' · ').toLowerCase();
+  const evita = {
+    gluten:     (tags.pref||[]).includes('sense_gluten')      || /gluten|cel[ií]a/.test(cliAlergies),
+    lactosa:    (tags.pref||[]).includes('sense_lactosa')     || /lact|llet|leche/.test(cliAlergies),
+    fruitsSecs: (tags.pref||[]).includes('sense_fruita_seca') || /fruit[a-z]*\s*sec|fruto[a-z]*\s*seco|\bnut/.test(cliAlergies),
+    ou:         /\bou\b|\bous\b|huevo/.test(cliAlergies),
+    marisc:     /marisc|crustaci|crust[aá]ce|mol·?lusc|molusc/.test(cliAlergies),
+    soja:       /soja|soia/.test(cliAlergies)
   };
-  Object.keys(prefNegMap).forEach(key => {
-    if((tags.pref || []).includes(key)){
-      const c = prefNegMap[key];
-      const recHasOkTag = (rec.tags || []).some(t => t.toLowerCase().includes(c.recTag));
-      if(recHasOkTag) return;  // la receta declara explícitamente que es OK
-      const ingText = (rec.ingredientes||[]).map(it => {
-        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-        return ing ? ing.nombre.toLowerCase() : '';
-      }).join(' ') + ' ' + (rec.nombre || '').toLowerCase();
-      if(c.regex.test(ingText)) razones.push('contiene ' + c.lbl);
-    }
+  const aptLbl = { gluten:'gluten', lactosa:'lactosa', fruitsSecs:'fruits secs', ou:'ou', marisc:'marisc', soja:'soja' };
+  Object.keys(aptLbl).forEach(k => {
+    if(evita[k] && apt[k]) razones.push('conté ' + aptLbl[k]);
   });
+  // Fallback si la receta no tiene alérgenos ICNS: regex de ingredientes.
+  if(!(Array.isArray(rec.alergenos) && rec.alergenos.length)){
+    const ingText = (rec.ingredientes||[]).map(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      return ing ? ing.nombre.toLowerCase() : '';
+    }).join(' ') + ' ' + (rec.nombre || '').toLowerCase();
+    if(evita.gluten  && !apt.gluten  && /trigo|\bpa\b|\bpan\b|pasta|harina|gluten/.test(ingText)) razones.push('possible gluten');
+    if(evita.lactosa && !apt.lactosa && /leche|llet|queso|formatge|yogur|iogurt|\bnata\b/.test(ingText)) razones.push('possible lactosa');
+  }
 
   return { compat: razones.length === 0, razones };
 }
@@ -7471,6 +7547,282 @@ function tobMcDeleteMenu(menuId){
   tobSave();
   tobMcShowList();
   tobToast('Menú eliminado', '');
+}
+
+// ═════════════════════════════════════════════════════════════════
+// MENÚS GUARDADOS — pestaña con todos los menús de todos los clientes
+// ═════════════════════════════════════════════════════════════════
+function tobMenuCountRecetas(m){
+  let n = 0;
+  Object.values((m && m.data) || {}).forEach(sem =>
+    Object.values(sem || {}).forEach(dia =>
+      Object.values(dia || {}).forEach(arr => { if(Array.isArray(arr)) n += arr.length; })));
+  return n;
+}
+
+// Lista [{m, cli}] de todos los menús guardados, ordenados por fecha desc.
+function tobMenusAll(){
+  const all = [];
+  (tobDB.clientes || []).forEach(cli => (cli.menus || []).forEach(m => all.push({ m, cli })));
+  all.sort((a,b) => (b.m.savedAt||b.m.fecha||'').localeCompare(a.m.savedAt||a.m.fecha||''));
+  return all;
+}
+
+function tobMenuRowHTML(cli, m){
+  const fecha = (m.savedAt || m.fecha || '').slice(0,10);
+  const hora  = (m.savedAt || '').slice(11,16);
+  const n = tobMenuCountRecetas(m);
+  return `<div class="tob-menu-row">
+    <div class="tob-menu-row-info">
+      <div class="nm">${tobEsc(cli.nombre)}</div>
+      <div class="meta">${tobEsc(fecha)}${hora?' '+tobEsc(hora):''} · ${m.semanas||1} setm · ${n} receptes · ${m.kcalObj||'—'} kcal/dia · ${m.protObj||'—'} g prot</div>
+    </div>
+    <div class="tob-menu-row-acts">
+      <button class="tob-action ghost btn-xs" onclick="tobMenuGuardadoOpen('${cli.id}','${m.id}')" title="Obrir al creador de menús">✏️ Obrir</button>
+      <button class="tob-action ghost btn-xs" onclick="tobMenuPdf('${cli.id}','${m.id}')" title="Exportar el menú a PDF per enviar-lo">📄 PDF</button>
+      <button class="tob-action ghost btn-xs" onclick="tobMenuGuardadoDelete('${cli.id}','${m.id}')" style="color:#dc6a6a;border-color:#7a2424;" title="Eliminar">🗑</button>
+    </div>
+  </div>`;
+}
+
+function tobMenusGuardadosRender(){
+  const cont = document.getElementById('tobMenusGuardadosList');
+  if(!cont) return;
+  const q = (document.getElementById('tobMenusGuardadosSearch')?.value || '').trim().toLowerCase();
+  let all = tobMenusAll();
+  if(q) all = all.filter(x => (x.cli.nombre||'').toLowerCase().includes(q));
+  const cnt = document.getElementById('tobMenusGuardadosCount');
+  if(cnt) cnt.textContent = all.length ? `· ${all.length}` : '';
+  if(!all.length){
+    cont.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:34px;font-family:DM Mono,monospace;font-size:.8rem;line-height:1.7;">'
+      + (q ? 'Cap menú per aquest client.' : 'Encara no hi ha menús guardats.<br>Ves al <strong>Creador de menús</strong>, munta un menú i prem 💾 Guardar.')
+      + '</div>';
+    return;
+  }
+  cont.innerHTML = all.map(({m, cli}) => tobMenuRowHTML(cli, m)).join('');
+}
+
+function tobMenuGuardadoOpen(cliId, menuId){
+  const btn = document.querySelector('.tob-sub-tab[data-mtab="creador"]');
+  tobMenuShowTab('creador', btn);
+  const sel = document.getElementById('tobMcCliente');
+  if(sel){
+    sel.value = cliId;
+    if(typeof tobMcOnClienteChange === 'function') tobMcOnClienteChange();
+  }
+  tobMcLoadMenu(menuId);
+}
+
+function tobMenuGuardadoDelete(cliId, menuId){
+  const cli = tobDB.clientes.find(c => c.id === cliId);
+  if(!cli || !cli.menus) return;
+  const m = cli.menus.find(x => x.id === menuId);
+  if(!m) return;
+  if(!confirm(`Eliminar el menú de ${cli.nombre} del ${(m.savedAt||'').slice(0,10)}?`)) return;
+  cli.menus = cli.menus.filter(x => x.id !== menuId);
+  tobSave();
+  tobMenusGuardadosRender();
+  if(typeof tobFichaRenderMenus === 'function') tobFichaRenderMenus();
+  tobToast('Menú eliminat', '');
+}
+
+// ── PDF del menú semanal (portada + graella + nutrició + compra + receptari)
+// Se abre en una ventana nueva con CSS de impresión; el usuario lo guarda
+// como PDF. Las fotos se resuelven desde IndexedDB → data URLs fiables.
+async function tobMenuPdf(cliId, menuId){
+  const cli = tobDB.clientes.find(c => c.id === cliId);
+  const m = cli && (cli.menus || []).find(x => x.id === menuId);
+  if(!cli || !m){ tobToast('Menú no trobat', 'red'); return; }
+  tobToast('Generant PDF del menú…', '');
+
+  const recsById = {};
+  (tobMenusDB.recetas || []).forEach(r => { recsById[r.id] = r; });
+
+  // IDs usados (con nº de ocurrencias) + resolución de fotos
+  const usos = {};
+  Object.values(m.data || {}).forEach(sem => Object.values(sem || {}).forEach(dia =>
+    Object.values(dia || {}).forEach(arr => (arr || []).forEach(id => { usos[id] = (usos[id]||0) + 1; }))));
+  const fotoMap = {};
+  for(const id of Object.keys(usos)){
+    const r = recsById[id];
+    if(!r) continue;
+    try { fotoMap[id] = await tobRecFotoResolve(r); } catch(e){ fotoMap[id] = ''; }
+  }
+
+  const esc = tobEsc;
+  const DIAS = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
+  const comidas = (m.comidasIds || []).map(id => ({ id, label: TOB_REC_MOMENTO_LBL[id] || id }));
+  const semanas = m.semanas || 1;
+  // Macros por ración de una receta
+  const macRac = (r) => { const x = tobRecMacros(r); const rac = r.raciones || 1; return { kcal:x.kcal/rac, prot:x.proteina/rac, hc:x.hc/rac, gras:x.grasa/rac, fib:x.fibra/rac }; };
+
+  // ── Graella del menú por semana ────────────────────────────────
+  let graellaHtml = '';
+  for(let s = 0; s < semanas; s++){
+    let rows = '';
+    comidas.forEach(c => {
+      let cells = '';
+      for(let d = 0; d < 7; d++){
+        const ids = ((m.data[s]||{})[d]||{})[c.id] || [];
+        const platos = ids.map(id => {
+          const r = recsById[id];
+          if(!r) return '<div class="mp-plato mp-buit">(eliminada)</div>';
+          const foto = fotoMap[id];
+          const mr = macRac(r);
+          return `<div class="mp-plato">
+            ${foto ? `<div class="mp-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-foto mp-nofoto"></div>'}
+            <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(r.nombre||'—')}</div>
+            <div class="mp-plato-kcal">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot</div></div>
+          </div>`;
+        }).join('');
+        cells += `<td>${platos || '<div class="mp-buit">—</div>'}</td>`;
+      }
+      rows += `<tr><th>${esc(c.label)}</th>${cells}</tr>`;
+    });
+    graellaHtml += `<div class="mp-section">
+      <h2>Setmana ${s+1}</h2>
+      <table class="mp-graella"><thead><tr><th></th>${DIAS.map(d=>`<th>${d}</th>`).join('')}</tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+
+  // ── Resum nutricional (mitjana per dia) ────────────────────────
+  let totDias = 0, acc = { kcal:0, prot:0, hc:0, gras:0, fib:0 };
+  for(let s = 0; s < semanas; s++){
+    for(let d = 0; d < 7; d++){
+      let dayHas = false;
+      comidas.forEach(c => {
+        ((((m.data[s]||{})[d]||{})[c.id]) || []).forEach(id => {
+          const r = recsById[id]; if(!r) return;
+          const mr = macRac(r);
+          acc.kcal+=mr.kcal; acc.prot+=mr.prot; acc.hc+=mr.hc; acc.gras+=mr.gras; acc.fib+=mr.fib;
+          dayHas = true;
+        });
+      });
+      if(dayHas) totDias++;
+    }
+  }
+  const avg = k => totDias ? Math.round(acc[k]/totDias) : 0;
+  const nutriHtml = `<div class="mp-section"><h2>Resum nutricional · mitjana per dia</h2>
+    <table class="mp-nutri"><tbody>
+      <tr><td>Energia</td><td><b>${avg('kcal')}</b> kcal</td><td>Objectiu</td><td>${m.kcalObj||'—'} kcal</td></tr>
+      <tr><td>Proteïna</td><td><b>${avg('prot')}</b> g</td><td>Objectiu</td><td>${m.protObj||'—'} g</td></tr>
+      <tr><td>Hidrats</td><td><b>${avg('hc')}</b> g</td><td>Greixos</td><td>${avg('gras')} g</td></tr>
+      <tr><td>Fibra</td><td><b>${avg('fib')}</b> g</td><td>Dies amb menú</td><td>${totDias}</td></tr>
+    </tbody></table></div>`;
+
+  // ── Llista de la compra (ingredients agregats) ─────────────────
+  const compra = {};
+  Object.keys(usos).forEach(id => {
+    const r = recsById[id];
+    if(!r || !Array.isArray(r.ingredientes)) return;
+    const rac = r.raciones || 1;
+    r.ingredientes.forEach(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      const nom = ing ? ing.nombre : (it._nombreFallback || null);
+      if(!nom) return;
+      const g = (+it.gramos || 0) / rac * usos[id];
+      const k = nom.toLowerCase();
+      if(!compra[k]) compra[k] = { nom, g:0 };
+      compra[k].g += g;
+    });
+  });
+  const compraArr = Object.values(compra).sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
+  const compraHtml = compraArr.length ? `<div class="mp-section mp-break"><h2>Llista de la compra</h2>
+    <ul class="mp-compra">${compraArr.map(c =>
+      `<li><span>${esc(c.nom)}</span><span class="mp-g">${c.g >= 1000 ? (c.g/1000).toFixed(2)+' kg' : Math.round(c.g)+' g'}</span></li>`
+    ).join('')}</ul></div>` : '';
+
+  // ── Receptari ──────────────────────────────────────────────────
+  const recetari = Object.keys(usos).map(id => recsById[id]).filter(Boolean)
+    .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'}));
+  const recetariHtml = `<div class="mp-section mp-break"><h2>Receptari</h2>
+    ${recetari.map(r => {
+      const foto = fotoMap[r.id];
+      const mr = macRac(r);
+      const ings = (r.ingredientes||[]).map(it => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+        const nom = ing ? ing.nombre : (it._nombreFallback || '—');
+        return `<li>${esc(nom)}${it.gramos ? ` · ${Math.round(it.gramos)} g` : ''}</li>`;
+      }).join('');
+      const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
+                  : String(r.instrucciones||'').split('\n').filter(Boolean);
+      return `<div class="mp-recepta">
+        <div class="mp-recepta-head">
+          ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : ''}
+          <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
+          <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
+          ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}</div>
+        </div>
+        ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients</h4><ul>${ings}</ul></div>
+          <div><h4>Preparació</h4><ol>${pasos.map(p=>`<li>${esc(p.replace(/^[-·•*\d.\s]+/,''))}</li>`).join('')||'<li>—</li>'}</ol></div></div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+
+  // ── Documento completo ─────────────────────────────────────────
+  const hoy = new Date().toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
+  const html = `<!DOCTYPE html><html lang="ca"><head><meta charset="UTF-8">
+<title>Menú · ${esc(cli.nombre)}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#1a1a1a;background:#fff;padding:26px 30px;}
+  h1{font-size:22px;color:#b8860b;} h2{font-size:15px;color:#b8860b;margin:0 0 9px;border-bottom:2px solid #e8c87a;padding-bottom:3px;}
+  h4{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#888;margin:0 0 4px;}
+  .mp-cover{border:2px solid #e8c87a;border-radius:8px;padding:18px 22px;margin-bottom:22px;}
+  .mp-cover .sub{color:#666;font-size:12px;margin-top:3px;}
+  .mp-cover .objs{margin-top:10px;font-size:12px;color:#444;}
+  .mp-cover .objs b{color:#b8860b;}
+  .mp-section{margin-bottom:20px;}
+  .mp-break{page-break-before:always;}
+  table{border-collapse:collapse;width:100%;}
+  .mp-graella th,.mp-graella td{border:1px solid #ddd;padding:4px;font-size:9px;vertical-align:top;}
+  .mp-graella thead th{background:#f5ebd2;color:#7a5c10;font-size:9px;text-transform:uppercase;letter-spacing:.03em;}
+  .mp-graella tbody th{background:#faf3e0;color:#7a5c10;width:62px;font-size:9px;text-transform:uppercase;}
+  .mp-plato{display:flex;gap:4px;align-items:center;margin-bottom:3px;}
+  .mp-plato:last-child{margin-bottom:0;}
+  .mp-foto{width:34px;height:26px;border-radius:3px;background:#eee center/cover;flex:none;}
+  .mp-nofoto{background:#f0e6cc;}
+  .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.15;}
+  .mp-plato-kcal{font-size:7.5px;color:#888;}
+  .mp-buit{color:#ccc;font-size:9px;text-align:center;}
+  .mp-nutri td{border:1px solid #ddd;padding:5px 9px;font-size:11px;}
+  .mp-nutri td:nth-child(odd){background:#faf3e0;color:#7a5c10;font-weight:600;width:130px;}
+  .mp-compra{list-style:none;columns:3;column-gap:22px;}
+  .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:2.5px 0;border-bottom:1px dotted #ddd;break-inside:avoid;}
+  .mp-compra .mp-g{color:#b8860b;font-weight:700;}
+  .mp-recepta{border:1px solid #e3e3e3;border-radius:7px;padding:11px 13px;margin-bottom:11px;page-break-inside:avoid;}
+  .mp-recepta-head{display:flex;gap:11px;align-items:center;margin-bottom:8px;}
+  .mp-recepta-foto{width:84px;height:64px;border-radius:5px;background:#eee center/cover;flex:none;}
+  .mp-recepta-nm{font-size:14px;font-weight:700;color:#1a1a1a;}
+  .mp-recepta-mac{font-size:10px;color:#888;margin-top:2px;}
+  .mp-recepta-al{font-size:9px;color:#b23;margin-top:2px;}
+  .mp-recepta-cols{display:flex;gap:22px;}
+  .mp-recepta-cols>div{flex:1;}
+  .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:15px;font-size:10px;line-height:1.45;}
+  .mp-foot{margin-top:20px;text-align:center;font-size:9px;color:#aaa;}
+  @page{margin:14mm;}
+</style></head><body>
+  <div class="mp-cover">
+    <h1>Menú nutricional</h1>
+    <div class="sub">${esc(cli.nombre)} · generat el ${esc(hoy)}</div>
+    <div class="objs">
+      <b>${semanas}</b> setmana(es) · <b>${comidas.length}</b> àpats/dia
+      &nbsp;·&nbsp; Objectiu: <b>${m.kcalObj||'—'}</b> kcal/dia · <b>${m.protObj||'—'}</b> g proteïna
+    </div>
+  </div>
+  ${graellaHtml}
+  ${nutriHtml}
+  ${compraHtml}
+  ${recetariHtml}
+  <div class="mp-foot">Generat amb Full Training · ${esc(hoy)}</div>
+  <script>window.onload=function(){setTimeout(function(){window.print();},350);};<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ tobToast('Permet les finestres emergents per generar el PDF', 'red'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  tobToast('✓ Menú obert — desa\'l com a PDF', 'green');
 }
 
 // Hook al cambio de sub-tab "creador" — inicializa el selector cliente

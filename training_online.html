@@ -97,6 +97,7 @@
     <button class="tob-sub-tab active" data-mtab="ingredientes" onclick="tobMenuShowTab('ingredientes',this)">🥦 Ingredientes</button>
     <button class="tob-sub-tab" data-mtab="recetas" onclick="tobMenuShowTab('recetas',this)">🍳 Recetas</button>
     <button class="tob-sub-tab" data-mtab="creador" onclick="tobMenuShowTab('creador',this)">📅 Creador de menús</button>
+    <button class="tob-sub-tab" data-mtab="menus" onclick="tobMenuShowTab('menus',this)">📁 Menús guardados</button>
   </div>
 
   <!-- ── INGREDIENTES ── -->
@@ -166,6 +167,8 @@
           <option value="">— Todas las etiquetas —</option>
         </select>
         <button type="button" class="tob-action ghost btn-xs" id="tobRecFavBtn" onclick="tobRecToggleFavFilter()" title="Mostrar solo recetas favoritas">★ Favoritas</button>
+        <button type="button" class="tob-action ghost btn-xs" id="tobRecAptCeliacBtn" onclick="tobRecToggleAptFilter('celiac')" title="Solo recetas aptas para celíacos (sin gluten)">✓ Apte celíac</button>
+        <button type="button" class="tob-action ghost btn-xs" id="tobRecAptLactosaBtn" onclick="tobRecToggleAptFilter('lactosa')" title="Solo recetas sin lactosa">✓ Sense lactosa</button>
         <span id="tobRecCount" style="font-size:.72rem;color:var(--mute);font-family:'DM Mono',monospace;letter-spacing:.04em;"></span>
       </div>
       <div id="tobRecEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
@@ -363,6 +366,17 @@
       </div>
     </div>
   </div>
+
+  <!-- ── MENÚS GUARDADOS (todos los clientes) ── -->
+  <div id="tob-mtab-menus" class="tob-mtab-page" style="display:none;">
+    <div class="tob-card">
+      <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>📁 Menús guardados <span id="tobMenusGuardadosCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
+        <input class="tob-input" id="tobMenusGuardadosSearch" placeholder="🔍 Buscar por cliente..." style="max-width:240px;" oninput="tobMenusGuardadosRender()">
+      </div>
+      <div id="tobMenusGuardadosList"></div>
+    </div>
+  </div>
 </div>
 
 <!-- ════════ MODAL MENÚS GUARDADOS ════════ -->
@@ -488,6 +502,15 @@
       <div class="tob-card-title">📉 Evolución de medidas</div>
       <div class="tob-charts-grid" id="tobFichaMedCharts"></div>
     </div>
+  </div>
+
+  <!-- ── MENÚS DEL CLIENTE ── -->
+  <div class="tob-card" id="tobFichaMenusBlock">
+    <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span>🍽 Menús del client</span>
+      <button class="tob-action ghost btn-xs" onclick="tobFichaNuevoMenu()" title="Crear un menú nou per a aquest client al creador de menús">+ Nou menú</button>
+    </div>
+    <div id="tobFichaMenusList"></div>
   </div>
 
   <!-- ── BLOQUE CUESTIONARIO / PREFERENCIAS ────────────────────────────

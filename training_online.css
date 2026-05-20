@@ -91,6 +91,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-action:hover{background:var(--acc2);}
 .tob-action.ghost{background:transparent;border-color:var(--border2);color:var(--mute);font-weight:400;}
 .tob-action.ghost:hover{color:var(--acc);border-color:var(--acc);}
+.tob-action.ghost.on{background:var(--acc);border-color:var(--acc);color:#0a0a0c;font-weight:700;}
 .tob-action.danger{border-color:#5a1a1a;color:#fca5a5;background:transparent;font-weight:400;}
 .tob-action.danger:hover{background:#2d0d0d;}
 .tob-action.btn-sm{padding:5px 10px;font-size:.72rem;letter-spacing:.03em;}
@@ -373,6 +374,19 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-rec-card .macros span b{color:var(--acc);font-weight:700;}
 .tob-rec-card .tags{display:flex;gap:4px;flex-wrap:wrap;}
 .tob-rec-card .tag{background:var(--card2);color:var(--mute);padding:1px 6px;border-radius:3px;font-size:.6rem;font-family:'DM Mono',monospace;letter-spacing:.04em;text-transform:uppercase;}
+.tob-rec-card .tob-rec-warn{background:#5a1818;color:#f4b0b0;padding:1px 6px;border-radius:3px;font-size:.6rem;font-family:'DM Mono',monospace;letter-spacing:.04em;text-transform:uppercase;}
+
+/* Filas de menús guardados */
+.tob-menu-row{
+  display:flex;align-items:center;gap:12px;padding:11px 12px;
+  border:1px solid var(--border);border-radius:6px;margin-bottom:7px;
+  background:var(--card);transition:border-color .12s ease;
+}
+.tob-menu-row:hover{border-color:var(--acc);}
+.tob-menu-row-info{flex:1;min-width:0;}
+.tob-menu-row-info .nm{font-weight:700;color:var(--text);font-size:.88rem;}
+.tob-menu-row-info .meta{font-size:.68rem;color:var(--mute);font-family:'DM Mono',monospace;letter-spacing:.03em;margin-top:2px;}
+.tob-menu-row-acts{display:flex;gap:5px;flex-wrap:wrap;}
 .tob-rec-card .momentos{font-size:.6rem;color:var(--mute2);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.05em;}
 
 /* Botón de favorito (estrella) en la tarjeta de receta */
