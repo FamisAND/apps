@@ -8073,11 +8073,14 @@ async function tobMcGenerarIA(){
     const margen = parseFloat(document.getElementById('tobMcMargen').value) || 10;
     const semanas = tobMcState.semanas;
 
-    // Catálogo compacto de recetas por momento. Tope dinámico para no
-    // pasarse del límite de tokens del proveedor (Groq free ~6000 TPM).
+    // Catálogo de recetas por momento. Groq free tiene un límite de tokens
+    // muy bajo (~6000 TPM) → catálogo reducido. El resto de proveedores
+    // (Gemini, Anthropic, OpenRouter) admiten prompts grandes → mandamos
+    // prácticamente todas las recetas compatibles.
     let catalogo = '';
     const validIds = new Set();
-    const capPorMomento = Math.max(10, Math.floor(130 / comidas.length));
+    const totalCap = (cfg.provider === 'groq') ? 140 : 600;
+    const capPorMomento = Math.max(10, Math.floor(totalCap / comidas.length));
     comidas.forEach(c => {
       let cand = tobMcCandidatas(cli, c.id);
       const favs = cand.filter(r => r.favorito);
