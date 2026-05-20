@@ -7950,7 +7950,7 @@ async function tobAiCall(messages, cfgOverride){
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }]
     }));
-    const body = { contents, generationConfig:{ temperature:0.6, responseMimeType:'application/json' } };
+    const body = { contents, generationConfig:{ temperature:0.6, maxOutputTokens:4096, responseMimeType:'application/json' } };
     if(sys) body.systemInstruction = { parts:[{ text: sys }] };
     const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
     if(!r.ok) throw new Error('Gemini ' + r.status + ': ' + (await r.text()).slice(0,160));
@@ -7987,7 +7987,9 @@ async function tobAiCall(messages, cfgOverride){
   const url = endpoints[prov];
   if(!url) throw new Error('Proveïdor desconegut: ' + prov);
   const model = cfg.model || (TOB_AI_DEFAULTS[prov] && TOB_AI_DEFAULTS[prov].model);
-  const payload = { model, messages, temperature:0.6 };
+  // max_tokens acotado: en Groq free el límite de TPM cuenta entrada+salida,
+  // así que la respuesta no puede dispararse o devuelve 413.
+  const payload = { model, messages, temperature:0.6, max_tokens:2500 };
   // response_format json_object: fiable en Groq; en OpenRouter depende del
   // modelo, así que solo lo forzamos en Groq (el prompt ya pide "només JSON").
   if(prov === 'groq') payload.response_format = { type:'json_object' };
@@ -8071,18 +8073,26 @@ async function tobMcGenerarIA(){
     const margen = parseFloat(document.getElementById('tobMcMargen').value) || 10;
     const semanas = tobMcState.semanas;
 
-    // Catálogo compacto de recetas por momento (capado para no inflar el prompt)
+    // Catálogo compacto de recetas por momento. Tope dinámico para no
+    // pasarse del límite de tokens del proveedor (Groq free ~6000 TPM).
     let catalogo = '';
     const validIds = new Set();
+    const capPorMomento = Math.max(10, Math.floor(130 / comidas.length));
     comidas.forEach(c => {
       let cand = tobMcCandidatas(cli, c.id);
-      cand.sort((a,b) => ((b.favorito?1:0) - (a.favorito?1:0)) || (a.nombre||'').localeCompare(b.nombre||''));
-      cand = cand.slice(0, 70);
-      catalogo += '\n### ' + c.label + ' (comida_id="' + c.id + '")\n';
+      const favs = cand.filter(r => r.favorito);
+      const rest = cand.filter(r => !r.favorito);
+      // barajar el resto para dar variedad dentro del tope
+      for(let i = rest.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
+      }
+      cand = favs.concat(rest).slice(0, capPorMomento);
+      catalogo += '\n# ' + c.label + ' (id="' + c.id + '")\n';
       cand.forEach(r => {
         validIds.add(r.id);
         const mm = tobRecMacros(r); const rac = r.raciones || 1;
-        catalogo += r.id + ' | ' + r.nombre + ' | ' + Math.round(mm.kcal/rac) + ' kcal | ' + Math.round(mm.proteina/rac) + 'g prot\n';
+        catalogo += r.id + '|' + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p\n';
       });
     });
 
@@ -8096,7 +8106,8 @@ async function tobMcGenerarIA(){
       'ESTRUCTURA: ' + semanas + ' setmana(es) · 7 dies (0=Dilluns … 6=Diumenge) · àpats: '
         + comidas.map(c => '"' + c.id + '"').join(', ') + '.',
       '',
-      'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id:',
+      'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id.',
+      'Format de cada línia: id|nom|kcal|proteïna  (ex: rec_x|Truita francesa|320k|18p)',
       catalogo, '',
       'REGLES:',
       '- Cada dia ha de sumar aproximadament l\'objectiu calòric (±' + margen + '%) i acostar-se a la proteïna objectiu.',
@@ -8136,7 +8147,10 @@ async function tobMcGenerarIA(){
     tobToast('✓ Menú generat amb IA — ' + puestos + ' plats. Revisa\'l i ajusta el que calgui.', 'green');
   } catch(e){
     console.warn('[IA menú]', e);
-    tobToast('✗ Error generant el menú: ' + (e.message || e), 'red');
+    let msg = e.message || String(e);
+    if(/\b429\b/.test(msg))      msg = 'límit de quota del proveïdor IA — espera uns minuts i torna-ho a provar, o canvia de proveïdor (botó ⚙ IA)';
+    else if(/\b413\b/.test(msg)) msg = 'petició massa gran per al pla gratuït — prova amb menys setmanes';
+    tobToast('✗ ' + msg, 'red');
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = btnTxt || '🤖 Generar con IA'; }
   }
