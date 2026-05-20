@@ -165,6 +165,7 @@
         <select class="tob-select" id="tobRecFilterTag" onchange="tobRecRender()" style="min-width:160px;">
           <option value="">— Todas las etiquetas —</option>
         </select>
+        <button type="button" class="tob-action ghost btn-xs" id="tobRecFavBtn" onclick="tobRecToggleFavFilter()" title="Mostrar solo recetas favoritas">★ Favoritas</button>
         <span id="tobRecCount" style="font-size:.72rem;color:var(--mute);font-family:'DM Mono',monospace;letter-spacing:.04em;"></span>
       </div>
       <div id="tobRecEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
@@ -178,7 +179,10 @@
   <!-- ════════ MODAL RECETA ════════ -->
   <div class="tob-modal-bg" id="tobRecModalBg">
     <div class="tob-modal" style="max-width:880px;max-height:92vh;overflow-y:auto;">
-      <h3 id="tobRecModalTitle">Nueva receta</h3>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <h3 id="tobRecModalTitle" style="margin:0;flex:1;">Nueva receta</h3>
+        <button type="button" class="tob-rec-fav-modal" id="tobRecFavModalBtn" onclick="tobRecToggleFavModal()" title="Guardar en favoritos">☆</button>
+      </div>
 
       <div class="tob-row col-2">
         <div>
@@ -257,6 +261,7 @@
       <div>
         <label class="tob-lbl">Etiquetas <span class="tob-quest-h-sub">(coma o Enter — vegana, sin gluten, rápida, batch cooking, sin lactosa, alta proteína...)</span></label>
         <input class="tob-input" id="tobRecTags" placeholder="vegana, sin gluten, rápida...">
+        <div id="tobRecAlergenos" style="display:none;margin-top:6px;font-size:.66rem;font-family:'DM Mono',monospace;color:var(--mute);letter-spacing:.03em;"></div>
       </div>
 
       <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">

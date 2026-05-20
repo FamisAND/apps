@@ -5470,6 +5470,110 @@ function tobMenusSave(){
   } catch(e){ console.warn('[menus] save falló (quizá quota):', e); tobToast('Error guardando menús (quota localStorage)', 'red'); }
 }
 
+// ═════════════════════════════════════════════════════════════════
+// IndexedDB para FOTOS de recetas
+// ─────────────────────────────────────────────────────────────────
+// localStorage tiene ~5 MB de límite — 550 fotos thumbnail (~20 KB c/u)
+// son ~11 MB y NO caben. IndexedDB sí soporta cientos de MB.
+// Las fotos se guardan aquí con clave = recetaId. El objeto receta en
+// localStorage solo lleva `_fotoLocal: true` como flag; la imagen real
+// vive en IndexedDB. Display: si _fotoLocal → carga de IndexedDB; si no,
+// usa rec.foto (URL de ICNS o data URL de subida manual).
+// ═════════════════════════════════════════════════════════════════
+const TOB_IMGDB_NAME = 'tob_recetas_imgdb';
+const TOB_IMGDB_STORE = 'fotos';
+let _tobImgDBPromise = null;
+
+function tobImgDB(){
+  if(_tobImgDBPromise) return _tobImgDBPromise;
+  _tobImgDBPromise = new Promise((resolve, reject) => {
+    if(!window.indexedDB){ reject(new Error('IndexedDB no disponible')); return; }
+    const req = indexedDB.open(TOB_IMGDB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(TOB_IMGDB_STORE)){
+        db.createObjectStore(TOB_IMGDB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => reject(req.error);
+  });
+  return _tobImgDBPromise;
+}
+
+async function tobImgPut(key, dataUrl){
+  const db = await tobImgDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TOB_IMGDB_STORE, 'readwrite');
+    tx.objectStore(TOB_IMGDB_STORE).put(dataUrl, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
+async function tobImgGet(key){
+  const db = await tobImgDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TOB_IMGDB_STORE, 'readonly');
+    const req = tx.objectStore(TOB_IMGDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+async function tobImgDelete(key){
+  const db = await tobImgDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TOB_IMGDB_STORE, 'readwrite');
+    tx.objectStore(TOB_IMGDB_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
+async function tobImgKeys(){
+  const db = await tobImgDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TOB_IMGDB_STORE, 'readonly');
+    const req = tx.objectStore(TOB_IMGDB_STORE).getAllKeys();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+// Resuelve la foto de una receta: prioriza IndexedDB (_fotoLocal),
+// fallback a rec.foto (URL ICNS o data URL manual). Devuelve Promise<string>.
+async function tobRecFotoResolve(rec){
+  if(!rec) return '';
+  if(rec._fotoLocal){
+    try {
+      const d = await tobImgGet(rec.id);
+      if(d) return d;
+    } catch(e){ /* fallthrough */ }
+  }
+  return rec.foto || '';
+}
+
+// Hidrata las fotos de un contenedor: busca elementos con [data-foto-rec]
+// y les pone la imagen (background-image) de forma asíncrona desde
+// IndexedDB o la URL. Llamar después de renderizar tarjetas/paneles.
+async function tobHydrateFotos(rootSelector){
+  const root = document.querySelector(rootSelector);
+  if(!root) return;
+  const els = root.querySelectorAll('[data-foto-rec]');
+  for(const el of els){
+    const recId = el.dataset.fotoRec;
+    const rec = (tobMenusDB.recetas||[]).find(r => r.id === recId);
+    if(!rec) continue;
+    const src = await tobRecFotoResolve(rec);
+    if(src){
+      el.style.backgroundImage = `url('${src.replace(/'/g,"\\'")}')`;
+      el.classList.remove('placeholder');
+      el.textContent = '';
+    }
+  }
+}
+
 // Sub-tabs del módulo Menús
 function tobMenuShowTab(name, btn){
   document.querySelectorAll('.tob-mtab-page').forEach(p => p.style.display = 'none');
@@ -5751,7 +5855,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═════════════════════════════════════════════════════════════════
 
 let tobRecEditId = null;
+// Flag: ¿se tocó la foto en el modal? (subir nueva o quitar). Solo si es
+// true, tobRecSave reescribe la foto en IndexedDB. Evita borrar la foto
+// de una receta _fotoLocal que se edita sin tocar la imagen.
+let _tobRecFotoChanged = false;
+let _tobRecModalFav = false; // estado del botón ★ del modal de receta
 let tobRecPage = 0;
+let tobRecOnlyFav = false;   // filtro "solo favoritas"
 const TOB_REC_PER_PAGE = 24;
 const TOB_REC_MOMENTOS = [
   { id:'esmorzar', label:'Esmorzar' },
@@ -5779,13 +5889,14 @@ function tobRecFillTagFilter(){
   if(tags.includes(cur)) sel.value = cur;
 }
 
-// Calcula macros totales de una receta sumando ingredientes × gramos/100.
-// Devuelve {kcal, hc, proteina, grasa, fibra} en valores absolutos (toda
-// la receta, NO por ración).
+// Calcula macros totales de una receta. Devuelve {kcal,hc,proteina,grasa,
+// fibra} en valores absolutos (toda la receta, NO por ración).
+//   1) Si la receta tiene _icnsMacros (importada de ICNS) se usan esos —
+//      son el cálculo oficial y autoritativo de la plataforma.
+//   2) Si no, se suman los ingredientes × gramos/100 (recetas manuales),
+//      lo que permite el recálculo en vivo al editar gramos en el modal.
 function tobRecMacros(rec){
-  // Si no hay ingredientes detallados pero hay _icnsMacros (importación
-  // simple), devolver esos directamente.
-  if((!rec.ingredientes || !rec.ingredientes.length) && rec._icnsMacros){
+  if(rec._icnsMacros){
     const m = rec._icnsMacros;
     return {
       kcal:     m.kcal     || 0,
@@ -5828,7 +5939,12 @@ function tobRecRender(){
   }
   if(momento) list = list.filter(r => (r.momentos||[]).includes(momento));
   if(tag)     list = list.filter(r => (r.tags||[]).includes(tag));
-  list.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
+  if(tobRecOnlyFav) list = list.filter(r => r.favorito);
+  // Favoritas primero, luego alfabético.
+  list.sort((a,b) => {
+    if(!!a.favorito !== !!b.favorito) return a.favorito ? -1 : 1;
+    return (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'});
+  });
 
   const total = list.length;
   const cntEl = document.getElementById('tobRecCount');
@@ -5861,13 +5977,12 @@ function tobRecRender(){
     const kcalPer = m.kcal / rac;
     const tagsHtml = (r.tags||[]).slice(0,3).map(t => `<span class="tag">${tobEsc(t)}</span>`).join('');
     const momHtml = (r.momentos||[]).map(mm => TOB_REC_MOMENTO_LBL[mm] || mm).join(' · ');
-    const fotoStyle = r.foto
-      ? `style="background-image:url('${r.foto.replace(/'/g,"\\'")}');"`
-      : '';
-    const fotoCls = r.foto ? '' : 'placeholder';
-    const fotoTxt = r.foto ? '' : tobEsc((r.nombre||'').slice(0,40));
+    // La foto se hidrata async tras el render (data-foto-rec). Render
+    // inicial = placeholder con el nombre; tobHydrateFotos pone la imagen.
+    const fotoTxt = tobEsc((r.nombre||'').slice(0,40));
     return `<div class="tob-rec-card" onclick="tobRecEdit('${r.id}')">
-      <div class="foto ${fotoCls}" ${fotoStyle}>${fotoTxt}</div>
+      <div class="foto placeholder" data-foto-rec="${r.id}">${fotoTxt}</div>
+      <button class="tob-rec-fav${r.favorito?' on':''}" title="${r.favorito?'Quitar de favoritos':'Guardar en favoritos'}" onclick="event.stopPropagation();tobRecToggleFav('${r.id}')">${r.favorito?'★':'☆'}</button>
       <div class="body">
         <div class="nombre">${tobEsc(r.nombre || '—')}</div>
         <div class="macros">
@@ -5882,6 +5997,8 @@ function tobRecRender(){
       </div>
     </div>`;
   }).join('');
+  // Hidratar fotos async desde IndexedDB / URL
+  tobHydrateFotos('#tobRecGrid');
 
   if(pages <= 1){
     pagerEl.innerHTML = '';
@@ -5895,6 +6012,35 @@ function tobRecRender(){
 }
 function tobRecSetPage(p){ tobRecPage = p; tobRecRender(); }
 
+// ── Favoritos ────────────────────────────────────────────────────
+function tobRecToggleFav(id){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
+  if(!r) return;
+  r.favorito = !r.favorito;
+  tobMenusSave();
+  tobRecRender();
+  tobToast(r.favorito ? '★ Añadida a favoritos' : 'Quitada de favoritos', r.favorito ? 'green' : '');
+}
+function tobRecToggleFavFilter(){
+  tobRecOnlyFav = !tobRecOnlyFav;
+  tobRecPage = 0;
+  const btn = document.getElementById('tobRecFavBtn');
+  if(btn) btn.classList.toggle('on', tobRecOnlyFav);
+  tobRecRender();
+}
+// Estrella del modal de receta (aplica al guardar).
+function _tobRecSyncFavModalBtn(){
+  const btn = document.getElementById('tobRecFavModalBtn');
+  if(!btn) return;
+  btn.textContent = _tobRecModalFav ? '★' : '☆';
+  btn.classList.toggle('on', _tobRecModalFav);
+  btn.title = _tobRecModalFav ? 'Quitar de favoritos' : 'Guardar en favoritos';
+}
+function tobRecToggleFavModal(){
+  _tobRecModalFav = !_tobRecModalFav;
+  _tobRecSyncFavModalBtn();
+}
+
 // ── Modal de receta: abrir / cerrar ─────────────────────────────
 function tobRecOpenModal(){
   tobRecEditId = null;
@@ -5907,8 +6053,13 @@ function tobRecOpenModal(){
   document.getElementById('tobRecInstrucciones').value = '';
   document.getElementById('tobRecComentarios').value = '';
   document.getElementById('tobRecTags').value = '';
+  const _alergEl = document.getElementById('tobRecAlergenos');
+  if(_alergEl) _alergEl.style.display = 'none';
   document.getElementById('tobRecFotoData').value = '';
   tobRecClearFoto();
+  _tobRecFotoChanged = false;
+  _tobRecModalFav = false;
+  _tobRecSyncFavModalBtn();
   tobRecRenderMomentos([]);
   tobRecRenderIngredientesEdit([]);
   tobRecFillIngPicker();
@@ -5934,16 +6085,34 @@ function tobRecEdit(id){
     : (r.instrucciones || '');
   document.getElementById('tobRecComentarios').value = r.comentarios || '';
   document.getElementById('tobRecTags').value = (r.tags || []).join(', ');
-  document.getElementById('tobRecFotoData').value = r.foto || '';
-  if(r.foto){
-    const prev = document.getElementById('tobRecFotoPreview');
-    prev.src = r.foto;
-    prev.style.display = '';
-    document.getElementById('tobRecFotoHint').textContent = 'con foto';
-    document.getElementById('tobRecFotoDelBtn').style.display = '';
-  } else {
-    tobRecClearFoto();
+  const alergEl = document.getElementById('tobRecAlergenos');
+  if(alergEl){
+    if(r.alergenos && r.alergenos.length){
+      alergEl.textContent = '⚠ Alérgenos (ICNS): ' + r.alergenos.join(' · ');
+      alergEl.style.display = '';
+    } else {
+      alergEl.style.display = 'none';
+    }
   }
+  _tobRecModalFav = !!r.favorito;
+  _tobRecSyncFavModalBtn();
+  // tobRecFotoData guarda la URL original (no el base64) para que, si no
+  // se toca la foto, tobRecSave no reescriba nada en localStorage.
+  document.getElementById('tobRecFotoData').value = r.foto || '';
+  _tobRecFotoChanged = false;
+  // Preview: resuelve la foto (IndexedDB si _fotoLocal, si no la URL).
+  tobRecFotoResolve(r).then(src => {
+    if(tobRecEditId !== id) return;  // el modal cambió mientras resolvía
+    if(src){
+      const prev = document.getElementById('tobRecFotoPreview');
+      prev.src = src;
+      prev.style.display = '';
+      document.getElementById('tobRecFotoHint').textContent = 'con foto';
+      document.getElementById('tobRecFotoDelBtn').style.display = '';
+    } else {
+      tobRecClearFoto();
+    }
+  });
   tobRecRenderMomentos(r.momentos || []);
   tobRecRenderIngredientesEdit(r.ingredientes || []);
   tobRecFillIngPicker();
@@ -5964,6 +6133,7 @@ function tobRecHandleFotoUpload(ev){
   reader.onload = e => {
     const dataUrl = e.target.result;
     document.getElementById('tobRecFotoData').value = dataUrl;
+    _tobRecFotoChanged = true;
     const prev = document.getElementById('tobRecFotoPreview');
     prev.src = dataUrl;
     prev.style.display = '';
@@ -5973,7 +6143,7 @@ function tobRecHandleFotoUpload(ev){
   reader.readAsDataURL(file);
 }
 
-function tobRecClearFoto(){
+function tobRecClearFoto(markChanged){
   document.getElementById('tobRecFotoData').value = '';
   document.getElementById('tobRecFotoPreview').src = '';
   document.getElementById('tobRecFotoPreview').style.display = 'none';
@@ -5981,6 +6151,7 @@ function tobRecClearFoto(){
   document.getElementById('tobRecFotoDelBtn').style.display = 'none';
   const file = document.getElementById('tobRecFotoFile');
   if(file) file.value = '';
+  if(markChanged === true) _tobRecFotoChanged = true;
 }
 
 // ── Momentos: chips múltiples ───────────────────────────────────
@@ -6075,7 +6246,16 @@ function tobRecUpdateGramos(ix, val){
 
 // Recalcula macros totales de la receta editándose en tiempo real.
 function tobRecRecalc(){
-  const tempRec = { ingredientes: _tobRecModalIngredientes };
+  // Si se edita una receta importada de ICNS cuyos ingredientes no
+  // enlazan con la BD, tobRecMacros cae a _icnsMacros — así el modal
+  // muestra los valores reales de ICNS en vez de 0.
+  const editing = tobRecEditId
+    ? (tobMenusDB.recetas||[]).find(x => x.id === tobRecEditId)
+    : null;
+  const tempRec = {
+    ingredientes: _tobRecModalIngredientes,
+    _icnsMacros: editing ? editing._icnsMacros : null
+  };
   const m = tobRecMacros(tempRec);
   const rac = Math.max(1, parseInt(document.getElementById('tobRecRaciones')?.value) || 1);
   const setText = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
@@ -6107,7 +6287,7 @@ tobRecRenderIngredientesEdit = function(items){
 };
 
 // ── Guardar / eliminar receta ───────────────────────────────────
-function tobRecSave(){
+async function tobRecSave(){
   const nombre = document.getElementById('tobRecNombre').value.trim();
   if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
   const parseList = v => (v||'').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
@@ -6122,29 +6302,56 @@ function tobRecSave(){
     instrucciones:    document.getElementById('tobRecInstrucciones').value.trim(),
     comentarios:      document.getElementById('tobRecComentarios').value.trim(),
     autor:            document.getElementById('tobRecAutor').value.trim(),
-    tags:             parseList(document.getElementById('tobRecTags').value)
+    tags:             parseList(document.getElementById('tobRecTags').value),
+    favorito:         _tobRecModalFav
   };
   if(!tobMenusDB.recetas) tobMenusDB.recetas = [];
+  let recId;
   if(tobRecEditId){
+    recId = tobRecEditId;
     const r = tobMenusDB.recetas.find(x => x.id === tobRecEditId);
     if(r) Object.assign(r, data);
   } else {
-    data.id = tobUid('rec');
+    recId = tobUid('rec');
+    data.id = recId;
     data.origen = 'manual';
     tobMenusDB.recetas.push(data);
   }
+
+  // Foto: solo se reescribe el almacenamiento si se tocó en el modal.
+  // Si es base64 (subida nueva) → IndexedDB, no localStorage. Si se
+  // vació → borrar de IndexedDB. Si no se tocó, se deja como estaba.
+  if(_tobRecFotoChanged){
+    const recObj = tobMenusDB.recetas.find(x => x.id === recId);
+    if(recObj){
+      const f = recObj.foto || '';
+      if(typeof f === 'string' && f.startsWith('data:')){
+        try {
+          await tobImgPut(recId, f);
+          recObj._fotoLocal = true;
+          recObj.foto = '';   // no guardar el base64 en localStorage
+        } catch(e){ console.warn('[rec-save] foto IndexedDB falló', e); }
+      } else if(!f){
+        try { await tobImgDelete(recId); } catch(e){}
+        recObj._fotoLocal = false;
+      }
+    }
+  }
+
   tobMenusSave();
   tobRecCloseModal();
   tobRecRender();
   tobToast('✓ Receta guardada', 'green');
 }
 
-function tobRecDeleteFromModal(){
+async function tobRecDeleteFromModal(){
   if(!tobRecEditId) return;
   const r = (tobMenusDB.recetas||[]).find(x => x.id === tobRecEditId);
   if(!r) return;
   if(!confirm(`Eliminar receta "${r.nombre}"?`)) return;
-  tobMenusDB.recetas = tobMenusDB.recetas.filter(x => x.id !== tobRecEditId);
+  const delId = tobRecEditId;
+  tobMenusDB.recetas = tobMenusDB.recetas.filter(x => x.id !== delId);
+  if(r._fotoLocal){ try { await tobImgDelete(delId); } catch(e){} }
   tobMenusSave();
   tobRecCloseModal();
   tobRecRender();
@@ -6216,7 +6423,7 @@ async function tobRecImportFiles(ev){
   const files = Array.from(ev.target.files || []);
   if(!files.length) return;
   tobToast(`Importando ${files.length} archivo(s)...`, '');
-  let added = 0, updated = 0, skipped = 0;
+  let added = 0, updated = 0, skipped = 0, fotos = 0;
   const ingByName = new Map();
   (tobMenusDB.ingredientes||[]).forEach(i => {
     ingByName.set((i.nombre||'').toLowerCase().trim(), i.id);
@@ -6245,9 +6452,9 @@ async function tobRecImportFiles(ev){
                   : null;
       if(!items){ console.warn('[rec-import]', file.name, 'no es array'); skipped++; continue; }
 
-      items.forEach(raw => {
-        if(!raw || !raw.nombre){ skipped++; return; }
-        if(raw._error){ skipped++; return; }  // entries del scraper que fallaron
+      for(const raw of items){
+        if(!raw || !raw.nombre){ skipped++; continue; }
+        if(raw._error){ skipped++; continue; }  // entries del scraper que fallaron
 
         const icnsId = raw.id != null ? String(raw.id) : null;
         const hasDetalle = Array.isArray(raw.ingredientes) || raw.instrucciones;
@@ -6256,13 +6463,15 @@ async function tobRecImportFiles(ev){
         let ingredientes = [];
         if(hasDetalle && Array.isArray(raw.ingredientes)){
           ingredientes = raw.ingredientes.map(ing => {
-            // Si viene "raw" del scraper, intentamos extraer un nombre limpio
-            // de él (más fiable que el `nombre` que el scraper a veces deja
-            // con basura tipo "(123 gr.) Detalles 0.06€ - 0.49€").
-            const nombreLimpio = ing.raw
-              ? _tobExtractIngNombre(ing.raw)
-              : _tobExtractIngNombre(ing.nombre || '');
-            const gramos = ing.cantidad != null ? +ing.cantidad : null;
+            // El scraper nuevo da `nombre` ya limpio (1er arg de
+            // actualizaModal). Si no, se extrae del texto raw.
+            const nombreLimpio = (ing.nombre && ing.nombre.trim())
+              ? ing.nombre.trim()
+              : _tobExtractIngNombre(ing.raw || '');
+            // Gramos: el scraper nuevo da `gramos`; compat con `cantidad`.
+            let gramos = ing.gramos != null ? +ing.gramos
+                       : (ing.cantidad != null ? +ing.cantidad : null);
+            if(!Number.isFinite(gramos)) gramos = null;
             const ingId = matchIngId(nombreLimpio);
             return ingId
               ? { ingId, gramos: gramos || 0 }
@@ -6299,24 +6508,38 @@ async function tobRecImportFiles(ev){
           instrucciones,
           comentarios: raw.comentarios || '',
           autor: raw.autor || '',
-          tags: tagsLimpios
+          tags: tagsLimpios,
+          alergenos: Array.isArray(raw.alergenos) ? raw.alergenos.slice() : []
         };
 
-        // Si NO hay ingredientes detallados pero hay macros simples del JSON
-        // ICNS, guardamos como _icnsMacros para que tobRecMacros los use.
-        if(!hasDetalle && (raw.kcal != null || raw.hc != null)){
-          data._icnsMacros = {
-            kcal:     parseN(raw.kcal),
-            hc:       parseN(raw.hc),
-            proteina: parseN(raw.proteina),
-            grasa:    parseN(raw.grasa)
+        // Macros: del scraper detallado (macrosPersona, valores POR PERSONA)
+        // o del JSON simple ICNS (campos kcal/hc/... sueltos). Se guardan
+        // como TOTALES de la receta = por persona × raciones, misma escala
+        // que la suma de ingredientes.
+        const mp = raw.macrosPersona
+          || ((raw.kcal != null || raw.hc != null || raw.proteina != null)
+              ? { kcal: raw.kcal, hc: raw.hc, proteina: raw.proteina, grasa: raw.grasa, fibra: raw.fibra }
+              : null);
+        if(mp){
+          const rac = data.raciones || 1;
+          const im = {
+            kcal:     (parseN(mp.kcal)     || 0) * rac,
+            hc:       (parseN(mp.hc)       || 0) * rac,
+            proteina: (parseN(mp.proteina) || 0) * rac,
+            grasa:    (parseN(mp.grasa)    || 0) * rac,
+            fibra:    (parseN(mp.fibra)    || 0) * rac
           };
+          // Solo si hay datos reales (kcal > 0). Si el scraper no encontró
+          // macros, se deja sin _icnsMacros para que tobRecMacros caiga a
+          // la suma de ingredientes.
+          if(im.kcal > 0) data._icnsMacros = im;
         }
 
         // Detección de duplicado (igual que ingredientes): por icnsId o nombre
         let exist = null;
         if(icnsId && tobMenusDB.recetas) exist = tobMenusDB.recetas.find(r => r.icnsId === icnsId);
         if(!exist && tobMenusDB.recetas) exist = tobMenusDB.recetas.find(r => (r.nombre||'').toLowerCase() === data.nombre.toLowerCase());
+        let recId;
         if(exist){
           // Merge: nuevas claves (ingredientes detallados) ganan sobre las
           // viejas (macros simples). Pero si ya tenía ingredientes y los
@@ -6325,18 +6548,36 @@ async function tobRecImportFiles(ev){
             data.ingredientes = exist.ingredientes;
           }
           Object.assign(exist, data, { icnsId: icnsId || exist.icnsId });
+          recId = exist.id;
           updated++;
         } else {
           if(!tobMenusDB.recetas) tobMenusDB.recetas = [];
+          recId = tobUid('rec');
           tobMenusDB.recetas.push({
-            id: tobUid('rec'),
+            id: recId,
             origen: hasDetalle ? 'scraper' : 'icns',
             icnsId,
+            favorito: false,
             ...data
           });
           added++;
         }
-      });
+
+        // Foto descargada por el scraper (base64 thumbnail) → IndexedDB.
+        // NO se guarda en localStorage (límite ~5MB para cientos de fotos).
+        // El objeto receta solo lleva el flag _fotoLocal:true; la imagen
+        // real vive en IndexedDB con clave = id de la receta.
+        if(raw.fotoData && typeof raw.fotoData === 'string' && raw.fotoData.startsWith('data:')){
+          try {
+            await tobImgPut(recId, raw.fotoData);
+            const recObj = tobMenusDB.recetas.find(r => r.id === recId);
+            if(recObj) recObj._fotoLocal = true;
+            fotos++;
+          } catch(e){
+            console.warn('[rec-import] foto IndexedDB falló', recId, e);
+          }
+        }
+      }
     } catch(e){
       console.warn('[rec-import]', file.name, e);
       skipped++;
@@ -6346,7 +6587,7 @@ async function tobRecImportFiles(ev){
   tobMenusSave();
   tobRecRender();
   ev.target.value = '';
-  tobToast(`✓ Importación recetas: ${added} nuevas · ${updated} actualizadas${skipped?' · '+skipped+' saltadas':''}`, 'green');
+  tobToast(`✓ Importación recetas: ${added} nuevas · ${updated} actualizadas${fotos?' · '+fotos+' fotos':''}${skipped?' · '+skipped+' saltadas':''}`, 'green');
 }
 
 function tobRecExportJson(){
@@ -6830,15 +7071,16 @@ function tobMcRenderSidePanel(){
   panel.innerHTML = visibles.map(({rec: r, check}) => {
     const m = tobRecMacros(r);
     const kcalPer = Math.round(m.kcal / (r.raciones || 1));
-    const fotoStyle = r.foto ? `style="background-image:url('${r.foto.replace(/'/g,"\\'")}');"` : '';
-    const thumbInner = r.foto ? '' : (r.nombre || '?').slice(0,2).toUpperCase();
+    // La foto se hidrata async (data-foto-rec): IndexedDB o URL.
+    const thumbInner = (r.nombre || '?').slice(0,2).toUpperCase();
     const incompatBadge = check.compat ? '' :
       `<span class="badge-incompat" title="${tobEsc(check.razones.join(' · '))}">⚠</span>`;
+    const favBadge = r.favorito ? '<span class="tob-mc-side-fav" title="Favorita">★</span>' : '';
     const cls = check.compat ? '' : 'incompat';
     return `<div class="tob-mc-side-item ${cls}" data-rec="${r.id}" title="${tobEsc(r.nombre)}${check.razones.length ? '\\n⚠ ' + check.razones.join(' · ') : ''}">
-      <div class="thumb" ${fotoStyle}>${tobEsc(thumbInner)}</div>
+      <div class="thumb placeholder" data-foto-rec="${r.id}">${tobEsc(thumbInner)}</div>
       <div class="info">
-        <div class="nm">${tobEsc(r.nombre || '—')}</div>
+        <div class="nm">${favBadge}${tobEsc(r.nombre || '—')}</div>
         <div class="mac">${kcalPer} kcal · ${Math.round(m.proteina / (r.raciones||1))}p</div>
       </div>
       ${incompatBadge}
@@ -6847,6 +7089,7 @@ function tobMcRenderSidePanel(){
   if(!visibles.length){
     panel.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:18px;font-family:DM Mono,monospace;font-size:.7rem;">Sin recetas que coincidan con los filtros.</div>';
   }
+  tobHydrateFotos('#tobMcSidePanel');
 
   // Habilitar drag desde el panel lateral
   if(typeof Sortable !== 'undefined'){

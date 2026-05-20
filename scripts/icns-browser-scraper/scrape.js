@@ -59,11 +59,15 @@
       <input type="file" id="_icns-urls-file" accept=".json" multiple style="margin-bottom:10px;color:#888;font-family:inherit;font-size:11px;">
       <div id="_icns-urls-info" style="font-size:11px;color:#5a7a9a;margin-bottom:10px;"></div>
 
-      <div style="display:flex;gap:10px;margin-bottom:10px;align-items:center;font-size:11px;">
+      <div style="display:flex;gap:10px;margin-bottom:8px;align-items:center;font-size:11px;">
         <label style="color:#888;">Concurrencia: <input type="number" id="_icns-conc" value="2" min="1" max="5" style="width:40px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:inherit;padding:2px 4px;border-radius:3px;"></label>
         <label style="color:#888;">Delay ms: <input type="number" id="_icns-delay" value="300" min="100" step="100" style="width:60px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:inherit;padding:2px 4px;border-radius:3px;"></label>
         <label style="color:#888;">Limit: <input type="number" id="_icns-limit" placeholder="∞" style="width:50px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:inherit;padding:2px 4px;border-radius:3px;"></label>
       </div>
+      <label style="display:flex;align-items:center;gap:6px;color:#9aa9ba;font-size:11px;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="_icns-fotos" checked>
+        Descargar fotos (thumbnails base64) — quedan guardadas, no dependes de ICNS
+      </label>
 
       <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
         <button id="_icns-test-one" class="_icns-btn" disabled>🧪 Probar 1</button>
@@ -220,6 +224,71 @@
     return s.trim();
   }
 
+  // ── Ingredientes ICNS: nombre limpio + gramos REALES ───────────
+  // ICNS pone, junto a cada <li>, un botón "Detalles" con un onclick
+  //   actualizaModal('Nombre limpio', 'icono.png', 'id', 'id', 'qty')
+  // El PRIMER argumento es el nombre del alimento ya limpio (sin
+  // cantidades ni ruido) — mucho más fiable que parsear el texto.
+  function parseActualizaModalArgs(onclick){
+    if(!onclick) return null;
+    const m = onclick.match(/actualizaModal\s*\(([\s\S]*?)\)/i);
+    if(!m) return null;
+    return [...m[1].matchAll(/'([^']*)'|"([^"]*)"/g)]
+      .map(x => (x[1] != null ? x[1] : x[2]));
+  }
+  // Gramos reales de un ingrediente desde su texto:
+  //   "2 rebanadas de pan integral (50 gr.)"   → 50
+  //   "150 gramos de tempeh"                   → 150
+  //   "1 cucharadita de aceite (4.5 gr.)"      → 4.5
+  // El peso entre paréntesis "(N gr.)" es el total; si no lo hay y la
+  // cantidad inicial ya está en gramos, esa es la cifra.
+  function extractGramos(rawTxt){
+    const t = rawTxt || '';
+    const mParen = t.match(/\(\s*([\d.,]+)\s*gr\.?\s*\)/i);
+    if(mParen) return parseFloat(mParen[1].replace(',', '.'));
+    const mLead = t.match(/^\s*([\d.,]+)\s*(?:gramos?|grs?|g)\b/i);
+    if(mLead) return parseFloat(mLead[1].replace(',', '.'));
+    return null;
+  }
+
+  // ── Descarga + redimensión de foto a thumbnail base64 ──────────
+  // Corre en icns.software (mismo origen) → fetch sin CORS. Redimensiona
+  // a 420px de ancho máx, JPEG q0.65 → ~20-30 KB por foto. Así la receta
+  // queda con la imagen embebida y NO depende de que ICNS no la borre.
+  async function downloadFotoAsDataUrl(url){
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if(!res.ok) return '';
+      const blob = await res.blob();
+      let bitmap;
+      try { bitmap = await createImageBitmap(blob); }
+      catch(e){
+        // Fallback para navegadores sin createImageBitmap: usar Image
+        bitmap = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const objUrl = URL.createObjectURL(blob);
+          img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
+          img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('img load')); };
+          img.src = objUrl;
+        });
+      }
+      const srcW = bitmap.width || bitmap.naturalWidth;
+      const srcH = bitmap.height || bitmap.naturalHeight;
+      if(!srcW || !srcH) return '';
+      const maxW = 420;
+      const scale = Math.min(1, maxW / srcW);
+      const w = Math.round(srcW * scale);
+      const h = Math.round(srcH * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+      if(bitmap.close) bitmap.close();
+      return canvas.toDataURL('image/jpeg', 0.65);
+    } catch(e){
+      return '';
+    }
+  }
+
   // ── Mapeo de tags ICNS → momentos del día ──────────────────────
   // ICNS usa "#Desayunos", "#Comidas", "#Cenas", "#Snacks", "#Merienda",
   // etc. Los mapeamos a los momentos internos de la app.
@@ -280,7 +349,9 @@
       instrucciones: [],
       comentarios: '',
       autor: '',
-      tags: []
+      tags: [],
+      alergenos: [],
+      macrosPersona: null   // {kcal, hc, proteina, grasa, fibra} POR PERSONA
     };
 
     // ── FOTO ───────────────────────────────────────────────────────
@@ -362,37 +433,32 @@
 
     // ── INGREDIENTES ───────────────────────────────────────────────
     // Header: <img src="img/lang/es/ingredientes.png"> en un div.
-    // Los <li> siguientes son los ingredientes (en el div hermano o
-    // descendiente).
+    // Cada <li> tiene un botón "Detalles" con onclick=actualizaModal(...)
+    // del que sacamos el NOMBRE LIMPIO. Los gramos salen del "(N gr.)".
+    const pushIngrediente = (li) => {
+      const rawTxt = clean(li.textContent);
+      if(!rawTxt || rawTxt.length >= 250) return;
+      let nombre = '';
+      const btn = li.querySelector('[onclick]');
+      const args = btn ? parseActualizaModalArgs(btn.getAttribute('onclick')) : null;
+      if(args && args[0]) nombre = clean(args[0]);
+      if(!nombre) nombre = extractIngNombre(rawTxt);  // fallback
+      const gramos = extractGramos(rawTxt);
+      out.ingredientes.push({
+        raw:      rawTxt,
+        nombre:   nombre,
+        gramos:   gramos,
+        cantidad: gramos,   // alias: el importador de la app lee `cantidad`
+        unidad:   gramos != null ? 'gr' : extractUnit(cleanIngredienteText(rawTxt))
+      });
+    };
     const ingCont = findContentAfterIcnsHeader(doc, 'lang/es/ingredientes.png');
     if(ingCont){
-      ingCont.querySelectorAll('li').forEach(li => {
-        const rawTxt = clean(li.textContent);
-        if(!rawTxt || rawTxt.length >= 200) return;
-        const cleaned = cleanIngredienteText(rawTxt);
-        out.ingredientes.push({
-          raw: rawTxt,
-          cantidad: extractNumber(cleaned),
-          unidad:   extractUnit(cleaned),
-          nombre:   extractIngNombre(rawTxt)
-        });
-      });
+      ingCont.querySelectorAll('li').forEach(pushIngrediente);
     }
-    // Fallback: cualquier lista con clase relacionada (por si ICNS cambia
-    // el HTML en futuras recetas)
+    // Fallback: la <ul class="ul_ingredientes"> aunque cambie la cabecera
     if(!out.ingredientes.length){
-      $$('[class*="ingredient"] li, .ingredientes li').forEach(li => {
-        const rawTxt = clean(li.textContent);
-        if(rawTxt && rawTxt.length < 200){
-          const cleaned = cleanIngredienteText(rawTxt);
-          out.ingredientes.push({
-            raw: rawTxt,
-            cantidad: extractNumber(cleaned),
-            unidad:   extractUnit(cleaned),
-            nombre:   extractIngNombre(rawTxt)
-          });
-        }
-      });
+      $$('ul.ul_ingredientes li, [class*="ingredient"] li, .ingredientes li').forEach(pushIngrediente);
     }
 
     // ── INSTRUCCIONES (Preparación) ────────────────────────────────
@@ -455,6 +521,64 @@
       }
     }
 
+    // ── MACROS POR PERSONA (+ fibra) ───────────────────────────────
+    // ICNS publica una <table class="tabla_valores"> con cabecera
+    // "VALORES POR PERSONA": pares de celdas label / valor.
+    const parseValorTable = (headerText) => {
+      const tables = $$('table.tabla_valores, table');
+      for(const tbl of tables){
+        const head = clean(tbl.textContent).toUpperCase();
+        if(!head.includes(headerText)) continue;
+        const map = {};
+        tbl.querySelectorAll('tr').forEach(tr => {
+          const cells = Array.from(tr.querySelectorAll('td'));
+          for(let i = 0; i + 1 < cells.length; i += 2){
+            const label = clean(cells[i].textContent).toLowerCase().replace(/:$/, '').trim();
+            const num   = extractNumber(clean(cells[i+1].textContent));
+            if(label && num != null && !(label in map)) map[label] = num;
+          }
+        });
+        return map;
+      }
+      return null;
+    };
+    const vp = parseValorTable('VALORES POR PERSONA');
+    if(vp){
+      out.macrosPersona = {
+        kcal:     vp['kcal']      != null ? vp['kcal']      : null,
+        hc:       vp['hc netos']  != null ? vp['hc netos']  : (vp['hc'] != null ? vp['hc'] : null),
+        proteina: vp['proteínas'] != null ? vp['proteínas'] : (vp['proteinas'] != null ? vp['proteinas'] : null),
+        grasa:    vp['grasa total'] != null ? vp['grasa total'] : (vp['grasa'] != null ? vp['grasa'] : null),
+        fibra:    vp['fibra']     != null ? vp['fibra']     : null
+      };
+    }
+    // Fallback: spans de cabecera "541.6kcal", "31.5gr HC", "38.5gr prot.",
+    // "25.6gr grasa" (sin fibra — esa solo está en la tabla).
+    if(!out.macrosPersona || out.macrosPersona.kcal == null){
+      const mm = { kcal:null, hc:null, proteina:null, grasa:null, fibra:null };
+      $$('span').forEach(sp => {
+        const t = clean(sp.textContent);
+        if(t.length > 24) return;
+        if(mm.kcal == null && /\bkcal\b/i.test(t) && /^[\d.,]+\s*kcal$/i.test(t)) mm.kcal = extractNumber(t);
+        else if(mm.hc == null && /gr\s*HC$/i.test(t))       mm.hc = extractNumber(t);
+        else if(mm.proteina == null && /gr\s*prot/i.test(t)) mm.proteina = extractNumber(t);
+        else if(mm.grasa == null && /gr\s*grasa/i.test(t))  mm.grasa = extractNumber(t);
+        else if(mm.fibra == null && /gr\s*fibra/i.test(t))  mm.fibra = extractNumber(t);
+      });
+      if(mm.kcal != null) out.macrosPersona = mm;
+    }
+
+    // ── ALÉRGENOS ──────────────────────────────────────────────────
+    // Header: <img src="img/lang/es/alergenos.png"> seguido de una tabla
+    // de <img src="img/alergias/..." alt="Gluten"> etc.
+    const alergCont = findContentAfterIcnsHeader(doc, 'lang/es/alergenos.png');
+    if(alergCont){
+      alergCont.querySelectorAll('img[src*="alergias/"], img[src*="alergia"]').forEach(img => {
+        const a = clean(img.getAttribute('alt') || '');
+        if(a && a.length < 60 && !out.alergenos.includes(a)) out.alergenos.push(a);
+      });
+    }
+
     // ── MOMENTOS desde tags ────────────────────────────────────────
     out.momentos = tagsToMomentos(out.tags);
 
@@ -470,7 +594,14 @@
     if(/url=.*login/i.test(html) && html.length < 500){
       throw new Error('Redirige a login — sesión caducada');
     }
-    return parseRecipeHtml(html, urlInfo);
+    const data = parseRecipeHtml(html, urlInfo);
+    // Si el usuario marcó "Descargar fotos", bajamos la imagen principal
+    // y la embebemos como thumbnail base64 en data.fotoData.
+    const wantFotos = document.getElementById('_icns-fotos')?.checked;
+    if(wantFotos && data.foto){
+      data.fotoData = await downloadFotoAsDataUrl(data.foto);
+    }
+    return data;
   }
 
   // ── Probar 1 (dumps el HTML + el parseo) ─────────────────────────
@@ -486,7 +617,18 @@
       const html = await res.text();
       log(`HTML recibido: ${html.length} chars`, 'info');
       const parsed = parseRecipeHtml(html, u);
-      log(`Foto: ${parsed.foto ? '✓' : '✗'} · Ingr: ${parsed.ingredientes.length} · Instr: ${parsed.instrucciones.length}`, 'ok');
+      const mp = parsed.macrosPersona;
+      log(`Foto: ${parsed.foto ? '✓' : '✗'} · Ingr: ${parsed.ingredientes.length} · Instr: ${parsed.instrucciones.length} · Tags: ${parsed.tags.length}`, 'ok');
+      log(`Macros/persona: ${mp ? `${mp.kcal||'?'}kcal ${mp.proteina||'?'}p ${mp.hc||'?'}h ${mp.grasa||'?'}g ${mp.fibra||'?'}fibra` : '✗ no encontradas'}`, mp ? 'ok' : 'fail');
+      const ing1 = parsed.ingredientes[0];
+      log(`Ej. ingrediente: ${ing1 ? `"${ing1.nombre}" ${ing1.gramos!=null?ing1.gramos+'g':'(sin g)'}` : '✗'} · Alérgenos: ${parsed.alergenos.join(', ')||'—'}`, ing1 ? 'info' : 'fail');
+      // Si "Descargar fotos" está marcado, probamos también la descarga
+      if(document.getElementById('_icns-fotos')?.checked && parsed.foto){
+        const dataUrl = await downloadFotoAsDataUrl(parsed.foto);
+        parsed.fotoData = dataUrl;
+        const kb = dataUrl ? Math.round(dataUrl.length * 0.75 / 1024) : 0;
+        log(`FotoData: ${dataUrl ? '✓ ' + kb + ' KB' : '✗ no descargada'}`, dataUrl ? 'ok' : 'fail');
+      }
       window._icnsLastTest = { html, parsed, urlInfo: u };
       console.log('💡 Resultado completo en window._icnsLastTest', parsed);
       log('💾 HTML descargable con botón verde', 'info');
