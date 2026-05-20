@@ -828,6 +828,17 @@
       <div><label class="tob-lbl">Peso (kg) *</label><input class="tob-input" type="number" step="0.1" id="tobMedPes" placeholder="77.4"></div>
       <div><label class="tob-lbl">Estatura (cm)</label><input class="tob-input" type="number" step="0.5" id="tobMedEstatura" placeholder="177"></div>
     </div>
+    <div style="margin-top:4px;">
+      <label class="tob-lbl">Edad <span class="tob-quest-h-sub">(para el cálculo de calorías Harris-Benedict — elige cómo introducirla)</span></label>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select class="tob-select" id="tobMedEdadModo" onchange="tobMedEdadModoChange()" style="flex:none;width:175px;">
+          <option value="nac">Fecha de nacimiento</option>
+          <option value="edad">Edad directa</option>
+        </select>
+        <input class="tob-input" type="date" id="tobMedNacimiento" style="flex:1;">
+        <input class="tob-input" type="number" id="tobMedEdad" placeholder="años" min="0" max="120" style="flex:1;display:none;">
+      </div>
+    </div>
     <div style="font-family:'DM Mono',monospace;color:var(--acc);font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;margin:16px 0 8px;border-bottom:1px solid var(--border);padding-bottom:5px;">
       Pliegues cutáneos (mm)
     </div>

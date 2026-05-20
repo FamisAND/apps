@@ -3121,13 +3121,27 @@ function tobMedRatios(med){
   };
 }
 function tobMedAge(cli, fecha){
-  if(!cli?.nacimiento || !fecha) return null;
-  const n = new Date(cli.nacimiento), f = new Date(fecha);
-  if(isNaN(n) || isNaN(f)) return null;
-  let age = f.getFullYear() - n.getFullYear();
-  const m = f.getMonth() - n.getMonth();
-  if(m < 0 || (m === 0 && f.getDate() < n.getDate())) age--;
-  return (age >= 0 && age < 130) ? age : null;
+  if(!cli) return null;
+  // 1) Fecha de nacimiento → edad exacta a la fecha dada
+  if(cli.nacimiento && fecha){
+    const n = new Date(cli.nacimiento), f = new Date(fecha);
+    if(!isNaN(n) && !isNaN(f)){
+      let age = f.getFullYear() - n.getFullYear();
+      const m = f.getMonth() - n.getMonth();
+      if(m < 0 || (m === 0 && f.getDate() < n.getDate())) age--;
+      if(age >= 0 && age < 130) return age;
+    }
+  }
+  // 2) Edad directa (introducida en una medición) + años transcurridos
+  if(cli.edad != null && cli.edad !== ''){
+    let age = +cli.edad;
+    if(cli.edadFecha && fecha){
+      const a = new Date(cli.edadFecha), f = new Date(fecha);
+      if(!isNaN(a) && !isNaN(f)) age += Math.max(0, f.getFullYear() - a.getFullYear());
+    }
+    if(age >= 0 && age < 130) return age;
+  }
+  return null;
 }
 function tobMedShortLabel(fecha){
   const [y,mo] = String(fecha||'').split('-');
@@ -3171,6 +3185,20 @@ function tobOpenMedicionModal(medId){
   document.getElementById('tobMedPes').value = med?.pes ?? '';
   document.getElementById('tobMedEstatura').value = med?.estatura ?? lastMed?.estatura ?? '';
   document.getElementById('tobMedNotas').value = med?.notas || '';
+  // Edad / fecha de nacimiento del cliente (para Harris-Benedict)
+  const modoSel = document.getElementById('tobMedEdadModo');
+  if(modoSel){
+    const nacInp = document.getElementById('tobMedNacimiento');
+    const edadInp = document.getElementById('tobMedEdad');
+    if(cli.nacimiento){
+      modoSel.value = 'nac'; nacInp.value = cli.nacimiento; edadInp.value = '';
+    } else if(cli.edad != null && cli.edad !== ''){
+      modoSel.value = 'edad'; edadInp.value = cli.edad; nacInp.value = '';
+    } else {
+      modoSel.value = 'nac'; nacInp.value = ''; edadInp.value = '';
+    }
+    tobMedEdadModoChange();
+  }
   // Para una NUEVA medición, mostrar bajo cada input el valor de la anterior
   // (clicable para copiarlo). Si estamos editando, se ocultan los hints porque
   // los valores ya están en los inputs.
@@ -3196,6 +3224,15 @@ function tobOpenMedicionModal(medId){
 }
 function tobCloseMedicionModal(){ document.getElementById('tobMedicionModalBg').classList.remove('on'); }
 
+// Alterna entre introducir fecha de nacimiento o edad directa.
+function tobMedEdadModoChange(){
+  const modo = document.getElementById('tobMedEdadModo').value;
+  const nacInp = document.getElementById('tobMedNacimiento');
+  const edadInp = document.getElementById('tobMedEdad');
+  if(nacInp)  nacInp.style.display  = modo === 'nac'  ? '' : 'none';
+  if(edadInp) edadInp.style.display = modo === 'edad' ? '' : 'none';
+}
+
 function tobSaveMedicion(){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli){ tobToast('Sin cliente', 'red'); return; }
@@ -3212,6 +3249,15 @@ function tobSaveMedicion(){
     plecs, perimetres,
     notas: document.getElementById('tobMedNotas').value.trim()
   };
+  // Edad / fecha de nacimiento del cliente — el modo elegido manda.
+  const edadModo = document.getElementById('tobMedEdadModo')?.value;
+  if(edadModo === 'nac'){
+    const nac = document.getElementById('tobMedNacimiento').value;
+    if(nac){ cli.nacimiento = nac; delete cli.edad; delete cli.edadFecha; }
+  } else if(edadModo === 'edad'){
+    const ed = parseInt(document.getElementById('tobMedEdad').value);
+    if(Number.isFinite(ed)){ cli.edad = ed; cli.edadFecha = fecha; delete cli.nacimiento; }
+  }
   if(!cli.mediciones) cli.mediciones = [];
   const editId = document.getElementById('tobMedicionModalBg').dataset.editId;
   if(editId){
