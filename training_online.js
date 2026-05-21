@@ -7103,45 +7103,6 @@ function tobRecExportJson(){
 let tobClasifPage = 0;
 let tobClasifSoloSin = true;
 
-// Heurística: deduce momentos plausibles de una receta por su nombre,
-// tags y kcal. Sirve para clasificar en masa las que no tienen momento.
-function tobRecAutoMomentos(rec){
-  const txt = ((rec.nombre||'') + ' ' + (rec.tags||[]).join(' ')).toLowerCase();
-  const mac = tobRecMacros(rec);
-  const kcal = mac.kcal / (rec.raciones || 1);
-  const out = new Set();
-  if(/torrad|tostad|batut|batido|iogurt|yogur|civada|avena|cereal|ou remenat|tortit|caf[èe]|porridge|magdalen|bizcoch|melmelad|sandvitx|sandwich|crep|gofre/.test(txt))
-    out.add('esmorzar');
-  if(/barret|barrita|fruita|fruto seco|fruits secs|hummus|snack|gelat|maduix|poma|pl[àa]tan/.test(txt) || kcal < 230){
-    out.add('mig_mati'); out.add('berenar');
-  }
-  if(/amanida|ensalada|arr[òo]s|pasta|guis|estofat|crema|sopa|llent|lentej|cigron|garbanz|pollastre|pollo|peix|pescat|pescado|carn|vedella|ternera|truita|tortilla|hamburg|pizza|wok|saltej|filet|estofado|guiso/.test(txt) || kcal > 420){
-    out.add('dinar'); out.add('sopar');
-  }
-  if(!out.size){
-    if(kcal < 300){ out.add('mig_mati'); out.add('berenar'); }
-    else { out.add('dinar'); out.add('sopar'); }
-  }
-  return [...out];
-}
-
-// Heurística del rol del plato (principal / acompanyament / postre / basic).
-function tobRecAutoRol(rec){
-  const txt = ((rec.nombre||'') + ' ' + (rec.tags||[]).join(' ')).toLowerCase();
-  const mac = tobRecMacros(rec);
-  const rac = rec.raciones || 1;
-  const kcal = mac.kcal / rac, prot = mac.proteina / rac;
-  if(/postre|dol[çc]|pastís|pastel|bizcoch|magdalen|galet|gelat|natill|flam|mousse|púding|pudding|crep dol/.test(txt)) return 'postre';
-  if(/torrad|tostad|batut|batido|porridge|civada amb|bol d'esmorzar|cereals/.test(txt)) return 'basic';
-  if(/amanida|ensalada|crema de|pur[ée] de|saltej|salteado|escalivad|guarnici|acompany|verdura al|pebrots? ass?|bròquil|coliflor|esp[àa]rrec|menestra/.test(txt)
-     && prot < 16 && kcal < 320)
-    return 'acompanyament';
-  if(prot >= 16 || kcal >= 330 ||
-     /pollastre|pollo|gall dindi|peix|pescat|pescado|salm|tonyina|lluç|bacall|carn|vedella|ternera|porc|hamburg|llent|lentej|cigron|garbanz|mongeta|truita|tortilla|guis|estofat|wok|arròs|arroz|pasta|paella|llom/.test(txt))
-    return 'principal';
-  return '';
-}
-
 function tobClasifOpen(){
   tobClasifPage = 0;
   tobClasifSoloSin = true;
@@ -7233,17 +7194,78 @@ function tobClasifSetRol(recId, rolId, btn){
   _tobClasifUpdInfo();
 }
 
-function tobClasifAuto(){
-  const sin = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente' && _tobClasifSinClasif(r));
-  if(!sin.length){ tobToast('Ja estan totes classificades', ''); return; }
-  if(!confirm(`Auto-classificar ${sin.length} receptes (moment + tipus de plat)?\nÉs una estimació automàtica — després pots revisar-les i ajustar-les.`)) return;
-  sin.forEach(r => {
-    if(!((r.momentos||[]).length)) r.momentos = tobRecAutoMomentos(r);
-    if(!r.rol) r.rol = tobRecAutoRol(r);
-  });
-  tobMenusSave();
-  tobClasifRender();
-  tobToast(`✓ ${sin.length} receptes classificades — revisa-les`, 'green');
+// Clasifica las recetas con IA: momento del día + rol del plato.
+// Procesa por lotes (el catálogo entero no cabe en un solo prompt).
+async function tobClasifAuto(){
+  const cfg = tobAiGetCfg();
+  if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
+  const recs = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
+  if(!recs.length){ tobToast('No hi ha receptes', 'red'); return; }
+  if(!confirm(`Classificar amb IA les ${recs.length} receptes (moment del dia + tipus de plat)?\nSobreescriu la classificació actual. Pot trigar un parell de minuts.`)) return;
+
+  const btn = document.getElementById('tobClasifAutoBtn');
+  const btnTxt = btn ? btn.textContent : '';
+  if(btn) btn.disabled = true;
+
+  const MOMS = ['esmorzar','mig_mati','dinar','berenar','sopar'];
+  const ROLS = ['principal','acompanyament','postre','basic'];
+  const CHUNK = (cfg.provider === 'groq') ? 25 : 55;
+  const sys = 'Ets un dietista-nutricionista expert. Classifiques receptes pel moment del dia '
+    + 'on encaixen i pel rol de plat. Respons NOMÉS amb un objecte JSON vàlid.';
+  let done = 0, fail = 0;
+  try {
+    for(let i = 0; i < recs.length; i += CHUNK){
+      const batch = recs.slice(i, i + CHUNK);
+      if(btn) btn.textContent = `⏳ Classificant ${i}/${recs.length}…`;
+      const lines = batch.map(r => {
+        const mm = tobRecMacros(r);
+        const kcal = Math.round(mm.kcal / (r.raciones || 1));
+        const tg = (r.tags||[]).slice(0,3).join(',');
+        return r.id + '|' + r.nombre + '|' + kcal + 'kcal' + (tg ? '|' + tg : '');
+      }).join('\n');
+      const user = [
+        'Classifica cada recepta. Per cada id digues:',
+        '- "m": array de moments on encaixa BÉ. Opcions: esmorzar, mig_mati, dinar, berenar, sopar.',
+        '- "r": rol del plat. Opcions: principal, acompanyament, postre, basic.',
+        '',
+        'CRITERI (pensa-ho bé, amb sentit comú de dietista):',
+        '- esmorzar = esmorzars (torrades, batuts, ous, cereals, iogurt amb fruita...).',
+        '- mig_mati i berenar = NOMÉS snacks lleugers i ràpids (fruita, iogurt, fruits secs, barretes). Una sopa, una salsa o un plat cuinat NO és un snack.',
+        '- dinar i sopar = àpats principals: sopes, plats de cullera, carn, peix, amanides completes, pasta, arròs, truites, guisats...',
+        '- Una recepta pot encaixar en diversos moments (p. ex. un plat principal a dinar I sopar).',
+        '- rol principal = plat fort. acompanyament = guarnició, verdura, crema o salsa que acompanya. postre = dolç o fruita. basic = esmorzar o snack senzill.',
+        '- Salses i condiments → r:"acompanyament", m:["dinar","sopar"].',
+        '',
+        'RECEPTES (format id|nom|kcal|tags):',
+        lines,
+        '',
+        'Respon NOMÉS aquest JSON: {"<id>":{"m":["dinar","sopar"],"r":"principal"}, ...}'
+      ].join('\n');
+      try {
+        const raw = await tobAiCall([{ role:'system', content:sys }, { role:'user', content:user }]);
+        const parsed = tobAiParseJson(raw);
+        batch.forEach(r => {
+          const c = parsed[r.id];
+          if(!c){ fail++; return; }
+          const moms = Array.isArray(c.m) ? c.m.filter(x => MOMS.includes(x)) : [];
+          if(moms.length) r.momentos = moms;
+          if(ROLS.includes(c.r)) r.rol = c.r;
+          done++;
+        });
+        tobMenusSave();
+        tobClasifRender();
+      } catch(e){
+        console.warn('[clasif IA] lote', e);
+        fail += batch.length;
+      }
+    }
+    tobToast(`✓ ${done} receptes classificades amb IA${fail?' · '+fail+' sense classificar (reintenta)':''}`, 'green');
+  } catch(e){
+    tobToast('✗ Error: ' + (e.message || e), 'red');
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = btnTxt || '🤖 Clasificar con IA'; }
+    tobClasifRender();
+  }
 }
 
 // Hook al cambio de sub-tab "recetas" para re-renderizar

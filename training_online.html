@@ -480,7 +480,7 @@
         <input type="checkbox" id="tobClasifSoloSin" checked onchange="tobClasifToggleSoloSin(this)" style="accent-color:var(--acc);">
         Solo sin clasificar
       </label>
-      <button class="tob-action ghost btn-xs" onclick="tobClasifAuto()" title="Estima automáticamente el momento de las recetas sin clasificar" style="margin-left:auto;">🪄 Auto-clasificar las que faltan</button>
+      <button class="tob-action btn-xs" id="tobClasifAutoBtn" onclick="tobClasifAuto()" title="La IA clasifica todas las recetas: momento del día + tipo de plato" style="margin-left:auto;">🤖 Clasificar con IA</button>
     </div>
     <div id="tobClasifBody" style="overflow-y:auto;flex:1;min-height:140px;"></div>
     <div id="tobClasifPager" style="display:flex;justify-content:center;align-items:center;gap:10px;padding:10px 0 2px;"></div>
