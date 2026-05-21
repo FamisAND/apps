@@ -8214,7 +8214,7 @@ async function tobMenuPdf(cliId, menuId){
                   : String(r.instrucciones||'').split('\n').filter(Boolean);
       return `<div class="mp-recepta">
         <div class="mp-recepta-head">
-          ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : ''}
+          ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-recepta-foto mp-recepta-nofoto"></div>'}
           <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
           <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
           ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}</div>
@@ -8230,73 +8230,112 @@ async function tobMenuPdf(cliId, menuId){
     ? `<div class="mp-section"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
     : '';
 
-  // ── Documento completo ─────────────────────────────────────────
+  // ── Documento del menú (se renderiza fuera de pantalla y se vuelca
+  //    a un PDF descargable con html2canvas + jsPDF) ───────────────
   const hoy = new Date().toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
-  const html = `<!DOCTYPE html><html lang="ca"><head><meta charset="UTF-8">
-<title>Menú · ${esc(cli.nombre)}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#1a1a1a;background:#fff;padding:26px 30px;}
-  h1{font-size:22px;color:#b8860b;} h2{font-size:15px;color:#b8860b;margin:0 0 9px;border-bottom:2px solid #e8c87a;padding-bottom:3px;}
-  h4{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#888;margin:0 0 4px;}
-  .mp-cover{border:2px solid #e8c87a;border-radius:8px;padding:18px 22px;margin-bottom:22px;}
-  .mp-cover .sub{color:#666;font-size:12px;margin-top:3px;}
-  .mp-cover .objs{margin-top:10px;font-size:12px;color:#444;}
-  .mp-cover .objs b{color:#b8860b;}
-  .mp-section{margin-bottom:20px;}
-  .mp-break{page-break-before:always;}
-  table{border-collapse:collapse;width:100%;}
-  .mp-graella th,.mp-graella td{border:1px solid #ddd;padding:4px;font-size:9px;vertical-align:top;}
-  .mp-graella thead th{background:#f5ebd2;color:#7a5c10;font-size:9px;text-transform:uppercase;letter-spacing:.03em;}
-  .mp-graella tbody th{background:#faf3e0;color:#7a5c10;width:62px;font-size:9px;text-transform:uppercase;}
-  .mp-plato{display:flex;gap:4px;align-items:center;margin-bottom:3px;}
-  .mp-plato:last-child{margin-bottom:0;}
-  .mp-foto{width:34px;height:26px;border-radius:3px;background:#eee center/cover;flex:none;}
-  .mp-nofoto{background:#f0e6cc;}
-  .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.15;}
-  .mp-plato-kcal{font-size:7.5px;color:#888;}
-  .mp-buit{color:#ccc;font-size:9px;text-align:center;}
-  .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f5ebd2;color:#7a5c10;font-weight:700;font-size:8.5px;text-align:center;}
-  .mp-graella tr.mp-tot b{font-size:10px;}
-  .mp-compra-sec{font-size:11.5px;color:#7a5c10;margin:13px 0 4px;border-bottom:1px solid #e8c87a;padding-bottom:2px;text-transform:none;letter-spacing:0;}
-  .mp-compra{list-style:none;columns:3;column-gap:22px;}
-  .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:2.5px 0;border-bottom:1px dotted #ddd;break-inside:avoid;}
-  .mp-compra .mp-g{color:#b8860b;font-weight:700;}
-  .mp-recepta{border:1px solid #e3e3e3;border-radius:7px;padding:11px 13px;margin-bottom:11px;page-break-inside:avoid;}
-  .mp-recepta-head{display:flex;gap:11px;align-items:center;margin-bottom:8px;}
-  .mp-recepta-foto{width:84px;height:64px;border-radius:5px;background:#eee center/cover;flex:none;}
-  .mp-recepta-nm{font-size:14px;font-weight:700;color:#1a1a1a;}
-  .mp-recepta-mac{font-size:10px;color:#888;margin-top:2px;}
-  .mp-recepta-al{font-size:9px;color:#b23;margin-top:2px;}
-  .mp-recepta-cols{display:flex;gap:22px;}
-  .mp-recepta-cols>div{flex:1;}
-  .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:15px;font-size:10px;line-height:1.45;}
-  .mp-notas{font-size:11px;line-height:1.75;color:#444;background:#faf3e0;border-radius:6px;padding:11px 14px;}
-  .mp-foot{margin-top:20px;text-align:center;font-size:9px;color:#aaa;}
-  @page{margin:14mm;}
-</style></head><body>
-  <div class="mp-cover">
-    <h1>Menú nutricional</h1>
-    <div class="sub">${esc(cli.nombre)} · generat el ${esc(hoy)}</div>
-    <div class="objs">
-      <b>${semanas}</b> setmana(es) · <b>${comidas.length}</b> àpats/dia
-      &nbsp;·&nbsp; Objectiu: <b>${m.kcalObj||'—'}</b> kcal/dia · <b>${m.protObj||'—'}</b> g proteïna
+  const styleCss = `
+    .mp-doc *{box-sizing:border-box;margin:0;padding:0;}
+    .mp-doc{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#23201a;background:#fff;width:794px;}
+    .mp-doc h2{font-size:15px;color:#9a7016;margin:0 0 10px;border-bottom:2px solid #e3c478;padding-bottom:4px;}
+    .mp-doc h4{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a08a55;margin:0 0 5px;}
+    .mp-cover{background:linear-gradient(135deg,#1a1812,#2c2618);color:#f3e9d0;padding:36px 40px 30px;}
+    .mp-logo{font-size:27px;font-weight:800;letter-spacing:.05em;}
+    .mp-logo b{color:#e8b84b;}
+    .mp-logo-tag{font-size:10px;letter-spacing:.36em;color:#9a8a64;margin-top:3px;}
+    .mp-cover-ttl{font-size:31px;font-weight:800;margin-top:24px;color:#fff;}
+    .mp-cover-cli{font-size:17px;color:#e8b84b;font-weight:700;margin-top:3px;}
+    .mp-cover-meta{margin-top:13px;font-size:11.5px;color:#cdbf9f;}
+    .mp-cover-meta b{color:#e8b84b;}
+    .mp-body{padding:24px 40px 0;}
+    .mp-section{margin-bottom:24px;}
+    .mp-doc table{border-collapse:collapse;width:100%;}
+    .mp-graella th,.mp-graella td{border:1px solid #e0d6bf;padding:5px;font-size:9px;vertical-align:top;}
+    .mp-graella thead th{background:#9a7016;color:#fff;font-size:9px;text-transform:uppercase;letter-spacing:.04em;}
+    .mp-graella tbody th{background:#f6efdc;color:#7a5c10;width:66px;font-size:9px;text-transform:uppercase;font-weight:700;}
+    .mp-plato{display:flex;gap:5px;align-items:center;margin-bottom:4px;}
+    .mp-plato:last-child{margin-bottom:0;}
+    .mp-foto{width:40px;height:32px;border-radius:4px;background:#eee center/cover;flex:none;border:1px solid #e0d6bf;}
+    .mp-nofoto{background:#f0e6cc;}
+    .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.18;color:#23201a;}
+    .mp-plato-kcal{font-size:7.5px;color:#9a8a64;}
+    .mp-buit{color:#ccc;font-size:9px;text-align:center;padding:6px 0;}
+    .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f6efdc;color:#7a5c10;font-weight:700;font-size:8.5px;text-align:center;}
+    .mp-graella tr.mp-tot b{font-size:10.5px;}
+    .mp-compra-sec{font-size:11.5px;color:#9a7016;font-weight:700;margin:13px 0 4px;border-bottom:1px solid #e3c478;padding-bottom:2px;}
+    .mp-compra{list-style:none;columns:3;column-gap:24px;}
+    .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dotted #ddd;}
+    .mp-compra .mp-g{color:#9a7016;font-weight:700;}
+    .mp-recepta{border:1px solid #e6ddc8;border-radius:8px;padding:13px 15px;margin-bottom:13px;background:#fffdf7;}
+    .mp-recepta-head{display:flex;gap:13px;align-items:center;margin-bottom:9px;}
+    .mp-recepta-foto{width:120px;height:88px;border-radius:6px;background:#eee center/cover;flex:none;border:1px solid #e0d6bf;}
+    .mp-recepta-nofoto{background:linear-gradient(135deg,#f0e6cc,#e6d6a8);}
+    .mp-recepta-nm{font-size:15px;font-weight:800;color:#23201a;}
+    .mp-recepta-mac{font-size:10px;color:#9a8a64;margin-top:3px;}
+    .mp-recepta-al{font-size:9px;color:#b23;margin-top:2px;}
+    .mp-recepta-cols{display:flex;gap:24px;}
+    .mp-recepta-cols>div{flex:1;}
+    .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:16px;font-size:10px;line-height:1.5;color:#3a352c;}
+    .mp-notas{font-size:11px;line-height:1.8;color:#4a4536;background:#f6efdc;border-left:3px solid #e8b84b;border-radius:4px;padding:12px 16px;}
+    .mp-foot{margin:26px 40px 0;text-align:center;font-size:9px;color:#bbb;border-top:1px solid #eee;padding-top:10px;}
+  `;
+  const bodyHtml = `<div class="mp-doc">
+    <div class="mp-cover">
+      <div class="mp-logo"><b>FULL</b> TRAINING</div>
+      <div class="mp-logo-tag">NUTRICIÓ</div>
+      <div class="mp-cover-ttl">Menú nutricional</div>
+      <div class="mp-cover-cli">${esc(cli.nombre)}</div>
+      <div class="mp-cover-meta">
+        ${esc(hoy)} &nbsp;·&nbsp; <b>${semanas}</b> setmana(es) &nbsp;·&nbsp; <b>${comidas.length}</b> àpats/dia
+        &nbsp;·&nbsp; objectiu <b>${m.kcalObj||'—'}</b> kcal/dia · <b>${m.protObj||'—'}</b> g proteïna
+      </div>
     </div>
-  </div>
-  ${graellaHtml}
-  ${notasHtml}
-  ${compraHtml}
-  ${recetariHtml}
-  <div class="mp-foot">Generat amb Full Training · ${esc(hoy)}</div>
-  <script>window.onload=function(){setTimeout(function(){window.print();},350);};<\/script>
-</body></html>`;
+    <div class="mp-body">
+      ${graellaHtml}
+      ${notasHtml}
+      ${compraHtml}
+      ${recetariHtml}
+    </div>
+    <div class="mp-foot">Generat amb Full Training · ${esc(hoy)}</div>
+  </div>`;
 
-  const w = window.open('', '_blank');
-  if(!w){ tobToast('Permet les finestres emergents per generar el PDF', 'red'); return; }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  tobToast('✓ Menú obert — desa\'l com a PDF', 'green');
+  // Render fuera de pantalla → html2canvas → jsPDF → descarga directa.
+  if(typeof html2canvas === 'undefined' || !window.jspdf){
+    tobToast('No s\'han pogut carregar les llibreries del PDF — recarrega la pàgina', 'red');
+    return;
+  }
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+  holder.innerHTML = '<style>' + styleCss + '</style>' + bodyHtml;
+  document.body.appendChild(holder);
+  try {
+    await new Promise(r => setTimeout(r, 150));   // dejar asentar imágenes
+    const canvas = await html2canvas(holder.querySelector('.mp-doc'),
+      { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210, pageH = 297;
+    const imgW = pageW;
+    const imgH = canvas.height * imgW / canvas.width;
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    let heightLeft = imgH, pos = 0;
+    pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
+    heightLeft -= pageH;
+    while(heightLeft > 0){
+      pos -= pageH;
+      pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, pos, imgW, imgH);
+      heightLeft -= pageH;
+    }
+    const fname = 'Menu_' + String(cli.nombre||'client').replace(/[^\w\-]+/g,'_') +
+                  '_' + new Date().toISOString().slice(0,10) + '.pdf';
+    pdf.save(fname);
+    tobToast('✓ PDF del menú descarregat', 'green');
+  } catch(e){
+    console.warn('[menu pdf]', e);
+    tobToast('✗ Error generant el PDF: ' + (e.message || e), 'red');
+  } finally {
+    document.body.removeChild(holder);
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════
