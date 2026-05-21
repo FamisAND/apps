@@ -409,7 +409,7 @@
 
 <!-- ════════ MODAL CONFIGURACIÓN IA ════════ -->
 <div class="tob-modal-bg" id="tobAiConfigBg">
-  <div class="tob-modal" style="max-width:520px;">
+  <div class="tob-modal" style="max-width:560px;max-height:92vh;overflow-y:auto;">
     <h3>🤖 Configuració de la IA</h3>
     <p style="font-size:.78rem;color:var(--mute);line-height:1.55;margin-bottom:12px;">
       La IA genera el menú automàticament des del qüestionari del client.
@@ -429,6 +429,13 @@
     </div>
     <div><label class="tob-lbl">Model <span class="tob-quest-h-sub">(opcional — buit = per defecte)</span></label>
       <input class="tob-input" id="tobAiModel" placeholder="(per defecte)" autocomplete="off">
+    </div>
+    <div style="margin-top:12px;">
+      <label class="tob-lbl" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <span>Instruccions per generar el menú <span class="tob-quest-h-sub">({kcal}, {margen} i {prot} se substitueixen sols)</span></span>
+        <button type="button" class="tob-action ghost btn-xs" onclick="tobAiResetMenuRules()">↺ Per defecte</button>
+      </label>
+      <textarea class="tob-input" id="tobAiMenuRules" rows="11" spellcheck="false" style="font-family:'DM Mono',monospace;font-size:.72rem;line-height:1.5;"></textarea>
     </div>
     <div id="tobAiTestResult" style="font-size:.74rem;font-family:'DM Mono',monospace;margin-top:10px;"></div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">

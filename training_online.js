@@ -720,6 +720,13 @@ function tobShowTab(name, btn){
   else document.querySelectorAll('.tob-tab').forEach(t => {
     if(t.getAttribute('onclick')?.includes(`'${name}'`)) t.classList.add('active');
   });
+  // Al abrir la pestaña Menús, renderizar la sub-pestaña activa (si no,
+  // la lista sale vacía hasta que cambias de sub-pestaña y vuelves).
+  if(name === 'menus' && typeof tobMenuShowTab === 'function'){
+    const subActiva = document.querySelector('.tob-sub-tab.active') ||
+                      document.querySelector('.tob-sub-tab');
+    if(subActiva) tobMenuShowTab(subActiva.dataset.mtab || 'ingredientes', subActiva);
+  }
 }
 
 // ═══ HELPERS PLAN ═══
@@ -8350,6 +8357,25 @@ const TOB_AI_DEFAULTS = {
   anthropic:  { model:'claude-3-5-haiku-latest',   help:'Clau a console.anthropic.com → API Keys (requereix crèdit API, separat de la subscripció de Claude)' },
   openrouter: { model:'google/gemini-2.0-flash-001', help:'Clau a openrouter.ai/keys (requereix crèdit)' }
 };
+// Instrucciones (REGLES) del prompt de generación de menús. Editables
+// desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
+const TOB_AI_MENU_RULES_DEFAULT =
+`REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:
+- CADA dia, individualment, ha de sumar dins del marge ±{margen}% de {kcal} kcal. No val que només quadri la mitjana setmanal: TOTS i cadascun dels dies. Suma les kcal dels plats de cada dia i comprova-ho.
+- Acosta cada dia a {prot} g de proteïna.
+- SEGUEIX L'ESTRUCTURA HABITUAL del client (si apareix al perfil): cada àpat indica què sol menjar (esmorzar amb torrades, dinar amb postre...). Munta cada àpat seguint aquest patró.
+- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé.
+- MIG MATÍ i BERENAR: lleugers i senzills (~100-350 kcal). El millor sol ser un ingredient simple (∙): iogurt, fruita o un grapat de fruits secs. També barretes o snacks lleugers. MAI plats contundents.
+- DINAR i SOPAR — munta'ls amb cap:
+   · Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols.
+   · Plats principals de carn/peix a la planxa o al forn van millor amb un acompanyament (verdura, amanida, crema, patata).
+   · Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.
+   · Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal.
+- EQUILIBRI SETMANAL de proteïna (per 7 dies): peix 3-4 àpats · carn blanca 2-3 · carn vermella MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella.
+- VARIETAT: no repeteixis els plats principals (rol P) dins la setmana (com a molt 2 cops). Els acompanyaments de verdura (cremes, salteats) es poden repetir lliurement.
+- Prioritza les receptes preferides (★).
+- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.
+- Usa només id de la llista de dalt.`;
 function tobAiGetCfg(){
   try { return JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
   catch(e){ return {}; }
@@ -8363,8 +8389,14 @@ function tobAiOpenConfig(){
   document.getElementById('tobAiKey').value   = cfg.key   || '';
   document.getElementById('tobAiModel').value = cfg.model || '';
   document.getElementById('tobAiTestResult').textContent = '';
+  const rulesEl = document.getElementById('tobAiMenuRules');
+  if(rulesEl) rulesEl.value = cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT;
   tobAiProviderChange();
   document.getElementById('tobAiConfigBg').classList.add('on');
+}
+function tobAiResetMenuRules(){
+  const el = document.getElementById('tobAiMenuRules');
+  if(el) el.value = TOB_AI_MENU_RULES_DEFAULT;
 }
 function tobAiProviderChange(){
   const p = document.getElementById('tobAiProvider').value;
@@ -8375,10 +8407,14 @@ function tobAiProviderChange(){
   if(mi) mi.placeholder = d.model || '(per defecte)';
 }
 function tobAiSaveConfigFromModal(){
+  const rules = (document.getElementById('tobAiMenuRules')?.value || '').trim();
   const cfg = {
     provider: document.getElementById('tobAiProvider').value,
     key:      document.getElementById('tobAiKey').value.trim(),
-    model:    document.getElementById('tobAiModel').value.trim()
+    model:    document.getElementById('tobAiModel').value.trim(),
+    // Solo se guarda si difiere del default (así futuras mejoras del
+    // default llegan a quien no lo haya tocado).
+    menuRules: (rules && rules !== TOB_AI_MENU_RULES_DEFAULT.trim()) ? rules : ''
   };
   if(!cfg.key){ tobToast('Falta la clau API', 'red'); return; }
   tobAiSaveCfg(cfg);
@@ -8595,6 +8631,11 @@ async function tobMcGenerarIA(){
 
     const sys = 'Ets un dietista-nutricionista expert. Crees menús setmanals personalitzats, '
       + 'variats i equilibrats. Respons NOMÉS amb un objecte JSON vàlid, sense text addicional.';
+    // Reglas editables desde ⚙ IA (con sustitución de {kcal}/{margen}/{prot}).
+    const rules = (cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT)
+      .replace(/\{margen\}/g, margen)
+      .replace(/\{kcal\}/g, Math.round(kcal))
+      .replace(/\{prot\}/g, prot ? Math.round(prot) : 'la indicada');
     const user = [
       'PERFIL DEL CLIENT:', tobMcPerfilTexto(cli), '',
       'OBJECTIUS DIARIS: ' + Math.round(kcal) + ' kcal (±' + margen + '%)'
@@ -8608,22 +8649,7 @@ async function tobMcGenerarIA(){
       'Marques davant del nom: ★ = preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs).',
       'Rol del plat: P=principal · A=acompanyament · D=postre · B=bàsic/esmorzar · ?=sense classificar (usa el sentit comú pel nom).',
       catalogo, '',
-      'REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:',
-      '- CADA dia, individualment, ha de sumar dins del marge ±' + margen + '% de ' + Math.round(kcal) + ' kcal. No val que només quadri la mitjana setmanal: TOTS i cadascun dels dies. Suma les kcal dels plats de cada dia i comprova-ho.',
-      (prot ? '- Acosta cada dia a ' + Math.round(prot) + ' g de proteïna.' : '- Reparteix bé la proteïna cada dia.'),
-      '- SEGUEIX L\'ESTRUCTURA HABITUAL del client (si apareix al perfil): cada àpat hi indica què sol menjar (p. ex. esmorzar amb torrades, dinar amb postre, sopar sense...). Munta cada àpat seguint aquest patró.',
-      '- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé.',
-      '- MIG MATÍ i BERENAR: lleugers i senzills (~100-350 kcal). El millor sol ser un ingredient simple (∙): iogurt (normal o proteic), fruita o un grapat de fruits secs. També barretes o snacks lleugers. MAI plats contundents.',
-      '- DINAR i SOPAR — munta\'ls amb cap:',
-      '   · Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols — sempre acompanyen un principal.',
-      '   · Plats principals tipus carn/peix a la planxa o al forn van millor amb un acompanyament (verdura, amanida, crema, patata). Les cremes i els salteats de verdura són acompanyaments comodí ideals.',
-      '   · Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.',
-      '   · Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal.',
-      '- EQUILIBRI SETMANAL de proteïna (orientatiu, per 7 dies): peix 3-4 àpats (alterna blanc i blau) · carn blanca (pollastre, gall dindi) 2-3 · carn vermella (vedella, porc, xai) MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella i reparteix-ho al llarg de la setmana.',
-      '- VARIETAT: la regla de no repetir aplica sobretot als PLATS PRINCIPALS (rol P) de dinar i sopar — no els repeteixis dins la mateixa setmana (com a molt 2 cops, en dies separats). En canvi, els ACOMPANYAMENTS de verdura (rol A: cremes, salteats de verdura, amanides senzilles...) es poden repetir tantes vegades com calgui sense problema — són comodins flexibles, la verdura va variant segons el que tingui el client.',
-      '- Prioritza les receptes preferides (★).',
-      '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
-      '- Usa només id de la llista de dalt.',
+      rules,
       '',
       'FORMAT DE RESPOSTA (només JSON): un objecte amb una clau per setmana ("0","1",…). '
         + 'Cada setmana és un array de 7 dies. Cada dia és un objecte {comida_id:[id_recepta,…]}.',
