@@ -6264,6 +6264,16 @@ const TOB_REC_MOMENTOS = [
 ];
 const TOB_REC_MOMENTO_LBL = { esmorzar:'Esmorzar', mig_mati:'Mig matí', dinar:'Dinar', berenar:'Berenar', sopar:'Sopar' };
 
+// Rol del plato: ayuda a la IA a montar comidas con sentido (un principal
+// + acompañamiento + postre; nunca un acompañamiento solo).
+const TOB_REC_ROLES = [
+  { id:'principal',     label:'Principal' },
+  { id:'acompanyament', label:'Acompanyament' },
+  { id:'postre',        label:'Postre' },
+  { id:'basic',         label:'Bàsic / esmorzar' }
+];
+const TOB_REC_ROL_LBL = { principal:'Principal', acompanyament:'Acompanyament', postre:'Postre', basic:'Bàsic' };
+
 // ── Render lista de recetas ─────────────────────────────────────
 function tobRecAllTags(){
   const s = new Set();
@@ -6491,6 +6501,7 @@ function tobRecOpenModal(){
   _tobRecModalFav = false;
   _tobRecSyncFavModalBtn();
   tobRecRenderMomentos([]);
+  tobRecRenderRol('');
   tobRecRenderIngredientesEdit([]);
   tobRecFillIngPicker();
   tobRecRecalc();
@@ -6544,6 +6555,7 @@ function tobRecEdit(id){
     }
   });
   tobRecRenderMomentos(r.momentos || []);
+  tobRecRenderRol(r.rol || '');
   tobRecRenderIngredientesEdit(r.ingredientes || []);
   tobRecFillIngPicker();
   tobRecRecalc();
@@ -6605,6 +6617,25 @@ function tobRecGetMomentosActivos(){
     out.push(b.dataset.mom);
   });
   return out;
+}
+
+// Rol del plato en el modal de receta (selección única).
+function tobRecRenderRol(rol){
+  const el = document.getElementById('tobRecRolChips');
+  if(!el) return;
+  el.innerHTML = TOB_REC_ROLES.map(rl =>
+    `<button type="button" class="tob-quest-chip${rol===rl.id?' active':''}" data-rol="${rl.id}" onclick="tobRecToggleRol('${rl.id}',this)">${tobEsc(rl.label)}</button>`
+  ).join('');
+}
+function tobRecToggleRol(id, btn){
+  const grp = btn.parentElement;
+  const yaActiu = btn.classList.contains('active');
+  if(grp) grp.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  if(!yaActiu) btn.classList.add('active');   // re-clic = quitar
+}
+function tobRecGetRol(){
+  const b = document.querySelector('#tobRecRolChips .tob-quest-chip.active');
+  return b ? b.dataset.rol : '';
 }
 
 // ── Ingredientes: picker + lista + recálculo ────────────────────
@@ -6725,6 +6756,7 @@ async function tobRecSave(){
     nombre,
     foto:             document.getElementById('tobRecFotoData').value || '',
     momentos:         tobRecGetMomentosActivos(),
+    rol:              tobRecGetRol(),
     tiempoTotal:      document.getElementById('tobRecTiempoTotal').value.trim(),
     tiempoElaboracion:document.getElementById('tobRecTiempoElab').value.trim(),
     raciones:         Math.max(1, parseInt(document.getElementById('tobRecRaciones').value) || 1),
@@ -7060,6 +7092,23 @@ function tobRecAutoMomentos(rec){
   return [...out];
 }
 
+// Heurística del rol del plato (principal / acompanyament / postre / basic).
+function tobRecAutoRol(rec){
+  const txt = ((rec.nombre||'') + ' ' + (rec.tags||[]).join(' ')).toLowerCase();
+  const mac = tobRecMacros(rec);
+  const rac = rec.raciones || 1;
+  const kcal = mac.kcal / rac, prot = mac.proteina / rac;
+  if(/postre|dol[çc]|pastís|pastel|bizcoch|magdalen|galet|gelat|natill|flam|mousse|púding|pudding|crep dol/.test(txt)) return 'postre';
+  if(/torrad|tostad|batut|batido|porridge|civada amb|bol d'esmorzar|cereals/.test(txt)) return 'basic';
+  if(/amanida|ensalada|crema de|pur[ée] de|saltej|salteado|escalivad|guarnici|acompany|verdura al|pebrots? ass?|bròquil|coliflor|esp[àa]rrec|menestra/.test(txt)
+     && prot < 16 && kcal < 320)
+    return 'acompanyament';
+  if(prot >= 16 || kcal >= 330 ||
+     /pollastre|pollo|gall dindi|peix|pescat|pescado|salm|tonyina|lluç|bacall|carn|vedella|ternera|porc|hamburg|llent|lentej|cigron|garbanz|mongeta|truita|tortilla|guis|estofat|wok|arròs|arroz|pasta|paella|llom/.test(txt))
+    return 'principal';
+  return '';
+}
+
 function tobClasifOpen(){
   tobClasifPage = 0;
   tobClasifSoloSin = true;
@@ -7069,36 +7118,43 @@ function tobClasifOpen(){
   document.getElementById('tobClasifModalBg').classList.add('on');
 }
 
+// Una receta está "sin clasificar" si le falta el momento O el rol.
+function _tobClasifSinClasif(r){ return !((r.momentos||[]).length) || !r.rol; }
+
 function tobClasifRender(){
   const body = document.getElementById('tobClasifBody');
   if(!body) return;
   const all = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
-  const sinClasif = all.filter(r => !((r.momentos||[]).length));
+  const sinClasif = all.filter(_tobClasifSinClasif);
   let list = (tobClasifSoloSin ? sinClasif : all).slice().sort((a,b) => {
-    const am = (a.momentos||[]).length ? 1 : 0, bm = (b.momentos||[]).length ? 1 : 0;
+    const am = _tobClasifSinClasif(a) ? 0 : 1, bm = _tobClasifSinClasif(b) ? 0 : 1;
     if(am !== bm) return am - bm;
     return (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'});
   });
   const info = document.getElementById('tobClasifInfo');
   if(info) info.textContent = `${all.length} receptes · ${sinClasif.length} sense classificar`;
 
-  const PER = 25;
+  const PER = 20;
   const pages = Math.max(1, Math.ceil(list.length / PER));
   if(tobClasifPage >= pages) tobClasifPage = pages - 1;
   if(tobClasifPage < 0) tobClasifPage = 0;
   const slice = list.slice(tobClasifPage * PER, tobClasifPage * PER + PER);
 
   if(!list.length){
-    body.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:30px;font-family:DM Mono,monospace;font-size:.8rem;">🎉 Totes les receptes tenen moment assignat.</div>';
+    body.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:30px;font-family:DM Mono,monospace;font-size:.8rem;">🎉 Totes les receptes estan classificades.</div>';
   } else {
     body.innerHTML = slice.map(r => {
       const set = new Set(r.momentos||[]);
-      const chips = TOB_REC_MOMENTOS.map(mm =>
+      const moms = TOB_REC_MOMENTOS.map(mm =>
         `<button type="button" class="tob-quest-chip${set.has(mm.id)?' active':''}" onclick="tobClasifToggleMom('${r.id}','${mm.id}',this)">${tobEsc(mm.label)}</button>`
+      ).join('');
+      const roles = TOB_REC_ROLES.map(rl =>
+        `<button type="button" class="tob-quest-chip${r.rol===rl.id?' active':''}" data-rol="${rl.id}" onclick="tobClasifSetRol('${r.id}','${rl.id}',this)">${tobEsc(rl.label)}</button>`
       ).join('');
       return `<div class="tob-clasif-row">
         <div class="tob-clasif-nm">${tobEsc(r.nombre||'—')}</div>
-        <div class="tob-clasif-chips">${chips}</div>
+        <div class="tob-clasif-line"><span class="lbl">Moments</span><div class="tob-clasif-chips">${moms}</div></div>
+        <div class="tob-clasif-line"><span class="lbl">Tipus</span><div class="tob-clasif-chips" data-rolgrp="${r.id}">${roles}</div></div>
       </div>`;
     }).join('');
   }
@@ -7114,6 +7170,13 @@ function tobClasifRender(){
 function tobClasifSetPage(p){ tobClasifPage = p; tobClasifRender(); }
 function tobClasifToggleSoloSin(chk){ tobClasifSoloSin = !!chk.checked; tobClasifPage = 0; tobClasifRender(); }
 
+function _tobClasifUpdInfo(){
+  const all = (tobMenusDB.recetas||[]).filter(x => x.origen !== 'ingrediente');
+  const sinN = all.filter(_tobClasifSinClasif).length;
+  const info = document.getElementById('tobClasifInfo');
+  if(info) info.textContent = `${all.length} receptes · ${sinN} sense classificar`;
+}
+
 function tobClasifToggleMom(recId, momId, btn){
   const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
   if(!r) return;
@@ -7123,21 +7186,31 @@ function tobClasifToggleMom(recId, momId, btn){
   else r.momentos.push(momId);
   btn.classList.toggle('active');
   tobMenusSave();
-  // Actualizar el contador del cabecero sin re-render completo
-  const all = (tobMenusDB.recetas||[]).filter(x => x.origen !== 'ingrediente');
-  const sinN = all.filter(x => !((x.momentos||[]).length)).length;
-  const info = document.getElementById('tobClasifInfo');
-  if(info) info.textContent = `${all.length} receptes · ${sinN} sense classificar`;
+  _tobClasifUpdInfo();
+}
+
+// Rol = selección única: marcar uno desmarca los demás del grupo.
+function tobClasifSetRol(recId, rolId, btn){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+  if(!r) return;
+  r.rol = (r.rol === rolId) ? '' : rolId;   // re-clic = quitar
+  const grp = btn.parentElement;
+  if(grp) grp.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.rol === r.rol));
+  tobMenusSave();
+  _tobClasifUpdInfo();
 }
 
 function tobClasifAuto(){
-  const sinClasif = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente' && !((r.momentos||[]).length));
-  if(!sinClasif.length){ tobToast('Ja estan totes classificades', ''); return; }
-  if(!confirm(`Auto-classificar ${sinClasif.length} receptes sense moment?\nÉs una estimació automàtica — després pots revisar-les i ajustar-les.`)) return;
-  sinClasif.forEach(r => { r.momentos = tobRecAutoMomentos(r); });
+  const sin = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente' && _tobClasifSinClasif(r));
+  if(!sin.length){ tobToast('Ja estan totes classificades', ''); return; }
+  if(!confirm(`Auto-classificar ${sin.length} receptes (moment + tipus de plat)?\nÉs una estimació automàtica — després pots revisar-les i ajustar-les.`)) return;
+  sin.forEach(r => {
+    if(!((r.momentos||[]).length)) r.momentos = tobRecAutoMomentos(r);
+    if(!r.rol) r.rol = tobRecAutoRol(r);
+  });
   tobMenusSave();
   tobClasifRender();
-  tobToast(`✓ ${sinClasif.length} receptes classificades — revisa-les`, 'green');
+  tobToast(`✓ ${sin.length} receptes classificades — revisa-les`, 'green');
 }
 
 // Hook al cambio de sub-tab "recetas" para re-renderizar
@@ -8408,7 +8481,8 @@ async function tobMcGenerarIA(){
         validIds.add(r.id);
         const mm = tobRecMacros(r); const rac = r.raciones || 1;
         const tag = r.favorito ? '★' : (r.origen === 'ingrediente' ? '∙' : '');
-        catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p\n';
+        const rolCode = ({ principal:'P', acompanyament:'A', postre:'D', basic:'B' })[r.rol] || '?';
+        catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p|' + rolCode + '\n';
       });
     });
 
@@ -8423,19 +8497,25 @@ async function tobMcGenerarIA(){
         + comidas.map(c => '"' + c.id + '"').join(', ') + '.',
       '',
       'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id.',
-      'Format de cada línia: id|nom|kcal|proteïna  (ex: rec_x|Truita francesa|320k|18p).',
-      'Marques davant del nom: ★ = recepta preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs) — NOMÉS per a mig matí o berenar.',
+      'Format de cada línia: id|nom|kcal|proteïna|rol  (ex: rec_x|Truita francesa|320k|18p|P).',
+      'Marques davant del nom: ★ = preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs).',
+      'Rol del plat: P=principal · A=acompanyament · D=postre · B=bàsic/esmorzar · ?=sense classificar (usa el sentit comú pel nom).',
       catalogo, '',
-      'REGLES (molt importants):',
-      '- CADA dia, individualment, ha de sumar dins del marge ±' + margen + '% de ' + Math.round(kcal) + ' kcal. No val que la mitjana setmanal quadri si un dia es queda curt o llarg — TOTS i cadascun dels dies han d\'estar dins del marge. Suma les kcal dels àpats de cada dia i comprova-ho.',
+      'REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:',
+      '- CADA dia, individualment, ha de sumar dins del marge ±' + margen + '% de ' + Math.round(kcal) + ' kcal. No val que només quadri la mitjana setmanal: TOTS i cadascun dels dies. Suma les kcal dels plats de cada dia i comprova-ho.',
       (prot ? '- Acosta cada dia a ' + Math.round(prot) + ' g de proteïna.' : '- Reparteix bé la proteïna cada dia.'),
-      '- ESMORZAR: moderat. Les torrades, tostades, batuts, iogurts amb fruita i similars hi van molt bé.',
-      '- MIG MATÍ i BERENAR: àpats LLEUGERS i senzills (aprox. 100-350 kcal). Aquí el millor sol ser un ingredient simple (∙): un iogurt (normal o proteic), fruita o un grapat de fruits secs — ràpid i flexible. També hi van barretes o snacks lleugers. MAI hi posis plats contundents (hamburgueses, guisats, plats de cullera, carns amb guarnició).',
-      '- DINAR i SOPAR: són els àpats principals. Un àpat principal pot ser un plat únic complet, o bé un plat principal + un acompanyament lleuger (amanida, verdura, crema) i, si vols, una peça de fruita o un iogurt de postre. Munta\'l amb sentit comú de dietista.',
-      '- Prioritza les receptes preferides (★). Varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
-      '- Un àpat pot portar 1, 2 o 3 plats segons el que tingui sentit (vegeu dinar/sopar) i per quadrar les kcal del dia.',
+      '- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé.',
+      '- MIG MATÍ i BERENAR: lleugers i senzills (~100-350 kcal). El millor sol ser un ingredient simple (∙): iogurt (normal o proteic), fruita o un grapat de fruits secs. També barretes o snacks lleugers. MAI plats contundents.',
+      '- DINAR i SOPAR — munta\'ls amb cap:',
+      '   · Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols — sempre acompanyen un principal.',
+      '   · Plats principals tipus carn/peix a la planxa o al forn van millor amb un acompanyament (verdura, amanida, crema, patata). Les cremes i els salteats de verdura són acompanyaments comodí ideals.',
+      '   · Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.',
+      '   · Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal.',
+      '- EQUILIBRI SETMANAL de proteïna (orientatiu, per 7 dies): peix 3-4 àpats (alterna blanc i blau) · carn blanca (pollastre, gall dindi) 2-3 · carn vermella (vedella, porc, xai) MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella i reparteix-ho al llarg de la setmana.',
+      '- VARIETAT: intenta no repetir cap recepta de dinar/sopar dins la mateixa setmana; si en repeteixes alguna, màxim 2 cops i en dies separats.',
+      '- Prioritza les receptes preferides (★).',
       '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
-      '- Usa només id de la llista de dalt. Els ingredients simples (∙) només a mig matí/berenar.',
+      '- Usa només id de la llista de dalt.',
       '',
       'FORMAT DE RESPOSTA (només JSON): un objecte amb una clau per setmana ("0","1",…). '
         + 'Cada setmana és un array de 7 dies. Cada dia és un objecte {comida_id:[id_recepta,…]}.',

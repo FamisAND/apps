@@ -589,12 +589,17 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 }
 .tob-mc-side-sep span{color:var(--mute2);font-weight:400;text-transform:none;letter-spacing:0;}
 
-/* Clasificar recetas por momento (modal) */
+/* Clasificar recetas por momento + rol (modal) */
 .tob-clasif-row{
-  display:flex;align-items:center;gap:12px;padding:8px 4px;
-  border-bottom:1px solid var(--line);flex-wrap:wrap;
+  display:flex;flex-direction:column;gap:5px;padding:9px 4px;
+  border-bottom:1px solid var(--line);
 }
-.tob-clasif-nm{flex:1;min-width:170px;font-size:.82rem;color:var(--text);}
+.tob-clasif-nm{font-size:.84rem;font-weight:700;color:var(--text);}
+.tob-clasif-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.tob-clasif-line .lbl{
+  font-size:.6rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--mute2);font-family:'DM Mono',monospace;width:60px;flex:none;
+}
 .tob-clasif-chips{display:flex;gap:5px;flex-wrap:wrap;}
 .tob-clasif-chips .tob-quest-chip{padding:3px 9px;font-size:.66rem;}
 
