@@ -5783,7 +5783,7 @@ function tobExportClienteExcel(cliId){
 // ═════════════════════════════════════════════════════════════════
 
 const TOB_MENUS_KEY = 'tob_menus';
-let tobMenusDB = { ingredientes: [], recetas: [], menus: [], _v: 1 };
+let tobMenusDB = { ingredientes: [], recetas: [], menus: [], _v: 1, _syncTs: 0 };
 let tobIngEditId = null;       // null=nuevo, string=edit
 let tobIngPage = 0;
 const TOB_ING_PER_PAGE = 50;
@@ -5809,6 +5809,7 @@ async function tobMenusLoad(){
     tobMenusDB.recetas      = Array.isArray(loaded.recetas)      ? loaded.recetas      : [];
     tobMenusDB.menus        = Array.isArray(loaded.menus)        ? loaded.menus        : [];
     tobMenusDB._v           = loaded._v || 1;
+    tobMenusDB._syncTs      = loaded._syncTs || 0;
   }
   // Si venía del localStorage viejo: persistir en IndexedDB y liberar el viejo
   if(fromLS && loaded){
@@ -5823,12 +5824,195 @@ async function tobMenusLoad(){
 // Guarda tobMenusDB en IndexedDB (localStorage se queda corto con cientos
 // de recetas). IndexedDB clona el objeto al llamar a put, así que aunque
 // tobMenusDB mute después, se persiste el estado actual.
+// Además: marca el catálogo como "sucio" y programa una subida a GitHub
+// para que el catálogo se sincronice entre ordenadores.
 function tobMenusSave(){
+  tobMenusDB._syncTs = Date.now();
   tobKvPut(TOB_MENUS_KV, tobMenusDB).catch(e => {
     console.warn('[menus] save IndexedDB falló:', e);
     // Último recurso: localStorage (puede petar por quota)
     try { localStorage.setItem(TOB_MENUS_KEY, JSON.stringify(tobMenusDB)); }
     catch(e2){ tobToast('Error guardant la base de receptes', 'red'); }
+  });
+  if(typeof tobMenusSyncSchedule === 'function') tobMenusSyncSchedule();
+}
+
+// ═════════════════════════════════════════════════════════════════
+// SINCRONIZACIÓN CROSS-DEVICE del catálogo de recetas/ingredientes
+// ─────────────────────────────────────────────────────────────────
+// El catálogo (ingredientes + recetas + menús) vive en IndexedDB en
+// local (rápido, sin límite de quota) y ADEMÁS se sube a GitHub como
+// una sección del data.json llamada 'tob_menus_catalog'. Así, al abrir
+// la app en otro ordenador logueado con el mismo token, el catálogo se
+// descarga solo.
+//
+// Las FOTOS subidas manualmente NO se sincronizan (viven en IndexedDB,
+// son demasiado pesadas para el data.json). Las fotos de recetas ICNS
+// son URLs y funcionan en cualquier dispositivo sin sincronizar nada.
+//
+// Merge: unión por id. Nunca se borran recetas (si una existe en un
+// dispositivo y no en otro, se conserva). Si se editó el mismo id en
+// los dos sitios, gana la versión del catálogo con _syncTs más reciente.
+// ═════════════════════════════════════════════════════════════════
+const TOB_MENUS_SYNC_SECTION = 'tob_menus_catalog';
+const TOB_MENUS_SYNC_DIRTY   = 'tob_menus_sync_dirty';
+let _tobMenusSyncTimer = null;
+let _tobMenusSyncBusy  = false;
+
+function tobMenusSyncStatus(msg, kind){
+  const el = document.getElementById('tobMenusSyncStatus');
+  if(!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'error' ? '#f87171'
+                 : kind === 'ok'    ? '#4ade80'
+                 : kind === 'work'  ? '#fbbf24' : 'var(--mute)';
+}
+
+function tobMenusSyncLoggedIn(){
+  return !!(window.GitHubSync && GitHubSync.isLoggedIn && GitHubSync.isLoggedIn());
+}
+
+// Fusión unión-por-id entre catálogo local y remoto.
+function tobMenusSyncMerge(local, remote){
+  if(!remote || typeof remote !== 'object') return local;
+  const remoteNewer = (remote._syncTs || 0) > (local._syncTs || 0);
+  function mergeArr(la, ra){
+    la = Array.isArray(la) ? la : [];
+    ra = Array.isArray(ra) ? ra : [];
+    const map = new Map();
+    const older = remoteNewer ? la : ra;   // se vuelca primero
+    const newer = remoteNewer ? ra : la;   // sobreescribe en conflicto
+    older.forEach(x => { if(x && x.id) map.set(x.id, x); });
+    newer.forEach(x => { if(x && x.id) map.set(x.id, x); });
+    return [...map.values()];
+  }
+  return {
+    ingredientes: mergeArr(local.ingredientes, remote.ingredientes),
+    recetas:      mergeArr(local.recetas,      remote.recetas),
+    menus:        mergeArr(local.menus,        remote.menus),
+    _v:      Math.max(local._v || 1, remote._v || 1),
+    _syncTs: Math.max(local._syncTs || 0, remote._syncTs || 0),
+  };
+}
+
+// Descarga el catálogo remoto y lo fusiona con el local.
+async function tobMenusSyncPull(opts){
+  opts = opts || {};
+  if(!tobMenusSyncLoggedIn()){
+    if(opts.manual) tobToast('No has iniciado sesión con GitHub', 'red');
+    return false;
+  }
+  if(_tobMenusSyncBusy) return false;
+  _tobMenusSyncBusy = true;
+  tobMenusSyncStatus('descargando…', 'work');
+  try {
+    const remote = await GitHubSync.fetchSection(TOB_MENUS_SYNC_SECTION);
+    if(!remote){
+      tobMenusSyncStatus('sin catálogo en la nube todavía', '');
+      // Subir el local para inicializar la nube
+      if((tobMenusDB.recetas || []).length || (tobMenusDB.ingredientes || []).length){
+        _tobMenusSyncBusy = false;
+        return tobMenusSyncPush(opts);
+      }
+      return false;
+    }
+    const beforeR = (tobMenusDB.recetas || []).length;
+    const beforeI = (tobMenusDB.ingredientes || []).length;
+    const merged = tobMenusSyncMerge(tobMenusDB, remote);
+    tobMenusDB.ingredientes = merged.ingredientes;
+    tobMenusDB.recetas      = merged.recetas;
+    tobMenusDB.menus        = merged.menus;
+    tobMenusDB._v           = merged._v;
+    tobMenusDB._syncTs      = merged._syncTs;
+    await tobKvPut(TOB_MENUS_KV, tobMenusDB);
+    const afterR = (tobMenusDB.recetas || []).length;
+    const afterI = (tobMenusDB.ingredientes || []).length;
+    tobMenusSyncStatus('✓ sincronizado ' + new Date().toLocaleTimeString('es-ES'), 'ok');
+    try {
+      if(typeof tobIngRender === 'function') tobIngRender();
+      if(typeof tobRecRender === 'function') tobRecRender();
+    } catch(e){}
+    // Si el local tenía recetas/ingredientes que no estaban en la nube,
+    // o quedaban cambios sin subir, programamos una subida.
+    const localTeniaExtras = (merged.recetas.length > (remote.recetas || []).length) ||
+                             (merged.ingredientes.length > (remote.ingredientes || []).length);
+    if(localTeniaExtras || localStorage.getItem(TOB_MENUS_SYNC_DIRTY) === '1'){
+      _tobMenusSyncBusy = false;
+      tobMenusSyncSchedule(8000);
+    }
+    if(opts.manual){
+      const nuevasR = afterR - beforeR, nuevasI = afterI - beforeI;
+      const extra = (nuevasR > 0 ? ' (+' + nuevasR + ' recetas' + (nuevasI > 0 ? ', +' + nuevasI + ' ingr.' : '') + ')'
+                   : nuevasI > 0 ? ' (+' + nuevasI + ' ingredientes)' : '');
+      tobToast('✓ Catálogo descargado' + extra, 'green');
+    }
+    return true;
+  } catch(e){
+    console.warn('[menus sync] pull:', e);
+    tobMenusSyncStatus('⚠ error al sincronizar', 'error');
+    if(opts.manual) tobToast('Error al sincronizar: ' + (e.message || e), 'red');
+    return false;
+  } finally {
+    _tobMenusSyncBusy = false;
+  }
+}
+
+// Sube el catálogo local a GitHub (fusionado con el remoto).
+async function tobMenusSyncPush(opts){
+  opts = opts || {};
+  if(!tobMenusSyncLoggedIn()){
+    if(opts.manual) tobToast('No has iniciado sesión con GitHub', 'red');
+    return false;
+  }
+  if(_tobMenusSyncBusy){ tobMenusSyncSchedule(8000); return false; }
+  _tobMenusSyncBusy = true;
+  tobMenusSyncStatus('subiendo a GitHub…', 'work');
+  try {
+    await GitHubSync.updateSection(TOB_MENUS_SYNC_SECTION, (remote) => {
+      // Fusionamos con lo que haya en la nube para no pisar otro dispositivo.
+      const merged = tobMenusSyncMerge(tobMenusDB, remote);
+      tobMenusDB.ingredientes = merged.ingredientes;
+      tobMenusDB.recetas      = merged.recetas;
+      tobMenusDB.menus        = merged.menus;
+      tobMenusDB._v           = merged._v;
+      merged._syncTs = Date.now();
+      tobMenusDB._syncTs = merged._syncTs;
+      return merged;
+    });
+    await tobKvPut(TOB_MENUS_KV, tobMenusDB).catch(() => {});
+    localStorage.removeItem(TOB_MENUS_SYNC_DIRTY);
+    tobMenusSyncStatus('✓ guardado ' + new Date().toLocaleTimeString('es-ES'), 'ok');
+    if(opts.manual) tobToast('✓ Catálogo subido a la nube', 'green');
+    return true;
+  } catch(e){
+    console.warn('[menus sync] push:', e);
+    tobMenusSyncStatus('⚠ error al subir — reintentaré', 'error');
+    if(opts.manual) tobToast('Error al subir: ' + (e.message || e), 'red');
+    _tobMenusSyncBusy = false;
+    tobMenusSyncSchedule(20000);
+    return false;
+  } finally {
+    _tobMenusSyncBusy = false;
+  }
+}
+
+// Push diferido (debounced) — se llama tras cada cambio local.
+function tobMenusSyncSchedule(delay){
+  if(!tobMenusSyncLoggedIn()) return;
+  try { localStorage.setItem(TOB_MENUS_SYNC_DIRTY, '1'); } catch(e){}
+  clearTimeout(_tobMenusSyncTimer);
+  _tobMenusSyncTimer = setTimeout(() => { tobMenusSyncPush(); }, delay || 6000);
+  tobMenusSyncStatus('● cambios pendientes…', 'work');
+}
+
+// Botón manual: baja lo de la nube, fusiona y vuelve a subir el resultado.
+function tobMenusSyncNow(){
+  if(!tobMenusSyncLoggedIn()){
+    tobToast('Inicia sesión con GitHub desde el inicio para sincronizar', 'red');
+    return;
+  }
+  tobMenusSyncPull({ manual: true }).finally(() => {
+    tobMenusSyncPush({ manual: true });
   });
 }
 
@@ -8838,7 +9022,15 @@ document.addEventListener('DOMContentLoaded', () => {
 // Auto-init — tobMenusLoad es async (IndexedDB); esperamos a que cargue
 // la BD de recetas/ingredientes antes de renderizar la app.
 function tobBoot(){
-  tobMenusLoad().catch(e => console.warn('[boot] tobMenusLoad:', e)).finally(() => tobLoad());
+  tobMenusLoad()
+    .catch(e => console.warn('[boot] tobMenusLoad:', e))
+    .finally(() => {
+      tobLoad();
+      // Sincronización del catálogo en segundo plano (no bloquea el render).
+      setTimeout(() => {
+        if(typeof tobMenusSyncPull === 'function') tobMenusSyncPull();
+      }, 1500);
+    });
 }
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', tobBoot);

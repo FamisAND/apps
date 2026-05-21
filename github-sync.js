@@ -316,6 +316,8 @@ async function updateSecuritySection(updater){
 
 // Updater genérico para CUALQUIER sección de data.json (ej. __notif, __ia_config, etc).
 // El updater recibe la sección actual (objeto) y debe devolver la nueva (objeto entero).
+// En caso de conflicto (otra pestaña/dashboard pushó entremedias) se re-ejecuta el
+// updater contra el remoto FRESCO, de modo que nunca se revierten secciones ajenas.
 async function updateSection(sectionName, updater){
   if(!sectionName || typeof sectionName !== 'string') throw new Error('sectionName requerido');
   const remote = await pullRaw();
@@ -323,11 +325,15 @@ async function updateSection(sectionName, updater){
   if(remote.sha && !remote.content){
     throw new Error('No pude leer data.json remoto. Recarga la app.');
   }
-  const current = (remote.content && remote.content[sectionName]) || {};
-  const updated = updater(Object.assign({}, current));
-  const payload = mergeSections(remote.content || {}, { [sectionName]: updated });
-  await pushRaw(payload);
-  return updated;
+  let lastUpdated = null;
+  const build = (remoteContent) => {
+    const current = (remoteContent && remoteContent[sectionName]) || {};
+    lastUpdated = updater(Object.assign({}, current));
+    return mergeSections(remoteContent || {}, { [sectionName]: lastUpdated });
+  };
+  const payload = build(remote.content);
+  await pushRaw(payload, build);
+  return lastUpdated;
 }
 
 // Lectura de una sección arbitraria (ej. __notif).

@@ -96,11 +96,15 @@
   </div>
 
   <!-- Sub-tabs -->
-  <div class="tob-sub-tabs" style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap;">
+  <div class="tob-sub-tabs" style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px;flex-wrap:wrap;align-items:center;">
     <button class="tob-sub-tab active" data-mtab="ingredientes" onclick="tobMenuShowTab('ingredientes',this)">🥦 Ingredientes</button>
     <button class="tob-sub-tab" data-mtab="recetas" onclick="tobMenuShowTab('recetas',this)">🍳 Recetas</button>
     <button class="tob-sub-tab" data-mtab="creador" onclick="tobMenuShowTab('creador',this)">📅 Creador de menús</button>
     <button class="tob-sub-tab" data-mtab="menus" onclick="tobMenuShowTab('menus',this)">📁 Menús guardados</button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:9px;padding-bottom:6px;">
+      <span id="tobMenusSyncStatus" style="font-size:.66rem;font-family:'DM Mono',monospace;letter-spacing:.03em;color:var(--mute);"></span>
+      <button class="tob-action ghost btn-xs" onclick="tobMenusSyncNow()" title="Sube tu catálogo de recetas e ingredientes a GitHub y descarga el de otros dispositivos. Úsalo para tener las mismas recetas en otro ordenador.">🔄 Sincronizar recetas</button>
+    </div>
   </div>
 
   <!-- ── INGREDIENTES ── -->
