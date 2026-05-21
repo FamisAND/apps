@@ -5074,10 +5074,14 @@ const TOB_QUEST_CHIPS = {
     { id:'rendiment',      label:'Rendiment esportiu' },
     { id:'salut',          label:'Salut general' }
   ]},
-  apats: { mode:'radio', items:[
-    { id:'3', label:'3 àpats' },
-    { id:'4', label:'4 àpats' },
-    { id:'5', label:'5 àpats' }
+  apats: { mode:'multi', items:[
+    { id:'esmorzar', label:'Esmorzar' },
+    { id:'mig_mati', label:'Mig matí' },
+    { id:'dinar',    label:'Dinar' },
+    { id:'berenar',  label:'Berenar' },
+    { id:'berenar2', label:'2n berenar' },
+    { id:'sopar',    label:'Sopar' },
+    { id:'ressopo',  label:'Ressopó' }
   ]},
   dieta: { mode:'radio', items:[
     { id:'omnivor',    label:'Omnívor' },
@@ -5185,21 +5189,21 @@ const TOB_QUEST_LISTS = {
 };
 // Recordatori: àpats disponibles y cuáles se muestran según el nº de àpats
 // elegido en el chip "Nombre d'àpats".
-const TOB_QUEST_APATS = [
-  { key:'apat1', label:'Esmorzar', set:'esmorzar' },
-  { key:'apat2', label:'Mig matí', set:'snack' },
-  { key:'apat3', label:'Dinar',    set:'apat' },
-  { key:'apat4', label:'Berenar',  set:'snack' },
-  { key:'apat5', label:'Sopar',    set:'apat' }
+// Definición única de àpats. El cuestionario (chip "apats") deja elegir
+// cuáles hace el cliente; recordatori 24h y creador de menús se adaptan.
+//   recSet  = qué chips de recordatori usa (esmorzar/snack/apat)
+//   momento = momento de receta con el que se filtran candidatos
+const TOB_MEALS = [
+  { id:'esmorzar', label:'Esmorzar',   recSet:'esmorzar', momento:'esmorzar' },
+  { id:'mig_mati', label:'Mig matí',   recSet:'snack',    momento:'mig_mati' },
+  { id:'dinar',    label:'Dinar',      recSet:'apat',     momento:'dinar' },
+  { id:'berenar',  label:'Berenar',    recSet:'snack',    momento:'berenar' },
+  { id:'berenar2', label:'2n berenar', recSet:'snack',    momento:'berenar' },
+  { id:'sopar',    label:'Sopar',      recSet:'apat',     momento:'sopar' },
+  { id:'ressopo',  label:'Ressopó',    recSet:'snack',    momento:'berenar' }
 ];
-const TOB_QUEST_APATS_BY_COUNT = {
-  '3': ['apat1','apat3','apat5'],
-  '4': ['apat1','apat3','apat4','apat5'],
-  '5': ['apat1','apat2','apat3','apat4','apat5']
-};
-// Chips de cada tipo de àpat para el recordatori 24h. Cada àpat se marca
-// por separado (dinar ≠ sopar, mig matí ≠ berenar) — el cliente puede
-// hacer postre en uno y no en otro, etc.
+const TOB_MEALS_DEFAULT = ['esmorzar','dinar','sopar'];   // si no s'ha triat res
+// Chips de cada tipo de àpat para el recordatori 24h.
 const TOB_QUEST_REC_SETS = {
   esmorzar: ['Cafè','Torrades / pa','Batut','Iogurt','Fruita','Cereals / civada','Ous / salat','Dolç'],
   snack:    ['Fruita','Iogurt','Fruits secs','Barreta','Cafè','Entrepà petit','No menja res'],
@@ -5248,40 +5252,45 @@ function tobQuestLoad(){
   tobUpdateCuestionarioBadge();
 }
 
-// Renderiza los campos del recordatori según el nº de àpats elegido.
-// Los valores se guardan directamente en cli.cuestionario.apatN.
+// Renderiza el recordatori 24h: una fila de chips por cada àpat que el
+// cliente hace (los seleccionados en el chip "Àpats" de arriba).
 function tobQuestRenderRecordatori(){
   const cont = document.getElementById('qRecordatoriFields');
   if(!cont) return;
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   const q = (cli && cli.cuestionario) || {};
-  const apats = (q.tags && q.tags.apats) || '5';
-  const keys = TOB_QUEST_APATS_BY_COUNT[apats] || TOB_QUEST_APATS_BY_COUNT['5'];
+  const sel = (q.tags && Array.isArray(q.tags.apats)) ? q.tags.apats : [];
+  const meals = sel.length
+    ? TOB_MEALS.filter(mDef => sel.includes(mDef.id))
+    : TOB_MEALS.filter(mDef => TOB_MEALS_DEFAULT.includes(mDef.id));
+  if(!sel.length){
+    cont.innerHTML = '<div style="font-size:.74rem;color:var(--mute2);font-family:DM Mono,monospace;padding:6px 2px;">Marca a dalt els àpats que fa el client.</div>';
+    return;
+  }
   const recChips = q.recChips || {};
-  cont.innerHTML = keys.map(k => {
-    const def = TOB_QUEST_APATS.find(a => a.key === k);
-    const sel = new Set(recChips[k] || []);
-    const set = TOB_QUEST_REC_SETS[def.set] || [];
+  cont.innerHTML = meals.map(mDef => {
+    const on = new Set(recChips[mDef.id] || []);
+    const set = TOB_QUEST_REC_SETS[mDef.recSet] || [];
     const chips = set.map((label, ix) =>
-      `<button type="button" class="tob-quest-chip${sel.has(label)?' active':''}" onclick="tobQuestRecChip('${k}',${ix})">${tobEsc(label)}</button>`
+      `<button type="button" class="tob-quest-chip${on.has(label)?' active':''}" onclick="tobQuestRecChip('${mDef.id}',${ix})">${tobEsc(label)}</button>`
     ).join('');
     return `<div class="tob-quest-rec-row">
-      <label class="tob-lbl">${tobEsc(def.label)}</label>
+      <label class="tob-lbl">${tobEsc(mDef.label)}</label>
       <div class="tob-quest-chips">${chips}</div>
     </div>`;
   }).join('');
 }
 
-// Toggle de un chip del recordatori. Se guarda en q.recChips[apatKey].
-function tobQuestRecChip(apatKey, idx){
+// Toggle de un chip del recordatori. Se guarda en q.recChips[mealId].
+function tobQuestRecChip(mealId, idx){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli) return;
-  const def = TOB_QUEST_APATS.find(a => a.key === apatKey);
-  const label = def && (TOB_QUEST_REC_SETS[def.set] || [])[idx];
+  const mDef = TOB_MEALS.find(a => a.id === mealId);
+  const label = mDef && (TOB_QUEST_REC_SETS[mDef.recSet] || [])[idx];
   if(!label) return;
   if(!cli.cuestionario) cli.cuestionario = {};
   if(!cli.cuestionario.recChips) cli.cuestionario.recChips = {};
-  const arr = cli.cuestionario.recChips[apatKey] || (cli.cuestionario.recChips[apatKey] = []);
+  const arr = cli.cuestionario.recChips[mealId] || (cli.cuestionario.recChips[mealId] = []);
   const ix = arr.indexOf(label);
   if(ix >= 0) arr.splice(ix, 1);
   else arr.push(label);
@@ -5418,6 +5427,24 @@ function tobQuestEnsureTags(cli){
   const q = cli.cuestionario;
   if(!q.tags) q.tags = {};
   const t = q.tags;
+  // Migración: apats pasó de nº de comidas (string '3'/'4'/'5') a lista
+  // de àpats concretos.
+  if(typeof t.apats === 'string'){
+    const m = {
+      '3': ['esmorzar','dinar','sopar'],
+      '4': ['esmorzar','dinar','berenar','sopar'],
+      '5': ['esmorzar','mig_mati','dinar','berenar','sopar']
+    };
+    t.apats = m[t.apats] || m['5'];
+  }
+  // Migración: recChips pasó de claves apatN a ids de àpat.
+  if(q.recChips && (q.recChips.apat1 || q.recChips.apat2 || q.recChips.apat3 ||
+                    q.recChips.apat4 || q.recChips.apat5)){
+    const km = { apat1:'esmorzar', apat2:'mig_mati', apat3:'dinar', apat4:'berenar', apat5:'sopar' };
+    const nw = {};
+    Object.keys(q.recChips).forEach(k => { nw[km[k] || k] = q.recChips[k]; });
+    q.recChips = nw;
+  }
   // Grupos multi → array; radio → se deja como string|null
   Object.keys(TOB_QUEST_CHIPS).forEach(g => {
     if(TOB_QUEST_CHIPS[g].mode === 'multi' && !Array.isArray(t[g])) t[g] = [];
@@ -7301,25 +7328,13 @@ const TOB_MC_DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
 const TOB_MC_DIA_FULL = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
 let _tobMcMomentoFiltro = '';  // filtro activo del panel lateral
 
-// Comidas posibles del creador, en orden. Las "(2)" son àpats extra
-// opcionales (2ª mig matí / 2ª berenar). 'base' = momento de receta con el
-// que se filtran candidatos (un mig_mati2 acepta recetas de mig_mati).
-const TOB_MC_MEAL_DEFS = [
-  { id:'esmorzar',  label:'Esmorzar' },
-  { id:'mig_mati',  label:'Mig matí' },
-  { id:'mig_mati2', label:'Mig matí (2)', base:'mig_mati' },
-  { id:'dinar',     label:'Dinar' },
-  { id:'berenar',   label:'Berenar' },
-  { id:'berenar2',  label:'Berenar (2)', base:'berenar' },
-  { id:'sopar',     label:'Sopar' }
-];
 function tobMcMealLabel(id){
-  const d = TOB_MC_MEAL_DEFS.find(x => x.id === id);
+  const d = TOB_MEALS.find(x => x.id === id);
   return d ? d.label : (TOB_REC_MOMENTO_LBL[id] || id);
 }
 function tobMcMealBase(id){
-  const d = TOB_MC_MEAL_DEFS.find(x => x.id === id);
-  return (d && d.base) || id;
+  const d = TOB_MEALS.find(x => x.id === id);
+  return (d && d.momento) || id;
 }
 
 // Notas/recomanacions que se incluyen por defecto en el PDF del menú.
@@ -7329,26 +7344,14 @@ const TOB_MENU_NOTAS_DEFAULT =
   "- Esmorzars, mig matins i berenars són intercanviables entre dies: si un dia et ve de gust el d'un altre, cap problema.\n" +
   "- Davant de qualsevol dubte amb una recepta o una substitució, consulta'm.";
 
-// Cuáles comidas/día tiene el cliente, según los apats rellenos en su cuestionario.
-// Devuelve array de { id, label } en orden esmorzar→sopar.
+// Comidas/día del cliente, según los àpats elegidos en su cuestionario.
+// Devuelve array de { id, label } en el orden de TOB_MEALS.
 function tobMcComidasDelCliente(cli){
-  const q = cli?.cuestionario || {};
-  const all = [
-    { id:'esmorzar', label:'Esmorzar',  qf:'apat1' },
-    { id:'mig_mati', label:'Mig matí',  qf:'apat2' },
-    { id:'dinar',    label:'Dinar',     qf:'apat3' },
-    { id:'berenar',  label:'Berenar',   qf:'apat4' },
-    { id:'sopar',    label:'Sopar',     qf:'apat5' }
-  ];
-  // Si el cuestionario tiene el chip "Nombre d'àpats", manda ese.
-  const apats = q.tags && q.tags.apats;
-  if(apats && TOB_QUEST_APATS_BY_COUNT[apats]){
-    const keys = TOB_QUEST_APATS_BY_COUNT[apats];
-    return all.filter(c => keys.includes(c.qf));
-  }
-  const filled = all.filter(c => (q[c.qf] || '').trim().length > 0);
-  // Si el cliente no tiene NINGÚN apat relleno, asumimos 3 (esmorzar/dinar/sopar)
-  return filled.length ? filled : [all[0], all[2], all[4]];
+  const q = cli && cli.cuestionario || {};
+  const sel = (q.tags && Array.isArray(q.tags.apats)) ? q.tags.apats : [];
+  const ids = sel.length ? sel : TOB_MEALS_DEFAULT;
+  return TOB_MEALS.filter(mDef => ids.includes(mDef.id))
+                  .map(mDef => ({ id: mDef.id, label: mDef.label }));
 }
 
 // Setup inicial: poblar selector de cliente + listeners
@@ -7853,11 +7856,10 @@ function tobMcClearSemana(){
 function tobMcOpenMealsModal(){
   if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
   const cur = new Set(tobMcState.comidasIds || []);
-  document.getElementById('tobMcMealsBody').innerHTML = TOB_MC_MEAL_DEFS.map(d =>
+  document.getElementById('tobMcMealsBody').innerHTML = TOB_MEALS.map(d =>
     `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--line);">
       <input type="checkbox" id="tobMcMeal_${d.id}" ${cur.has(d.id)?'checked':''} style="accent-color:var(--acc);">
       <span>${tobEsc(d.label)}</span>
-      ${d.base?'<span style="font-size:.68rem;color:var(--mute2);font-family:DM Mono,monospace;">àpat extra</span>':''}
     </label>`
   ).join('');
   document.getElementById('tobMcMealsModalBg').classList.add('on');
@@ -7878,7 +7880,7 @@ function tobMcApplyNotas(){
 
 function tobMcApplyMeals(){
   if(!tobMcState) return;
-  const checked = TOB_MC_MEAL_DEFS
+  const checked = TOB_MEALS
     .filter(d => { const el = document.getElementById('tobMcMeal_'+d.id); return el && el.checked; })
     .map(d => d.id);
   if(!checked.length){ tobToast('Selecciona almenys un àpat', 'red'); return; }
@@ -8505,9 +8507,9 @@ function tobMcPerfilTexto(cli){
   if(t.tempsCuina)    L.push('Temps per cuinar: ' + lbl('tempsCuina', t.tempsCuina));
   // Estructura habitual de cada àpat (recordatori 24h)
   const rec = q.recChips || {};
-  const recLines = TOB_QUEST_APATS
-    .filter(a => Array.isArray(rec[a.key]) && rec[a.key].length)
-    .map(a => '  · ' + a.label + ': ' + rec[a.key].join(', '));
+  const recLines = TOB_MEALS
+    .filter(a => Array.isArray(rec[a.id]) && rec[a.id].length)
+    .map(a => '  · ' + a.label + ': ' + rec[a.id].join(', '));
   if(recLines.length){
     L.push('Estructura habitual dels àpats (respecta-la al muntar el menú):');
     recLines.forEach(line => L.push(line));
