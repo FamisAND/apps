@@ -2793,6 +2793,19 @@ function tobFichaRenderMenus(){
   cont.innerHTML = menus.map(m => tobMenuRowHTML(cli, m)).join('');
 }
 
+// Exporta a PDF el último menú guardado del cliente de la ficha.
+function tobFichaMenuPdf(){
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli){ tobToast('Sin cliente', 'red'); return; }
+  const menus = (cli.menus || []).slice()
+    .sort((a,b) => (b.savedAt||b.fecha||'').localeCompare(a.savedAt||a.fecha||''));
+  if(!menus.length){
+    tobToast('Aquest client encara no té cap menú guardat. Crea\'n un amb "+ Nou menú".', 'red');
+    return;
+  }
+  tobMenuPdf(cli.id, menus[0].id);
+}
+
 // Va al creador de menús con este cliente preseleccionado.
 function tobFichaNuevoMenu(){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
@@ -7285,7 +7298,7 @@ function tobMcRenderGrid(){
   const sem = tobMcState.semanaActiva;
 
   // grid layout: 1 col label comida + 7 cols días = 8 columnas
-  grid.style.gridTemplateColumns = '90px repeat(7, minmax(110px, 1fr))';
+  grid.style.gridTemplateColumns = '100px repeat(7, minmax(135px, 1fr))';
   let html = '';
   // Fila header con días
   html += `<div class="tob-mc-grid-row">
@@ -7310,7 +7323,18 @@ function tobMcRenderGrid(){
           <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
         </div>`;
       }).join('');
-      html += `<div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${itemsHtml}</div>`;
+      // Resumen de macros de la celda (este àpat, este día)
+      let ck=0, cp=0, ch=0, cg=0;
+      items.forEach(recId => {
+        const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+        if(!r) return;
+        const m = tobRecMacros(r); const rac = r.raciones || 1;
+        ck += m.kcal/rac; cp += m.proteina/rac; ch += m.hc/rac; cg += m.grasa/rac;
+      });
+      const cellSum = items.length
+        ? `<div class="tob-mc-cell-sum">${Math.round(ck)} kcal · ${Math.round(cp)}P · ${Math.round(ch)}H · ${Math.round(cg)}G</div>`
+        : '';
+      html += `<div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${itemsHtml}${cellSum}</div>`;
     }
     html += `</div>`;
   });
@@ -7330,6 +7354,7 @@ function tobMcRenderGrid(){
         group: { name: 'menu', pull: true, put: true },
         animation: 150,
         ghostClass: 'tob-sortable-ghost',
+        filter: '.tob-mc-cell-sum',   // el resumen de la celda no se arrastra
         onAdd: (ev) => {
           const recId = ev.item.dataset.rec;
           const day = +cell.dataset.day;
@@ -7522,6 +7547,9 @@ function tobMcSave(){
   else cli.menus.unshift(snapshot);
   tobMcState._menuId = snapshot.id;
   tobSave();
+  // Refrescar la ficha del cliente (si está abierta) y la pestaña de menús
+  if(typeof tobFichaRenderMenus === 'function') tobFichaRenderMenus();
+  if(typeof tobMenusGuardadosRender === 'function') tobMenusGuardadosRender();
   tobToast(`✓ Menú guardado en ${cli.nombre}`, 'green');
 }
 
@@ -7673,7 +7701,22 @@ function tobMenuGuardadoDelete(cliId, menuId){
   tobToast('Menú eliminat', '');
 }
 
-// ── PDF del menú semanal (portada + graella + nutrició + compra + receptari)
+// Clasifica un ingrediente en una sección del súper (heurística por nombre).
+function tobSeccionAlimento(nombre){
+  const n = (nombre || '').toLowerCase();
+  const has = (...ws) => ws.some(w => n.includes(w));
+  if(has('aceite','oli ','vinagre',' sal','pebre','azúcar','sucre','miel','mel ','espècie','especia','salsa','tamari','mostaza','mostassa','comino','orégano','albahaca','alfàbrega','perejil','julivert','canela','curry','caldo','tomate frito','ketchup','mayonesa','levadura','llevat','cacao')) return 'Olis, condiments i espècies';
+  if(has('pollo','pollastre','pavo','gall dindi','ternera','vedella','cerdo','porc','buey','cordero','xai','conejo','conill','jamón','pernil','bacon','salchich','embut','solomillo','lomo','filete','hamburgues','chuleta','costilla','carne','carn ')) return 'Carn i aviram';
+  if(has('salmón','salmon','atún','tonyina','merluza','lluç','bacalao','bacallà','gamba','langostino','marisco','marisc','sepia','calamar','pulpo',' pop','mejill','musclo','almeja','sardina','boquerón','seitó','trucha','dorada','lubina','pescado','peix','anchoa')) return 'Peix i marisc';
+  if(has('leche','llet','yogur','iogurt','queso','formatge','nata','mantequilla','mantega','huevo','ou ','ous','kefir','requesón','mató','cuajada')) return 'Ous, làctics i derivats';
+  if(has('manzana','poma','plátano','plàtan','naranja','taronja','fresa','maduixa','pera','uva','raïm','kiwi','mango','piña','pinya','melón','meló','sandía','síndria','arándano','nabiu','frambuesa','melocotón','préssec','albaricoque','cereza','cireres','mandarina','limón','llimona','aguacate','alvocat','dátil','dàtil','higo','figa','fruta','fruita')) return 'Fruita';
+  if(has('lenteja','llentia','garbanzo','cigró','judía blanca','mongeta','alubia','soja','tofu','tempeh','frijol','guisante','pèsol','almendra','ametlla','nuez','avellana','pistacho','anacardo','cacahuete','cacauet','semilla','llavor','fruto seco','fruits secs')) return 'Llegums i fruits secs';
+  if(has('arroz','arròs','pasta','espagueti','macarr','fideo','pan ','pa ','harina','farina','avena','civada','quinoa','cuscús','couscous','trigo','blat','cereal','galleta','copos')) return 'Cereals, pa i pasta';
+  if(has('tomate','tomàquet','lechuga','enciam','cebolla','ceba','ajo ','all ','pimiento','pebrot','zanahoria','pastanaga','calabacín','carbassó','berenjena','albergínia','brócoli','bròquil','coliflor','espinac','acelga','bleda','champiñón','xampinyó','seta','bolet','patata','calabaza','carbassa','pepino','cogombre','apio','api ','puerro','porro','espárrago','espàrrec',' col','rúcula','remolacha','remolatxa','verdura','hortaliza')) return 'Verdures i hortalisses';
+  return 'Altres';
+}
+
+// ── PDF del menú semanal (portada + graella + compra + receptari)
 // Se abre en una ventana nueva con CSS de impresión; el usuario lo guarda
 // como PDF. Las fotos se resuelven desde IndexedDB → data URLs fiables.
 async function tobMenuPdf(cliId, menuId){
@@ -7703,10 +7746,11 @@ async function tobMenuPdf(cliId, menuId){
   // Macros por ración de una receta
   const macRac = (r) => { const x = tobRecMacros(r); const rac = r.raciones || 1; return { kcal:x.kcal/rac, prot:x.proteina/rac, hc:x.hc/rac, gras:x.grasa/rac, fib:x.fibra/rac }; };
 
-  // ── Graella del menú por semana ────────────────────────────────
+  // ── Graella del menú por semana (con fila de totales por día) ──
   let graellaHtml = '';
   for(let s = 0; s < semanas; s++){
     let rows = '';
+    const dayTot = Array.from({length:7}, () => ({ kcal:0, prot:0, hc:0, gras:0 }));
     comidas.forEach(c => {
       let cells = '';
       for(let d = 0; d < 7; d++){
@@ -7716,6 +7760,8 @@ async function tobMenuPdf(cliId, menuId){
           if(!r) return '<div class="mp-plato mp-buit">(eliminada)</div>';
           const foto = fotoMap[id];
           const mr = macRac(r);
+          dayTot[d].kcal += mr.kcal; dayTot[d].prot += mr.prot;
+          dayTot[d].hc += mr.hc; dayTot[d].gras += mr.gras;
           return `<div class="mp-plato">
             ${foto ? `<div class="mp-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-foto mp-nofoto"></div>'}
             <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(r.nombre||'—')}</div>
@@ -7726,38 +7772,16 @@ async function tobMenuPdf(cliId, menuId){
       }
       rows += `<tr><th>${esc(c.label)}</th>${cells}</tr>`;
     });
+    const totRow = '<tr class="mp-tot"><th>Total dia</th>' + dayTot.map(t =>
+      `<td><b>${Math.round(t.kcal)}</b> kcal · ${Math.round(t.prot)}P · ${Math.round(t.hc)}H · ${Math.round(t.gras)}G</td>`
+    ).join('') + '</tr>';
     graellaHtml += `<div class="mp-section">
       <h2>Setmana ${s+1}</h2>
       <table class="mp-graella"><thead><tr><th></th>${DIAS.map(d=>`<th>${d}</th>`).join('')}</tr></thead>
-      <tbody>${rows}</tbody></table></div>`;
+      <tbody>${rows}${totRow}</tbody></table></div>`;
   }
 
-  // ── Resum nutricional (mitjana per dia) ────────────────────────
-  let totDias = 0, acc = { kcal:0, prot:0, hc:0, gras:0, fib:0 };
-  for(let s = 0; s < semanas; s++){
-    for(let d = 0; d < 7; d++){
-      let dayHas = false;
-      comidas.forEach(c => {
-        ((((m.data[s]||{})[d]||{})[c.id]) || []).forEach(id => {
-          const r = recsById[id]; if(!r) return;
-          const mr = macRac(r);
-          acc.kcal+=mr.kcal; acc.prot+=mr.prot; acc.hc+=mr.hc; acc.gras+=mr.gras; acc.fib+=mr.fib;
-          dayHas = true;
-        });
-      });
-      if(dayHas) totDias++;
-    }
-  }
-  const avg = k => totDias ? Math.round(acc[k]/totDias) : 0;
-  const nutriHtml = `<div class="mp-section"><h2>Resum nutricional · mitjana per dia</h2>
-    <table class="mp-nutri"><tbody>
-      <tr><td>Energia</td><td><b>${avg('kcal')}</b> kcal</td><td>Objectiu</td><td>${m.kcalObj||'—'} kcal</td></tr>
-      <tr><td>Proteïna</td><td><b>${avg('prot')}</b> g</td><td>Objectiu</td><td>${m.protObj||'—'} g</td></tr>
-      <tr><td>Hidrats</td><td><b>${avg('hc')}</b> g</td><td>Greixos</td><td>${avg('gras')} g</td></tr>
-      <tr><td>Fibra</td><td><b>${avg('fib')}</b> g</td><td>Dies amb menú</td><td>${totDias}</td></tr>
-    </tbody></table></div>`;
-
-  // ── Llista de la compra (ingredients agregats) ─────────────────
+  // ── Llista de la compra (ingredients agregats, per seccions del súper) ─
   const compra = {};
   Object.keys(usos).forEach(id => {
     const r = recsById[id];
@@ -7769,15 +7793,27 @@ async function tobMenuPdf(cliId, menuId){
       if(!nom) return;
       const g = (+it.gramos || 0) / rac * usos[id];
       const k = nom.toLowerCase();
-      if(!compra[k]) compra[k] = { nom, g:0 };
+      if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
       compra[k].g += g;
     });
   });
-  const compraArr = Object.values(compra).sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
-  const compraHtml = compraArr.length ? `<div class="mp-section mp-break"><h2>Llista de la compra</h2>
-    <ul class="mp-compra">${compraArr.map(c =>
-      `<li><span>${esc(c.nom)}</span><span class="mp-g">${c.g >= 1000 ? (c.g/1000).toFixed(2)+' kg' : Math.round(c.g)+' g'}</span></li>`
-    ).join('')}</ul></div>` : '';
+  const TOB_SECCIONS = ['Verdures i hortalisses','Fruita','Carn i aviram','Peix i marisc',
+    'Ous, làctics i derivats','Cereals, pa i pasta','Llegums i fruits secs',
+    'Olis, condiments i espècies','Altres'];
+  const porSeccion = {};
+  Object.values(compra).forEach(c => { (porSeccion[c.seccion] = porSeccion[c.seccion] || []).push(c); });
+  let compraHtml = '';
+  const secsAmbDades = TOB_SECCIONS.filter(s => porSeccion[s] && porSeccion[s].length);
+  if(secsAmbDades.length){
+    compraHtml = '<div class="mp-section mp-break"><h2>Llista de la compra</h2>';
+    secsAmbDades.forEach(sec => {
+      const items = porSeccion[sec].sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
+      compraHtml += '<h4 class="mp-compra-sec">' + esc(sec) + '</h4><ul class="mp-compra">' +
+        items.map(c => `<li><span>${esc(c.nom)}</span><span class="mp-g">${c.g >= 1000 ? (c.g/1000).toFixed(2)+' kg' : Math.round(c.g)+' g'}</span></li>`).join('') +
+        '</ul>';
+    });
+    compraHtml += '</div>';
+  }
 
   // ── Receptari ──────────────────────────────────────────────────
   const recetari = Object.keys(usos).map(id => recsById[id]).filter(Boolean)
@@ -7831,8 +7867,9 @@ async function tobMenuPdf(cliId, menuId){
   .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.15;}
   .mp-plato-kcal{font-size:7.5px;color:#888;}
   .mp-buit{color:#ccc;font-size:9px;text-align:center;}
-  .mp-nutri td{border:1px solid #ddd;padding:5px 9px;font-size:11px;}
-  .mp-nutri td:nth-child(odd){background:#faf3e0;color:#7a5c10;font-weight:600;width:130px;}
+  .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f5ebd2;color:#7a5c10;font-weight:700;font-size:8.5px;text-align:center;}
+  .mp-graella tr.mp-tot b{font-size:10px;}
+  .mp-compra-sec{font-size:11.5px;color:#7a5c10;margin:13px 0 4px;border-bottom:1px solid #e8c87a;padding-bottom:2px;text-transform:none;letter-spacing:0;}
   .mp-compra{list-style:none;columns:3;column-gap:22px;}
   .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:2.5px 0;border-bottom:1px dotted #ddd;break-inside:avoid;}
   .mp-compra .mp-g{color:#b8860b;font-weight:700;}
@@ -7857,7 +7894,6 @@ async function tobMenuPdf(cliId, menuId){
     </div>
   </div>
   ${graellaHtml}
-  ${nutriHtml}
   ${compraHtml}
   ${recetariHtml}
   <div class="mp-foot">Generat amb Full Training · ${esc(hoy)}</div>
@@ -8090,12 +8126,14 @@ async function tobMcGenerarIA(){
         const j = Math.floor(Math.random() * (i + 1));
         const tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
       }
-      cand = favs.concat(rest).slice(0, capPorMomento);
+      // Los favoritos SIEMPRE entran enteros; el resto rellena hasta el tope.
+      cand = favs.concat(rest).slice(0, Math.max(capPorMomento, favs.length));
       catalogo += '\n# ' + c.label + ' (id="' + c.id + '")\n';
       cand.forEach(r => {
         validIds.add(r.id);
         const mm = tobRecMacros(r); const rac = r.raciones || 1;
-        catalogo += r.id + '|' + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p\n';
+        const fav = r.favorito ? '★' : '';
+        catalogo += r.id + '|' + fav + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p\n';
       });
     });
 
@@ -8110,14 +8148,17 @@ async function tobMcGenerarIA(){
         + comidas.map(c => '"' + c.id + '"').join(', ') + '.',
       '',
       'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id.',
-      'Format de cada línia: id|nom|kcal|proteïna  (ex: rec_x|Truita francesa|320k|18p)',
+      'Format de cada línia: id|nom|kcal|proteïna  (ex: rec_x|Truita francesa|320k|18p). Una ★ davant del nom = recepta preferida del client, prioritza-la.',
       catalogo, '',
-      'REGLES:',
-      '- Cada dia ha de sumar aproximadament l\'objectiu calòric (±' + margen + '%) i acostar-se a la proteïna objectiu.',
-      '- Varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
-      '- Cada àpat sol portar 1 recepta (2 si cal per arribar a les kcal).',
+      'REGLES (molt importants):',
+      '- CADA dia, individualment, ha de sumar dins del marge ±' + margen + '% de ' + Math.round(kcal) + ' kcal. No val que la mitjana setmanal quadri si un dia es queda curt o llarg — TOTS i cadascun dels dies han d\'estar dins del marge. Suma les kcal dels àpats de cada dia i comprova-ho.',
+      (prot ? '- Acosta cada dia a ' + Math.round(prot) + ' g de proteïna.' : '- Reparteix bé la proteïna cada dia.'),
+      '- Mig matí i berenar són àpats LLEUGERS (aprox. 100-350 kcal): fruita, iogurt, fruits secs, barretes, snacks senzills. NO hi posis plats contundents (hamburgueses, guisats, plats de cullera, carns amb guarnició) — aquests van a dinar o sopar.',
+      '- Esmorzar: moderat. Dinar i sopar: són els àpats principals i forts del dia.',
+      '- Prioritza les receptes preferides (★) i varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
+      '- Cada àpat sol portar 1 recepta (2 com a màxim, si cal per quadrar les kcal del dia).',
       '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
-      '- Usa només id de la llista.',
+      '- Usa només id de la llista de dalt.',
       '',
       'FORMAT DE RESPOSTA (només JSON): un objecte amb una clau per setmana ("0","1",…). '
         + 'Cada setmana és un array de 7 dies. Cada dia és un objecte {comida_id:[id_recepta,…]}.',

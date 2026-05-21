@@ -488,54 +488,60 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 
 /* Tabla días × comidas */
 .tob-mc-grid{
-  display:grid;gap:6px;
+  display:grid;gap:7px;
   overflow-x:auto;
   font-family:'DM Mono',monospace;
-  font-size:.68rem;
+  font-size:.74rem;
 }
 .tob-mc-grid-row{display:contents;}
 .tob-mc-grid-header,
 .tob-mc-cell-day-lbl{
   background:#0e0d0a;color:var(--acc2);
-  padding:6px 8px;border-radius:3px;
-  font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  padding:8px 8px;border-radius:3px;
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
   text-align:center;
 }
 .tob-mc-cell-day-lbl{text-align:left;}
 .tob-mc-cell-meal-lbl{
   background:transparent;color:var(--mute);
-  padding:6px 4px;font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;
-  display:flex;align-items:center;
+  padding:8px 4px;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;
+  display:flex;align-items:center;font-weight:700;
 }
 .tob-mc-cell{
-  min-height:62px;
+  min-height:96px;
   background:#16140f;border:1px dashed var(--border);border-radius:4px;
-  padding:4px;display:flex;flex-direction:column;gap:3px;
+  padding:6px;display:flex;flex-direction:column;gap:4px;
   transition:all .15s ease;
 }
 .tob-mc-cell.over{border-color:var(--acc);background:#1f1c14;}
 .tob-mc-cell-item{
   display:flex;align-items:center;gap:5px;
   background:var(--card2);border:1px solid var(--border);border-radius:3px;
-  padding:3px 5px;font-size:.65rem;color:var(--text);
+  padding:5px 7px;font-size:.72rem;color:var(--text);
   cursor:grab;transition:all .15s ease;
   position:relative;
 }
 .tob-mc-cell-item:hover{border-color:var(--acc);}
 .tob-mc-cell-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.tob-mc-cell-item .kc{color:var(--acc2);font-size:.6rem;}
+.tob-mc-cell-item .kc{color:var(--acc2);font-size:.66rem;font-weight:700;}
 .tob-mc-cell-item .x{
   background:transparent;border:none;color:var(--mute2);cursor:pointer;
-  width:16px;height:16px;display:flex;align-items:center;justify-content:center;
-  border-radius:2px;font-size:.7rem;line-height:1;padding:0;
+  width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;font-size:.78rem;line-height:1;padding:0;
 }
 .tob-mc-cell-item .x:hover{background:#7a2424;color:#fff;}
 .tob-mc-cell-item .swap{
   background:transparent;border:none;cursor:pointer;
-  width:16px;height:16px;display:flex;align-items:center;justify-content:center;
-  border-radius:2px;font-size:.62rem;line-height:1;padding:0;opacity:.55;
+  width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;font-size:.7rem;line-height:1;padding:0;opacity:.55;
 }
 .tob-mc-cell-item .swap:hover{opacity:1;background:var(--card);}
+/* Resumen de macros de la celda (este àpat, este día) */
+.tob-mc-cell-sum{
+  margin-top:auto;font-size:.62rem;color:var(--mute);
+  border-top:1px dashed var(--border);padding-top:4px;
+  text-align:center;letter-spacing:.02em;
+}
 
 /* Fila de totales del día (kcal, prot, etc) */
 .tob-mc-cell-totals{
