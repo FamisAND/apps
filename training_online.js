@@ -6347,6 +6347,7 @@ function tobRecRender(){
   // Las "recetas-ingrediente" (platos sueltos) no se muestran aquí: se
   // gestionan desde la pestaña Ingredientes.
   let list = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
+  // Las descartadas van al final, atenuadas.
   if(search){
     list = list.filter(r => {
       const haystack = [r.nombre, ...(r.tags||[]),
@@ -6362,8 +6363,9 @@ function tobRecRender(){
   if(tobRecOnlyFav) list = list.filter(r => r.favorito);
   if(tobRecAptCeliac)  list = list.filter(r => !tobRecAptitud(r).gluten);
   if(tobRecAptLactosa) list = list.filter(r => !tobRecAptitud(r).lactosa);
-  // Favoritas primero, luego alfabético.
+  // Favoritas primero, descartadas al final, resto alfabético.
   list.sort((a,b) => {
+    if(!!a.descartada !== !!b.descartada) return a.descartada ? 1 : -1;
     if(!!a.favorito !== !!b.favorito) return a.favorito ? -1 : 1;
     return (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'});
   });
@@ -6407,8 +6409,9 @@ function tobRecRender(){
     // La foto se hidrata async tras el render (data-foto-rec). Render
     // inicial = placeholder con el nombre; tobHydrateFotos pone la imagen.
     const fotoTxt = tobEsc((r.nombre||'').slice(0,40));
-    return `<div class="tob-rec-card" onclick="tobRecEdit('${r.id}')">
+    return `<div class="tob-rec-card${r.descartada?' descartada':''}" onclick="tobRecEdit('${r.id}')">
       <div class="foto placeholder" data-foto-rec="${r.id}">${fotoTxt}</div>
+      <button class="tob-rec-dislike${r.descartada?' on':''}" title="${r.descartada?'Recuperar — la IA podrá usarla':'Descartar — la IA no la usará'}" onclick="event.stopPropagation();tobRecToggleDislike('${r.id}')">🚫</button>
       <button class="tob-rec-fav${r.favorito?' on':''}" title="${r.favorito?'Quitar de favoritos':'Guardar en favoritos'}" onclick="event.stopPropagation();tobRecToggleFav('${r.id}')">${r.favorito?'★':'☆'}</button>
       <div class="body">
         <div class="nombre">${tobEsc(r.nombre || '—')}</div>
@@ -6444,9 +6447,20 @@ function tobRecToggleFav(id){
   const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
   if(!r) return;
   r.favorito = !r.favorito;
+  if(r.favorito) r.descartada = false;   // favorita y descartada son excluyentes
   tobMenusSave();
   tobRecRender();
   tobToast(r.favorito ? '★ Añadida a favoritos' : 'Quitada de favoritos', r.favorito ? 'green' : '');
+}
+// Descartar receta: la IA y el creador no la usarán.
+function tobRecToggleDislike(id){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
+  if(!r) return;
+  r.descartada = !r.descartada;
+  if(r.descartada) r.favorito = false;
+  tobMenusSave();
+  tobRecRender();
+  tobToast(r.descartada ? '🚫 Receta descartada — la IA no la usará' : 'Receta recuperada', r.descartada ? 'red' : 'green');
 }
 function tobRecToggleFavFilter(){
   tobRecOnlyFav = !tobRecOnlyFav;
@@ -7714,7 +7728,8 @@ function tobMcRenderSidePanel(){
   const search = (document.getElementById('tobMcRecSearch')?.value || '').trim().toLowerCase();
   const filtrarPerfil = document.getElementById('tobMcFiltrarPerfil')?.checked;
 
-  const all = (tobMenusDB.recetas || []).slice();
+  // Las recetas descartadas no aparecen en el creador.
+  const all = (tobMenusDB.recetas || []).filter(r => !r.descartada);
   const matchSearch = r => !search ||
     (r.nombre || '').toLowerCase().includes(search) ||
     (r.tags || []).some(t => t.toLowerCase().includes(search));
@@ -8419,6 +8434,7 @@ function tobMcCandidatas(cli, comidaId){
   const base = tobMcMealBase(comidaId);
   return (tobMenusDB.recetas || []).filter(r => {
     if(r.origen === 'ingrediente') return false;
+    if(r.descartada) return false;
     const moms = r.momentos || [];
     if(moms.length && !moms.includes(base)) return false;
     return tobMcCheckCompat(r, cli).compat;

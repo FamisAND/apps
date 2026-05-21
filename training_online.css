@@ -400,6 +400,19 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 }
 .tob-rec-fav:hover{border-color:var(--acc);color:var(--acc);transform:scale(1.12);}
 .tob-rec-fav.on{color:#f0b400;border-color:#f0b400;background:rgba(46,36,8,.88);}
+/* Botón descartar receta (la IA no la usa) */
+.tob-rec-dislike{
+  position:absolute;top:6px;right:42px;z-index:2;
+  width:30px;height:30px;border-radius:50%;
+  background:rgba(13,12,10,.74);border:1px solid var(--border);
+  font-size:.82rem;line-height:1;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .13s ease;filter:grayscale(1);opacity:.5;
+}
+.tob-rec-dislike:hover{border-color:#dc6a6a;opacity:1;transform:scale(1.12);}
+.tob-rec-dislike.on{border-color:#dc6a6a;background:rgba(60,14,14,.92);filter:none;opacity:1;}
+.tob-rec-card.descartada{opacity:.5;}
+.tob-rec-card.descartada:hover{opacity:.85;}
 /* Estrella del modal de receta */
 .tob-rec-fav-modal{
   flex:none;width:40px;height:40px;border-radius:6px;
