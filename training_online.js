@@ -8528,7 +8528,7 @@ async function tobMcGenerarIA(){
       '   · Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.',
       '   · Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal.',
       '- EQUILIBRI SETMANAL de proteïna (orientatiu, per 7 dies): peix 3-4 àpats (alterna blanc i blau) · carn blanca (pollastre, gall dindi) 2-3 · carn vermella (vedella, porc, xai) MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella i reparteix-ho al llarg de la setmana.',
-      '- VARIETAT: intenta no repetir cap recepta de dinar/sopar dins la mateixa setmana; si en repeteixes alguna, màxim 2 cops i en dies separats.',
+      '- VARIETAT: la regla de no repetir aplica sobretot als PLATS PRINCIPALS (rol P) de dinar i sopar — no els repeteixis dins la mateixa setmana (com a molt 2 cops, en dies separats). En canvi, els ACOMPANYAMENTS de verdura (rol A: cremes, salteats de verdura, amanides senzilles...) es poden repetir tantes vegades com calgui sense problema — són comodins flexibles, la verdura va variant segons el que tingui el client.',
       '- Prioritza les receptes preferides (★).',
       '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
       '- Usa només id de la llista de dalt.',
