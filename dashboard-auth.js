@@ -114,11 +114,17 @@ function destroyGate(gate){
 }
 
 // Field maker
+// autocomplete="one-time-code" + data-*-ignore: evita que el navegador /
+// gestor de contraseñas autocomplete aquí el token de GitHub (que sí se
+// guarda como "password" en index.html). Antes el token aparecía solo.
 function pinField(id, placeholder){
   return `
     <div class="dag-lbl">${placeholder}</div>
     <div class="dag-pwrap">
-      <input class="dag-inp" id="${id}" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input class="dag-inp" id="${id}" name="dag_${id}_${Math.random().toString(36).slice(2,8)}"
+             type="password" inputmode="numeric"
+             autocomplete="one-time-code" autocapitalize="off" autocorrect="off"
+             spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
       <button class="dag-show" type="button" data-target="${id}" tabindex="-1">👁</button>
     </div>
   `;

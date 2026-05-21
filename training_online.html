@@ -113,7 +113,7 @@
         </div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-        <input class="tob-input" id="tobIngSearch" placeholder="🔍 Buscar por nombre..." style="flex:1;min-width:200px;" oninput="tobIngRender()">
+        <input class="tob-input" id="tobIngSearch" placeholder="🔍 Buscar por nombre..." style="flex:1;min-width:200px;" autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobIngRender()">
         <select class="tob-select" id="tobIngFilterTag" onchange="tobIngRender()" style="min-width:160px;">
           <option value="">— Todas las etiquetas —</option>
         </select>
@@ -150,11 +150,12 @@
           <button class="tob-action ghost btn-xs" onclick="tobRecExportJson()" title="Descarga la BD actual de recetas en JSON">⬇ Exportar JSON</button>
           <button class="tob-action ghost btn-xs" onclick="document.getElementById('tobRecImportFile').click()" title="Importa recetas desde JSON (formato simple ICNS con macros, o formato detallado del scraper con ingredientes/instrucciones). Acepta múltiples archivos.">⬆ Importar JSON</button>
           <input type="file" id="tobRecImportFile" accept=".json" multiple style="display:none" onchange="tobRecImportFiles(event)">
+          <button class="tob-action ghost btn-xs" onclick="tobClasifOpen()" title="Asignar a cada receta en qué momento del día encaja (desayuno, comida, merienda...) — en masa">🍽 Clasificar momentos</button>
           <button class="tob-action btn-xs" onclick="tobRecOpenModal()">+ Nueva receta</button>
         </div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-        <input class="tob-input" id="tobRecSearch" placeholder="🔍 Buscar por nombre, ingrediente, tag..." style="flex:1;min-width:240px;" oninput="tobRecRender()">
+        <input class="tob-input" id="tobRecSearch" placeholder="🔍 Buscar por nombre, ingrediente, tag..." style="flex:1;min-width:240px;" autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobRecRender()">
         <select class="tob-select" id="tobRecFilterMomento" onchange="tobRecRender()" style="min-width:140px;">
           <option value="">— Todos los momentos —</option>
           <option value="esmorzar">Esmorzar</option>
@@ -337,6 +338,7 @@
             <span>📋 Menú · <span id="tobMcSemanaActiva">Setmana 1</span></span>
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
               <div id="tobMcSemanasTabs" style="display:flex;gap:4px;"></div>
+              <button class="tob-action ghost btn-xs" onclick="tobMcOpenMealsModal()" title="Elegir qué àpats tiene el menú (añadir 2ª media mañana, 2ª merienda...)">⚙ Àpats</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
               <button class="tob-action btn-xs" onclick="tobMcSave()" title="Guardar el menú en el cliente">💾 Guardar</button>
             </div>
@@ -349,7 +351,7 @@
           <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <span>🍳 Recetas <span id="tobMcRecCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
           </div>
-          <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
+          <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:.65rem;">
             <button class="tob-mc-mom-btn active" data-mom="" onclick="tobMcFilterMomento('',this)">Todas</button>
             <button class="tob-mc-mom-btn" data-mom="esmorzar" onclick="tobMcFilterMomento('esmorzar',this)">Esmorzar</button>
@@ -373,7 +375,7 @@
     <div class="tob-card">
       <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>📁 Menús guardados <span id="tobMenusGuardadosCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
-        <input class="tob-input" id="tobMenusGuardadosSearch" placeholder="🔍 Buscar por cliente..." style="max-width:240px;" oninput="tobMenusGuardadosRender()">
+        <input class="tob-input" id="tobMenusGuardadosSearch" placeholder="🔍 Buscar por cliente..." style="max-width:240px;" autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobMenusGuardadosRender()">
       </div>
       <div id="tobMenusGuardadosList"></div>
     </div>
@@ -419,6 +421,44 @@
       <button class="tob-action ghost" onclick="document.getElementById('tobAiConfigBg').classList.remove('on')">Tancar</button>
       <button class="tob-action ghost" onclick="tobAiTestConfig()">🔌 Provar</button>
       <button class="tob-action" onclick="tobAiSaveConfigFromModal()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL ÀPATS DEL MENÚ ════════ -->
+<div class="tob-modal-bg" id="tobMcMealsModalBg">
+  <div class="tob-modal" style="max-width:420px;">
+    <h3>⚙ Àpats del menú</h3>
+    <p style="font-size:.78rem;color:var(--mute);margin-bottom:10px;line-height:1.5;">
+      Marca qué comidas tendrá este menú. Puedes añadir una 2ª media mañana o una 2ª merienda si el cliente hace más comidas.
+    </p>
+    <div id="tobMcMealsBody"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcMealsModalBg').classList.remove('on')">Cancelar</button>
+      <button class="tob-action" onclick="tobMcApplyMeals()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL CLASIFICAR MOMENTOS ════════ -->
+<div class="tob-modal-bg" id="tobClasifModalBg">
+  <div class="tob-modal" style="max-width:740px;max-height:90vh;display:flex;flex-direction:column;">
+    <h3 style="margin:0 0 4px;">🍽 Clasificar recetas por momento</h3>
+    <p style="font-size:.76rem;color:var(--mute);margin-bottom:8px;line-height:1.5;">
+      Marca en qué momentos del día encaja cada receta — la IA y el creador lo usan para colocarlas bien. Una receta puede tener varios momentos.
+    </p>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+      <span id="tobClasifInfo" style="font-size:.74rem;color:var(--mute);font-family:'DM Mono',monospace;"></span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--mute);cursor:pointer;">
+        <input type="checkbox" id="tobClasifSoloSin" checked onchange="tobClasifToggleSoloSin(this)" style="accent-color:var(--acc);">
+        Solo sin clasificar
+      </label>
+      <button class="tob-action ghost btn-xs" onclick="tobClasifAuto()" title="Estima automáticamente el momento de las recetas sin clasificar" style="margin-left:auto;">🪄 Auto-clasificar las que faltan</button>
+    </div>
+    <div id="tobClasifBody" style="overflow-y:auto;flex:1;min-height:140px;"></div>
+    <div id="tobClasifPager" style="display:flex;justify-content:center;align-items:center;gap:10px;padding:10px 0 2px;"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+      <button class="tob-action" onclick="document.getElementById('tobClasifModalBg').classList.remove('on');tobRecRender();">Hecho</button>
     </div>
   </div>
 </div>

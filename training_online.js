@@ -7026,6 +7026,114 @@ function tobRecExportJson(){
   tobToast(`✓ ${tobMenusDB.recetas.length} recetas exportadas`, 'green');
 }
 
+// ═════════════════════════════════════════════════════════════════
+// CLASIFICAR RECETAS POR MOMENTO DEL DÍA (en masa)
+// ═════════════════════════════════════════════════════════════════
+let tobClasifPage = 0;
+let tobClasifSoloSin = true;
+
+// Heurística: deduce momentos plausibles de una receta por su nombre,
+// tags y kcal. Sirve para clasificar en masa las que no tienen momento.
+function tobRecAutoMomentos(rec){
+  const txt = ((rec.nombre||'') + ' ' + (rec.tags||[]).join(' ')).toLowerCase();
+  const mac = tobRecMacros(rec);
+  const kcal = mac.kcal / (rec.raciones || 1);
+  const out = new Set();
+  if(/torrad|tostad|batut|batido|iogurt|yogur|civada|avena|cereal|ou remenat|tortit|caf[èe]|porridge|magdalen|bizcoch|melmelad|sandvitx|sandwich|crep|gofre/.test(txt))
+    out.add('esmorzar');
+  if(/barret|barrita|fruita|fruto seco|fruits secs|hummus|snack|gelat|maduix|poma|pl[àa]tan/.test(txt) || kcal < 230){
+    out.add('mig_mati'); out.add('berenar');
+  }
+  if(/amanida|ensalada|arr[òo]s|pasta|guis|estofat|crema|sopa|llent|lentej|cigron|garbanz|pollastre|pollo|peix|pescat|pescado|carn|vedella|ternera|truita|tortilla|hamburg|pizza|wok|saltej|filet|estofado|guiso/.test(txt) || kcal > 420){
+    out.add('dinar'); out.add('sopar');
+  }
+  if(!out.size){
+    if(kcal < 300){ out.add('mig_mati'); out.add('berenar'); }
+    else { out.add('dinar'); out.add('sopar'); }
+  }
+  return [...out];
+}
+
+function tobClasifOpen(){
+  tobClasifPage = 0;
+  tobClasifSoloSin = true;
+  const chk = document.getElementById('tobClasifSoloSin');
+  if(chk) chk.checked = true;
+  tobClasifRender();
+  document.getElementById('tobClasifModalBg').classList.add('on');
+}
+
+function tobClasifRender(){
+  const body = document.getElementById('tobClasifBody');
+  if(!body) return;
+  const all = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
+  const sinClasif = all.filter(r => !((r.momentos||[]).length));
+  let list = (tobClasifSoloSin ? sinClasif : all).slice().sort((a,b) => {
+    const am = (a.momentos||[]).length ? 1 : 0, bm = (b.momentos||[]).length ? 1 : 0;
+    if(am !== bm) return am - bm;
+    return (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'});
+  });
+  const info = document.getElementById('tobClasifInfo');
+  if(info) info.textContent = `${all.length} receptes · ${sinClasif.length} sense classificar`;
+
+  const PER = 25;
+  const pages = Math.max(1, Math.ceil(list.length / PER));
+  if(tobClasifPage >= pages) tobClasifPage = pages - 1;
+  if(tobClasifPage < 0) tobClasifPage = 0;
+  const slice = list.slice(tobClasifPage * PER, tobClasifPage * PER + PER);
+
+  if(!list.length){
+    body.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:30px;font-family:DM Mono,monospace;font-size:.8rem;">🎉 Totes les receptes tenen moment assignat.</div>';
+  } else {
+    body.innerHTML = slice.map(r => {
+      const set = new Set(r.momentos||[]);
+      const chips = TOB_REC_MOMENTOS.map(mm =>
+        `<button type="button" class="tob-quest-chip${set.has(mm.id)?' active':''}" onclick="tobClasifToggleMom('${r.id}','${mm.id}',this)">${tobEsc(mm.label)}</button>`
+      ).join('');
+      return `<div class="tob-clasif-row">
+        <div class="tob-clasif-nm">${tobEsc(r.nombre||'—')}</div>
+        <div class="tob-clasif-chips">${chips}</div>
+      </div>`;
+    }).join('');
+  }
+  const pager = document.getElementById('tobClasifPager');
+  if(pager){
+    pager.innerHTML = pages > 1
+      ? `<button class="tob-action ghost btn-xs" ${tobClasifPage===0?'disabled':''} onclick="tobClasifSetPage(${tobClasifPage-1})">← Anterior</button>
+         <span style="font-family:DM Mono,monospace;font-size:.72rem;color:var(--mute);">${tobClasifPage+1} / ${pages}</span>
+         <button class="tob-action ghost btn-xs" ${tobClasifPage>=pages-1?'disabled':''} onclick="tobClasifSetPage(${tobClasifPage+1})">Següent →</button>`
+      : '';
+  }
+}
+function tobClasifSetPage(p){ tobClasifPage = p; tobClasifRender(); }
+function tobClasifToggleSoloSin(chk){ tobClasifSoloSin = !!chk.checked; tobClasifPage = 0; tobClasifRender(); }
+
+function tobClasifToggleMom(recId, momId, btn){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+  if(!r) return;
+  if(!Array.isArray(r.momentos)) r.momentos = [];
+  const ix = r.momentos.indexOf(momId);
+  if(ix >= 0) r.momentos.splice(ix, 1);
+  else r.momentos.push(momId);
+  btn.classList.toggle('active');
+  tobMenusSave();
+  // Actualizar el contador del cabecero sin re-render completo
+  const all = (tobMenusDB.recetas||[]).filter(x => x.origen !== 'ingrediente');
+  const sinN = all.filter(x => !((x.momentos||[]).length)).length;
+  const info = document.getElementById('tobClasifInfo');
+  if(info) info.textContent = `${all.length} receptes · ${sinN} sense classificar`;
+}
+
+function tobClasifAuto(){
+  const sinClasif = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente' && !((r.momentos||[]).length));
+  if(!sinClasif.length){ tobToast('Ja estan totes classificades', ''); return; }
+  if(!confirm(`Auto-classificar ${sinClasif.length} receptes sense moment?\nÉs una estimació automàtica — després pots revisar-les i ajustar-les.`)) return;
+  sinClasif.forEach(r => { r.momentos = tobRecAutoMomentos(r); });
+  tobMenusSave();
+  tobClasifRender();
+  tobToast(`✓ ${sinClasif.length} receptes classificades — revisa-les`, 'green');
+}
+
 // Hook al cambio de sub-tab "recetas" para re-renderizar
 const _origTobMenuShowTab = tobMenuShowTab;
 tobMenuShowTab = function(name, btn){
@@ -7058,6 +7166,27 @@ let tobMcState = null;
 const TOB_MC_DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
 const TOB_MC_DIA_FULL = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
 let _tobMcMomentoFiltro = '';  // filtro activo del panel lateral
+
+// Comidas posibles del creador, en orden. Las "(2)" son àpats extra
+// opcionales (2ª mig matí / 2ª berenar). 'base' = momento de receta con el
+// que se filtran candidatos (un mig_mati2 acepta recetas de mig_mati).
+const TOB_MC_MEAL_DEFS = [
+  { id:'esmorzar',  label:'Esmorzar' },
+  { id:'mig_mati',  label:'Mig matí' },
+  { id:'mig_mati2', label:'Mig matí (2)', base:'mig_mati' },
+  { id:'dinar',     label:'Dinar' },
+  { id:'berenar',   label:'Berenar' },
+  { id:'berenar2',  label:'Berenar (2)', base:'berenar' },
+  { id:'sopar',     label:'Sopar' }
+];
+function tobMcMealLabel(id){
+  const d = TOB_MC_MEAL_DEFS.find(x => x.id === id);
+  return d ? d.label : (TOB_REC_MOMENTO_LBL[id] || id);
+}
+function tobMcMealBase(id){
+  const d = TOB_MC_MEAL_DEFS.find(x => x.id === id);
+  return (d && d.base) || id;
+}
 
 // Cuáles comidas/día tiene el cliente, según los apats rellenos en su cuestionario.
 // Devuelve array de { id, label } en orden esmorzar→sopar.
@@ -7343,7 +7472,9 @@ function tobMcRenderGrid(){
   const grid = document.getElementById('tobMcGrid');
   if(!grid) return;
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
-  const comidas = tobMcComidasDelCliente(cli);
+  // Las comidas del menú salen del estado (permite àpats extra), no se
+  // re-derivan del cuestionario.
+  const comidas = (tobMcState.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
   const sem = tobMcState.semanaActiva;
 
   // grid layout: 1 col label comida + 7 cols días = 8 columnas
@@ -7575,6 +7706,42 @@ function tobMcClearSemana(){
   tobMcRenderGrid();
 }
 
+// ── Àpats del menú: elegir qué comidas tiene (incl. 2ª mig matí/berenar)
+function tobMcOpenMealsModal(){
+  if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  const cur = new Set(tobMcState.comidasIds || []);
+  document.getElementById('tobMcMealsBody').innerHTML = TOB_MC_MEAL_DEFS.map(d =>
+    `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--line);">
+      <input type="checkbox" id="tobMcMeal_${d.id}" ${cur.has(d.id)?'checked':''} style="accent-color:var(--acc);">
+      <span>${tobEsc(d.label)}</span>
+      ${d.base?'<span style="font-size:.68rem;color:var(--mute2);font-family:DM Mono,monospace;">àpat extra</span>':''}
+    </label>`
+  ).join('');
+  document.getElementById('tobMcMealsModalBg').classList.add('on');
+}
+function tobMcApplyMeals(){
+  if(!tobMcState) return;
+  const checked = TOB_MC_MEAL_DEFS
+    .filter(d => { const el = document.getElementById('tobMcMeal_'+d.id); return el && el.checked; })
+    .map(d => d.id);
+  if(!checked.length){ tobToast('Selecciona almenys un àpat', 'red'); return; }
+  tobMcState.comidasIds = checked;
+  // Asegurar arrays en data para todos los àpats y semanas
+  for(let s = 0; s < tobMcState.semanas; s++){
+    if(!tobMcState.data[s]) tobMcState.data[s] = {};
+    for(let d = 0; d < 7; d++){
+      if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
+      checked.forEach(id => { if(!Array.isArray(tobMcState.data[s][d][id])) tobMcState.data[s][d][id] = []; });
+    }
+  }
+  const cm = document.getElementById('tobMcComidas');
+  if(cm) cm.textContent = checked.length + ' (' + checked.map(tobMcMealLabel).join(' · ') + ')';
+  document.getElementById('tobMcMealsModalBg').classList.remove('on');
+  tobMcRenderGrid();
+  tobMcUpdateAllTotals();
+  tobToast('✓ Àpats actualitzats', 'green');
+}
+
 function tobMcSave(){
   if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
@@ -7793,7 +7960,7 @@ async function tobMenuPdf(cliId, menuId){
 
   const esc = tobEsc;
   const DIAS = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
-  const comidas = (m.comidasIds || []).map(id => ({ id, label: TOB_REC_MOMENTO_LBL[id] || id }));
+  const comidas = (m.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
   const semanas = m.semanas || 1;
   // Macros por ración de una receta
   const macRac = (r) => { const x = tobRecMacros(r); const rac = r.raciones || 1; return { kcal:x.kcal/rac, prot:x.proteina/rac, hc:x.hc/rac, gras:x.grasa/rac, fib:x.fibra/rac }; };
@@ -8129,11 +8296,15 @@ function tobMcPerfilTexto(cli){
   return L.join('\n');
 }
 
-// Recetas candidatas para un momento: compatibles con el cliente + del momento.
+// Recetas candidatas para un momento: compatibles con el cliente + del
+// momento. Los "platos sueltos" (origen ingrediente) se excluyen: son solo
+// para colocación manual desde el panel, no para la IA ni el cambio de plato.
 function tobMcCandidatas(cli, comidaId){
+  const base = tobMcMealBase(comidaId);
   return (tobMenusDB.recetas || []).filter(r => {
+    if(r.origen === 'ingrediente') return false;
     const moms = r.momentos || [];
-    if(moms.length && !moms.includes(comidaId)) return false;
+    if(moms.length && !moms.includes(base)) return false;
     return tobMcCheckCompat(r, cli).compat;
   });
 }
@@ -8145,7 +8316,7 @@ async function tobMcGenerarIA(){
   if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
   if(!cli){ tobToast('Client no trobat', 'red'); return; }
-  const comidas = tobMcComidasDelCliente(cli);
+  const comidas = (tobMcState.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
   if(!comidas.length){ tobToast('El client no té àpats definits al qüestionari', 'red'); return; }
   if(!(tobMenusDB.recetas||[]).length){ tobToast('No hi ha receptes importades', 'red'); return; }
 
@@ -8264,7 +8435,7 @@ function tobMcOpenSwap(day, mealId, ix){
   const curKcal = cur ? tobRecMacros(cur).kcal / (cur.raciones||1) : 0;
   _tobMcSwapCtx = { day, mealId, ix };
   document.getElementById('tobMcSwapInfo').textContent =
-    (TOB_REC_MOMENTO_LBL[mealId]||mealId) + ' · ' + (TOB_MC_DIAS[day]||'') +
+    tobMcMealLabel(mealId) + ' · ' + (TOB_MC_DIAS[day]||'') +
     ' — actual: ' + (cur ? cur.nombre : '(cap)') + (curKcal ? ' · ' + Math.round(curKcal) + ' kcal' : '');
   let alts = tobMcCandidatas(cli, mealId).filter(r => !cur || r.id !== cur.id);
   alts.sort((a,b) => {
