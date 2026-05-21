@@ -113,7 +113,7 @@
         </div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
-        <input class="tob-input" id="tobIngSearch" placeholder="🔍 Buscar por nombre..." style="flex:1;min-width:200px;" autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobIngRender()">
+        <input class="tob-input" id="tobIngSearch" placeholder="🔍 Buscar por nombre..." style="flex:1;min-width:200px;" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobIngRender()">
         <select class="tob-select" id="tobIngFilterTag" onchange="tobIngRender()" style="min-width:160px;">
           <option value="">— Todas las etiquetas —</option>
         </select>
@@ -155,7 +155,7 @@
         </div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
-        <input class="tob-input" id="tobRecSearch" placeholder="🔍 Buscar por nombre, ingrediente, tag..." style="flex:1;min-width:240px;" autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobRecRender()">
+        <input class="tob-input" id="tobRecSearch" placeholder="🔍 Buscar por nombre, ingrediente, tag..." style="flex:1;min-width:240px;" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobRecRender()">
         <select class="tob-select" id="tobRecFilterMomento" onchange="tobRecRender()" style="min-width:140px;">
           <option value="">— Todos los momentos —</option>
           <option value="esmorzar">Esmorzar</option>
@@ -357,7 +357,7 @@
           <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <span>🍳 Recetas <span id="tobMcRecCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
           </div>
-          <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
+          <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:.65rem;">
             <button class="tob-mc-mom-btn active" data-mom="" onclick="tobMcFilterMomento('',this)">Todas</button>
             <button class="tob-mc-mom-btn" data-mom="esmorzar" onclick="tobMcFilterMomento('esmorzar',this)">Esmorzar</button>
@@ -381,7 +381,7 @@
     <div class="tob-card">
       <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
         <span>📁 Menús guardados <span id="tobMenusGuardadosCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
-        <input class="tob-input" id="tobMenusGuardadosSearch" placeholder="🔍 Buscar por cliente..." style="max-width:240px;" autocomplete="off" data-lpignore="true" data-1p-ignore oninput="tobMenusGuardadosRender()">
+        <input class="tob-input" id="tobMenusGuardadosSearch" placeholder="🔍 Buscar por cliente..." style="max-width:240px;" type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobMenusGuardadosRender()">
       </div>
       <div id="tobMenusGuardadosList"></div>
     </div>

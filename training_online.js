@@ -7909,10 +7909,15 @@ function tobMenuRowHTML(cli, m){
   </div>`;
 }
 
+let _tobMenusSearchLimpiado = false;
 function tobMenusGuardadosRender(){
   const cont = document.getElementById('tobMenusGuardadosList');
   if(!cont) return;
-  const q = (document.getElementById('tobMenusGuardadosSearch')?.value || '').trim().toLowerCase();
+  const inp = document.getElementById('tobMenusGuardadosSearch');
+  // En el primer render, vaciar el buscador por si el navegador le metió
+  // un valor (autocompletado/restauración de formulario).
+  if(inp && !_tobMenusSearchLimpiado){ inp.value = ''; _tobMenusSearchLimpiado = true; }
+  const q = (inp?.value || '').trim().toLowerCase();
   let all = tobMenusAll();
   if(q) all = all.filter(x => (x.cli.nombre||'').toLowerCase().includes(q));
   const cnt = document.getElementById('tobMenusGuardadosCount');
