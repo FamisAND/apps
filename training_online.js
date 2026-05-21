@@ -5186,16 +5186,24 @@ const TOB_QUEST_LISTS = {
 // Recordatori: àpats disponibles y cuáles se muestran según el nº de àpats
 // elegido en el chip "Nombre d'àpats".
 const TOB_QUEST_APATS = [
-  { key:'apat1', label:'Esmorzar', ph:'ex: cafè amb llet, torrades...' },
-  { key:'apat2', label:'Mig matí', ph:'ex: fruita + iogurt' },
-  { key:'apat3', label:'Dinar',    ph:'ex: amanida + pollastre + arròs' },
-  { key:'apat4', label:'Berenar',  ph:'ex: barreta + plàtan' },
-  { key:'apat5', label:'Sopar',    ph:'ex: peix al forn + verdura' }
+  { key:'apat1', label:'Esmorzar', set:'esmorzar' },
+  { key:'apat2', label:'Mig matí', set:'snack' },
+  { key:'apat3', label:'Dinar',    set:'apat' },
+  { key:'apat4', label:'Berenar',  set:'snack' },
+  { key:'apat5', label:'Sopar',    set:'apat' }
 ];
 const TOB_QUEST_APATS_BY_COUNT = {
   '3': ['apat1','apat3','apat5'],
   '4': ['apat1','apat3','apat4','apat5'],
   '5': ['apat1','apat2','apat3','apat4','apat5']
+};
+// Chips de cada tipo de àpat para el recordatori 24h. Cada àpat se marca
+// por separado (dinar ≠ sopar, mig matí ≠ berenar) — el cliente puede
+// hacer postre en uno y no en otro, etc.
+const TOB_QUEST_REC_SETS = {
+  esmorzar: ['Cafè','Torrades / pa','Batut','Iogurt','Fruita','Cereals / civada','Ous / salat','Dolç'],
+  snack:    ['Fruita','Iogurt','Fruits secs','Barreta','Cafè','Entrepà petit','No menja res'],
+  apat:     ['Plat únic','Principal + acompanyament','Porta postre','Porta pa']
 };
 
 // Lista de IDs de los campos de texto simples (input/textarea/select).
@@ -5249,25 +5257,36 @@ function tobQuestRenderRecordatori(){
   const q = (cli && cli.cuestionario) || {};
   const apats = (q.tags && q.tags.apats) || '5';
   const keys = TOB_QUEST_APATS_BY_COUNT[apats] || TOB_QUEST_APATS_BY_COUNT['5'];
+  const recChips = q.recChips || {};
   cont.innerHTML = keys.map(k => {
     const def = TOB_QUEST_APATS.find(a => a.key === k);
-    const val = q[k] != null ? q[k] : '';
-    return `<div><label class="tob-lbl">${tobEsc(def.label)}</label>` +
-      `<input class="tob-input" value="${tobEsc(val)}" placeholder="${tobEsc(def.ph)}" ` +
-      `oninput="tobQuestApatInput('${k}', this.value)"></div>`;
+    const sel = new Set(recChips[k] || []);
+    const set = TOB_QUEST_REC_SETS[def.set] || [];
+    const chips = set.map((label, ix) =>
+      `<button type="button" class="tob-quest-chip${sel.has(label)?' active':''}" onclick="tobQuestRecChip('${k}',${ix})">${tobEsc(label)}</button>`
+    ).join('');
+    return `<div class="tob-quest-rec-row">
+      <label class="tob-lbl">${tobEsc(def.label)}</label>
+      <div class="tob-quest-chips">${chips}</div>
+    </div>`;
   }).join('');
 }
 
-// Guarda el valor de un àpat del recordatori (input dinámico).
-function tobQuestApatInput(key, val){
+// Toggle de un chip del recordatori. Se guarda en q.recChips[apatKey].
+function tobQuestRecChip(apatKey, idx){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli) return;
+  const def = TOB_QUEST_APATS.find(a => a.key === apatKey);
+  const label = def && (TOB_QUEST_REC_SETS[def.set] || [])[idx];
+  if(!label) return;
   if(!cli.cuestionario) cli.cuestionario = {};
-  const v = (val || '').trim();
-  if(v) cli.cuestionario[key] = v;
-  else  delete cli.cuestionario[key];
+  if(!cli.cuestionario.recChips) cli.cuestionario.recChips = {};
+  const arr = cli.cuestionario.recChips[apatKey] || (cli.cuestionario.recChips[apatKey] = []);
+  const ix = arr.indexOf(label);
+  if(ix >= 0) arr.splice(ix, 1);
+  else arr.push(label);
+  tobQuestRenderRecordatori();
   tobQuestScheduleSave();
-  tobUpdateCuestionarioBadge();
 }
 
 // ── Harris-Benedict: kcal base + guía de proteína ────────────────
@@ -8423,6 +8442,15 @@ function tobMcPerfilTexto(cli){
   if(t.sentenMal && t.sentenMal.length) L.push('Li senten malament: ' + t.sentenMal.join(', '));
   if(t.cuina)         L.push('Qui cuina: ' + lbl('cuina', t.cuina));
   if(t.tempsCuina)    L.push('Temps per cuinar: ' + lbl('tempsCuina', t.tempsCuina));
+  // Estructura habitual de cada àpat (recordatori 24h)
+  const rec = q.recChips || {};
+  const recLines = TOB_QUEST_APATS
+    .filter(a => Array.isArray(rec[a.key]) && rec[a.key].length)
+    .map(a => '  · ' + a.label + ': ' + rec[a.key].join(', '));
+  if(recLines.length){
+    L.push('Estructura habitual dels àpats (respecta-la al muntar el menú):');
+    recLines.forEach(line => L.push(line));
+  }
   if(q.comentari)     L.push('Notes addicionals: ' + q.comentari);
   return L.join('\n');
 }
@@ -8520,6 +8548,7 @@ async function tobMcGenerarIA(){
       'REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:',
       '- CADA dia, individualment, ha de sumar dins del marge ±' + margen + '% de ' + Math.round(kcal) + ' kcal. No val que només quadri la mitjana setmanal: TOTS i cadascun dels dies. Suma les kcal dels plats de cada dia i comprova-ho.',
       (prot ? '- Acosta cada dia a ' + Math.round(prot) + ' g de proteïna.' : '- Reparteix bé la proteïna cada dia.'),
+      '- SEGUEIX L\'ESTRUCTURA HABITUAL del client (si apareix al perfil): cada àpat hi indica què sol menjar (p. ex. esmorzar amb torrades, dinar amb postre, sopar sense...). Munta cada àpat seguint aquest patró.',
       '- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé.',
       '- MIG MATÍ i BERENAR: lleugers i senzills (~100-350 kcal). El millor sol ser un ingredient simple (∙): iogurt (normal o proteic), fruita o un grapat de fruits secs. També barretes o snacks lleugers. MAI plats contundents.',
       '- DINAR i SOPAR — munta\'ls amb cap:',
