@@ -457,6 +457,16 @@
       <label class="tob-lbl">Alérgenos <span class="tob-quest-h-sub">(coma o Enter — ej: gluten, lactosa, huevo, frutos secos, soja)</span></label>
       <input class="tob-input" id="tobIngAlergenos" placeholder="gluten, lactosa...">
     </div>
+    <div style="margin-top:10px;padding:10px 12px;background:var(--card2);border-radius:6px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.82rem;color:var(--text);">
+        <input type="checkbox" id="tobIngComoPlato" onchange="tobIngComoPlatoChange()" style="accent-color:var(--acc);">
+        Usar como plato suelto en el menú <span class="tob-quest-h-sub">(ej: pechuga de pollo, hamburguesa, pescado)</span>
+      </label>
+      <div id="tobIngPlatoGramosWrap" style="display:none;margin-top:8px;">
+        <label class="tob-lbl">Ración por defecto (g)</label>
+        <input class="tob-input" type="number" step="1" id="tobIngPlatoGramos" placeholder="150" style="max-width:160px;">
+      </div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">
       <button class="tob-action danger" id="tobIngDelBtn" onclick="tobIngDeleteFromModal()" style="display:none;">🗑 Eliminar</button>
       <div style="display:flex;gap:8px;margin-left:auto;">

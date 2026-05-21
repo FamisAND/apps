@@ -581,6 +581,13 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   background:#5a1818;color:#f0a0a0;font-size:.55rem;padding:1px 4px;border-radius:2px;
   letter-spacing:.04em;text-transform:uppercase;
 }
+/* Separador "Ingredients solts" en el panel lateral del creador */
+.tob-mc-side-sep{
+  font-family:'DM Mono',monospace;font-size:.64rem;color:var(--acc2);
+  text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+  margin:12px 0 6px;padding-top:9px;border-top:1px solid var(--border);
+}
+.tob-mc-side-sep span{color:var(--mute2);font-weight:400;text-transform:none;letter-spacing:0;}
 
 /* Item dummy mientras se arrastra (sortablejs) */
 .tob-sortable-ghost{opacity:.4;}

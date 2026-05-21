@@ -6024,11 +6024,20 @@ function tobIngOpenModal(){
   document.getElementById('tobIngFibra').value  = '';
   document.getElementById('tobIngTags').value   = '';
   document.getElementById('tobIngAlergenos').value = '';
+  document.getElementById('tobIngComoPlato').checked = false;
+  document.getElementById('tobIngPlatoGramos').value = '';
+  tobIngComoPlatoChange();
   document.getElementById('tobIngDelBtn').style.display = 'none';
   document.getElementById('tobIngModalBg').classList.add('on');
 }
 
 function tobIngCloseModal(){ document.getElementById('tobIngModalBg').classList.remove('on'); }
+
+// Muestra/oculta el campo de gramos de la ración según el checkbox.
+function tobIngComoPlatoChange(){
+  const on = document.getElementById('tobIngComoPlato').checked;
+  document.getElementById('tobIngPlatoGramosWrap').style.display = on ? '' : 'none';
+}
 
 function tobIngEdit(id){
   const ing = tobMenusDB.ingredientes.find(i => i.id === id);
@@ -6043,8 +6052,36 @@ function tobIngEdit(id){
   document.getElementById('tobIngFibra').value  = ing.fibra != null ? ing.fibra : '';
   document.getElementById('tobIngTags').value   = (ing.tags || []).join(', ');
   document.getElementById('tobIngAlergenos').value = (ing.alergenos || []).join(', ');
+  document.getElementById('tobIngComoPlato').checked = !!ing.comoPlato;
+  document.getElementById('tobIngPlatoGramos').value = ing.platoGramos != null ? ing.platoGramos : '';
+  tobIngComoPlatoChange();
   document.getElementById('tobIngDelBtn').style.display = '';
   document.getElementById('tobIngModalBg').classList.add('on');
+}
+
+// Sincroniza la "receta-ingrediente" (plato suelto) ligada a un ingrediente.
+// Si comoPlato → crea/actualiza una receta de 1 ingrediente; si no → la borra.
+function tobIngSyncPlato(ing){
+  if(!tobMenusDB.recetas) tobMenusDB.recetas = [];
+  const recId = 'recing_' + ing.id;
+  const ix = tobMenusDB.recetas.findIndex(r => r.id === recId);
+  if(ing.comoPlato){
+    const g = Math.max(1, +ing.platoGramos || 150);
+    const data = {
+      id: recId, origen: 'ingrediente', _ingPlato: ing.id,
+      nombre: ing.nombre,
+      raciones: 1,
+      ingredientes: [{ ingId: ing.id, gramos: g }],
+      momentos: [], tags: [], instrucciones: '', comentarios: '',
+      tiempoTotal: '', tiempoElaboracion: '', autor: '',
+      alergenos: Array.isArray(ing.alergenos) ? ing.alergenos.slice() : [],
+      favorito: false
+    };
+    if(ix >= 0) Object.assign(tobMenusDB.recetas[ix], data);
+    else tobMenusDB.recetas.push(data);
+  } else if(ix >= 0){
+    tobMenusDB.recetas.splice(ix, 1);
+  }
 }
 
 function tobIngSave(){
@@ -6053,6 +6090,7 @@ function tobIngSave(){
   const parseN = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
   const parseList = v => (v||'').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
 
+  const comoPlato = document.getElementById('tobIngComoPlato').checked;
   const data = {
     nombre,
     kcal:     parseN(document.getElementById('tobIngKcal').value),
@@ -6061,17 +6099,22 @@ function tobIngSave(){
     grasa:    parseN(document.getElementById('tobIngGras').value),
     fibra:    parseN(document.getElementById('tobIngFibra').value),
     tags:     parseList(document.getElementById('tobIngTags').value),
-    alergenos:parseList(document.getElementById('tobIngAlergenos').value)
+    alergenos:parseList(document.getElementById('tobIngAlergenos').value),
+    comoPlato,
+    platoGramos: comoPlato ? Math.max(1, parseN(document.getElementById('tobIngPlatoGramos').value) || 150) : null
   };
 
+  let ingObj;
   if(tobIngEditId){
-    const ing = tobMenusDB.ingredientes.find(i => i.id === tobIngEditId);
-    if(ing) Object.assign(ing, data);
+    ingObj = tobMenusDB.ingredientes.find(i => i.id === tobIngEditId);
+    if(ingObj) Object.assign(ingObj, data);
   } else {
     data.id = tobUid('ing');
     data.origen = 'manual';
     tobMenusDB.ingredientes.push(data);
+    ingObj = data;
   }
+  if(ingObj) tobIngSyncPlato(ingObj);   // crea/actualiza/borra el plato suelto
   tobMenusSave();
   tobIngCloseModal();
   tobIngRender();
@@ -6084,6 +6127,10 @@ function tobIngDeleteFromModal(){
   if(!ing) return;
   if(!confirm(`Eliminar "${ing.nombre}"?`)) return;
   tobMenusDB.ingredientes = tobMenusDB.ingredientes.filter(i => i.id !== tobIngEditId);
+  // Borrar también el plato suelto ligado, si existía
+  if(tobMenusDB.recetas){
+    tobMenusDB.recetas = tobMenusDB.recetas.filter(r => r.id !== 'recing_' + tobIngEditId);
+  }
   tobMenusSave();
   tobIngCloseModal();
   tobIngRender();
@@ -6281,7 +6328,9 @@ function tobRecRender(){
   const momento   = document.getElementById('tobRecFilterMomento')?.value || '';
   const tag       = document.getElementById('tobRecFilterTag')?.value || '';
 
-  let list = (tobMenusDB.recetas||[]).slice();
+  // Las "recetas-ingrediente" (platos sueltos) no se muestran aquí: se
+  // gestionan desde la pestaña Ingredientes.
+  let list = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
   if(search){
     list = list.filter(r => {
       const haystack = [r.nombre, ...(r.tags||[]),
@@ -6306,7 +6355,7 @@ function tobRecRender(){
   const total = list.length;
   const cntEl = document.getElementById('tobRecCount');
   if(cntEl){
-    const all = (tobMenusDB.recetas||[]).length;
+    const all = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente').length;
     cntEl.textContent = total === all ? `${all} recetas` : `${total} de ${all}`;
   }
 
@@ -7447,41 +7496,38 @@ function tobMcRenderSidePanel(){
   const search = (document.getElementById('tobMcRecSearch')?.value || '').trim().toLowerCase();
   const filtrarPerfil = document.getElementById('tobMcFiltrarPerfil')?.checked;
 
-  let list = (tobMenusDB.recetas || []).slice();
+  const all = (tobMenusDB.recetas || []).slice();
+  const matchSearch = r => !search ||
+    (r.nombre || '').toLowerCase().includes(search) ||
+    (r.tags || []).some(t => t.toLowerCase().includes(search));
+  // Recetas normales: respetan el filtro de momento. Platos sueltos
+  // (ingredientes) son comodín → siempre visibles, en su mini-sección.
+  let listRec = all.filter(r => r.origen !== 'ingrediente' && matchSearch(r));
   if(_tobMcMomentoFiltro){
-    list = list.filter(r => (r.momentos || []).includes(_tobMcMomentoFiltro));
+    listRec = listRec.filter(r => (r.momentos || []).includes(_tobMcMomentoFiltro));
   }
-  if(search){
-    list = list.filter(r => (r.nombre || '').toLowerCase().includes(search) ||
-      (r.tags || []).some(t => t.toLowerCase().includes(search)));
-  }
+  let listIng = all.filter(r => r.origen === 'ingrediente' && matchSearch(r));
 
-  // Compatibilidad: cada receta evaluada vs perfil del cliente
-  const evaluadas = list.map(r => ({
+  const evaluar = arr => arr.map(r => ({
     rec: r,
     check: cli ? tobMcCheckCompat(r, cli) : { compat:true, razones:[] }
-  }));
-  // Ordenar: compatibles primero, luego incompatibles. Dentro de cada bloque, alfabético.
-  evaluadas.sort((a,b) => {
+  })).sort((a,b) => {
     if(a.check.compat !== b.check.compat) return a.check.compat ? -1 : 1;
     return (a.rec.nombre||'').localeCompare(b.rec.nombre||'','es',{sensitivity:'base'});
   });
-
-  // Si "filtrarPerfil" está activo, esconder incompatibles del todo
-  const visibles = filtrarPerfil ? evaluadas.filter(e => e.check.compat) : evaluadas;
-
-  const cnt = document.getElementById('tobMcRecCount');
-  if(cnt){
-    const compatN = evaluadas.filter(e => e.check.compat).length;
-    cnt.textContent = filtrarPerfil
-      ? `(${compatN} compatibles)`
-      : `(${compatN}/${evaluadas.length} compatibles)`;
+  let evalRec = evaluar(listRec);
+  let evalIng = evaluar(listIng);
+  if(filtrarPerfil){
+    evalRec = evalRec.filter(e => e.check.compat);
+    evalIng = evalIng.filter(e => e.check.compat);
   }
 
-  panel.innerHTML = visibles.map(({rec: r, check}) => {
+  const cnt = document.getElementById('tobMcRecCount');
+  if(cnt) cnt.textContent = `(${evalRec.length + evalIng.length})`;
+
+  const renderItem = ({rec: r, check}) => {
     const m = tobRecMacros(r);
     const kcalPer = Math.round(m.kcal / (r.raciones || 1));
-    // La foto se hidrata async (data-foto-rec): IndexedDB o URL.
     const thumbInner = (r.nombre || '?').slice(0,2).toUpperCase();
     const incompatBadge = check.compat ? '' :
       `<span class="badge-incompat" title="${tobEsc(check.razones.join(' · '))}">⚠</span>`;
@@ -7495,10 +7541,15 @@ function tobMcRenderSidePanel(){
       </div>
       ${incompatBadge}
     </div>`;
-  }).join('');
-  if(!visibles.length){
-    panel.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:18px;font-family:DM Mono,monospace;font-size:.7rem;">Sin recetas que coincidan con los filtros.</div>';
+  };
+
+  let html = evalRec.map(renderItem).join('');
+  if(evalIng.length){
+    html += `<div class="tob-mc-side-sep">🥩 Ingredients solts <span>(plats simples)</span></div>`
+          + evalIng.map(renderItem).join('');
   }
+  panel.innerHTML = html ||
+    '<div style="text-align:center;color:var(--mute2);padding:18px;font-family:DM Mono,monospace;font-size:.7rem;">Sin recetas que coincidan con los filtros.</div>';
   tobHydrateFotos('#tobMcSidePanel');
 
   // Habilitar drag desde el panel lateral
@@ -7507,7 +7558,8 @@ function tobMcRenderSidePanel(){
       group: { name: 'menu', pull: 'clone', put: false },
       sort: false,
       animation: 150,
-      ghostClass: 'tob-sortable-ghost'
+      ghostClass: 'tob-sortable-ghost',
+      draggable: '.tob-mc-side-item'   // el separador no se arrastra
     });
   }
 }
@@ -8156,7 +8208,7 @@ async function tobMcGenerarIA(){
       '- Mig matí i berenar són àpats LLEUGERS (aprox. 100-350 kcal): fruita, iogurt, fruits secs, barretes, snacks senzills. NO hi posis plats contundents (hamburgueses, guisats, plats de cullera, carns amb guarnició) — aquests van a dinar o sopar.',
       '- Esmorzar: moderat. Dinar i sopar: són els àpats principals i forts del dia.',
       '- Prioritza les receptes preferides (★) i varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
-      '- Cada àpat sol portar 1 recepta (2 com a màxim, si cal per quadrar les kcal del dia).',
+      '- Un àpat pot portar 1, 2 o 3 plats — és habitual i recomanable (p. ex. primer + segon, o plat principal + acompanyament o postre). Posa\'n més d\'un quan tingui sentit, sobretot a dinar i sopar, i també per quadrar les kcal del dia.',
       '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
       '- Usa només id de la llista de dalt.',
       '',
