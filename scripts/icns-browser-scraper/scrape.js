@@ -194,7 +194,23 @@
 
   // ── Parser HTML → datos ────────────────────────────────────────
   function clean(s){ return (s || '').replace(/\s+/g, ' ').trim(); }
-  function extractNumber(s){ const m = (s || '').match(/(\d+(?:[.,]\d+)?)/); return m ? parseFloat(m[1].replace(',', '.')) : null; }
+  // Extrae un número respetando el formato europeo: "." = miles, "," = decimal.
+  //   "541,6"   → 541.6     "1.234,5" → 1234.5
+  //   "2.100"   → 2100      "5.7"     → 5.7
+  function extractNumber(s){
+    const m = (s || '').match(/\d[\d.,]*\d|\d/);
+    if(!m) return null;
+    let t = m[0];
+    if(t.includes(',')){
+      t = t.replace(/\./g, '').replace(',', '.');        // coma = decimal, puntos = miles
+    } else if((t.match(/\./g) || []).length > 1){
+      t = t.replace(/\./g, '');                          // varios puntos → todos miles
+    } else if(/\.\d{3}$/.test(t)){
+      t = t.replace('.', '');                            // un punto + 3 cifras → miles
+    }
+    const n = parseFloat(t);
+    return Number.isFinite(n) ? n : null;
+  }
   function extractUnit(s){ const m = (s || '').match(/\d+(?:[.,]\d+)?\s*([a-záéíóúñ]+)/i); return m ? m[1].toLowerCase() : ''; }
   function absUrl(src){
     if(!src) return '';

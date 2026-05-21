@@ -325,6 +325,11 @@
         </div>
       </div>
 
+      <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:.74rem;color:var(--mute);cursor:pointer;font-family:'DM Mono',monospace;">
+        <input type="checkbox" id="tobMcIaSoloFav" checked style="accent-color:var(--acc);">
+        🤖 La IA solo usa recetas favoritas <span class="tob-quest-h-sub">(+ ingredientes simples permitidos para media mañana y merienda)</span>
+      </label>
+
       <!-- Resumen perfil alimentario del cliente (lectura, no editable) -->
       <div id="tobMcPerfilResumen" style="display:none;margin-top:10px;padding:10px 14px;background:var(--card2);border-radius:6px;border-left:3px solid var(--acc);font-family:'DM Mono',monospace;font-size:.72rem;color:var(--mute);line-height:1.6;"></div>
     </div>
@@ -339,6 +344,7 @@
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
               <div id="tobMcSemanasTabs" style="display:flex;gap:4px;"></div>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenMealsModal()" title="Elegir qué àpats tiene el menú (añadir 2ª media mañana, 2ª merienda...)">⚙ Àpats</button>
+              <button class="tob-action ghost btn-xs" onclick="tobMcOpenNotasModal()" title="Editar las notas/recomendaciones que salen en el PDF del menú">📝 Notes</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
               <button class="tob-action btn-xs" onclick="tobMcSave()" title="Guardar el menú en el cliente">💾 Guardar</button>
             </div>
@@ -440,6 +446,22 @@
   </div>
 </div>
 
+<!-- ════════ MODAL NOTES DEL MENÚ ════════ -->
+<div class="tob-modal-bg" id="tobMcNotasModalBg">
+  <div class="tob-modal" style="max-width:540px;">
+    <h3>📝 Notes del menú</h3>
+    <p style="font-size:.78rem;color:var(--mute);margin-bottom:8px;line-height:1.5;">
+      Recomanacions que apareixen al final del PDF del menú. Pots editar-les.
+    </p>
+    <textarea class="tob-input" id="tobMcNotasText" rows="8" style="font-family:inherit;line-height:1.5;"></textarea>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcNotasText').value=TOB_MENU_NOTAS_DEFAULT">↺ Per defecte</button>
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcNotasModalBg').classList.remove('on')">Cancelar</button>
+      <button class="tob-action" onclick="tobMcApplyNotas()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════════ MODAL CLASIFICAR MOMENTOS ════════ -->
 <div class="tob-modal-bg" id="tobClasifModalBg">
   <div class="tob-modal" style="max-width:740px;max-height:90vh;display:flex;flex-direction:column;">
@@ -505,6 +527,10 @@
       <div id="tobIngPlatoGramosWrap" style="display:none;margin-top:8px;">
         <label class="tob-lbl">Ración por defecto (g)</label>
         <input class="tob-input" type="number" step="1" id="tobIngPlatoGramos" placeholder="150" style="max-width:160px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.78rem;color:var(--text);margin-top:8px;">
+          <input type="checkbox" id="tobIngIaSnack" style="accent-color:var(--acc);">
+          La IA puede usarlo en media mañana / merienda <span class="tob-quest-h-sub">(yogur, fruta, frutos secos...)</span>
+        </label>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">

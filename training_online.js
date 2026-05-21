@@ -6026,6 +6026,7 @@ function tobIngOpenModal(){
   document.getElementById('tobIngAlergenos').value = '';
   document.getElementById('tobIngComoPlato').checked = false;
   document.getElementById('tobIngPlatoGramos').value = '';
+  document.getElementById('tobIngIaSnack').checked = false;
   tobIngComoPlatoChange();
   document.getElementById('tobIngDelBtn').style.display = 'none';
   document.getElementById('tobIngModalBg').classList.add('on');
@@ -6054,6 +6055,7 @@ function tobIngEdit(id){
   document.getElementById('tobIngAlergenos').value = (ing.alergenos || []).join(', ');
   document.getElementById('tobIngComoPlato').checked = !!ing.comoPlato;
   document.getElementById('tobIngPlatoGramos').value = ing.platoGramos != null ? ing.platoGramos : '';
+  document.getElementById('tobIngIaSnack').checked = !!ing.iaSnack;
   tobIngComoPlatoChange();
   document.getElementById('tobIngDelBtn').style.display = '';
   document.getElementById('tobIngModalBg').classList.add('on');
@@ -6069,6 +6071,7 @@ function tobIngSyncPlato(ing){
     const g = Math.max(1, +ing.platoGramos || 150);
     const data = {
       id: recId, origen: 'ingrediente', _ingPlato: ing.id,
+      _iaSnack: !!ing.iaSnack,
       nombre: ing.nombre,
       raciones: 1,
       ingredientes: [{ ingId: ing.id, gramos: g }],
@@ -6101,7 +6104,8 @@ function tobIngSave(){
     tags:     parseList(document.getElementById('tobIngTags').value),
     alergenos:parseList(document.getElementById('tobIngAlergenos').value),
     comoPlato,
-    platoGramos: comoPlato ? Math.max(1, parseN(document.getElementById('tobIngPlatoGramos').value) || 150) : null
+    platoGramos: comoPlato ? Math.max(1, parseN(document.getElementById('tobIngPlatoGramos').value) || 150) : null,
+    iaSnack:  comoPlato && document.getElementById('tobIngIaSnack').checked
   };
 
   let ingObj;
@@ -6286,13 +6290,15 @@ function tobRecFillTagFilter(){
 function tobRecMacros(rec){
   if(rec._icnsMacros){
     const m = rec._icnsMacros;
-    return {
-      kcal:     m.kcal     || 0,
-      hc:       m.hc       || 0,
-      proteina: m.proteina || 0,
-      grasa:    m.grasa    || 0,
-      fibra:    m.fibra    || 0
-    };
+    let kcal = +m.kcal || 0;
+    const hc = +m.hc || 0, prot = +m.proteina || 0, gras = +m.grasa || 0;
+    // Reparación: el scraper viejo parseaba mal números de más de 3 cifras
+    // por el separador de miles europeo ("1.234,5" → 1.234). Si las kcal
+    // son absurdamente bajas frente a los macros, se recalculan con la
+    // fórmula de Atwater (HC 4 · proteína 4 · grasa 9).
+    const atwater = hc*4 + prot*4 + gras*9;
+    if(atwater > 120 && kcal < atwater * 0.55) kcal = Math.round(atwater);
+    return { kcal, hc, proteina: prot, grasa: gras, fibra: +m.fibra || 0 };
   }
   let kcal=0, hc=0, prot=0, gras=0, fib=0;
   (rec.ingredientes||[]).forEach(it => {
@@ -7188,6 +7194,13 @@ function tobMcMealBase(id){
   return (d && d.base) || id;
 }
 
+// Notas/recomanacions que se incluyen por defecto en el PDF del menú.
+const TOB_MENU_NOTAS_DEFAULT =
+  "- Les receptes es poden adaptar al teu gust: amb els mateixos ingredients del dia, prepara-la com més t'agradi.\n" +
+  "- Les cremes i les verdures es poden variar lliurement (amanir-les, combinar-les, textures diferents...) — el valor nutricional gairebé no canvia.\n" +
+  "- Esmorzars, mig matins i berenars són intercanviables entre dies: si un dia et ve de gust el d'un altre, cap problema.\n" +
+  "- Davant de qualsevol dubte amb una recepta o una substitució, consulta'm.";
+
 // Cuáles comidas/día tiene el cliente, según los apats rellenos en su cuestionario.
 // Devuelve array de { id, label } en orden esmorzar→sopar.
 function tobMcComidasDelCliente(cli){
@@ -7258,6 +7271,7 @@ function tobMcOnClienteChange(){
     cliId, semanas,
     comidasIds: comidas.map(c => c.id),
     semanaActiva: 0,
+    notas: TOB_MENU_NOTAS_DEFAULT,
     data: {}
   };
   // Inicializar estructura
@@ -7719,6 +7733,20 @@ function tobMcOpenMealsModal(){
   ).join('');
   document.getElementById('tobMcMealsModalBg').classList.add('on');
 }
+// ── Notes/recomanacions del menú (apareixen al PDF) ────────────
+function tobMcOpenNotasModal(){
+  if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  document.getElementById('tobMcNotasText').value =
+    tobMcState.notas != null ? tobMcState.notas : TOB_MENU_NOTAS_DEFAULT;
+  document.getElementById('tobMcNotasModalBg').classList.add('on');
+}
+function tobMcApplyNotas(){
+  if(!tobMcState) return;
+  tobMcState.notas = document.getElementById('tobMcNotasText').value;
+  document.getElementById('tobMcNotasModalBg').classList.remove('on');
+  tobToast('✓ Notes actualitzades', 'green');
+}
+
 function tobMcApplyMeals(){
   if(!tobMcState) return;
   const checked = TOB_MC_MEAL_DEFS
@@ -7757,6 +7785,7 @@ function tobMcSave(){
     kcalObj:  parseFloat(document.getElementById('tobMcKcal').value) || null,
     margenPct:parseFloat(document.getElementById('tobMcMargen').value) || 10,
     protObj:  parseFloat(document.getElementById('tobMcProt').value) || null,
+    notas:    tobMcState.notas != null ? tobMcState.notas : TOB_MENU_NOTAS_DEFAULT,
     data:     JSON.parse(JSON.stringify(tobMcState.data)),
     savedAt:  new Date().toISOString()
   };
@@ -7816,6 +7845,7 @@ function tobMcLoadMenu(menuId){
     comidasIds: m.comidasIds || tobMcComidasDelCliente(cli).map(c => c.id),
     semanaActiva: 0,
     data: JSON.parse(JSON.stringify(m.data || {})),
+    notas: m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT,
     _menuId: m.id
   };
   document.getElementById('tobMcSemanas').value = m.semanas || 1;
@@ -8060,6 +8090,12 @@ async function tobMenuPdf(cliId, menuId){
       </div>`;
     }).join('')}</div>`;
 
+  // ── Notes / recomanacions ──────────────────────────────────────
+  const notas = String(m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
+  const notasHtml = notas
+    ? `<div class="mp-section"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
+    : '';
+
   // ── Documento completo ─────────────────────────────────────────
   const hoy = new Date().toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
   const html = `<!DOCTYPE html><html lang="ca"><head><meta charset="UTF-8">
@@ -8101,6 +8137,7 @@ async function tobMenuPdf(cliId, menuId){
   .mp-recepta-cols{display:flex;gap:22px;}
   .mp-recepta-cols>div{flex:1;}
   .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:15px;font-size:10px;line-height:1.45;}
+  .mp-notas{font-size:11px;line-height:1.75;color:#444;background:#faf3e0;border-radius:6px;padding:11px 14px;}
   .mp-foot{margin-top:20px;text-align:center;font-size:9px;color:#aaa;}
   @page{margin:14mm;}
 </style></head><body>
@@ -8113,6 +8150,7 @@ async function tobMenuPdf(cliId, menuId){
     </div>
   </div>
   ${graellaHtml}
+  ${notasHtml}
   ${compraHtml}
   ${recetariHtml}
   <div class="mp-foot">Generat amb Full Training · ${esc(hoy)}</div>
@@ -8334,14 +8372,19 @@ async function tobMcGenerarIA(){
 
     // Catálogo de recetas por momento. Groq free tiene un límite de tokens
     // muy bajo (~6000 TPM) → catálogo reducido. El resto de proveedores
-    // (Gemini, Anthropic, OpenRouter) admiten prompts grandes → mandamos
-    // prácticamente todas las recetas compatibles.
+    // (Gemini, Anthropic, OpenRouter) admiten prompts grandes.
+    const soloFav = !!(document.getElementById('tobMcIaSoloFav') || {}).checked;
+    // Ingredientes simples permitidos a la IA en mig matí / berenar.
+    const snackIngs = (tobMenusDB.recetas || [])
+      .filter(r => r.origen === 'ingrediente' && r._iaSnack && tobMcCheckCompat(r, cli).compat);
     let catalogo = '';
     const validIds = new Set();
     const totalCap = (cfg.provider === 'groq') ? 140 : 600;
     const capPorMomento = Math.max(10, Math.floor(totalCap / comidas.length));
     comidas.forEach(c => {
-      let cand = tobMcCandidatas(cli, c.id);
+      const base = tobMcMealBase(c.id);
+      let cand = tobMcCandidatas(cli, c.id);   // ya excluye platos sueltos
+      if(soloFav) cand = cand.filter(r => r.favorito);
       const favs = cand.filter(r => r.favorito);
       const rest = cand.filter(r => !r.favorito);
       // barajar el resto para dar variedad dentro del tope
@@ -8351,12 +8394,16 @@ async function tobMcGenerarIA(){
       }
       // Los favoritos SIEMPRE entran enteros; el resto rellena hasta el tope.
       cand = favs.concat(rest).slice(0, Math.max(capPorMomento, favs.length));
+      // En mig matí / berenar, añadir los ingredientes simples permitidos.
+      if(base === 'mig_mati' || base === 'berenar'){
+        snackIngs.forEach(r => { if(!cand.includes(r)) cand.push(r); });
+      }
       catalogo += '\n# ' + c.label + ' (id="' + c.id + '")\n';
       cand.forEach(r => {
         validIds.add(r.id);
         const mm = tobRecMacros(r); const rac = r.raciones || 1;
-        const fav = r.favorito ? '★' : '';
-        catalogo += r.id + '|' + fav + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p\n';
+        const tag = r.favorito ? '★' : (r.origen === 'ingrediente' ? '∙' : '');
+        catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p\n';
       });
     });
 
@@ -8371,17 +8418,19 @@ async function tobMcGenerarIA(){
         + comidas.map(c => '"' + c.id + '"').join(', ') + '.',
       '',
       'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id.',
-      'Format de cada línia: id|nom|kcal|proteïna  (ex: rec_x|Truita francesa|320k|18p). Una ★ davant del nom = recepta preferida del client, prioritza-la.',
+      'Format de cada línia: id|nom|kcal|proteïna  (ex: rec_x|Truita francesa|320k|18p).',
+      'Marques davant del nom: ★ = recepta preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs) — NOMÉS per a mig matí o berenar.',
       catalogo, '',
       'REGLES (molt importants):',
       '- CADA dia, individualment, ha de sumar dins del marge ±' + margen + '% de ' + Math.round(kcal) + ' kcal. No val que la mitjana setmanal quadri si un dia es queda curt o llarg — TOTS i cadascun dels dies han d\'estar dins del marge. Suma les kcal dels àpats de cada dia i comprova-ho.',
       (prot ? '- Acosta cada dia a ' + Math.round(prot) + ' g de proteïna.' : '- Reparteix bé la proteïna cada dia.'),
-      '- Mig matí i berenar són àpats LLEUGERS (aprox. 100-350 kcal): fruita, iogurt, fruits secs, barretes, snacks senzills. NO hi posis plats contundents (hamburgueses, guisats, plats de cullera, carns amb guarnició) — aquests van a dinar o sopar.',
-      '- Esmorzar: moderat. Dinar i sopar: són els àpats principals i forts del dia.',
-      '- Prioritza les receptes preferides (★) i varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
-      '- Un àpat pot portar 1, 2 o 3 plats — és habitual i recomanable (p. ex. primer + segon, o plat principal + acompanyament o postre). Posa\'n més d\'un quan tingui sentit, sobretot a dinar i sopar, i també per quadrar les kcal del dia.',
+      '- ESMORZAR: moderat. Les torrades, tostades, batuts, iogurts amb fruita i similars hi van molt bé.',
+      '- MIG MATÍ i BERENAR: àpats LLEUGERS i senzills (aprox. 100-350 kcal). Aquí el millor sol ser un ingredient simple (∙): un iogurt (normal o proteic), fruita o un grapat de fruits secs — ràpid i flexible. També hi van barretes o snacks lleugers. MAI hi posis plats contundents (hamburgueses, guisats, plats de cullera, carns amb guarnició).',
+      '- DINAR i SOPAR: són els àpats principals. Un àpat principal pot ser un plat únic complet, o bé un plat principal + un acompanyament lleuger (amanida, verdura, crema) i, si vols, una peça de fruita o un iogurt de postre. Munta\'l amb sentit comú de dietista.',
+      '- Prioritza les receptes preferides (★). Varia: no repeteixis la mateixa recepta més de 2 cops per setmana.',
+      '- Un àpat pot portar 1, 2 o 3 plats segons el que tingui sentit (vegeu dinar/sopar) i per quadrar les kcal del dia.',
       '- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.',
-      '- Usa només id de la llista de dalt.',
+      '- Usa només id de la llista de dalt. Els ingredients simples (∙) només a mig matí/berenar.',
       '',
       'FORMAT DE RESPOSTA (només JSON): un objecte amb una clau per setmana ("0","1",…). '
         + 'Cada setmana és un array de 7 dies. Cada dia és un objecte {comida_id:[id_recepta,…]}.',
