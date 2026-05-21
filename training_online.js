@@ -7063,6 +7063,14 @@ async function tobRecImportFiles(ev){
           // la suma de ingredientes.
           if(im.kcal > 0) data._icnsMacros = im;
         }
+        // Campos de organización: solo se copian si vienen en el JSON —
+        // así re-importar un export del dashboard conserva favoritos, rol
+        // y descartadas; un scrape nuevo de ICNS no los trae y no los pisa.
+        if(raw.rol != null)        data.rol = raw.rol;
+        if(raw.favorito != null)   data.favorito = !!raw.favorito;
+        if(raw.descartada != null) data.descartada = !!raw.descartada;
+        if(!data._icnsMacros && raw._icnsMacros && typeof raw._icnsMacros === 'object')
+          data._icnsMacros = raw._icnsMacros;
 
         // Detección de duplicado (igual que ingredientes): por icnsId o nombre
         let exist = null;
@@ -7645,14 +7653,19 @@ function tobMcRenderGrid(){
       const items = tobMcState.data[sem]?.[d]?.[comida.id] || [];
       const itemsHtml = items.map((recId, ix) => {
         const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
-        if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><span class="nm">(eliminada)</span><button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
+        if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><div class="mc-it-body"><div class="mc-it-nm">(eliminada)</div></div><button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
         const m = tobRecMacros(r);
-        const kcalPer = Math.round(m.kcal / (r.raciones || 1));
-        return `<div class="tob-mc-cell-item" data-rec="${recId}" title="${tobEsc(r.nombre)} · ${kcalPer} kcal/ración">
-          <span class="nm">${tobEsc(r.nombre)}</span>
-          <span class="kc">${kcalPer}</span>
+        const rac = r.raciones || 1;
+        const kcalPer = Math.round(m.kcal / rac);
+        const protPer = Math.round(m.proteina / rac);
+        return `<div class="tob-mc-cell-item" data-rec="${recId}" title="${tobEsc(r.nombre)} · ${kcalPer} kcal · ${protPer}g prot">
           <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
           <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
+          <div class="mc-it-foto placeholder" data-foto-rec="${recId}">${tobEsc((r.nombre||'?').slice(0,2).toUpperCase())}</div>
+          <div class="mc-it-body">
+            <div class="mc-it-nm">${tobEsc(r.nombre || '—')}</div>
+            <div class="mc-it-mac">${kcalPer} kcal · ${protPer}g prot</div>
+          </div>
         </div>`;
       }).join('');
       // Resumen de macros de la celda (este àpat, este día)
@@ -7678,6 +7691,7 @@ function tobMcRenderGrid(){
   }
   html += `</div>`;
   grid.innerHTML = html;
+  tobHydrateFotos('#tobMcGrid');
 
   // Habilitar drag&drop en cada celda
   if(typeof Sortable !== 'undefined'){
@@ -8167,7 +8181,7 @@ async function tobMenuPdf(cliId, menuId){
     const totRow = '<tr class="mp-tot"><th>Total dia</th>' + dayTot.map(t =>
       `<td><b>${Math.round(t.kcal)}</b> kcal · ${Math.round(t.prot)}P · ${Math.round(t.hc)}H · ${Math.round(t.gras)}G</td>`
     ).join('') + '</tr>';
-    graellaHtml += `<div class="mp-section">
+    graellaHtml += `<div class="mp-section mp-blk">
       <h2>Setmana ${s+1}</h2>
       <table class="mp-graella"><thead><tr><th></th>${DIAS.map(d=>`<th>${d}</th>`).join('')}</tr></thead>
       <tbody>${rows}${totRow}</tbody></table></div>`;
@@ -8197,7 +8211,7 @@ async function tobMenuPdf(cliId, menuId){
   let compraHtml = '';
   const secsAmbDades = TOB_SECCIONS.filter(s => porSeccion[s] && porSeccion[s].length);
   if(secsAmbDades.length){
-    compraHtml = '<div class="mp-section mp-break"><h2>Llista de la compra</h2>';
+    compraHtml = '<div class="mp-section mp-blk"><h2>Llista de la compra</h2>';
     secsAmbDades.forEach(sec => {
       const items = porSeccion[sec].sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
       compraHtml += '<h4 class="mp-compra-sec">' + esc(sec) + '</h4><ul class="mp-compra">' +
@@ -8207,36 +8221,39 @@ async function tobMenuPdf(cliId, menuId){
     compraHtml += '</div>';
   }
 
-  // ── Receptari ──────────────────────────────────────────────────
+  // ── Receptari ── (cada recepta es un bloc paginable per separat)
   const recetari = Object.keys(usos).map(id => recsById[id]).filter(Boolean)
     .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'}));
-  const recetariHtml = `<div class="mp-section mp-break"><h2>Receptari</h2>
-    ${recetari.map(r => {
+  const recetariHtml = recetari.length
+    ? '<h2 class="mp-blk mp-recetari-h">Receptari</h2>' + recetari.map(r => {
       const foto = fotoMap[r.id];
       const mr = macRac(r);
+      const racR = r.raciones || 1;
       const ings = (r.ingredientes||[]).map(it => {
         const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
         const nom = ing ? ing.nombre : (it._nombreFallback || '—');
-        return `<li>${esc(nom)}${it.gramos ? ` · ${Math.round(it.gramos)} g` : ''}</li>`;
+        const g = (+it.gramos || 0) / racR;   // por ración (1 persona)
+        return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
       }).join('');
       const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
                   : String(r.instrucciones||'').split('\n').filter(Boolean);
-      return `<div class="mp-recepta">
+      return `<div class="mp-recepta mp-blk">
         <div class="mp-recepta-head">
           ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-recepta-foto mp-recepta-nofoto"></div>'}
           <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
           <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
           ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}</div>
         </div>
-        ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients</h4><ul>${ings}</ul></div>
+        ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
           <div><h4>Preparació</h4><ol>${pasos.map(p=>`<li>${esc(p.replace(/^[-·•*\d.\s]+/,''))}</li>`).join('')||'<li>—</li>'}</ol></div></div>` : ''}
       </div>`;
-    }).join('')}</div>`;
+    }).join('')
+    : '';
 
   // ── Notes / recomanacions ──────────────────────────────────────
   const notas = String(m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
   const notasHtml = notas
-    ? `<div class="mp-section"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
+    ? `<div class="mp-section mp-blk"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
     : '';
 
   // ── Documento del menú (se renderiza fuera de pantalla y se vuelca
@@ -8258,14 +8275,16 @@ async function tobMenuPdf(cliId, menuId){
     .mp-body{padding:24px 40px 0;}
     .mp-section{margin-bottom:24px;}
     .mp-doc table{border-collapse:collapse;width:100%;}
-    .mp-graella th,.mp-graella td{border:1px solid #e0d6bf;padding:5px;font-size:9px;vertical-align:top;}
+    .mp-graella{table-layout:fixed;}
+    .mp-graella th,.mp-graella td{border:1px solid #e0d6bf;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere;}
     .mp-graella thead th{background:#9a7016;color:#fff;font-size:9px;text-transform:uppercase;letter-spacing:.04em;}
     .mp-graella tbody th{background:#f6efdc;color:#7a5c10;width:66px;font-size:9px;text-transform:uppercase;font-weight:700;}
     .mp-plato{display:flex;gap:5px;align-items:center;margin-bottom:4px;}
     .mp-plato:last-child{margin-bottom:0;}
     .mp-foto{width:40px;height:32px;border-radius:4px;background:#eee center/cover;flex:none;border:1px solid #e0d6bf;}
     .mp-nofoto{background:#f0e6cc;}
-    .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.18;color:#23201a;}
+    .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.18;color:#23201a;overflow-wrap:anywhere;}
+    .mp-recetari-h{margin-top:8px;}
     .mp-plato-kcal{font-size:7.5px;color:#9a8a64;}
     .mp-buit{color:#ccc;font-size:9px;text-align:center;padding:6px 0;}
     .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f6efdc;color:#7a5c10;font-weight:700;font-size:8.5px;text-align:center;}
@@ -8288,7 +8307,7 @@ async function tobMenuPdf(cliId, menuId){
     .mp-foot{margin:26px 40px 0;text-align:center;font-size:9px;color:#bbb;border-top:1px solid #eee;padding-top:10px;}
   `;
   const bodyHtml = `<div class="mp-doc">
-    <div class="mp-cover">
+    <div class="mp-cover mp-blk">
       <div class="mp-logo"><b>FULL</b> TRAINING</div>
       <div class="mp-logo-tag">NUTRICIÓ</div>
       <div class="mp-cover-ttl">Menú nutricional</div>
@@ -8318,22 +8337,41 @@ async function tobMenuPdf(cliId, menuId){
   document.body.appendChild(holder);
   try {
     await new Promise(r => setTimeout(r, 150));   // dejar asentar imágenes
-    const canvas = await html2canvas(holder.querySelector('.mp-doc'),
+    const docEl = holder.querySelector('.mp-doc');
+    // Puntos de corte de página: en los límites de los bloques .mp-blk,
+    // así no se parte ninguna receta ni sección por la mitad.
+    const docTop = docEl.getBoundingClientRect().top;
+    const docH = docEl.scrollHeight;
+    const pageCssH = 794 * 297 / 210;   // alto de A4 a 794px de ancho
+    const cuts = [0];
+    let pageStart = 0;
+    holder.querySelectorAll('.mp-blk').forEach(blk => {
+      const rc = blk.getBoundingClientRect();
+      const top = rc.top - docTop;
+      const bot = rc.bottom - docTop;
+      if(bot - pageStart > pageCssH && top > pageStart + 4){
+        cuts.push(top); pageStart = top;
+      }
+    });
+    cuts.push(docH);
+
+    const canvas = await html2canvas(docEl,
       { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const sc = canvas.width / 794;   // px de canvas por px CSS
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageW = 210, pageH = 297;
-    const imgW = pageW;
-    const imgH = canvas.height * imgW / canvas.width;
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    let heightLeft = imgH, pos = 0;
-    pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
-    heightLeft -= pageH;
-    while(heightLeft > 0){
-      pos -= pageH;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, pos, imgW, imgH);
-      heightLeft -= pageH;
+    for(let i = 0; i < cuts.length - 1; i++){
+      const y0 = Math.round(cuts[i] * sc);
+      const y1 = Math.round(cuts[i+1] * sc);
+      const segH = Math.min(y1 - y0, canvas.height - y0);
+      if(segH <= 1) continue;
+      const seg = document.createElement('canvas');
+      seg.width = canvas.width; seg.height = segH;
+      seg.getContext('2d').drawImage(canvas, 0, y0, canvas.width, segH, 0, 0, canvas.width, segH);
+      if(i > 0) pdf.addPage();
+      let imgW = 210, imgH = segH * 210 / canvas.width, x = 0;
+      if(imgH > 297){ const k = 297 / imgH; imgH = 297; imgW = 210 * k; x = (210 - imgW) / 2; }
+      pdf.addImage(seg.toDataURL('image/jpeg', 0.92), 'JPEG', x, 0, imgW, imgH);
     }
     const fname = 'Menu_' + String(cli.nombre||'client').replace(/[^\w\-]+/g,'_') +
                   '_' + new Date().toISOString().slice(0,10) + '.pdf';
@@ -8361,10 +8399,10 @@ const TOB_AI_DEFAULTS = {
 // desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
 const TOB_AI_MENU_RULES_DEFAULT =
 `REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:
-- CADA dia, individualment, ha de sumar dins del marge ±{margen}% de {kcal} kcal. No val que només quadri la mitjana setmanal: TOTS i cadascun dels dies. Suma les kcal dels plats de cada dia i comprova-ho.
-- Acosta cada dia a {prot} g de proteïna.
-- SEGUEIX L'ESTRUCTURA HABITUAL del client (si apareix al perfil): cada àpat indica què sol menjar (esmorzar amb torrades, dinar amb postre...). Munta cada àpat seguint aquest patró.
-- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé.
+- OBJECTIU CALÒRIC: cada dia ha de SUMAR {kcal} kcal (marge ±{margen}%). Reparteix-les de manera realista entre els àpats (dinar i sopar són els forts). Després de muntar cada dia, SUMA les kcal de tots els plats i comprova que arriba a {kcal}: si et quedes curt afegeix un plat o tria un de més calòric; si et passes, redueix. Cap dia es pot quedar molt per sota de l'objectiu.
+- PROTEÏNA: cada dia ha d'acostar-se a {prot} g. És molt fàcil quedar-se curt — tria conscientment plats amb proteïna alta (carn, peix, ous, llegums, iogurt proteic) fins arribar-hi. Comprova la suma de proteïna de cada dia.
+- ESTRUCTURA HABITUAL (OBLIGATORI si apareix al perfil): el perfil indica què menja el client a cada àpat. RESPECTA-HO al peu de la lletra. Si esmorza "torrades i cafè", tria una recepta d'esmorzar tipus torrada — NO un batut. Si a un àpat diu "fruita", posa fruita. No inventis estructures que el client no fa.
+- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé (segons el que faci el client).
 - MIG MATÍ i BERENAR: lleugers i senzills (~100-350 kcal). El millor sol ser un ingredient simple (∙): iogurt, fruita o un grapat de fruits secs. També barretes o snacks lleugers. MAI plats contundents.
 - DINAR i SOPAR — munta'ls amb cap:
    · Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols.
@@ -8557,13 +8595,16 @@ function tobMcPerfilTexto(cli){
 // Recetas candidatas para un momento: compatibles con el cliente + del
 // momento. Los "platos sueltos" (origen ingrediente) se excluyen: son solo
 // para colocación manual desde el panel, no para la IA ni el cambio de plato.
-function tobMcCandidatas(cli, comidaId){
+// strict=true → exige que la receta tenga ESE momento asignado (no vale
+// "sin momento"). Se usa al cambiar un plato: solo alternativas del àpat.
+function tobMcCandidatas(cli, comidaId, strict){
   const base = tobMcMealBase(comidaId);
   return (tobMenusDB.recetas || []).filter(r => {
     if(r.origen === 'ingrediente') return false;
     if(r.descartada) return false;
     const moms = r.momentos || [];
-    if(moms.length && !moms.includes(base)) return false;
+    if(strict){ if(!moms.includes(base)) return false; }
+    else if(moms.length && !moms.includes(base)) return false;
     return tobMcCheckCompat(r, cli).compat;
   });
 }
@@ -8660,23 +8701,63 @@ async function tobMcGenerarIA(){
     const raw = await tobAiCall([{ role:'system', content:sys }, { role:'user', content:user }]);
     const parsed = tobAiParseJson(raw);
 
-    let puestos = 0;
-    for(let s = 0; s < semanas; s++){
-      const wk = parsed[s] != null ? parsed[s] : parsed[String(s)];
-      if(!Array.isArray(wk)) continue;
-      if(!tobMcState.data[s]) tobMcState.data[s] = {};
-      for(let d = 0; d < 7; d++){
-        if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
-        const day = wk[d];
-        comidas.forEach(c => {
-          const ids = day && typeof day === 'object' ? day[c.id] : null;
-          const ok = Array.isArray(ids) ? ids.filter(id => validIds.has(id)) : [];
-          tobMcState.data[s][d][c.id] = ok;
-          puestos += ok.length;
-        });
+    // Vuelca un menú parseado al estado. Devuelve nº de platos colocados.
+    const aplicar = (pj) => {
+      let n = 0;
+      for(let s = 0; s < semanas; s++){
+        const wk = pj[s] != null ? pj[s] : pj[String(s)];
+        if(!Array.isArray(wk)) continue;
+        if(!tobMcState.data[s]) tobMcState.data[s] = {};
+        for(let d = 0; d < 7; d++){
+          if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
+          const day = wk[d];
+          comidas.forEach(c => {
+            const ids = day && typeof day === 'object' ? day[c.id] : null;
+            const ok = Array.isArray(ids) ? ids.filter(id => validIds.has(id)) : [];
+            tobMcState.data[s][d][c.id] = ok;
+            n += ok.length;
+          });
+        }
       }
-    }
+      return n;
+    };
+    let puestos = aplicar(parsed);
     if(!puestos) throw new Error('la IA no ha retornat receptes vàlides — torna-ho a provar');
+
+    // ── Corrección: días lejos del objetivo calórico → un reajuste ──
+    try {
+      const recById = {};
+      (tobMenusDB.recetas||[]).forEach(r => { recById[r.id] = r; });
+      const dayKcal = (s,d) => {
+        let k = 0;
+        comidas.forEach(c => ((((tobMcState.data[s]||{})[d])||{})[c.id]||[]).forEach(id => {
+          const r = recById[id]; if(r) k += tobRecMacros(r).kcal / (r.raciones || 1);
+        }));
+        return k;
+      };
+      const lo = kcal * (1 - margen/100) * 0.93;
+      const hi = kcal * (1 + margen/100) * 1.07;
+      const fueras = [];
+      for(let s = 0; s < semanas; s++) for(let d = 0; d < 7; d++){
+        const k = dayKcal(s,d);
+        if(k > 0 && (k < lo || k > hi)) fueras.push({ s, d, k });
+      }
+      if(fueras.length){
+        tobToast('🤖 Ajustant ' + fueras.length + ' dia(es) lluny de l\'objectiu…', '');
+        const fixUser = 'El menú que has generat té dies lluny de l\'objectiu de ' + Math.round(kcal) + ' kcal/dia:\n'
+          + fueras.map(f => '· setmana ' + f.s + ', dia ' + f.d + ': ' + Math.round(f.k) + ' kcal').join('\n')
+          + '\n\nCorregeix NOMÉS aquests dies (afegeix, treu o canvia plats perquè quedin dins del marge ±' + margen
+          + '%; la resta de dies deixa\'ls igual). Usa només id de la llista de receptes que ja tens. '
+          + 'Retorna el menú SENCER en el mateix format JSON.';
+        const raw2 = await tobAiCall([
+          { role:'system', content:sys }, { role:'user', content:user },
+          { role:'assistant', content:raw }, { role:'user', content:fixUser }
+        ]);
+        const n2 = aplicar(tobAiParseJson(raw2));
+        if(n2) puestos = n2;
+      }
+    } catch(e){ console.warn('[IA correcció]', e); }
+
     tobMcRenderGrid();
     tobMcUpdateAllTotals();
     tobToast('✓ Menú generat amb IA — ' + puestos + ' plats. Revisa\'l i ajusta el que calgui.', 'green');
@@ -8705,7 +8786,7 @@ function tobMcOpenSwap(day, mealId, ix){
   document.getElementById('tobMcSwapInfo').textContent =
     tobMcMealLabel(mealId) + ' · ' + (TOB_MC_DIAS[day]||'') +
     ' — actual: ' + (cur ? cur.nombre : '(cap)') + (curKcal ? ' · ' + Math.round(curKcal) + ' kcal' : '');
-  let alts = tobMcCandidatas(cli, mealId).filter(r => !cur || r.id !== cur.id);
+  let alts = tobMcCandidatas(cli, mealId, true).filter(r => !cur || r.id !== cur.id);
   alts.sort((a,b) => {
     const ka = tobRecMacros(a).kcal/(a.raciones||1), kb = tobRecMacros(b).kcal/(b.raciones||1);
     if(curKcal){

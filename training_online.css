@@ -528,26 +528,31 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 }
 .tob-mc-cell.over{border-color:var(--acc);background:#1f1c14;}
 .tob-mc-cell-item{
-  display:flex;align-items:center;gap:5px;
-  background:var(--card2);border:1px solid var(--border);border-radius:3px;
-  padding:5px 7px;font-size:.72rem;color:var(--text);
+  display:flex;align-items:flex-start;gap:6px;
+  background:var(--card2);border:1px solid var(--border);border-radius:4px;
+  padding:5px 6px;color:var(--text);
   cursor:grab;transition:all .15s ease;
   position:relative;
 }
 .tob-mc-cell-item:hover{border-color:var(--acc);}
-.tob-mc-cell-item .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.tob-mc-cell-item .kc{color:var(--acc2);font-size:.66rem;font-weight:700;}
-.tob-mc-cell-item .x{
-  background:transparent;border:none;color:var(--mute2);cursor:pointer;
-  width:18px;height:18px;display:flex;align-items:center;justify-content:center;
-  border-radius:2px;font-size:.78rem;line-height:1;padding:0;
+.tob-mc-cell-item .mc-it-foto{
+  width:42px;height:38px;border-radius:3px;flex:none;
+  background:#1a1814 center/cover;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.55rem;color:var(--mute2);font-weight:700;letter-spacing:.04em;
 }
-.tob-mc-cell-item .x:hover{background:#7a2424;color:#fff;}
+.tob-mc-cell-item .mc-it-body{flex:1;min-width:0;padding-right:15px;}
+.tob-mc-cell-item .mc-it-nm{font-size:.72rem;font-weight:700;line-height:1.22;color:var(--text);}
+.tob-mc-cell-item .mc-it-mac{font-size:.62rem;color:var(--acc2);margin-top:2px;font-weight:700;}
+.tob-mc-cell-item .x,
 .tob-mc-cell-item .swap{
-  background:transparent;border:none;cursor:pointer;
-  width:18px;height:18px;display:flex;align-items:center;justify-content:center;
-  border-radius:2px;font-size:.7rem;line-height:1;padding:0;opacity:.55;
+  position:absolute;right:3px;background:transparent;border:none;cursor:pointer;
+  width:17px;height:17px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;line-height:1;padding:0;
 }
+.tob-mc-cell-item .x{top:3px;color:var(--mute2);font-size:.82rem;}
+.tob-mc-cell-item .x:hover{background:#7a2424;color:#fff;}
+.tob-mc-cell-item .swap{top:22px;font-size:.66rem;opacity:.5;}
 .tob-mc-cell-item .swap:hover{opacity:1;background:var(--card);}
 /* Resumen de macros de la celda (este àpat, este día) */
 .tob-mc-cell-sum{
