@@ -256,6 +256,45 @@ function clearCredentials(){
   _origRemoveItem.call(localStorage, CACHE_SHA);
 }
 
+// Seccions que NO s'han de bolcar a localStorage perquè:
+//   · viuen al seu propi store (IndexedDB) — tob_menus_catalog és el cas
+//     paradigmàtic: pot tenir centenars de receptes amb ingredients que
+//     sumen MB i peten la quota de localStorage (~5 MB).
+//   · o són metadades de config que es gestionen amb fetchSection/updateSection.
+const NO_LOCAL_STORAGE_SECTIONS = new Set([
+  'tob_menus_catalog',   // training_online: viu a IndexedDB amb tobKvPut
+  '__fin',               // APIs financeres (es llegeixen via fetchSection)
+  '__notif',             // config Telegram
+  '__ia_config',         // config IA (clau API, model)
+]);
+
+// Neteja retroactiva: si versions antigues de pullAndApplyAll van bolcar
+// continguts gegants a localStorage (recetas, ingredientes, menus...), els
+// eliminem en arrencar perquè la app pugui carregar. Només toquem keys que
+// són clarament restes del bolcat erroni (mida >100 KB).
+function _cleanupLegacyOversize(){
+  const CANDIDATES = ['recetas','ingredientes','menus','_v','_syncTs'];
+  let limpiado = 0, bytes = 0;
+  CANDIDATES.forEach(k => {
+    try {
+      const v = _origGetItem.call(localStorage, k);
+      if(v && v.length > 100000){       // > 100 KB → casi seguro basura del bolcat
+        _origRemoveItem.call(localStorage, k);
+        limpiado++; bytes += v.length;
+      } else if(v && (k === '_v' || k === '_syncTs')){
+        // Aquests són del tob_menus_catalog — sempre fora del localStorage
+        _origRemoveItem.call(localStorage, k);
+        limpiado++;
+      }
+    } catch(e){ /* ignorar si no es pot */ }
+  });
+  if(limpiado > 0){
+    console.warn('[GitHubSync] Netejat localStorage de restes del bolcat antic: '
+      + limpiado + ' keys, ~' + Math.round(bytes/1024) + ' KB. Aquesta neteja és puntual.');
+  }
+}
+_cleanupLegacyOversize();
+
 // Descarga data.json y vuelca cada sección/clave en localStorage.
 async function pullAndApplyAll(){
   const remote = await pullRaw();
@@ -263,13 +302,23 @@ async function pullAndApplyAll(){
   if(!remote.content) return { fresh: true };
 
   Object.keys(remote.content).forEach(section => {
-    if(section === 'version' || section === 'lastUpdate' || section === '__security') return;
+    if(section === 'version' || section === 'lastUpdate') return;
+    if(section.startsWith('__')) return;                      // privades / config
+    if(NO_LOCAL_STORAGE_SECTIONS.has(section)) return;        // gestionades en altres stores
     const sec = remote.content[section];
     if(!sec || typeof sec !== 'object') return;
     Object.keys(sec).forEach(key => {
       const val = sec[key];
       const str = (typeof val === 'string') ? val : JSON.stringify(val);
-      _origSetItem.call(localStorage, key, str);
+      try {
+        _origSetItem.call(localStorage, key, str);
+      } catch(e){
+        // Si una key concreta peta per quota, no aborti tot el bolcat — només
+        // logueja i continua amb la resta. Així la app pot arrencar encara
+        // que algun blob excepcional sigui gegantí.
+        console.warn('[GitHubSync] No s\'ha pogut guardar "' + key + '" a localStorage ('
+          + (str ? str.length : 0) + ' bytes): ' + e.message);
+      }
     });
   });
 
