@@ -9082,6 +9082,14 @@ function tobAiParseJson(txt){
   s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
   if(a >= 0 && b > a) s = s.slice(a, b + 1);
+  // Tolerància a brutícies que alguns LLMs generen sense voler:
+  //   1. Comentaris d'estil JS: // foo  i  /* bar */
+  //   2. Comes finals abans de } o ]
+  // Aquestes substitucions són segures per a JSON ben format (no afecten
+  // strings perquè JSON.parse igualment validarà l'estructura).
+  s = s.replace(/\/\*[\s\S]*?\*\//g, '');                 // /* ... */
+  s = s.replace(/(^|[^:])\/\/[^\n\r]*/g, '$1');           // // ...  (evita trencar URLs amb ":" abans)
+  s = s.replace(/,(\s*[\}\]])/g, '$1');                   // trailing commas
   return JSON.parse(s);
 }
 
@@ -9223,22 +9231,19 @@ async function tobMcGenerarIA(){
       catalogo, '',
       rules,
       '',
-      'FORMAT DE RESPOSTA (només JSON):',
-      '{',
-      '  "data":    { "0": [día0, día1, …, día6], "1": [...] },   // un menú per setmana',
-      '  "ajustes": { "<id_recepta>": { "factor": 1.2, "motiu": "pujar prot del dimarts" } }   // opcional',
-      '}',
-      'Cada dia és un objecte {comida_id:[id_recepta,…]}. Exemple d\'un dia: {'
-        + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}',
+      'FORMAT DE RESPOSTA (només JSON vàlid, SENSE comentaris ni text extra):',
+      'Un objecte amb una clau numèrica per cada setmana ("0","1",…). Cada setmana és un array de 7 dies (0=Dilluns…6=Diumenge).',
+      'Cada dia és un objecte {comida_id:[id_recepta,…]}.',
+      'Exemple d\'un dia: {' + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}',
       '',
-      'CAMP "ajustes" (opcional, només si ajuda a quadrar millor kcal/proteïna):',
-      '· Per a una recepta del menú, pots multiplicar la seva ració per un FACTOR entre 0.6 i 1.6 '
-        + '(ex: factor 1.3 = 30% més gran). Aplica a TOTES les aparicions d\'aquesta recepta al menú.',
-      '· Útil quan un dia es queda 100-300 kcal curt o 100-300 kcal passat: en lloc de substituir un plat, '
-        + 'ajusta la ració de la recepta principal del dia. Així el client manté plats que li agraden.',
-      '· "motiu" és una frase curta en català explicant per què (ex: "ració més grossa el dimarts per pujar prot").',
-      '· No abusis: només posa ajustes quan REALMENT calguin. Si tot el menú està dins del marge sense ajustar, deixa "ajustes": {} o omet-lo.',
-      '· NO és per canviar la recepta base (això seria un canvi de plantilla); només per a aquest menú.'
+      'CAMP OPCIONAL "ajustes" (al mateix nivell que les setmanes):',
+      'Si vols multiplicar la ració d\'una recepta dins del menú (per quadrar kcal/proteïna sense canviar el plat), pots afegir aquest camp:',
+      '"ajustes": { "ID_RECEPTA": { "factor": 1.2, "motiu": "frase curta" } }',
+      '· factor: entre 0.6 i 1.6 (1 = sense canvi). 1.3 = 30% més gran.',
+      '· motiu: frase curta en català explicant per què.',
+      '· Útil quan un dia es queda 100-300 kcal curt o passat: ajusta la ració d\'un plat que li agradi en lloc de substituir-lo.',
+      '· Substitueix el plat si la diferència és >25% o estructural.',
+      '· Si el menú quadra sense ajustar, omet "ajustes" o deixa-l\'ho buit ({}).'
     ].join('\n');
 
     tobToast('🤖 La IA està generant el menú… pot trigar uns segons', '');
@@ -9246,26 +9251,45 @@ async function tobMcGenerarIA(){
     const parsed = tobAiParseJson(raw);
 
     // Vuelca un menú parseado al estado. Devuelve nº de platos colocados.
-    // Soporta dos formats de resposta de la IA:
-    //   · Legacy: { "0":[día0,...], "1":[...] }
-    //   · Nou:    { "data":{ "0":[...]}, "ajustes":{ "<recId>":{factor,ing,motiu} } }
+    // Format esperat: { "0":[día0,...], "1":[...], "ajustes": {...} }
+    //   · les claus numèriques són les setmanes
+    //   · "ajustes" (opcional) al mateix nivell — mai dins de "data"
+    // Compat: si la IA envia { "data": { "0": [...] } } també l'acceptem.
     const aplicar = (pj) => {
       let n = 0;
+      let descartados = 0;          // IDs no presents al catàleg (debug)
+      let semanasConDatos = 0;
       const dataSrc = (pj && typeof pj === 'object' && pj.data && typeof pj.data === 'object') ? pj.data : pj;
       for(let s = 0; s < semanas; s++){
         const wk = dataSrc[s] != null ? dataSrc[s] : dataSrc[String(s)];
         if(!Array.isArray(wk)) continue;
+        semanasConDatos++;
         if(!tobMcState.data[s]) tobMcState.data[s] = {};
         for(let d = 0; d < 7; d++){
           if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
           const day = wk[d];
           comidas.forEach(c => {
             const ids = day && typeof day === 'object' ? day[c.id] : null;
+            if(Array.isArray(ids)){
+              ids.forEach(id => { if(!validIds.has(id)) descartados++; });
+            }
             const ok = Array.isArray(ids) ? ids.filter(id => validIds.has(id)) : [];
             tobMcState.data[s][d][c.id] = ok;
             n += ok.length;
           });
         }
+      }
+      if(!n){
+        // Diagnòstic per a la consola: tota la info que ajuda a entendre per què
+        // la IA no ha produït cap recepta vàlida. Cal mirar amb F12.
+        console.warn('[IA menú] aplicar() ha trobat 0 receptes vàlides', {
+          semanasEsperadas: semanas,
+          semanasConDatos,
+          idsDescartados: descartados,
+          claves: pj && typeof pj === 'object' ? Object.keys(pj) : null,
+          primeraSemana: dataSrc && dataSrc[0],
+          rawSample: String(raw || '').slice(0, 800)
+        });
       }
       // Bolcar ajustos emesos per la IA — només per a receptes que estan al menú
       // i amb factor dins del rang permès. Marquem fuente:'ia' per traçabilitat.
