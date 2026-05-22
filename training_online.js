@@ -8829,20 +8829,53 @@ const TOB_AI_DEFAULTS = {
 // desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
 const TOB_AI_MENU_RULES_DEFAULT =
 `REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:
-- OBJECTIU CALÒRIC: cada dia ha de SUMAR {kcal} kcal (marge ±{margen}%). Reparteix-les de manera realista entre els àpats (dinar i sopar són els forts). Després de muntar cada dia, SUMA les kcal de tots els plats i comprova que arriba a {kcal}: si et quedes curt afegeix un plat o tria un de més calòric; si et passes, redueix. Cap dia es pot quedar molt per sota de l'objectiu.
-- PROTEÏNA: cada dia ha d'acostar-se a {prot} g. És molt fàcil quedar-se curt — tria conscientment plats amb proteïna alta (carn, peix, ous, llegums, iogurt proteic) fins arribar-hi. Comprova la suma de proteïna de cada dia.
-- ESTRUCTURA HABITUAL (OBLIGATORI si apareix al perfil): el perfil indica què menja el client a cada àpat. RESPECTA-HO al peu de la lletra. Si esmorza "torrades i cafè", tria una recepta d'esmorzar tipus torrada — NO un batut. Si a un àpat diu "fruita", posa fruita. No inventis estructures que el client no fa.
-- ESMORZAR: moderat. Torrades, tostades, batuts, iogurts amb fruita hi van molt bé (segons el que faci el client).
-- MIG MATÍ i BERENAR: lleugers i senzills (~100-350 kcal). El millor sol ser un ingredient simple (∙): iogurt, fruita o un grapat de fruits secs. També barretes o snacks lleugers. MAI plats contundents.
-- DINAR i SOPAR — munta'ls amb cap:
-   · Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols.
-   · Plats principals de carn/peix a la planxa o al forn van millor amb un acompanyament (verdura, amanida, crema, patata).
-   · Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.
-   · Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal.
-- EQUILIBRI SETMANAL de proteïna (per 7 dies): peix 3-4 àpats · carn blanca 2-3 · carn vermella MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella.
-- VARIETAT: no repeteixis els plats principals (rol P) dins la setmana (com a molt 2 cops). Els acompanyaments de verdura (cremes, salteats) es poden repetir lliurement.
+
+OBJECTIUS DIARIS
+- Cada dia ha de SUMAR {kcal} kcal (marge ±{margen}%) i acostar-se a {prot} g de proteïna.
+- Després de muntar cada dia, SUMA les kcal i la proteïna de tots els plats i COMPROVA que entra dins el marge. Si et quedes curt o et passes, ajusta abans de passar al dia següent.
+- És més fàcil quedar-se curt de proteïna que de kcal — tria conscientment plats alts en proteïna (carn, peix, ous, llegums, iogurt proteic, formatge fresc) fins arribar-hi.
+
+DISTRIBUCIÓ DE LES KCAL PER ÀPAT (orientativa, sobre {kcal} kcal/dia)
+- Esmorzar: 20-25%
+- Mig matí: 5-10%
+- Dinar: 30-35%
+- Berenar: 5-10%
+- Sopar: 25-30%
+Aquestes proporcions són una guia: si el client té un esmorzar gros o un sopar lleuger, adapta-ho — però mantén un sentit equilibrat dins del dia.
+
+DISTRIBUCIÓ DE LA PROTEÏNA PER ÀPAT
+- Reparteix la proteïna entre 3-5 àpats (esmorzar, dinar, sopar i opcionalment snacks). NO concentris >50% de la proteïna diària en un sol àpat.
+- Sostre de proteïna per àpat: ~40-45 g (per sobre l'aprofitament cau).
+- Plat principal de dinar/sopar: 25-40 g de proteïna típicament. Esmorzar: 15-30 g. Snacks: 5-15 g.
+
+LÍMITS PER ÀPAT (no superar)
+- Mig matí / berenar: 100-350 kcal màx, ≤15 g de proteïna típicament. Plats lleugers — un ingredient simple (∙) o un snack proteic. MAI plats contundents.
+- Esmorzar: ≤700 kcal en general (excepte si el perfil del client diu el contrari per esports/entrenament).
+- Dinar/sopar: 400-900 kcal cadascun en condicions normals.
+
+ESTRUCTURA HABITUAL DEL CLIENT (OBLIGATORI si apareix al perfil)
+- El perfil indica què menja el client a cada àpat. RESPECTA-HO al peu de la lletra.
+- Si esmorza "torrades i cafè", tria una recepta d'esmorzar tipus torrada — NO un batut.
+- Si a un àpat diu "fruita", posa fruita. No inventis estructures que el client no fa.
+
+DINAR i SOPAR — munta'ls amb cap
+- Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols.
+- Plats principals de carn/peix a la planxa/forn van millor amb un acompanyament (verdura, amanida, crema, patata).
+- Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.
+- Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal — RES de postres pesats al sopar.
+- Variar dins del dia: si el dinar és pollastre, el sopar NO sigui pollastre. Alterna fonts (peix/carn/llegum/ou).
+
+VARIETAT SETMANAL
+- Equilibri de proteïna per 7 dies: peix 3-4 àpats · carn blanca 2-3 · carn vermella MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella.
+- No repeteixis els plats principals (rol P) dins la setmana (com a molt 2 cops). Els acompanyaments de verdura (cremes, salteats) es poden repetir lliurement.
+
+AJUSTAR EN COMPTES DE SUBSTITUIR
+- Si un dia es queda 100-300 kcal curt o passat, és preferible AJUSTAR la ració d'una recepta (camp "ajustes" del JSON, factor 0.8-1.3) que canviar el plat sencer. Així el client manté variarat dins de plats que li agraden.
+- Sí substituir: si la diferència és més gran (>25%) o si el desequilibri és estructural (no hi ha proteïna al dia).
+
+ALTRES
 - Prioritza les receptes preferides (★).
-- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil.
+- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil — és innegociable.
 - Usa només id de la llista de dalt.`;
 function tobAiGetCfg(){
   try { return JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
