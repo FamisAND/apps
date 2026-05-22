@@ -594,10 +594,10 @@
       <div id="tobIngPlatoGramosWrap" style="display:none;margin-top:8px;">
         <label class="tob-lbl">Ración por defecto (g)</label>
         <input class="tob-input" type="number" step="1" id="tobIngPlatoGramos" placeholder="150" style="max-width:160px;">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.78rem;color:var(--text);margin-top:8px;">
-          <input type="checkbox" id="tobIngIaSnack" style="accent-color:var(--acc);">
-          La IA puede usarlo en media mañana / merienda <span class="tob-quest-h-sub">(yogur, fruta, frutos secos...)</span>
-        </label>
+        <div style="margin-top:10px;">
+          <label class="tob-lbl">La IA pot usar-lo a aquests àpats <span class="tob-quest-h-sub">(marca on encaixa — vide = NO el fa servir)</span></label>
+          <div class="tob-quest-chips" id="tobIngMomentosChips"></div>
+        </div>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:18px;align-items:center;">

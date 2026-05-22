@@ -6250,6 +6250,23 @@ function tobIngRender(){
 function tobIngSetPage(p){ tobIngPage = p; tobIngRender(); }
 
 // ── CRUD: modal de ingrediente ──────────────────────────────────
+// Estat local del modal d'ingrediente: moments seleccionats per a la IA.
+let _tobIngModalMomentos = new Set();
+
+// Render chips d'àpats al modal d'ingrediente. Igual UI que recetas — clic per togglear.
+function _tobIngRenderMomentosChips(){
+  const wrap = document.getElementById('tobIngMomentosChips');
+  if(!wrap) return;
+  wrap.innerHTML = TOB_REC_MOMENTOS.map(m => {
+    const on = _tobIngModalMomentos.has(m.id);
+    return `<button type="button" class="tob-quest-chip${on?' active':''}" data-mom="${m.id}" onclick="tobIngToggleMomento('${m.id}',this)">${tobEsc(m.label)}</button>`;
+  }).join('');
+}
+function tobIngToggleMomento(id, btn){
+  if(_tobIngModalMomentos.has(id)){ _tobIngModalMomentos.delete(id); btn.classList.remove('active'); }
+  else { _tobIngModalMomentos.add(id); btn.classList.add('active'); }
+}
+
 function tobIngOpenModal(){
   tobIngEditId = null;
   document.getElementById('tobIngModalTitle').textContent = 'Nuevo ingrediente';
@@ -6263,7 +6280,8 @@ function tobIngOpenModal(){
   document.getElementById('tobIngAlergenos').value = '';
   document.getElementById('tobIngComoPlato').checked = false;
   document.getElementById('tobIngPlatoGramos').value = '';
-  document.getElementById('tobIngIaSnack').checked = false;
+  _tobIngModalMomentos = new Set();
+  _tobIngRenderMomentosChips();
   tobIngComoPlatoChange();
   document.getElementById('tobIngDelBtn').style.display = 'none';
   document.getElementById('tobIngModalBg').classList.add('on');
@@ -6292,7 +6310,16 @@ function tobIngEdit(id){
   document.getElementById('tobIngAlergenos').value = (ing.alergenos || []).join(', ');
   document.getElementById('tobIngComoPlato').checked = !!ing.comoPlato;
   document.getElementById('tobIngPlatoGramos').value = ing.platoGramos != null ? ing.platoGramos : '';
-  document.getElementById('tobIngIaSnack').checked = !!ing.iaSnack;
+  // Carregar momentos. Compat: si tenia el legacy "iaSnack=true" sense iaMomentos,
+  // assumir [mig_mati, berenar] que era el comportament antic.
+  if(Array.isArray(ing.iaMomentos) && ing.iaMomentos.length){
+    _tobIngModalMomentos = new Set(ing.iaMomentos);
+  } else if(ing.iaSnack){
+    _tobIngModalMomentos = new Set(['mig_mati','berenar']);
+  } else {
+    _tobIngModalMomentos = new Set();
+  }
+  _tobIngRenderMomentosChips();
   tobIngComoPlatoChange();
   document.getElementById('tobIngDelBtn').style.display = '';
   document.getElementById('tobIngModalBg').classList.add('on');
@@ -6306,13 +6333,19 @@ function tobIngSyncPlato(ing){
   const ix = tobMenusDB.recetas.findIndex(r => r.id === recId);
   if(ing.comoPlato){
     const g = Math.max(1, +ing.platoGramos || 150);
+    // Sincronitzar moments del plat-ingredient amb els del propi ingredient:
+    // així el catàleg de la IA per cada àpat ja porta aquests "platos sueltos"
+    // amb la classificació de moments correcta (com qualsevol altra recepta).
+    const moms = Array.isArray(ing.iaMomentos) ? ing.iaMomentos.slice() : [];
     const data = {
       id: recId, origen: 'ingrediente', _ingPlato: ing.id,
-      _iaSnack: !!ing.iaSnack,
+      _iaSnack: moms.length > 0,           // legacy flag, ara derivat
+      _iaMomentos: moms,                    // nova forma — array de moments base
       nombre: ing.nombre,
       raciones: 1,
       ingredientes: [{ ingId: ing.id, gramos: g }],
-      momentos: [], tags: [], instrucciones: '', comentarios: '',
+      momentos: moms,                       // tracta'l com una recepta amb moments classificats
+      tags: [], instrucciones: '', comentarios: '',
       tiempoTotal: '', tiempoElaboracion: '', autor: '',
       alergenos: Array.isArray(ing.alergenos) ? ing.alergenos.slice() : [],
       favorito: false
@@ -6331,6 +6364,9 @@ function tobIngSave(){
   const parseList = v => (v||'').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
 
   const comoPlato = document.getElementById('tobIngComoPlato').checked;
+  // Moments on la IA pot usar aquest ingredient com a plat suelto.
+  // Si l'usuari no en marca cap, l'ingredient existeix però la IA no l'usa.
+  const iaMomentos = comoPlato ? Array.from(_tobIngModalMomentos) : [];
   const data = {
     nombre,
     kcal:     parseN(document.getElementById('tobIngKcal').value),
@@ -6342,7 +6378,8 @@ function tobIngSave(){
     alergenos:parseList(document.getElementById('tobIngAlergenos').value),
     comoPlato,
     platoGramos: comoPlato ? Math.max(1, parseN(document.getElementById('tobIngPlatoGramos').value) || 150) : null,
-    iaSnack:  comoPlato && document.getElementById('tobIngIaSnack').checked
+    iaMomentos,                            // nova forma: array de moments base
+    iaSnack:  comoPlato && iaMomentos.length > 0   // legacy: true si té algun moment
   };
 
   let ingObj;
@@ -8896,52 +8933,90 @@ const TOB_AI_DEFAULTS = {
 // Instrucciones (REGLES) del prompt de generación de menús. Editables
 // desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
 const TOB_AI_MENU_RULES_DEFAULT =
-`Ets un dietista expert. Munta el menú com ho faries a la consulta.
+`Ets el dietista de Sergio. Munta el menú com ho faria ell. Filosofia: flexible, centrat en el client, dia a dia.
 
-═══ INNEGOCIABLE ═══
-Cada dia ha de complir DOS objectius:
-  · {kcal} kcal (marge ±{margen}%)
-  · {prot} g de proteïna (mínim 90% del valor)
+═══ OBJECTIUS NUMÈRICS ═══
+Cada dia ha d'acostar-se a: {kcal} kcal i {prot} g de proteïna.
+- Tolerància: ±200 kcal i ±20 g prot puntuals si la MITJANA SETMANAL compensa. La mitjana setmanal és el que importa, no l'exactitud diària.
+- Si TOTS els dies queden per sota, has fallat. Si la mitjana està dins del marge ±{margen}%, has fet bé la feina.
 
-PROCÉS OBLIGATORI per cada dia, en aquest ordre:
-  1. Tria els plats inicialment seguint el perfil del client.
-  2. SUMA kcal i proteïna del dia.
-  3. Si NO arribes a l'objectiu (kcal o prot), tens DUES eines abans de substituir el plat:
-       a) AJUSTAR la ració d'una recepta amb el camp "ajustes": { recId: { factor: 1.4, motiu: "..." } }
-          El factor pot anar de 0.6 a 1.8. Ex: factor 1.5 = ració 50% més gran.
-          Pots ajustar MÚLTIPLES receptes en un mateix menú si cal.
-       b) AFEGIR un ingredient simple (∙ a la llista) al mateix àpat — útil per pujar prot
-          (un ou més, un grapat de fruits secs, un iogurt extra) o kcal (oli, pa).
-  4. Només SUBSTITUEIX el plat si l'ajust màxim (factor 1.8) o un afegit no n'hi ha prou.
-  5. Re-suma. Si encara queda > 10% per sota o per sobre, torna al pas 3.
+═══ PROCÉS d'AJUST (ordre estricte) ═══
+Si un dia està lluny de l'objectiu (>200 kcal o >20 g prot):
+  1r. PUJA LA PROTE del plat principal (factor 1.5 o 2 d'aquest plat). Mai factors com 1.3, 1.7 — usa preferiblement 0.5, 1, 1.5, 2.
+  2n. Si la prote ja està bé però falten kcal, PUJA l'ACOMPANYAMENT (factor 1.5 o 2).
+  3r. NOMÉS si l'ajust no n'hi ha prou, SUBSTITUEIX el plat per un altre del catàleg.
+PROHIBIT: afegir una peça extra solta (un iogurt random, fruits secs random) al final del dia per quadrar números. Queda sense sentit dins del menú.
 
-NO ÉS ACCEPTABLE entregar un dia amb 1500 kcal si l'objectiu és 2200, ni 60g de prot si l'objectiu és 120. Si ho fas, has fallat la tasca.
+═══ FACTORS i CANTITATS ═══
+Factors d'ajust permesos: 0.5, 1, 1.5, 2 (i excepcionalment decimals com 1.5 si donen grams nets).
+SNAPPING de grams (això NO ho controles tu amb "ajustes", però ho menciono per coherència):
+- Carns/peixos crus: múltiples de 25 g (100, 125, 150, 175, 200…)
+- Arròs/pasta/quinoa: sempre en CRU, múltiples de 10 g
+- Pa: 1 llesca = 40 g (no fraccionar)
+- Oli: 5 ml
+- Fruits secs: 30 g = "un grapat"
+- Fruita: 1 peça
+- Iogurt: 1 unitat
+- Ous: per unitats (1, 2, 3…)
 
-═══ VARIETAT — TAMBÉ INNEGOCIABLE ═══
-- En 7 dies, els plats principals (rol P) del DINAR han de ser 7 RECEPTES DIFERENTS (o com a molt 1 repetició al final de la setmana). El mateix per al SOPAR.
+═══ ESMORZAR — la base de Sergio ═══
+- Composició diana: ~30% prote · ~50% grasses · ~20% HC (estil low-carb).
+- DEFAULT: tostades amb varietat → jamó dolç/salat, ou remenat, alvocat + mozzarella, formatge fresc, etc. Combina ingredients simples (∙) "Llesca de pa" + un proteic + greix saludable.
+- Cafè: solo o amb llet segons el cuestionari del client.
+- Si el client marca fruita/fruits secs com a opcionals, suma'ls al plat (no com a peça random — formen part de l'àpat).
+- 4 TIPUS típics de esmorzar al menú, repetibles però MAI dies consecutius.
+
+═══ MIG MATÍ / BERENAR ═══
+- NOMÉS apareixen si el client els marca explícitament a la seva estructura habitual.
+- Si calen prot extres: fruita + iogurt proteic. Si no, fruita + fruits secs al natural (∙, 30 g).
+- 100-350 kcal · ≤15 g prote.
+
+═══ DINAR / SOPAR — patró base ═══
+- Patró: 1 plat principal (P) + acompanyament vegetal (ensalada, salteado, crema de verdura).
+- Plats principals contundents (guisats, llegums, pasta, arròs, woks, amanides completes amb molta kcal): POT anar sol, sense acompanyament.
+- Acompanyaments "cañeros" (molta kcal): aplicar factor 0.5 perquè no es passi.
+- COHERÈNCIA DE COCCIÓ: si el principal és AL FORN (alitas, pollastre rostit), l'acompanyament també al forn (escalivada, patates al forn). Aprofita el forn.
+- VARIAR dins del dia: si el dinar és pollastre, el sopar NO sigui pollastre. Alterna fonts.
+
+═══ VARIETAT SETMANAL ═══
+- Plats principals (rol P) del DINAR: 7 receptes DIFERENTS en 7 dies (és la regla principal). Mateix per a sopar.
+- Si una fuente de prote es repeteix (típic amb pollastre, que és comodí), NO en dies consecutius i amb RECEPTA DIFERENT.
+- Frequències típiques (depèn del cuestionari del client):
+   · Pollastre / carn blanca: comodí, 2-3 dies habitualment
+   · Pescat blanc: ~1 dia
+   · Pescat blau: 1-2 dies
+   · Carn vermella: màxim 2
+   · Llegums: fins a 3
+   · Ous: fins a 3 dies
+   · Pasta/arròs/quinoa: sense tope
 - MAI copiis dies sencers. Setmana 1 ≠ Setmana 2.
-- Si el catàleg és curt per a algun àpat, COMBINA receptes amb ingredients simples (∙) per crear variacions: un mateix peix amb 2 acompanyaments diferents compta com 2 plats.
-- Alterna fonts de proteïna al llarg dels dies: peix → carn blanca → llegums → ous → peix → carn → ...
+
+═══ COMBINACIONS PROHIBIDES ═══
+- Dos plats principals junts.
+- Dos acompanyaments junts.
+- Dos farinacis junts (pasta + arròs, pa + patata generosa…).
+- Postre pesat al sopar.
 
 ═══ ESTRUCTURA HABITUAL DEL CLIENT ═══
-El perfil indica què menja el client a cada àpat. RESPECTA-HO al peu de la lletra.
-- Si esmorza "torrades + cafè", combina ingredients simples "Pa/Torrada" + "Cafè" (+oli, fruita…). NO posis tortilles.
-- Si a un àpat diu "carn blanca", utilitza pollastre/gall dindi (i afegeix un oli ∙ per a la cocció).
-- Si diu "pescat blanc", utilitza lluç/bacallà/llenguado. Si diu "pescat blau", salmó/sardina/tonyina.
+El cuestionari indica què menja a cada àpat. RESPECTA-HO al peu de la lletra.
+- "Torrades + cafè" → tostades amb les seves variants, no tortilles.
+- "Carn blanca" → pollastre/gall dindi (afegeix oli ∙ per cuinar).
+- "Pescat blanc" → lluç, bacallà, llenguado. "Pescat blau" → salmó, sardina, tonyina.
+- Si el client diu "només salmó del pescat blau" o "tot el pescat menys atún", RESPECTA-HO.
 
-═══ DINAR / SOPAR ═══
-- Porten un plat principal (P) sempre — un acompanyament (A) o postre (D) MAI van sols.
-- Carn/peix a la planxa van amb acompanyament. Guisats/llegums/pasta/arròs poden anar sols.
-- Variar dins del dia: si el dinar és pollastre, el sopar NO sigui pollastre.
+═══ RESTRICCIONS ═══
+- Al·lèrgies: innegociables.
+- Intolerències (gluten, lactosa): adaptar amb versions aptes (pa sense gluten), NO eliminar el grup d'aliments sencer.
+- "No li agrada" + "li senta malament": ambdós, FORA del menú.
 
-═══ DISTRIBUCIÓ ORIENTATIVA (no és un sostre rígid) ═══
-Esmorzar 20-25% · Dinar 30-35% · Sopar 25-30% · Snacks 5-10% del total diari.
-Proteïna per àpat: dinar/sopar 25-40g · esmorzar 15-30g · snacks 5-15g. Reparteix, no concentris.
+═══ NO TOCAR ═══
+- No alteres composició pre/post entreno (Sergio ho retoca manualment per a pros).
+- No marquis "lliure" cap dia: els findes el client ja sap que té flexibilitat fora del menú.
 
 ═══ ALTRES ═══
 - Prioritza receptes preferides (★).
-- AL·LÈRGIES i restriccions del perfil: innegociables.
-- Usa només id de la llista de dalt.`;
+- Usa només id de la llista de dalt.
+- Si un nom suggereix clarament un àpat (Tostada, Bocadillo, Sandvitx → esmorzar/berenar), utilitza-la encara que no estigui classificada en aquest àpat.`;
 function tobAiGetCfg(){
   try { return JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
   catch(e){ return {}; }
@@ -9136,9 +9211,13 @@ function tobMcPerfilTexto(cli){
 function tobMcCandidatas(cli, comidaId, strict){
   const base = tobMcMealBase(comidaId);
   return (tobMenusDB.recetas || []).filter(r => {
-    if(r.origen === 'ingrediente') return false;
     if(r.descartada) return false;
     const moms = r.momentos || [];
+    // Receta sense classificar I sense ser favorita → auto-excloïda del catàleg
+    // (criteri de Sergio: si no s'ha classificat ni marcat com a favorita, la IA
+    // no la fa servir. Les favorites sí poden entrar encara que no tinguin
+    // moments — el matching per nom (keyword) decideix on encaixen).
+    if(moms.length === 0 && !r.favorito) return false;
     if(strict){ if(!moms.includes(base)) return false; }
     else if(moms.length && !moms.includes(base)) return false;
     return tobMcCheckCompat(r, cli).compat;
@@ -9177,15 +9256,16 @@ async function tobMcGenerarIA(){
     // si el client esmorza "torrades + cafè", l'IA necessita poder seleccionar
     // ingredients simples també a l'esmorzar (i a dinar/sopar com a guarnició
     // amb oli, pa, fruita…).
-    const snackIngs = (tobMenusDB.recetas || [])
-      .filter(r => r.origen === 'ingrediente' && r._iaSnack && tobMcCheckCompat(r, cli).compat);
+    // Els plats sueltos (origen ingrediente) ara entren via tobMcCandidatas amb
+    // els seus _iaMomentos. Ja no necessitem injectar-los a part — el catàleg
+    // per moment ja els porta classificats correctament.
 
     // ── Inferència per nom: si una recepta NO té moment classificat però el
     // seu nom suggereix clarament un àpat (ex: "Tostada amb tomàquet" → esmorzar,
     // "Bocadillo" → esmorzar/berenar), la considerem candidata per a aquest àpat.
-    // Sergio té el catàleg parcialment classificat; sense això la IA es perd
-    // receptes òbvies. NOTA: només s'aplica a tobMcGenerarIA — el canvi manual
-    // de plat (swap) segueix usant tobMcCandidatas estricte.
+    // NOMÉS s'aplica a receptes FAVORITES sense classificar — la resta de
+    // receptes sense classificar i sense favorit s'auto-excloen (criteri de
+    // Sergio). El canvi manual de plat (swap) segueix usant tobMcCandidatas estricte.
     const TOB_KW = {
       esmorzar: ['tostada','torrada','pa amb','bocadillo','sandvitx','sandwich','sandwitx','pa amb tomaquet','llesca','tortilla','truita','batid','smoothie','iogurt','muesli','porridge','pancake','crep','cereal','barreta','barrita','muffin','xocolata calenta','desdejuni','desayuno','breakfast','pa integral','focaccia'],
       mig_mati: ['fruita','iogurt','barreta','barrita','grapat','fruits secs','snack','olives','pernil','formatge','barrita','tostada','sandvitx','bocadillo','batid','smoothie','infusio'],
@@ -9204,6 +9284,7 @@ async function tobMcGenerarIA(){
     const recsSinMomento = (tobMenusDB.recetas || []).filter(r =>
       r.origen !== 'ingrediente' && !r.descartada
       && !(r.momentos && r.momentos.length)
+      && r.favorito                                      // només favorites entren per inferència
       && tobMcCheckCompat(r, cli).compat
     );
 
@@ -9234,10 +9315,6 @@ async function tobMcGenerarIA(){
       }
       // Los favoritos SIEMPRE entran enteros; el resto rellena hasta el tope.
       cand = favs.concat(rest).slice(0, Math.max(capPorMomento, favs.length));
-      // Sempre afegim els ingredients simples permesos — la IA decideix on
-      // encaixen segons el rol i el perfil del client. Sense això, l'esmorzar
-      // "torrades + cafè" o el "pollastre + oli" són impossibles d'expressar.
-      snackIngs.forEach(r => { if(!cand.includes(r)) cand.push(r); });
       catalogo += '\n# ' + c.label + ' (id="' + c.id + '")\n';
       cand.forEach(r => {
         validIds.add(r.id);
