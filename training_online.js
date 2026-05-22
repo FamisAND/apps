@@ -7016,7 +7016,11 @@ async function tobRecSave(){
     comentarios:      document.getElementById('tobRecComentarios').value.trim(),
     autor:            document.getElementById('tobRecAutor').value.trim(),
     tags:             parseList(document.getElementById('tobRecTags').value),
-    favorito:         _tobRecModalFav
+    favorito:         _tobRecModalFav,
+    // Timestamp d'última edició: el creador de menús el compara amb el savedAt
+    // del menú per a marcar amb ⚠ les receptes modificades després de guardar
+    // (les macros del menú poden no quadrar amb les del catàleg actual).
+    _editTs:          Date.now()
   };
   if(!tobMenusDB.recetas) tobMenusDB.recetas = [];
   let recId;
@@ -8056,9 +8060,16 @@ function tobMcRenderGrid(){
         const aj = (tobMcState.ajustes||{})[recId];
         const ajustada = tobMcAjusteActivo(aj);
         const ajBadge = ajustada ? `<span class="mc-it-aj" title="Ració ajustada: ${tobEsc(tobMcAjusteResumen(aj))}">⚖</span>` : '';
-        return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(r.nombre)} · ${kcalPer} kcal · ${protPer}g prot — clica per ajustar quantitats">
+        // ⚠ stale: la recepta s'ha editat al catàleg després de guardar aquest menú.
+        // Les macros mostrades són les del catàleg actual; el menú podria no
+        // estar quadrant les kcal/prot que es van calcular originalment.
+        const savedAtMs = tobMcState._savedAt ? Date.parse(tobMcState._savedAt) : 0;
+        const stale = savedAtMs && r._editTs && r._editTs > savedAtMs;
+        const staleBadge = stale ? `<span class="mc-it-stale" title="La recepta s'ha modificat després de desar el menú">⚠</span>` : '';
+        return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(r.nombre)} · ${kcalPer} kcal · ${protPer}g prot — clica per ajustar quantitats">
           <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
           <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
+          ${staleBadge}
           <div class="mc-it-foto placeholder" data-foto-rec="${recId}">${tobEsc((r.nombre||'?').slice(0,2).toUpperCase())}</div>
           <div class="mc-it-body">
             <div class="mc-it-nm">${ajBadge}${tobEsc(r.nombre || '—')}</div>
@@ -8400,7 +8411,10 @@ function tobMcLoadMenu(menuId){
     data: JSON.parse(JSON.stringify(m.data || {})),
     ajustes: JSON.parse(JSON.stringify(m.ajustes || {})),
     notas: m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT,
-    _menuId: m.id
+    _menuId: m.id,
+    // Es preserva per comparar amb _editTs de cada receta del catàleg i
+    // detectar canvis en la BD posteriors al desament del menú.
+    _savedAt: m.savedAt || m.fecha || null
   };
   document.getElementById('tobMcSemanas').value = m.semanas || 1;
   if(m.kcalObj) document.getElementById('tobMcKcal').value = m.kcalObj;

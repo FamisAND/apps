@@ -719,6 +719,16 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-mc-cell-item .mc-it-aj{
   display:inline-block;margin-right:3px;color:var(--acc);font-weight:700;cursor:help;
 }
+/* ⚠ stale: receta editada al catálogo después de guardar el menú. Brilla suavemente. */
+.tob-mc-cell-item .mc-it-stale{
+  position:absolute;top:3px;right:22px;font-size:.78rem;line-height:1;
+  color:#ffd24a;text-shadow:0 0 6px #ffd24a99,0 0 10px #ff9a1a66;
+  cursor:help;pointer-events:auto;animation:tobStalePulse 2.2s ease-in-out infinite;z-index:2;
+}
+@keyframes tobStalePulse{
+  0%,100%{opacity:.7;}
+  50%{opacity:1;text-shadow:0 0 9px #ffd24acc,0 0 14px #ff9a1a88;}
+}
 .tob-mc-aj-ing{
   display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.78rem;
 }
