@@ -2766,23 +2766,48 @@ function tobRenderFicha(){
   document.getElementById('tobFichaKpis').innerHTML = kpiCards.join('') ||
     '<div style="color:var(--mute2);padding:8px;font-size:.85rem;">Sin datos todavía.</div>';
 
-  // ── Bloques adaptativos ──
+  // ── Bloques: el empty global només es mostra si NO hi ha res de res ──
+  // Ara els bloques de pestaña no s'amagen per "no hi ha dades" — el switch
+  // de pestañas s'encarrega de la visibilitat. Cada pestaña amaga els
+  // headers de cards de manera passiva si no hi ha contingut.
   document.getElementById('tobFichaEmptyBoth').style.display = (!hasRutinas && !hasMediciones) ? '' : 'none';
-  document.getElementById('tobFichaRutinasBlock').style.display = hasRutinas ? '' : 'none';
-  document.getElementById('tobFichaMedicionesBlock').style.display = hasMediciones ? '' : 'none';
 
   if(hasRutinas){
     tobRenderTimeline(cli);
     tobRenderFichaCharts(cli);
+  } else {
+    const tl = document.getElementById('tobFichaTimeline');
+    if(tl) tl.innerHTML = '<div class="tob-empty-tab">Encara no hi ha rutines assignades. Usa el botó "🏋 + Rutina" del cap de la fitxa per assignar-ne una.</div>';
+    const cmp = document.getElementById('tobFichaCmpTable'); if(cmp) cmp.innerHTML = '';
+    const ch = document.getElementById('tobFichaCharts'); if(ch) ch.innerHTML = '';
   }
   if(hasMediciones){
     tobRenderFichaMediciones(cli);
+  } else {
+    const mt = document.getElementById('tobFichaMedTable');
+    if(mt) mt.innerHTML = '<div class="tob-empty-tab">Encara no hi ha medicions. Usa el botó "📏 + Medición" del cap de la fitxa.</div>';
+    const mc = document.getElementById('tobFichaMedCharts'); if(mc) mc.innerHTML = '';
   }
 
   // Cuestionario: siempre visible (al final). Se carga con los datos del cliente.
   if(typeof tobQuestLoad === 'function') tobQuestLoad();
   // Menús del cliente
   if(typeof tobFichaRenderMenus === 'function') tobFichaRenderMenus();
+
+  // Activar la pestanya per defecte (o l'última que tenia el usuari).
+  tobFichaShowTab(_tobFichaTabActiva || 'cuestionario');
+}
+
+// ── Pestanyes de la fitxa: cuestionari / mediciones / entrenos / menús ──
+let _tobFichaTabActiva = 'cuestionario';
+function tobFichaShowTab(name){
+  _tobFichaTabActiva = name;
+  document.querySelectorAll('#tobFichaTabs .tob-ficha-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.fichatab === name);
+  });
+  document.querySelectorAll('.tob-ficha-tab-content').forEach(el => {
+    el.style.display = el.dataset.fichatab === name ? '' : 'none';
+  });
 }
 
 // Renderiza la lista de menús del cliente en su ficha.
@@ -5395,6 +5420,8 @@ function tobQuestUpdateGuides(){
 // función `tobUpdateCuestionarioBadge` recalcula ese estado al cargar
 // la ficha y al editar cualquier campo del cuestionario.
 function tobOpenCuestionario(){
+  // Canviar a la pestanya cuestionari si la fitxa ja està en mode tabs
+  if(typeof tobFichaShowTab === 'function') tobFichaShowTab('cuestionario');
   const det = document.getElementById('tobFichaCuestionarioDetails');
   if(det) det.open = true;
   const block = document.getElementById('tobFichaCuestionarioBlock');

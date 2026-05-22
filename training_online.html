@@ -655,8 +655,16 @@
     </div>
   </div>
 
+  <!-- ── PESTAÑAS de la ficha ── -->
+  <div class="tob-ficha-tabs" id="tobFichaTabs">
+    <button class="tob-ficha-tab active" data-fichatab="cuestionario" onclick="tobFichaShowTab('cuestionario')">📋 Qüestionari</button>
+    <button class="tob-ficha-tab" data-fichatab="mediciones" onclick="tobFichaShowTab('mediciones')">📏 Mediciones</button>
+    <button class="tob-ficha-tab" data-fichatab="entrenos" onclick="tobFichaShowTab('entrenos')">💪 Entrenos</button>
+    <button class="tob-ficha-tab" data-fichatab="menus" onclick="tobFichaShowTab('menus')">🍽 Menús</button>
+  </div>
+
   <!-- ── BLOQUE RUTINAS (se oculta si el cliente solo hace mediciones) ── -->
-  <div id="tobFichaRutinasBlock">
+  <div id="tobFichaRutinasBlock" class="tob-ficha-tab-content" data-fichatab="entrenos">
     <!-- Timeline de rutinas -->
     <div class="tob-card">
       <div class="tob-card-title">📋 Timeline de rutinas</div>
@@ -677,7 +685,7 @@
   </div>
 
   <!-- ── BLOQUE MEDICIONES (se oculta si el cliente solo hace rutinas) ── -->
-  <div id="tobFichaMedicionesBlock">
+  <div id="tobFichaMedicionesBlock" class="tob-ficha-tab-content" data-fichatab="mediciones">
     <div class="tob-card">
       <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <span>📏 Mediciones · composición corporal</span>
@@ -695,7 +703,7 @@
   </div>
 
   <!-- ── MENÚS DEL CLIENTE ── -->
-  <div class="tob-card" id="tobFichaMenusBlock">
+  <div class="tob-card tob-ficha-tab-content" id="tobFichaMenusBlock" data-fichatab="menus">
     <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <span>🍽 Menús del client</span>
       <button class="tob-action ghost btn-xs" onclick="tobFichaNuevoMenu()" title="Crear un menú nou per a aquest client al creador de menús">+ Nou menú</button>
@@ -708,7 +716,7 @@
        Colapsable. Auto-guarda al cambiar campos (debounce).
        Para chips/etiquetas: click toggle, Enter para añadir personalizada.
   ───────────────────────────────────────────────────────────────────── -->
-  <div class="tob-card" id="tobFichaCuestionarioBlock">
+  <div class="tob-card tob-ficha-tab-content" id="tobFichaCuestionarioBlock" data-fichatab="cuestionario">
     <details class="tob-quest-details" id="tobFichaCuestionarioDetails" open>
       <summary class="tob-quest-summary">
         <span class="tob-card-title" style="margin:0;display:inline;">📋 Cuestionario / Preferencias <span id="tobCuestEmptyTag" style="display:none;font-size:.65rem;background:#7a2424;color:#fff;padding:2px 8px;border-radius:999px;margin-left:8px;letter-spacing:.06em;text-transform:uppercase;font-family:'DM Mono',monospace;">vacío — rellena para personalizar menús</span></span>
