@@ -696,6 +696,62 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
   .tob-row.col-2,.tob-row.col-3,.tob-row.col-4{grid-template-columns:1fr;}
 }
 
+/* ── Calculadora Mifflin-St Jeor al cuestionario ── */
+.tob-hb-calc{
+  background:var(--card2,#161616);border:1px solid var(--border);border-left:3px solid var(--acc);
+  border-radius:6px;padding:0;margin:14px 0;overflow:hidden;
+}
+.tob-hb-summary{
+  cursor:pointer;padding:11px 14px;font-weight:600;color:var(--text);
+  display:flex;align-items:center;gap:8px;font-size:.84rem;list-style:none;user-select:none;
+}
+.tob-hb-summary::-webkit-details-marker{display:none;}
+.tob-hb-summary::before{content:'▸';color:var(--acc);font-size:.78rem;transition:transform .15s;}
+.tob-hb-calc[open] .tob-hb-summary::before{transform:rotate(90deg);}
+.tob-hb-body{padding:8px 14px 14px;border-top:1px solid var(--border);}
+.tob-hb-result{
+  margin-top:12px;padding:12px 14px;background:var(--surface2,#0f0f0f);border-radius:5px;
+  border:1px dashed var(--border);min-height:48px;
+}
+.tob-hb-result-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;
+}
+.tob-hb-result-grid > div{
+  display:flex;flex-direction:column;gap:2px;padding:6px 10px;background:#1a1a1a;border-radius:4px;
+}
+.tob-hb-result-grid > div.primary{
+  background:var(--acc);color:var(--bg);
+}
+.tob-hb-result-grid .lbl{
+  font-family:'DM Mono',monospace;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--mute);
+}
+.tob-hb-result-grid > div.primary .lbl{color:rgba(0,0,0,.7);}
+.tob-hb-result-grid .val{font-size:1.5rem;font-weight:800;line-height:1.1;}
+.tob-hb-result-grid .unit{font-family:'DM Mono',monospace;font-size:.7rem;color:var(--mute);}
+.tob-hb-result-grid > div.primary .unit{color:rgba(0,0,0,.65);}
+.tob-hb-incomplete{font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mute);}
+.tob-hb-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:flex-end;}
+
+.tob-hb-hist{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;}
+.tob-hb-hist-sum{
+  cursor:pointer;font-size:.78rem;color:var(--mute);font-weight:600;
+  font-family:'DM Mono',monospace;letter-spacing:.04em;list-style:none;user-select:none;
+}
+.tob-hb-hist-sum::-webkit-details-marker{display:none;}
+.tob-hb-hist-sum::before{content:'▸ ';color:var(--acc);}
+.tob-hb-hist[open] .tob-hb-hist-sum::before{content:'▾ ';}
+.tob-hb-hist-list{margin-top:8px;display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;}
+.tob-hb-hist-row{
+  padding:7px 10px;background:#1a1a1a;border-radius:4px;border-left:2px solid transparent;
+}
+.tob-hb-hist-row.current{border-left-color:var(--acc);background:#1f1f1f;}
+.tob-hb-hist-main{font-size:.84rem;color:var(--text);}
+.tob-hb-hist-main b{color:var(--acc);}
+.tob-hb-hist-row.current .tob-hb-hist-main b{color:var(--acc);}
+.tob-hb-hist-meta{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);margin-top:2px;}
+.tob-hb-hist-empty{font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mute);padding:10px 0;text-align:center;}
+
 /* ── Ajustos de racions: panel resum sota la graella + badge a la cel·la ── */
 .tob-mc-aj-box{
   margin-top:14px;padding:12px 14px;background:var(--card2,#1a1a1a);border:1px solid var(--border);

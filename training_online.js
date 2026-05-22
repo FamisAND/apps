@@ -5364,6 +5364,149 @@ function tobOpenCuestionario(){
   if(det) det.open = true;
   const block = document.getElementById('tobFichaCuestionarioBlock');
   if(block) block.scrollIntoView({ behavior:'smooth', block:'start' });
+  // Auto-omplir la calculadora HB amb dades del client (última medició).
+  try { tobHbAutoFill(); tobHbRenderHist(); } catch(e){ console.warn('[HB autofill]', e); }
+}
+
+// ═════════════════════════════════════════════════════════════════
+// CALCULADORA Mifflin-St Jeor — bloque del cuestionario
+// ─────────────────────────────────────────────────────────────────
+// Fórmula:
+//   Home:  BMR = 10·P + 6.25·A - 5·E + 5
+//   Dona:  BMR = 10·P + 6.25·A - 5·E - 161
+//   GET   = BMR × PAL
+//   Kcal  = GET × (1 + obj%)
+//   Prot  = Pes × g/kg
+//
+// L'històric es desa a cli.cuestionario.hbHistorial = [{ts, peso, altura, edat,
+// sexe, pal, objPct, protGkg, kcal, prot}].
+// ═════════════════════════════════════════════════════════════════
+function _tobHbCli(){
+  return tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+}
+function _tobHbCalcEdat(dataNaix){
+  if(!dataNaix) return null;
+  const d = new Date(dataNaix);
+  if(isNaN(d.getTime())) return null;
+  const now = new Date();
+  let edat = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if(m < 0 || (m === 0 && now.getDate() < d.getDate())) edat--;
+  return edat;
+}
+function tobHbAutoFill(){
+  const cli = _tobHbCli();
+  if(!cli) return;
+  const meds = (cli.mediciones || []).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+  const last = meds.length ? meds[meds.length - 1] : null;
+  const peso    = last && last.pes != null ? +last.pes : (cli.pes || null);
+  const altura  = last && last.estatura != null ? +last.estatura : (cli.estatura || null);
+  const edat    = _tobHbCalcEdat(cli.dataNaixement) || cli.edat || null;
+  const sexe    = cli.sexo === 'M' ? 'M' : 'H';
+  const setVal  = (id, v) => { const el = document.getElementById(id); if(el && v != null) el.value = v; };
+  setVal('qHbPeso',   peso);
+  setVal('qHbAltura', altura);
+  setVal('qHbEdat',   edat);
+  const sx = document.getElementById('qHbSexe'); if(sx) sx.value = sexe;
+  // PAL i objectiu: si el cuestionario ja en té de guardats, els reaprofitem
+  const q = cli.cuestionario || {};
+  const pal = document.getElementById('qHbPAL');
+  if(pal && q.tags && q.tags.PAL) pal.value = q.tags.PAL;
+  else if(pal && q.hbLast && q.hbLast.pal) pal.value = q.hbLast.pal;
+  const obj = document.getElementById('qHbObj');
+  if(obj && q.hbLast && q.hbLast.objPct != null) obj.value = q.hbLast.objPct;
+  const protG = document.getElementById('qHbProtGkg');
+  if(protG && q.hbLast && q.hbLast.protGkg != null) protG.value = q.hbLast.protGkg;
+  tobHbCalcular();
+}
+function tobHbCalcular(){
+  const num = id => {
+    const v = parseFloat((document.getElementById(id) || {}).value);
+    return isFinite(v) ? v : null;
+  };
+  const peso = num('qHbPeso'), altura = num('qHbAltura'), edat = num('qHbEdat');
+  const sexe = (document.getElementById('qHbSexe') || {}).value || 'H';
+  const pal  = num('qHbPAL'), objPct = num('qHbObj'), protGkg = num('qHbProtGkg');
+  const result = document.getElementById('qHbResult');
+  if(!result) return;
+  if(peso == null || altura == null || edat == null || pal == null || objPct == null || protGkg == null){
+    result.innerHTML = '<span class="tob-hb-incomplete">— Completa les dades per calcular</span>';
+    return;
+  }
+  const bmr = sexe === 'M'
+    ? 10*peso + 6.25*altura - 5*edat - 161
+    : 10*peso + 6.25*altura - 5*edat + 5;
+  const get = bmr * pal;
+  const kcal = Math.round(get * (1 + objPct/100));
+  const prot = Math.round(peso * protGkg);
+  const objLbl = objPct > 0 ? '+' + objPct + '%' : objPct + '%';
+  result.innerHTML =
+    '<div class="tob-hb-result-grid">' +
+      '<div><span class="lbl">BMR</span><span class="val">' + Math.round(bmr) + '</span><span class="unit">kcal/dia</span></div>' +
+      '<div><span class="lbl">GET (×' + pal + ')</span><span class="val">' + Math.round(get) + '</span><span class="unit">kcal/dia</span></div>' +
+      '<div class="primary"><span class="lbl">Kcal objectiu (' + objLbl + ')</span><span class="val">' + kcal + '</span><span class="unit">kcal/dia</span></div>' +
+      '<div class="primary"><span class="lbl">Proteïna (' + protGkg + ' g/kg)</span><span class="val">' + prot + '</span><span class="unit">g/dia</span></div>' +
+    '</div>';
+}
+function tobHbAplicar(){
+  const cli = _tobHbCli();
+  if(!cli){ tobToast('Cliente no trobat', 'red'); return; }
+  const num = id => {
+    const v = parseFloat((document.getElementById(id) || {}).value);
+    return isFinite(v) ? v : null;
+  };
+  const peso = num('qHbPeso'), altura = num('qHbAltura'), edat = num('qHbEdat');
+  const sexe = (document.getElementById('qHbSexe') || {}).value || 'H';
+  const pal  = num('qHbPAL'), objPct = num('qHbObj'), protGkg = num('qHbProtGkg');
+  if(peso == null || altura == null || edat == null || pal == null || objPct == null || protGkg == null){
+    tobToast('Falten dades per calcular', 'red'); return;
+  }
+  const bmr = sexe === 'M'
+    ? 10*peso + 6.25*altura - 5*edat - 161
+    : 10*peso + 6.25*altura - 5*edat + 5;
+  const kcal = Math.round(bmr * pal * (1 + objPct/100));
+  const prot = Math.round(peso * protGkg);
+  // Bolcar als inputs visibles del cuestionario perquè el guardat ja existent
+  // (tobQuestSave) els reculli automàticament.
+  const kEl = document.getElementById('qKcalObj'); if(kEl) kEl.value = kcal;
+  const pEl = document.getElementById('qProtObj'); if(pEl) pEl.value = prot;
+  const palEl = document.getElementById('qPAL'); if(palEl) palEl.value = String(pal);
+  // Registrar al històric.
+  if(!cli.cuestionario) cli.cuestionario = { tags:{}, recChips:{} };
+  if(!Array.isArray(cli.cuestionario.hbHistorial)) cli.cuestionario.hbHistorial = [];
+  const entry = { ts: Date.now(), peso, altura, edat, sexe, pal, objPct, protGkg, kcal, prot };
+  // Si l'últim entry és idèntic, no duplicar
+  const prev = cli.cuestionario.hbHistorial[0];
+  const isDuplicate = prev && prev.kcal === kcal && prev.prot === prot &&
+    prev.peso === peso && prev.pal === pal && prev.objPct === objPct;
+  if(!isDuplicate){
+    cli.cuestionario.hbHistorial.unshift(entry);
+    if(cli.cuestionario.hbHistorial.length > 50) cli.cuestionario.hbHistorial = cli.cuestionario.hbHistorial.slice(0, 50);
+  }
+  cli.cuestionario.hbLast = entry;
+  tobQuestSave(true);   // dispara save + toast
+  tobHbRenderHist();
+}
+function tobHbRenderHist(){
+  const cli = _tobHbCli();
+  const list = document.getElementById('qHbHistList');
+  const count = document.getElementById('qHbHistCount');
+  if(!list || !cli) return;
+  const hist = (cli.cuestionario && cli.cuestionario.hbHistorial) || [];
+  if(count) count.textContent = '(' + hist.length + ')';
+  if(!hist.length){
+    list.innerHTML = '<div class="tob-hb-hist-empty">Encara no hi ha cap aplicació registrada.</div>';
+    return;
+  }
+  list.innerHTML = hist.map((h, ix) => {
+    const d = new Date(h.ts);
+    const fecha = d.toLocaleDateString('ca-ES') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    const objLbl = h.objPct > 0 ? '+' + h.objPct + '%' : h.objPct + '%';
+    return '<div class="tob-hb-hist-row' + (ix === 0 ? ' current' : '') + '">' +
+      '<div class="tob-hb-hist-main"><b>' + h.kcal + '</b> kcal · <b>' + h.prot + '</b> g prot</div>' +
+      '<div class="tob-hb-hist-meta">' + fecha + ' · ' + h.peso + 'kg · PAL ' + h.pal + ' · obj ' + objLbl + ' · ' + h.protGkg + ' g/kg</div>' +
+    '</div>';
+  }).join('');
 }
 
 // Considera "vacío" si el cliente no tiene objectiu, ni dieta, ni kcal.

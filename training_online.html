@@ -723,6 +723,67 @@
             <label class="tob-lbl">Objectiu principal <span class="tob-quest-h-sub">(escull-ne un)</span></label>
             <div class="tob-quest-chips" id="qChipsObjectiu"></div>
           </div>
+
+          <!-- ── Calculadora kcal/proteïna (Mifflin-St Jeor) ── -->
+          <details class="tob-hb-calc" id="qHbDetails">
+            <summary class="tob-hb-summary">🧮 Calcular kcal i proteïna automàticament <span class="tob-quest-h-sub">(Mifflin-St Jeor · agafa dades de l'última medició si n'hi ha)</span></summary>
+            <div class="tob-hb-body">
+              <div class="tob-row col-4">
+                <div><label class="tob-lbl">Pes (kg)</label>
+                  <input class="tob-input" type="number" step="0.1" id="qHbPeso" oninput="tobHbCalcular()"></div>
+                <div><label class="tob-lbl">Altura (cm)</label>
+                  <input class="tob-input" type="number" step="1" id="qHbAltura" oninput="tobHbCalcular()"></div>
+                <div><label class="tob-lbl">Edat (anys)</label>
+                  <input class="tob-input" type="number" step="1" id="qHbEdat" oninput="tobHbCalcular()"></div>
+                <div><label class="tob-lbl">Sexe</label>
+                  <select class="tob-select" id="qHbSexe" onchange="tobHbCalcular()">
+                    <option value="H">Home</option>
+                    <option value="M">Dona</option>
+                  </select></div>
+              </div>
+              <div class="tob-row col-3">
+                <div><label class="tob-lbl">PAL (activitat)</label>
+                  <select class="tob-select" id="qHbPAL" onchange="tobHbCalcular()">
+                    <option value="1.2">Sedentari (1.2)</option>
+                    <option value="1.375">Activitat lleugera (1.375)</option>
+                    <option value="1.55" selected>Activitat moderada (1.55)</option>
+                    <option value="1.725">Activitat alta (1.725)</option>
+                    <option value="1.9">Molt actiu / atleta (1.9)</option>
+                  </select></div>
+                <div><label class="tob-lbl">Objectiu calòric <span class="tob-quest-h-sub">(% sobre GET)</span></label>
+                  <select class="tob-select" id="qHbObj" onchange="tobHbCalcular()">
+                    <option value="-20">Dèficit -20% (agressiu)</option>
+                    <option value="-15">Dèficit -15%</option>
+                    <option value="-10" selected>Dèficit -10%</option>
+                    <option value="-5">Dèficit -5%</option>
+                    <option value="0">Manteniment</option>
+                    <option value="5">Superàvit +5%</option>
+                    <option value="10">Superàvit +10%</option>
+                    <option value="15">Superàvit +15%</option>
+                    <option value="20">Superàvit +20% (agressiu)</option>
+                  </select></div>
+                <div><label class="tob-lbl">Proteïna (g/kg pes)</label>
+                  <select class="tob-select" id="qHbProtGkg" onchange="tobHbCalcular()">
+                    <option value="1.5">1.5 g/kg</option>
+                    <option value="1.6">1.6 g/kg</option>
+                    <option value="1.7">1.7 g/kg</option>
+                    <option value="1.8" selected>1.8 g/kg</option>
+                    <option value="1.9">1.9 g/kg</option>
+                    <option value="2.0">2.0 g/kg</option>
+                  </select></div>
+              </div>
+              <div class="tob-hb-result" id="qHbResult">—</div>
+              <div class="tob-hb-actions">
+                <button type="button" class="tob-action ghost btn-sm" onclick="tobHbAutoFill()" title="Tornar a omplir des de la última medició">↺ Reomplir des de medició</button>
+                <button type="button" class="tob-action btn-sm" onclick="tobHbAplicar()">✓ Aplicar als objectius</button>
+              </div>
+              <details class="tob-hb-hist" id="qHbHistDetails" style="margin-top:14px;">
+                <summary class="tob-hb-hist-sum">📜 Històric d'ajustos <span id="qHbHistCount" style="font-family:'DM Mono',monospace;color:var(--mute);">(0)</span></summary>
+                <div id="qHbHistList" class="tob-hb-hist-list"></div>
+              </details>
+            </div>
+          </details>
+
           <div class="tob-row col-3">
             <div><label class="tob-lbl">Pes objectiu (kg)</label><input class="tob-input tob-quest-f" type="number" step="0.1" id="qPesObj" placeholder="ex: 75"></div>
             <div><label class="tob-lbl">Sumatori 6 plecs objectiu (mm)</label><input class="tob-input tob-quest-f" type="number" step="0.5" id="qSumObj" placeholder="ex: 60"></div>
