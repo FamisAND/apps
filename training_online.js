@@ -7550,7 +7550,7 @@ function tobMcMealBase(id){
 // propaga a graella, totals, PDF, recetari i llista de la compra.
 // ═════════════════════════════════════════════════════════════════
 const TOB_MC_FACTOR_MIN = 0.5;
-const TOB_MC_FACTOR_MAX = 1.6;
+const TOB_MC_FACTOR_MAX = 1.8;   // permet a la IA quadrar dies molt curts sense substituir
 const TOB_MC_ING_CAP    = 2.2;   // un ingredient no pot pujar més de +120%
 
 function tobMcClampFactor(f){
@@ -8896,54 +8896,51 @@ const TOB_AI_DEFAULTS = {
 // Instrucciones (REGLES) del prompt de generación de menús. Editables
 // desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
 const TOB_AI_MENU_RULES_DEFAULT =
-`REGLES (molt importants) — pensa com un dietista abans de muntar cada àpat:
+`Ets un dietista expert. Munta el menú com ho faries a la consulta.
 
-OBJECTIUS DIARIS
-- Cada dia ha de SUMAR {kcal} kcal (marge ±{margen}%) i acostar-se a {prot} g de proteïna.
-- Després de muntar cada dia, SUMA les kcal i la proteïna de tots els plats i COMPROVA que entra dins el marge. Si et quedes curt o et passes, ajusta abans de passar al dia següent.
-- És més fàcil quedar-se curt de proteïna que de kcal — tria conscientment plats alts en proteïna (carn, peix, ous, llegums, iogurt proteic, formatge fresc) fins arribar-hi.
+═══ INNEGOCIABLE ═══
+Cada dia ha de complir DOS objectius:
+  · {kcal} kcal (marge ±{margen}%)
+  · {prot} g de proteïna (mínim 90% del valor)
 
-DISTRIBUCIÓ DE LES KCAL PER ÀPAT (orientativa, sobre {kcal} kcal/dia)
-- Esmorzar: 20-25%
-- Mig matí: 5-10%
-- Dinar: 30-35%
-- Berenar: 5-10%
-- Sopar: 25-30%
-Aquestes proporcions són una guia: si el client té un esmorzar gros o un sopar lleuger, adapta-ho — però mantén un sentit equilibrat dins del dia.
+PROCÉS OBLIGATORI per cada dia, en aquest ordre:
+  1. Tria els plats inicialment seguint el perfil del client.
+  2. SUMA kcal i proteïna del dia.
+  3. Si NO arribes a l'objectiu (kcal o prot), tens DUES eines abans de substituir el plat:
+       a) AJUSTAR la ració d'una recepta amb el camp "ajustes": { recId: { factor: 1.4, motiu: "..." } }
+          El factor pot anar de 0.6 a 1.8. Ex: factor 1.5 = ració 50% més gran.
+          Pots ajustar MÚLTIPLES receptes en un mateix menú si cal.
+       b) AFEGIR un ingredient simple (∙ a la llista) al mateix àpat — útil per pujar prot
+          (un ou més, un grapat de fruits secs, un iogurt extra) o kcal (oli, pa).
+  4. Només SUBSTITUEIX el plat si l'ajust màxim (factor 1.8) o un afegit no n'hi ha prou.
+  5. Re-suma. Si encara queda > 10% per sota o per sobre, torna al pas 3.
 
-DISTRIBUCIÓ DE LA PROTEÏNA PER ÀPAT
-- Reparteix la proteïna entre 3-5 àpats (esmorzar, dinar, sopar i opcionalment snacks). NO concentris >50% de la proteïna diària en un sol àpat.
-- Sostre de proteïna per àpat: ~40-45 g (per sobre l'aprofitament cau).
-- Plat principal de dinar/sopar: 25-40 g de proteïna típicament. Esmorzar: 15-30 g. Snacks: 5-15 g.
+NO ÉS ACCEPTABLE entregar un dia amb 1500 kcal si l'objectiu és 2200, ni 60g de prot si l'objectiu és 120. Si ho fas, has fallat la tasca.
 
-LÍMITS PER ÀPAT (no superar)
-- Mig matí / berenar: 100-350 kcal màx, ≤15 g de proteïna típicament. Plats lleugers — un ingredient simple (∙) o un snack proteic. MAI plats contundents.
-- Esmorzar: ≤700 kcal en general (excepte si el perfil del client diu el contrari per esports/entrenament).
-- Dinar/sopar: 400-900 kcal cadascun en condicions normals.
+═══ VARIETAT — TAMBÉ INNEGOCIABLE ═══
+- En 7 dies, els plats principals (rol P) del DINAR han de ser 7 RECEPTES DIFERENTS (o com a molt 1 repetició al final de la setmana). El mateix per al SOPAR.
+- MAI copiis dies sencers. Setmana 1 ≠ Setmana 2.
+- Si el catàleg és curt per a algun àpat, COMBINA receptes amb ingredients simples (∙) per crear variacions: un mateix peix amb 2 acompanyaments diferents compta com 2 plats.
+- Alterna fonts de proteïna al llarg dels dies: peix → carn blanca → llegums → ous → peix → carn → ...
 
-ESTRUCTURA HABITUAL DEL CLIENT (OBLIGATORI si apareix al perfil)
-- El perfil indica què menja el client a cada àpat. RESPECTA-HO al peu de la lletra.
-- Si esmorza "torrades i cafè", tria una recepta d'esmorzar tipus torrada — NO un batut.
-- Si a un àpat diu "fruita", posa fruita. No inventis estructures que el client no fa.
+═══ ESTRUCTURA HABITUAL DEL CLIENT ═══
+El perfil indica què menja el client a cada àpat. RESPECTA-HO al peu de la lletra.
+- Si esmorza "torrades + cafè", combina ingredients simples "Pa/Torrada" + "Cafè" (+oli, fruita…). NO posis tortilles.
+- Si a un àpat diu "carn blanca", utilitza pollastre/gall dindi (i afegeix un oli ∙ per a la cocció).
+- Si diu "pescat blanc", utilitza lluç/bacallà/llenguado. Si diu "pescat blau", salmó/sardina/tonyina.
 
-DINAR i SOPAR — munta'ls amb cap
-- Han de portar SEMPRE un plat principal (rol P). Un acompanyament (A) o un postre (D) MAI van sols.
-- Plats principals de carn/peix a la planxa/forn van millor amb un acompanyament (verdura, amanida, crema, patata).
-- Plats principals complets (guisats, llegums, pasta, arròs, woks, amanides completes) poden anar sols.
-- Pots afegir un postre senzill (fruita o iogurt) si ajuda a quadrar les kcal — RES de postres pesats al sopar.
-- Variar dins del dia: si el dinar és pollastre, el sopar NO sigui pollastre. Alterna fonts (peix/carn/llegum/ou).
+═══ DINAR / SOPAR ═══
+- Porten un plat principal (P) sempre — un acompanyament (A) o postre (D) MAI van sols.
+- Carn/peix a la planxa van amb acompanyament. Guisats/llegums/pasta/arròs poden anar sols.
+- Variar dins del dia: si el dinar és pollastre, el sopar NO sigui pollastre.
 
-VARIETAT SETMANAL
-- Equilibri de proteïna per 7 dies: peix 3-4 àpats · carn blanca 2-3 · carn vermella MÀXIM 1-2 · llegums 3-4 · ous 2-4. No abusis de la carn vermella.
-- No repeteixis els plats principals (rol P) dins la setmana (com a molt 2 cops). Els acompanyaments de verdura (cremes, salteats) es poden repetir lliurement.
+═══ DISTRIBUCIÓ ORIENTATIVA (no és un sostre rígid) ═══
+Esmorzar 20-25% · Dinar 30-35% · Sopar 25-30% · Snacks 5-10% del total diari.
+Proteïna per àpat: dinar/sopar 25-40g · esmorzar 15-30g · snacks 5-15g. Reparteix, no concentris.
 
-AJUSTAR EN COMPTES DE SUBSTITUIR
-- Si un dia es queda 100-300 kcal curt o passat, és preferible AJUSTAR la ració d'una recepta (camp "ajustes" del JSON, factor 0.8-1.3) que canviar el plat sencer. Així el client manté variarat dins de plats que li agraden.
-- Sí substituir: si la diferència és més gran (>25%) o si el desequilibri és estructural (no hi ha proteïna al dia).
-
-ALTRES
-- Prioritza les receptes preferides (★).
-- Respecta TOTES les al·lèrgies, restriccions i gustos del perfil — és innegociable.
+═══ ALTRES ═══
+- Prioritza receptes preferides (★).
+- AL·LÈRGIES i restriccions del perfil: innegociables.
 - Usa només id de la llista de dalt.`;
 function tobAiGetCfg(){
   try { return JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
@@ -9175,7 +9172,11 @@ async function tobMcGenerarIA(){
     // muy bajo (~6000 TPM) → catálogo reducido. El resto de proveedores
     // (Gemini, Anthropic, OpenRouter) admiten prompts grandes.
     const soloFav = !!(document.getElementById('tobMcIaSoloFav') || {}).checked;
-    // Ingredientes simples permitidos a la IA en mig matí / berenar.
+    // Ingredients simples (∙) que la IA pot usar com a complement de qualsevol
+    // àpat — abans només s'oferien per a mig matí/berenar i això limitava molt:
+    // si el client esmorza "torrades + cafè", l'IA necessita poder seleccionar
+    // ingredients simples també a l'esmorzar (i a dinar/sopar com a guarnició
+    // amb oli, pa, fruita…).
     const snackIngs = (tobMenusDB.recetas || [])
       .filter(r => r.origen === 'ingrediente' && r._iaSnack && tobMcCheckCompat(r, cli).compat);
     let catalogo = '';
@@ -9183,7 +9184,6 @@ async function tobMcGenerarIA(){
     const totalCap = (cfg.provider === 'groq') ? 140 : 600;
     const capPorMomento = Math.max(10, Math.floor(totalCap / comidas.length));
     comidas.forEach(c => {
-      const base = tobMcMealBase(c.id);
       let cand = tobMcCandidatas(cli, c.id);   // ya excluye platos sueltos
       if(soloFav) cand = cand.filter(r => r.favorito);
       const favs = cand.filter(r => r.favorito);
@@ -9195,10 +9195,10 @@ async function tobMcGenerarIA(){
       }
       // Los favoritos SIEMPRE entran enteros; el resto rellena hasta el tope.
       cand = favs.concat(rest).slice(0, Math.max(capPorMomento, favs.length));
-      // En mig matí / berenar, añadir los ingredientes simples permitidos.
-      if(base === 'mig_mati' || base === 'berenar'){
-        snackIngs.forEach(r => { if(!cand.includes(r)) cand.push(r); });
-      }
+      // Sempre afegim els ingredients simples permesos — la IA decideix on
+      // encaixen segons el rol i el perfil del client. Sense això, l'esmorzar
+      // "torrades + cafè" o el "pollastre + oli" són impossibles d'expressar.
+      snackIngs.forEach(r => { if(!cand.includes(r)) cand.push(r); });
       catalogo += '\n# ' + c.label + ' (id="' + c.id + '")\n';
       cand.forEach(r => {
         validIds.add(r.id);
@@ -9236,14 +9236,15 @@ async function tobMcGenerarIA(){
       'Cada dia és un objecte {comida_id:[id_recepta,…]}.',
       'Exemple d\'un dia: {' + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}',
       '',
-      'CAMP OPCIONAL "ajustes" (al mateix nivell que les setmanes):',
-      'Si vols multiplicar la ració d\'una recepta dins del menú (per quadrar kcal/proteïna sense canviar el plat), pots afegir aquest camp:',
-      '"ajustes": { "ID_RECEPTA": { "factor": 1.2, "motiu": "frase curta" } }',
-      '· factor: entre 0.6 i 1.6 (1 = sense canvi). 1.3 = 30% més gran.',
-      '· motiu: frase curta en català explicant per què.',
-      '· Útil quan un dia es queda 100-300 kcal curt o passat: ajusta la ració d\'un plat que li agradi en lloc de substituir-lo.',
-      '· Substitueix el plat si la diferència és >25% o estructural.',
-      '· Si el menú quadra sense ajustar, omet "ajustes" o deixa-l\'ho buit ({}).'
+      'CAMP "ajustes" (al mateix nivell que les setmanes) — IMPORTANT, ÚSAL si fa falta per quadrar:',
+      '"ajustes": { "ID_RECEPTA": { "factor": 1.4, "motiu": "frase curta" } }',
+      '· factor: entre 0.6 i 1.8 (1 = sense canvi). 1.5 = 50% més gran. 1.8 = ració quasi doble.',
+      '· Aplica a TOTES les aparicions d\'aquesta recepta al menú.',
+      '· REGLA: si un dia es queda > 10% per sota de l\'objectiu de kcal o prot, AJUSTA abans de tancar el dia. No deixis dies a 1500 kcal quan l\'objectiu és 2200.',
+      '· Si una recepta apareix múltiples vegades i només vols ajustar-ne UNA aparició, no és possible — millor substitueix.',
+      '· Pots tenir tants ajustes com vulguis (un per recepta).',
+      '· motiu: frase curta en català explicant per què (ex: "pujar prot del dimarts").',
+      '· Si tot el menú quadra sense ajustar, omet "ajustes" o posa-l\'ho buit ({}).'
     ].join('\n');
 
     tobToast('🤖 La IA està generant el menú… pot trigar uns segons', '');
@@ -9316,32 +9317,46 @@ async function tobMcGenerarIA(){
     let puestos = aplicar(parsed);
     if(!puestos) throw new Error('la IA no ha retornat receptes vàlides — torna-ho a provar');
 
-    // ── Corrección: días lejos del objetivo calórico → un reajuste ──
+    // ── Corrección 2a pasada: días lejos del objetivo (kcal O prot) ──
+    // La IA tendeix a quedar-se curta — sobretot de proteïna. Aquesta 2a passada
+    // li diu exactament quins dies van curts i en què, per a què faci servir
+    // ajustes (factor 1.0-1.8) o afegeixi ingredients simples (∙) en lloc de
+    // substituir plats sencers.
     try {
       const recById = {};
       (tobMenusDB.recetas||[]).forEach(r => { recById[r.id] = r; });
-      const dayKcal = (s,d) => {
-        let k = 0;
+      const dayMacros = (s,d) => {
+        let k = 0, p = 0;
         comidas.forEach(c => ((((tobMcState.data[s]||{})[d])||{})[c.id]||[]).forEach(id => {
-          // Usem macros amb ajustos del menú (la IA pot haver emés ajustes a la 1a passada).
-          const r = recById[id]; if(r) k += tobMcMacros(r, tobMcState.ajustes).kcal / (r.raciones || 1);
+          const r = recById[id]; if(!r) return;
+          const m = tobMcMacros(r, tobMcState.ajustes);
+          const rac = r.raciones || 1;
+          k += m.kcal / rac; p += m.proteina / rac;
         }));
-        return k;
+        return { k, p };
       };
-      const lo = kcal * (1 - margen/100) * 0.93;
-      const hi = kcal * (1 + margen/100) * 1.07;
+      const kLo = kcal * (1 - margen/100);
+      const kHi = kcal * (1 + margen/100);
+      const pLo = prot ? prot * 0.90 : null;   // mínim 90% de l'objectiu de prot
       const fueras = [];
       for(let s = 0; s < semanas; s++) for(let d = 0; d < 7; d++){
-        const k = dayKcal(s,d);
-        if(k > 0 && (k < lo || k > hi)) fueras.push({ s, d, k });
+        const { k, p } = dayMacros(s,d);
+        if(k <= 0) continue;
+        const problemas = [];
+        if(k < kLo) problemas.push('kcal=' + Math.round(k) + ' (objectiu ' + Math.round(kcal) + ', falten ~' + Math.round(kcal - k) + ')');
+        else if(k > kHi) problemas.push('kcal=' + Math.round(k) + ' (objectiu ' + Math.round(kcal) + ', passat ~' + Math.round(k - kcal) + ')');
+        if(pLo && p < pLo) problemas.push('prot=' + Math.round(p) + 'g (objectiu ' + Math.round(prot) + 'g, falten ~' + Math.round(prot - p) + 'g)');
+        if(problemas.length) fueras.push({ s, d, problemas });
       }
       if(fueras.length){
-        tobToast('🤖 Ajustant ' + fueras.length + ' dia(es) lluny de l\'objectiu…', '');
-        const fixUser = 'El menú que has generat té dies lluny de l\'objectiu de ' + Math.round(kcal) + ' kcal/dia:\n'
-          + fueras.map(f => '· setmana ' + f.s + ', dia ' + f.d + ': ' + Math.round(f.k) + ' kcal').join('\n')
-          + '\n\nCorregeix NOMÉS aquests dies (afegeix, treu o canvia plats perquè quedin dins del marge ±' + margen
-          + '%; la resta de dies deixa\'ls igual). Usa només id de la llista de receptes que ja tens. '
-          + 'Retorna el menú SENCER en el mateix format JSON.';
+        tobToast('🤖 Corregint ' + fueras.length + ' dia(es) que no quadren…', '');
+        const fixUser = 'El menú que has generat té dies que NO compleixen els objectius:\n\n'
+          + fueras.map(f => '· setmana ' + f.s + ' · dia ' + f.d + ' (' + ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'][f.d] + '): ' + f.problemas.join(' · ')).join('\n')
+          + '\n\nCorregeix aquests dies PRIORITZANT en aquest ordre:\n'
+          + '1. AJUSTA la ració d\'un plat existent amb el camp "ajustes" (factor fins a 1.8). Ex: una recepta de pollastre 200g pots posar-la a factor 1.5 i seran 300g.\n'
+          + '2. AFEGEIX un ingredient simple (∙ a la llista) al dia per pujar prot o kcal — un ou, fruits secs, un iogurt extra.\n'
+          + '3. NOMÉS substitueix el plat si l\'ajust màxim no és suficient.\n\n'
+          + 'Retorna el menú SENCER en el mateix format JSON, amb "ajustes" actualitzat si cal. La resta de dies que ja anaven bé, deixa\'ls igual.';
         const raw2 = await tobAiCall([
           { role:'system', content:sys }, { role:'user', content:user },
           { role:'assistant', content:raw }, { role:'user', content:fixUser }
