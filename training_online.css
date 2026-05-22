@@ -752,6 +752,42 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-hb-hist-meta{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);margin-top:2px;}
 .tob-hb-hist-empty{font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mute);padding:10px 0;text-align:center;}
 
+/* ── Panel de compliment del menú (sempre visible al creador) ── */
+.tob-mc-checks-box{
+  margin-top:14px;padding:12px 14px;background:var(--card2,#161616);border:1px solid var(--border);
+  border-left:3px solid var(--acc);border-radius:6px;
+}
+.tob-mc-checks-box:empty{display:none;}
+.tob-mc-checks-head{
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;
+  margin-bottom:8px;
+}
+.tob-mc-checks-title{
+  font-family:'DM Mono',monospace;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--acc);font-weight:600;
+}
+.tob-mc-checks-title span{color:var(--mute);font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px;}
+.tob-mc-checks-pills{display:flex;gap:6px;flex-wrap:wrap;}
+.tob-mc-check-pill{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;
+  font-family:'DM Mono',monospace;font-size:.72rem;font-weight:700;letter-spacing:.02em;
+}
+.tob-mc-check-pill.ok{background:rgba(46,153,108,.15);color:#3fb68b;border:1px solid #2e996c;}
+.tob-mc-check-pill.warn{background:rgba(217,164,64,.15);color:#e8b84b;border:1px solid #a0801f;}
+.tob-mc-check-pill.bad{background:rgba(217,64,64,.15);color:#e07a7a;border:1px solid #a02323;}
+.tob-mc-check-alert{
+  font-size:.78rem;color:var(--text);padding:6px 10px;border-radius:4px;margin-top:6px;
+  line-height:1.45;
+}
+.tob-mc-check-alert b{color:var(--acc);}
+.tob-mc-check-alert.warn{background:rgba(217,164,64,.07);border-left:2px solid #e8b84b;}
+.tob-mc-check-alert.info{background:rgba(74,158,255,.07);border-left:2px solid #4a9eff;}
+.tob-mc-check-alert.bad{background:rgba(217,64,64,.08);border-left:2px solid #d94040;}
+.tob-mc-check-alert.bad b{color:#e07a7a;}
+.tob-mc-check-empty{
+  font-family:'DM Mono',monospace;font-size:.78rem;color:#3fb68b;padding:4px 0;
+}
+
 /* ── Ajustos de racions: panel resum sota la graella + badge a la cel·la ── */
 .tob-mc-aj-box{
   margin-top:14px;padding:12px 14px;background:var(--card2,#1a1a1a);border:1px solid var(--border);

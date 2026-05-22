@@ -7843,6 +7843,158 @@ function tobMcQuitarAjuste(id){
   tobToast('Ajust tret', '');
 }
 
+// ═════════════════════════════════════════════════════════════════
+// PANEL DE CUMPLIMENT — sempre visible al creador (no surt al PDF)
+// ─────────────────────────────────────────────────────────────────
+// Mostra a Sergio si el menú compleix els objectius del client de
+// forma ràpida — mitjana setmanal kcal/prot + alertes de:
+//   · Dies fora de marge (kcal o prot)
+//   · Plats principals repetits a la setmana
+//   · Esmorzar sense proteïna (mínim ~10g)
+//   · Aliments que el client no menja (alimX o sentenMal) presents al menú
+//   · Receptes amb el flag "descartada" que segueixen al menú
+// Tot informatiu, no bloqueja res.
+// ═════════════════════════════════════════════════════════════════
+function tobMcRenderChecks(){
+  const box = document.getElementById('tobMcChecksBox');
+  if(!box || !tobMcState) return;
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  if(!cli){ box.innerHTML = ''; return; }
+
+  // Objetivos: desde inputs visibles o desde el menú guardado.
+  const kcalObj = parseFloat(document.getElementById('tobMcKcal')?.value) || 0;
+  const protObj = parseFloat(document.getElementById('tobMcProt')?.value) || 0;
+  const margen  = parseFloat(document.getElementById('tobMcMargen')?.value) || 10;
+  if(!kcalObj){ box.innerHTML = ''; return; }   // sense objectiu no calcula
+
+  const recsById = {};
+  (tobMenusDB.recetas || []).forEach(r => { recsById[r.id] = r; });
+  const ajMap = tobMcState.ajustes || {};
+
+  // Vetos del cliente — lista de palabras a evitar (lowercase).
+  const q = (cli.cuestionario || {});
+  const t = q.tags || {};
+  const vetos = [].concat(t.alimX || [], t.sentenMal || [])
+    .filter(Boolean).map(s => String(s).toLowerCase());
+
+  const semanas = tobMcState.semanas || 1;
+  let kcalTot = 0, protTot = 0, diasContados = 0;
+  const diasFuera = [];          // {sem, d, problemas}
+  const platosCount = {};        // recId → veces
+  const vetosDetectats = new Set();
+  const descartadasUsadas = new Set();
+  const esmorzarBajaProte = [];  // {sem, d, prot}
+  // Helper para detectar "mismo principal en dinar y sopar del mismo día"
+  // (regla de Sergio: si dinar = pollastre, sopar NO pollastre).
+
+  for(let s = 0; s < semanas; s++){
+    for(let d = 0; d < 7; d++){
+      let kDia = 0, pDia = 0, tieneAlgo = false;
+      const day = (tobMcState.data[s] || {})[d] || {};
+      let protEsmorzar = 0;
+      tobMcState.comidasIds.forEach(mid => {
+        const arr = day[mid] || [];
+        arr.forEach(recId => {
+          const r = recsById[recId];
+          if(!r) return;
+          tieneAlgo = true;
+          platosCount[recId] = (platosCount[recId] || 0) + 1;
+          if(r.descartada) descartadasUsadas.add(recId);
+          const m = tobMcMacros(r, ajMap);
+          const rac = r.raciones || 1;
+          kDia += m.kcal / rac;
+          pDia += m.proteina / rac;
+          const baseMid = tobMcMealBase(mid);
+          if(baseMid === 'esmorzar'){
+            protEsmorzar += m.proteina / rac;
+          }
+          // Vetos: buscar en nombre de la receta y nombre de cada ingrediente
+          if(vetos.length){
+            const nomRec = String(r.nombre || '').toLowerCase();
+            vetos.forEach(v => { if(v && nomRec.includes(v)) vetosDetectats.add(v); });
+            (r.ingredientes || []).forEach(it => {
+              const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
+              const nomIng = String((ing && ing.nombre) || it._nombreFallback || '').toLowerCase();
+              vetos.forEach(v => { if(v && nomIng.includes(v)) vetosDetectats.add(v); });
+            });
+          }
+        });
+      });
+      if(!tieneAlgo) continue;
+      kcalTot += kDia; protTot += pDia; diasContados++;
+
+      const problemas = [];
+      const tolKcal = kcalObj * margen / 100;
+      if(Math.abs(kDia - kcalObj) > tolKcal){
+        const sign = kDia < kcalObj ? '−' : '+';
+        problemas.push(sign + Math.round(Math.abs(kDia - kcalObj)) + ' kcal');
+      }
+      if(protObj){
+        const minProt = protObj * 0.9;
+        if(pDia < minProt){
+          problemas.push('−' + Math.round(protObj - pDia) + 'g prot');
+        }
+      }
+      if(problemas.length) diasFuera.push({ s, d, problemas, kDia, pDia });
+      if(protEsmorzar > 0 && protEsmorzar < 10){
+        esmorzarBajaProte.push({ s, d, prot: protEsmorzar });
+      }
+    }
+  }
+
+  if(diasContados === 0){
+    box.innerHTML = '';
+    return;
+  }
+
+  const kcalMed = kcalTot / diasContados;
+  const protMed = protTot / diasContados;
+  const kcalDiff = kcalMed - kcalObj;
+  const kcalOk = Math.abs(kcalDiff) <= kcalObj * margen / 100;
+  const protOk = protObj ? protMed >= protObj * 0.9 : true;
+  const repetidos = Object.entries(platosCount).filter(([_, n]) => n > 1).map(([id, n]) => {
+    const r = recsById[id]; return { nombre: (r && r.nombre) || '(?)', n };
+  });
+
+  const DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
+  let alertasHtml = '';
+  if(diasFuera.length){
+    alertasHtml += '<div class="tob-mc-check-alert warn"><b>' + diasFuera.length + ' dia' + (diasFuera.length>1?'es':'') + ' fora de marge:</b> ' +
+      diasFuera.map(f => 'Set ' + (f.s+1) + '·' + DIAS[f.d] + ' (' + f.problemas.join(', ') + ')').join(' · ') + '</div>';
+  }
+  if(esmorzarBajaProte.length){
+    alertasHtml += '<div class="tob-mc-check-alert info">Esmorzar baix en proteïna (<10g): ' +
+      esmorzarBajaProte.map(e => 'Set ' + (e.s+1) + '·' + DIAS[e.d] + ' (' + Math.round(e.prot) + 'g)').join(' · ') + '</div>';
+  }
+  if(repetidos.length){
+    alertasHtml += '<div class="tob-mc-check-alert info"><b>Plats repetits:</b> ' +
+      repetidos.map(r => tobEsc(r.nombre) + ' (×' + r.n + ')').join(' · ') + '</div>';
+  }
+  if(vetosDetectats.size){
+    alertasHtml += '<div class="tob-mc-check-alert bad"><b>⚠ Aliments vetats al menú:</b> ' +
+      Array.from(vetosDetectats).join(', ') + ' — el client va dir que no els menja</div>';
+  }
+  if(descartadasUsadas.size){
+    alertasHtml += '<div class="tob-mc-check-alert bad"><b>⚠ Receptes descartades utilitzades:</b> ' + descartadasUsadas.size + ' al menú</div>';
+  }
+
+  const kcalBadge = kcalOk
+    ? `<span class="tob-mc-check-pill ok">✓ ${Math.round(kcalMed)} kcal/dia</span>`
+    : `<span class="tob-mc-check-pill warn">⚠ ${Math.round(kcalMed)} kcal/dia (${kcalDiff>=0?'+':''}${Math.round(kcalDiff)})</span>`;
+  const protBadge = !protObj ? ''
+    : (protOk
+        ? `<span class="tob-mc-check-pill ok">✓ ${Math.round(protMed)}g prot/dia</span>`
+        : `<span class="tob-mc-check-pill warn">⚠ ${Math.round(protMed)}g prot/dia (objectiu ${protObj}g)</span>`);
+
+  box.innerHTML = `
+    <div class="tob-mc-checks-head">
+      <span class="tob-mc-checks-title">📊 Cumpliment <span>(mitjana setmanal sobre ${diasContados} dies)</span></span>
+      <div class="tob-mc-checks-pills">${kcalBadge}${protBadge}</div>
+    </div>
+    ${alertasHtml || '<div class="tob-mc-check-empty">✓ Tot quadra dins del marge</div>'}
+  `;
+}
+
 // ── Modal: ajustar quantitats d'una recepta ────────────────────
 let _tobMcAjusteId = null;
 function tobMcOpenAjuste(recId){
@@ -8307,6 +8459,7 @@ function tobMcRenderGrid(){
 
   tobMcUpdateAllTotals();
   tobMcRenderAjustes();
+  tobMcRenderChecks();
 }
 
 function tobMcRemoveItem(day, mealId, ix){
@@ -8367,6 +8520,10 @@ function tobMcUpdateAllTotals(){
       <div class="row"><span>G</span><span>${Math.round(gras)}g</span></div>
     `;
   }
+  // Repintar el panel de cumplimiento — quan canvia un input del bloc
+  // "Objectiu kcal/Margen/Prot" sense re-renderitzar la graella, els checks
+  // del compliment han d'actualitzar-se igualment.
+  if(typeof tobMcRenderChecks === 'function') tobMcRenderChecks();
 }
 
 // ── Render: panel lateral con recetas ──────────────────────────
