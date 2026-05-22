@@ -9179,13 +9179,52 @@ async function tobMcGenerarIA(){
     // amb oli, pa, fruita…).
     const snackIngs = (tobMenusDB.recetas || [])
       .filter(r => r.origen === 'ingrediente' && r._iaSnack && tobMcCheckCompat(r, cli).compat);
+
+    // ── Inferència per nom: si una recepta NO té moment classificat però el
+    // seu nom suggereix clarament un àpat (ex: "Tostada amb tomàquet" → esmorzar,
+    // "Bocadillo" → esmorzar/berenar), la considerem candidata per a aquest àpat.
+    // Sergio té el catàleg parcialment classificat; sense això la IA es perd
+    // receptes òbvies. NOTA: només s'aplica a tobMcGenerarIA — el canvi manual
+    // de plat (swap) segueix usant tobMcCandidatas estricte.
+    const TOB_KW = {
+      esmorzar: ['tostada','torrada','pa amb','bocadillo','sandvitx','sandwich','sandwitx','pa amb tomaquet','llesca','tortilla','truita','batid','smoothie','iogurt','muesli','porridge','pancake','crep','cereal','barreta','barrita','muffin','xocolata calenta','desdejuni','desayuno','breakfast','pa integral','focaccia'],
+      mig_mati: ['fruita','iogurt','barreta','barrita','grapat','fruits secs','snack','olives','pernil','formatge','barrita','tostada','sandvitx','bocadillo','batid','smoothie','infusio'],
+      dinar:    ['pollastre','vedella','porc','xai','peix','llen','lluc','bacalla','tonyina','salmo','sardin','llegum','llent','cigro','mongeta','arros','pasta','quinoa','wok','amanida','crema','sopa','guisat','estofat','rostit','planxa','forn','curry','risotto','paella','fideu','tabule','poke'],
+      berenar:  ['fruita','iogurt','barreta','barrita','grapat','batid','smoothie','bocadillo','sandvitx','sandwitx','tostada','torrada','xocolata','formatge','pernil','barreta'],
+      sopar:    ['truita','tortilla','peix','llen','lluc','salmo','bacalla','amanida','crema','sopa','wok','pollastre','vedella','llegum','pasta','quinoa','arros','planxa','forn','revolt','sandvitx','bocadillo','tabule','poke','quitxe','quiche','pizza']
+    };
+    const _tobMatchKW = (nom, base) => {
+      const n = String(nom||'').toLowerCase();
+      const kws = TOB_KW[base] || [];
+      return kws.some(kw => n.includes(kw));
+    };
+    // Catàleg de receptes "inferides per nom" — només receptes SENSE momento
+    // classificat (les ja classificades es deixen tal com estan). Es calcula
+    // un cop i es reutilitza per cada comida.
+    const recsSinMomento = (tobMenusDB.recetas || []).filter(r =>
+      r.origen !== 'ingrediente' && !r.descartada
+      && !(r.momentos && r.momentos.length)
+      && tobMcCheckCompat(r, cli).compat
+    );
+
     let catalogo = '';
     const validIds = new Set();
     const totalCap = (cfg.provider === 'groq') ? 140 : 600;
     const capPorMomento = Math.max(10, Math.floor(totalCap / comidas.length));
+    let inferidasTotales = 0;
     comidas.forEach(c => {
+      const base = tobMcMealBase(c.id);
       let cand = tobMcCandidatas(cli, c.id);   // ya excluye platos sueltos
       if(soloFav) cand = cand.filter(r => r.favorito);
+      // Añadir recetas inferidas por keyword (las no clasificadas pero cuyo nombre
+      // sugiere claramente este àpat). Si soloFav, solo si la receta es favorita.
+      const inferidas = recsSinMomento.filter(r => {
+        if(soloFav && !r.favorito) return false;
+        if(cand.includes(r)) return false;
+        return _tobMatchKW(r.nombre, base);
+      });
+      inferidasTotales += inferidas.length;
+      cand = cand.concat(inferidas);
       const favs = cand.filter(r => r.favorito);
       const rest = cand.filter(r => !r.favorito);
       // barajar el resto para dar variedad dentro del tope
@@ -9208,6 +9247,9 @@ async function tobMcGenerarIA(){
         catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p|' + rolCode + '\n';
       });
     });
+    if(inferidasTotales > 0){
+      console.log('[IA menú] ' + inferidasTotales + ' recepta(es) afegides al catàleg per inferència del nom (sense classificació explícita).');
+    }
 
     const sys = 'Ets un dietista-nutricionista expert. Crees menús setmanals personalitzats, '
       + 'variats i equilibrats. Respons NOMÉS amb un objecte JSON vàlid, sense text addicional.';
@@ -9227,7 +9269,15 @@ async function tobMcGenerarIA(){
       'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id.',
       'Format de cada línia: id|nom|kcal|proteïna|rol  (ex: rec_x|Truita francesa|320k|18p|P).',
       'Marques davant del nom: ★ = preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs).',
-      'Rol del plat: P=principal · A=acompanyament · D=postre · B=bàsic/esmorzar · ?=sense classificar (usa el sentit comú pel nom).',
+      'Rol del plat: P=principal · A=acompanyament · D=postre · B=bàsic/esmorzar · ?=sense classificar.',
+      '',
+      'IMPORTANT — USA EL NOM COM A PISTA quan el rol és "?" o quan el catàleg sembla curt:',
+      '· Si una recepta es diu "Tostada amb tomàquet", "Pa amb formatge", "Bocadillo de pollastre", "Sandvitx vegetal" → encaixa perfectament a ESMORZAR (i sovint a BERENAR/SOPAR).',
+      '· Si es diu "Iogurt amb fruita", "Batut de proteïna", "Smoothie", "Crep dolç" → ESMORZAR / MIG MATÍ / BERENAR.',
+      '· Si es diu "Truita francesa", "Pizza vegetal", "Quitxe" → SOPAR (lleuger).',
+      '· Si es diu "Pollastre/Vedella/Peix amb verdures/arròs/quinoa", "Llegums guisats", "Pasta integral" → DINAR / SOPAR.',
+      'NO ignoris una recepta que pel nom encaixa òbviament en un àpat només perquè la seva línia del catàleg pertany a un altre.',
+      'Pots usar la mateixa recepta a àpats diferents si té sentit (ex: una amanida pot anar a dinar i a sopar).',
       catalogo, '',
       rules,
       '',
