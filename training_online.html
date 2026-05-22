@@ -362,6 +362,7 @@
             </div>
           </div>
           <div id="tobMcGrid" class="tob-mc-grid"></div>
+          <div id="tobMcAjustesBox" class="tob-mc-aj-box" style="display:none;"></div>
         </div>
 
         <!-- Panel lateral: recetas filtradas -->
@@ -512,6 +513,35 @@
     <div id="tobMcSwapList" style="max-height:58vh;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="document.getElementById('tobMcSwapBg').classList.remove('on')">Tancar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL AJUSTAR QUANTITATS ════════ -->
+<div class="tob-modal-bg" id="tobMcAjusteBg">
+  <div class="tob-modal" style="max-width:560px;max-height:90vh;display:flex;flex-direction:column;">
+    <h3 style="margin:0 0 2px;">⚖ Ajustar quantitats</h3>
+    <div id="tobMcAjusteNom" style="font-size:.92rem;font-weight:700;color:var(--acc);margin-bottom:8px;"></div>
+    <p style="font-size:.74rem;color:var(--mute);margin-bottom:10px;line-height:1.5;">
+      Ajusta la quantitat d'aquest plat per a aquest client. El canvi s'aplica a tot el menú (graella, totals, recetari i llista de la compra). Les quantitats es mostren per 1 ració.
+    </p>
+    <div style="overflow-y:auto;flex:1;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        <label style="font-size:.78rem;color:var(--mute);min-width:120px;">Escalar tot el plat</label>
+        <input type="range" id="tobMcAjusteFactor" min="0.5" max="1.6" step="0.05" value="1"
+               style="flex:1;accent-color:var(--acc);" oninput="tobMcAjustePreview()">
+        <span id="tobMcAjusteFactorVal" style="font-family:'DM Mono',monospace;font-size:.82rem;font-weight:700;color:var(--acc);min-width:46px;text-align:right;">×1.00</span>
+      </div>
+      <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;">O fixa grams d'ingredients concrets (deixa buit = automàtic):</div>
+      <div id="tobMcAjusteIngs" style="margin-bottom:12px;"></div>
+      <label style="font-size:.74rem;color:var(--mute);">Motiu del canvi (opcional)</label>
+      <input type="text" class="tob-input" id="tobMcAjusteMotiu" placeholder="ex: pujar proteïna per quadrar l'objectiu" style="margin:4px 0 12px;">
+      <div id="tobMcAjustePreview" style="font-size:.78rem;color:var(--text);background:var(--surface2,#1a1a1a);border-radius:6px;padding:9px 12px;"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+      <button class="tob-action ghost" onclick="tobMcResetAjuste()">↺ Sense ajust</button>
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcAjusteBg').classList.remove('on')">Cancelar</button>
+      <button class="tob-action" onclick="tobMcApplyAjuste()">Aplicar</button>
     </div>
   </div>
 </div>

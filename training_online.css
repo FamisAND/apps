@@ -695,3 +695,32 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
   .tob-ej-grid input.cell{width:38px;font-size:.65rem;padding:3px 2px;}
   .tob-row.col-2,.tob-row.col-3,.tob-row.col-4{grid-template-columns:1fr;}
 }
+
+/* ── Ajustos de racions: panel resum sota la graella + badge a la cel·la ── */
+.tob-mc-aj-box{
+  margin-top:14px;padding:12px 14px;background:var(--card2,#1a1a1a);border:1px solid var(--border);
+  border-left:3px solid var(--acc);border-radius:6px;
+}
+.tob-mc-aj-title{
+  font-family:'DM Mono',monospace;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--acc);margin-bottom:8px;font-weight:600;
+}
+.tob-mc-aj-title span{color:var(--mute);font-weight:400;margin-left:4px;}
+.tob-mc-aj-row{
+  display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px dashed var(--border);
+}
+.tob-mc-aj-row:first-of-type{border-top:none;}
+.tob-mc-aj-row .aj-src{font-size:1rem;line-height:1;cursor:help;}
+.tob-mc-aj-row .aj-info{flex:1;min-width:0;}
+.tob-mc-aj-row .aj-nm{font-size:.82rem;font-weight:600;color:var(--text);}
+.tob-mc-aj-row .aj-meta{font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;line-height:1.45;margin-top:1px;}
+.tob-mc-aj-row .aj-motiu{font-size:.7rem;color:var(--mute2);font-style:italic;margin-top:2px;}
+.tob-mc-cell-item.ajustada{border-left:2px solid var(--acc);}
+.tob-mc-cell-item .mc-it-aj{
+  display:inline-block;margin-right:3px;color:var(--acc);font-weight:700;cursor:help;
+}
+.tob-mc-aj-ing{
+  display:flex;align-items:center;gap:8px;padding:4px 0;font-size:.78rem;
+}
+.tob-mc-aj-ing .aj-ing-nm{flex:1;color:var(--text);}
+.tob-mc-aj-ing .aj-ing-base{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);min-width:64px;}

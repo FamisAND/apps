@@ -7536,6 +7536,216 @@ function tobMcMealBase(id){
   return (d && d.momento) || id;
 }
 
+// ═════════════════════════════════════════════════════════════════
+// AJUSTOS DE QUANTITATS — la IA (o el dietista) pot modificar la
+// quantitat d'una recepta dins d'un menú per quadrar kcal/proteïna.
+// tobMcState.ajustes = { [recId]: { factor, ing:{ingId:grams}, motiu, fuente } }
+//   · factor: multiplica TOTA la recepta (1 = sense canvi).
+//   · ing:    fixa els grams (de tota la recepta) d'ingredients concrets.
+// L'ajust s'aplica a TOTES les aparicions d'aquesta recepta al menú i es
+// propaga a graella, totals, PDF, recetari i llista de la compra.
+// ═════════════════════════════════════════════════════════════════
+const TOB_MC_FACTOR_MIN = 0.5;
+const TOB_MC_FACTOR_MAX = 1.6;
+const TOB_MC_ING_CAP    = 2.2;   // un ingredient no pot pujar més de +120%
+
+function tobMcClampFactor(f){
+  f = parseFloat(f);
+  if(!isFinite(f) || f <= 0) return 1;
+  return Math.min(TOB_MC_FACTOR_MAX, Math.max(TOB_MC_FACTOR_MIN, f));
+}
+// Grams efectius d'un ingredient de recepta segons l'ajust.
+function tobMcEffGramos(it, aj){
+  const base = +it.gramos || 0;
+  if(!aj) return base;
+  if(aj.ing && aj.ing[it.ingId] != null){
+    const v = +aj.ing[it.ingId];
+    if(isFinite(v) && v >= 0) return base > 0 ? Math.min(v, base * TOB_MC_ING_CAP) : v;
+  }
+  return base * (aj.factor || 1);
+}
+// ¿L'ajust té un canvi real?
+function tobMcAjusteActivo(aj){
+  if(!aj) return false;
+  if(aj.factor && Math.abs(aj.factor - 1) > 0.001) return true;
+  if(aj.ing && Object.keys(aj.ing).length) return true;
+  return false;
+}
+// Macros d'una recepta dins del menú, honrant el seu ajust.
+// ajustesMap opcional (el PDF no usa tobMcState).
+function tobMcMacros(r, ajustesMap){
+  const map = ajustesMap || (tobMcState && tobMcState.ajustes) || {};
+  const aj = map[r.id];
+  if(!tobMcAjusteActivo(aj)) return tobRecMacros(r);
+  const hasIng = aj.ing && Object.keys(aj.ing).length;
+  if(hasIng && Array.isArray(r.ingredientes) && r.ingredientes.length){
+    let kcal=0, hc=0, prot=0, gras=0, fib=0;
+    r.ingredientes.forEach(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      if(!ing) return;
+      const f = tobMcEffGramos(it, aj) / 100;
+      kcal += (+ing.kcal||0)*f; hc += (+ing.hc||0)*f; prot += (+ing.proteina||0)*f;
+      gras += (+ing.grasa||0)*f; fib += (+ing.fibra||0)*f;
+    });
+    return { kcal, hc, proteina:prot, grasa:gras, fibra:fib };
+  }
+  const b = tobRecMacros(r), f = aj.factor || 1;
+  return { kcal:b.kcal*f, hc:b.hc*f, proteina:b.proteina*f, grasa:b.grasa*f, fibra:b.fibra*f };
+}
+// Treu ajustos de receptes que ja no són al menú.
+function tobMcPruneAjustes(){
+  if(!tobMcState || !tobMcState.ajustes) return;
+  const usados = new Set();
+  Object.values(tobMcState.data||{}).forEach(sem =>
+    Object.values(sem||{}).forEach(dia =>
+      Object.values(dia||{}).forEach(arr =>
+        (arr||[]).forEach(id => usados.add(id)))));
+  Object.keys(tobMcState.ajustes).forEach(id => {
+    if(!usados.has(id) || !tobMcAjusteActivo(tobMcState.ajustes[id])) delete tobMcState.ajustes[id];
+  });
+}
+function tobMcAjusteResumen(aj){
+  const parts = [];
+  if(aj.factor && Math.abs(aj.factor - 1) > 0.001){
+    parts.push('ració ×' + (+aj.factor).toFixed(2).replace(/0+$/,'').replace(/\.$/,''));
+  }
+  if(aj.ing && Object.keys(aj.ing).length){
+    Object.keys(aj.ing).forEach(ingId => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ingId);
+      parts.push((ing ? ing.nombre : 'ingredient') + ' ' + Math.round(aj.ing[ingId]) + ' g');
+    });
+  }
+  return parts.join(' · ');
+}
+
+// ── Panell: racions ajustades (sota la graella) ────────────────
+function tobMcRenderAjustes(){
+  const box = document.getElementById('tobMcAjustesBox');
+  if(!box || !tobMcState) return;
+  tobMcPruneAjustes();
+  const aj = tobMcState.ajustes || {};
+  const ids = Object.keys(aj);
+  if(!ids.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = '';
+  const rows = ids.map(id => {
+    const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
+    const a = aj[id];
+    const nom = r ? r.nombre : '(recepta eliminada)';
+    const rac = (r && r.raciones) || 1;
+    let macTxt = '';
+    if(r){
+      const base = tobRecMacros(r), adj = tobMcMacros(r);
+      macTxt = Math.round(base.kcal/rac) + '→<b>' + Math.round(adj.kcal/rac) + '</b> kcal · '
+             + Math.round(base.proteina/rac) + '→<b>' + Math.round(adj.proteina/rac) + '</b> g prot';
+    }
+    return `<div class="tob-mc-aj-row">
+      <span class="aj-src" title="${a.fuente==='ia'?'Ajust fet per la IA':'Ajust manual'}">${a.fuente==='ia'?'🤖':'✋'}</span>
+      <div class="aj-info">
+        <div class="aj-nm">${tobEsc(nom)}</div>
+        <div class="aj-meta">${tobEsc(tobMcAjusteResumen(a))}${macTxt?'  ·  '+macTxt:''}</div>
+        ${a.motiu?`<div class="aj-motiu">“${tobEsc(a.motiu)}”</div>`:''}
+      </div>
+      <button class="tob-action ghost btn-xs" onclick="tobMcOpenAjuste('${id}')" ${r?'':'disabled'} title="Editar">✏️</button>
+      <button class="tob-action ghost btn-xs" onclick="tobMcQuitarAjuste('${id}')" style="color:#dc6a6a;" title="Treure ajust">✗</button>
+    </div>`;
+  }).join('');
+  box.innerHTML = `<div class="tob-mc-aj-title">⚖ Racions ajustades <span>(${ids.length})</span></div>${rows}`;
+}
+function tobMcQuitarAjuste(id){
+  if(!tobMcState || !tobMcState.ajustes) return;
+  delete tobMcState.ajustes[id];
+  tobMcRenderGrid();
+  tobMcUpdateAllTotals();
+  tobToast('Ajust tret', '');
+}
+
+// ── Modal: ajustar quantitats d'una recepta ────────────────────
+let _tobMcAjusteId = null;
+function tobMcOpenAjuste(recId){
+  if(!tobMcState) return;
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+  if(!r){ tobToast('Recepta no trobada', 'red'); return; }
+  _tobMcAjusteId = recId;
+  if(!tobMcState.ajustes) tobMcState.ajustes = {};
+  const aj = tobMcState.ajustes[recId] || { factor:1, ing:{} };
+  const rac = r.raciones || 1;
+  document.getElementById('tobMcAjusteNom').textContent = r.nombre || '—';
+  document.getElementById('tobMcAjusteFactor').value = aj.factor || 1;
+  document.getElementById('tobMcAjusteMotiu').value = aj.motiu || '';
+  const ingBody = document.getElementById('tobMcAjusteIngs');
+  const ings = r.ingredientes || [];
+  if(ings.length){
+    ingBody.innerHTML = ings.map(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      const nom = ing ? ing.nombre : (it._nombreFallback || '—');
+      const baseG = +it.gramos || 0;
+      const cur = (aj.ing && aj.ing[it.ingId] != null) ? Math.round(aj.ing[it.ingId]/rac) : '';
+      return `<div class="tob-mc-aj-ing">
+        <span class="aj-ing-nm">${tobEsc(nom)}</span>
+        <span class="aj-ing-base">base ${Math.round(baseG/rac)} g</span>
+        <input type="number" class="tob-input" data-ingid="${it.ingId}" data-base="${baseG}"
+               placeholder="${Math.round(baseG/rac)}" value="${cur}" min="0" style="width:78px;"
+               oninput="tobMcAjustePreview()">
+      </div>`;
+    }).join('');
+  } else {
+    ingBody.innerHTML = '<div style="color:var(--mute2);font-size:.72rem;padding:6px 2px;">Aquesta recepta no té desglossament d\'ingredients — només es pot escalar amb el factor.</div>';
+  }
+  tobMcAjustePreview();
+  document.getElementById('tobMcAjusteBg').classList.add('on');
+}
+function tobMcAjusteLeerModal(){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
+  if(!r) return null;
+  const rac = r.raciones || 1;
+  const factor = tobMcClampFactor(document.getElementById('tobMcAjusteFactor').value);
+  const ing = {};
+  document.querySelectorAll('#tobMcAjusteIngs input[data-ingid]').forEach(inp => {
+    const v = parseFloat(inp.value);
+    if(isFinite(v) && v > 0){
+      const base = +inp.dataset.base || 0;
+      let g = v * rac;
+      if(base > 0) g = Math.min(g, base * TOB_MC_ING_CAP);
+      ing[inp.dataset.ingid] = Math.round(g);
+    }
+  });
+  return { r, rac, aj: { factor, ing } };
+}
+function tobMcAjustePreview(){
+  const data = tobMcAjusteLeerModal();
+  if(!data) return;
+  const { r, rac, aj } = data;
+  document.getElementById('tobMcAjusteFactorVal').textContent = '×' + aj.factor.toFixed(2);
+  const base = tobRecMacros(r);
+  const adj = tobMcMacros(r, { [r.id]: aj });
+  document.getElementById('tobMcAjustePreview').innerHTML =
+    'Base: ' + Math.round(base.kcal/rac) + ' kcal · ' + Math.round(base.proteina/rac) + ' g prot'
+    + '  →  <b style="color:var(--acc)">Ajustat: ' + Math.round(adj.kcal/rac) + ' kcal · '
+    + Math.round(adj.proteina/rac) + ' g prot</b>';
+}
+function tobMcResetAjuste(){
+  document.getElementById('tobMcAjusteFactor').value = 1;
+  document.querySelectorAll('#tobMcAjusteIngs input[data-ingid]').forEach(inp => inp.value = '');
+  document.getElementById('tobMcAjusteMotiu').value = '';
+  tobMcAjustePreview();
+}
+function tobMcApplyAjuste(){
+  if(!tobMcState || !_tobMcAjusteId) return;
+  const data = tobMcAjusteLeerModal();
+  if(!data) return;
+  const aj = data.aj;
+  aj.motiu = (document.getElementById('tobMcAjusteMotiu').value || '').trim();
+  aj.fuente = 'manual';
+  if(!tobMcState.ajustes) tobMcState.ajustes = {};
+  if(tobMcAjusteActivo(aj)) tobMcState.ajustes[_tobMcAjusteId] = aj;
+  else delete tobMcState.ajustes[_tobMcAjusteId];
+  document.getElementById('tobMcAjusteBg').classList.remove('on');
+  _tobMcAjusteId = null;
+  tobMcRenderGrid();
+  tobMcUpdateAllTotals();
+  tobToast('✓ Ajust aplicat', 'green');
+}
+
 // Notas/recomanacions que se incluyen por defecto en el PDF del menú.
 const TOB_MENU_NOTAS_DEFAULT =
   "- Les receptes es poden adaptar al teu gust: amb els mateixos ingredients del dia, prepara-la com més t'agradi.\n" +
@@ -7602,6 +7812,7 @@ function tobMcOnClienteChange(){
     comidasIds: comidas.map(c => c.id),
     semanaActiva: 0,
     notas: TOB_MENU_NOTAS_DEFAULT,
+    ajustes: {},
     data: {}
   };
   // Inicializar estructura
@@ -7838,16 +8049,19 @@ function tobMcRenderGrid(){
       const itemsHtml = items.map((recId, ix) => {
         const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
         if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><div class="mc-it-body"><div class="mc-it-nm">(eliminada)</div></div><button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
-        const m = tobRecMacros(r);
+        const m = tobMcMacros(r);
         const rac = r.raciones || 1;
         const kcalPer = Math.round(m.kcal / rac);
         const protPer = Math.round(m.proteina / rac);
-        return `<div class="tob-mc-cell-item" data-rec="${recId}" title="${tobEsc(r.nombre)} · ${kcalPer} kcal · ${protPer}g prot">
+        const aj = (tobMcState.ajustes||{})[recId];
+        const ajustada = tobMcAjusteActivo(aj);
+        const ajBadge = ajustada ? `<span class="mc-it-aj" title="Ració ajustada: ${tobEsc(tobMcAjusteResumen(aj))}">⚖</span>` : '';
+        return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(r.nombre)} · ${kcalPer} kcal · ${protPer}g prot — clica per ajustar quantitats">
           <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
           <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
           <div class="mc-it-foto placeholder" data-foto-rec="${recId}">${tobEsc((r.nombre||'?').slice(0,2).toUpperCase())}</div>
           <div class="mc-it-body">
-            <div class="mc-it-nm">${tobEsc(r.nombre || '—')}</div>
+            <div class="mc-it-nm">${ajBadge}${tobEsc(r.nombre || '—')}</div>
             <div class="mc-it-mac">${kcalPer} kcal · ${protPer}g prot</div>
           </div>
         </div>`;
@@ -7857,7 +8071,7 @@ function tobMcRenderGrid(){
       items.forEach(recId => {
         const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
         if(!r) return;
-        const m = tobRecMacros(r); const rac = r.raciones || 1;
+        const m = tobMcMacros(r); const rac = r.raciones || 1;
         ck += m.kcal/rac; cp += m.proteina/rac; ch += m.hc/rac; cg += m.grasa/rac;
       });
       const cellSum = items.length
@@ -7901,6 +8115,7 @@ function tobMcRenderGrid(){
   }
 
   tobMcUpdateAllTotals();
+  tobMcRenderAjustes();
 }
 
 function tobMcRemoveItem(day, mealId, ix){
@@ -7924,7 +8139,8 @@ function tobMcUpdateAllTotals(){
       arr.forEach(recId => {
         const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
         if(!r) return;
-        const m = tobRecMacros(r);
+        // Macros amb ajustos del menú (factor i grams per ingredient).
+        const m = tobMcMacros(r);
         const rac = r.raciones || 1;
         // Asumimos 1 ración del plato por slot
         kcal += m.kcal / rac;
@@ -8123,6 +8339,7 @@ function tobMcSave(){
     protObj:  parseFloat(document.getElementById('tobMcProt').value) || null,
     notas:    tobMcState.notas != null ? tobMcState.notas : TOB_MENU_NOTAS_DEFAULT,
     data:     JSON.parse(JSON.stringify(tobMcState.data)),
+    ajustes:  JSON.parse(JSON.stringify(tobMcState.ajustes || {})),
     savedAt:  new Date().toISOString()
   };
   // Update si ya existe, insert si no
@@ -8181,6 +8398,7 @@ function tobMcLoadMenu(menuId){
     comidasIds: m.comidasIds || tobMcComidasDelCliente(cli).map(c => c.id),
     semanaActiva: 0,
     data: JSON.parse(JSON.stringify(m.data || {})),
+    ajustes: JSON.parse(JSON.stringify(m.ajustes || {})),
     notas: m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT,
     _menuId: m.id
   };
@@ -8333,8 +8551,12 @@ async function tobMenuPdf(cliId, menuId){
   const DIAS = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
   const comidas = (m.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
   const semanas = m.semanas || 1;
-  // Macros por ración de una receta
-  const macRac = (r) => { const x = tobRecMacros(r); const rac = r.raciones || 1; return { kcal:x.kcal/rac, prot:x.proteina/rac, hc:x.hc/rac, gras:x.grasa/rac, fib:x.fibra/rac }; };
+  // Ajustes guardados en el menú — afectan a graella, totals, llista de la
+  // compra i receptari (cantitats per ració). Si una receta no té ajust, es
+  // comporta com abans (tobMcMacros cau a tobRecMacros, tobMcEffGramos = base).
+  const ajMap = m.ajustes || {};
+  // Macros por ración de una receta, honrant els ajustos del menú.
+  const macRac = (r) => { const x = tobMcMacros(r, ajMap); const rac = r.raciones || 1; return { kcal:x.kcal/rac, prot:x.proteina/rac, hc:x.hc/rac, gras:x.grasa/rac, fib:x.fibra/rac }; };
 
   // ── Graella del menú por semana (con fila de totales por día) ──
   let graellaHtml = '';
@@ -8372,16 +8594,19 @@ async function tobMenuPdf(cliId, menuId){
   }
 
   // ── Llista de la compra (ingredients agregats, per seccions del súper) ─
+  // Suma els grams efectius (respectant ajustos del menú) per cada ració,
+  // multiplicat per les ocurrències de la recepta al menú.
   const compra = {};
   Object.keys(usos).forEach(id => {
     const r = recsById[id];
     if(!r || !Array.isArray(r.ingredientes)) return;
     const rac = r.raciones || 1;
+    const aj = ajMap[id];
     r.ingredientes.forEach(it => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
       const nom = ing ? ing.nombre : (it._nombreFallback || null);
       if(!nom) return;
-      const g = (+it.gramos || 0) / rac * usos[id];
+      const g = tobMcEffGramos(it, aj) / rac * usos[id];
       const k = nom.toLowerCase();
       if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
       compra[k].g += g;
@@ -8413,20 +8638,26 @@ async function tobMenuPdf(cliId, menuId){
       const foto = fotoMap[r.id];
       const mr = macRac(r);
       const racR = r.raciones || 1;
+      const aj = ajMap[r.id];
+      const ajActivo = tobMcAjusteActivo(aj);
       const ings = (r.ingredientes||[]).map(it => {
         const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
         const nom = ing ? ing.nombre : (it._nombreFallback || '—');
-        const g = (+it.gramos || 0) / racR;   // por ración (1 persona)
+        const g = tobMcEffGramos(it, aj) / racR;   // per ració (1 persona), amb ajustos del menú
         return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
       }).join('');
       const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
                   : String(r.instrucciones||'').split('\n').filter(Boolean);
+      const ajBadge = ajActivo
+        ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
+        : '';
       return `<div class="mp-recepta mp-blk">
         <div class="mp-recepta-head">
           ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-recepta-foto mp-recepta-nofoto"></div>'}
           <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
           <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
-          ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}</div>
+          ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}
+          ${ajBadge}</div>
         </div>
         ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
           <div><h4>Preparació</h4><ol>${pasos.map(p=>`<li>${esc(p.replace(/^[-·•*\d.\s]+/,''))}</li>`).join('')||'<li>—</li>'}</ol></div></div>` : ''}
@@ -8484,6 +8715,7 @@ async function tobMenuPdf(cliId, menuId){
     .mp-recepta-nm{font-size:15px;font-weight:800;color:#23201a;}
     .mp-recepta-mac{font-size:10px;color:#9a8a64;margin-top:3px;}
     .mp-recepta-al{font-size:9px;color:#b23;margin-top:2px;}
+    .mp-recepta-aj{font-size:9px;color:#9a7016;margin-top:3px;font-weight:600;background:#f6efdc;padding:2px 7px;border-radius:3px;display:inline-block;}
     .mp-recepta-cols{display:flex;gap:24px;}
     .mp-recepta-cols>div{flex:1;}
     .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:16px;font-size:10px;line-height:1.5;color:#3a352c;}
@@ -8876,9 +9108,22 @@ async function tobMcGenerarIA(){
       catalogo, '',
       rules,
       '',
-      'FORMAT DE RESPOSTA (només JSON): un objecte amb una clau per setmana ("0","1",…). '
-        + 'Cada setmana és un array de 7 dies. Cada dia és un objecte {comida_id:[id_recepta,…]}.',
-      'Exemple d\'un dia: {' + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}'
+      'FORMAT DE RESPOSTA (només JSON):',
+      '{',
+      '  "data":    { "0": [día0, día1, …, día6], "1": [...] },   // un menú per setmana',
+      '  "ajustes": { "<id_recepta>": { "factor": 1.2, "motiu": "pujar prot del dimarts" } }   // opcional',
+      '}',
+      'Cada dia és un objecte {comida_id:[id_recepta,…]}. Exemple d\'un dia: {'
+        + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}',
+      '',
+      'CAMP "ajustes" (opcional, només si ajuda a quadrar millor kcal/proteïna):',
+      '· Per a una recepta del menú, pots multiplicar la seva ració per un FACTOR entre 0.6 i 1.6 '
+        + '(ex: factor 1.3 = 30% més gran). Aplica a TOTES les aparicions d\'aquesta recepta al menú.',
+      '· Útil quan un dia es queda 100-300 kcal curt o 100-300 kcal passat: en lloc de substituir un plat, '
+        + 'ajusta la ració de la recepta principal del dia. Així el client manté plats que li agraden.',
+      '· "motiu" és una frase curta en català explicant per què (ex: "ració més grossa el dimarts per pujar prot").',
+      '· No abusis: només posa ajustes quan REALMENT calguin. Si tot el menú està dins del marge sense ajustar, deixa "ajustes": {} o omet-lo.',
+      '· NO és per canviar la recepta base (això seria un canvi de plantilla); només per a aquest menú.'
     ].join('\n');
 
     tobToast('🤖 La IA està generant el menú… pot trigar uns segons', '');
@@ -8886,10 +9131,14 @@ async function tobMcGenerarIA(){
     const parsed = tobAiParseJson(raw);
 
     // Vuelca un menú parseado al estado. Devuelve nº de platos colocados.
+    // Soporta dos formats de resposta de la IA:
+    //   · Legacy: { "0":[día0,...], "1":[...] }
+    //   · Nou:    { "data":{ "0":[...]}, "ajustes":{ "<recId>":{factor,ing,motiu} } }
     const aplicar = (pj) => {
       let n = 0;
+      const dataSrc = (pj && typeof pj === 'object' && pj.data && typeof pj.data === 'object') ? pj.data : pj;
       for(let s = 0; s < semanas; s++){
-        const wk = pj[s] != null ? pj[s] : pj[String(s)];
+        const wk = dataSrc[s] != null ? dataSrc[s] : dataSrc[String(s)];
         if(!Array.isArray(wk)) continue;
         if(!tobMcState.data[s]) tobMcState.data[s] = {};
         for(let d = 0; d < 7; d++){
@@ -8903,6 +9152,26 @@ async function tobMcGenerarIA(){
           });
         }
       }
+      // Bolcar ajustos emesos per la IA — només per a receptes que estan al menú
+      // i amb factor dins del rang permès. Marquem fuente:'ia' per traçabilitat.
+      tobMcState.ajustes = tobMcState.ajustes || {};
+      const ajRaw = (pj && typeof pj === 'object' && pj.ajustes && typeof pj.ajustes === 'object') ? pj.ajustes : null;
+      if(ajRaw){
+        const usadosNow = new Set();
+        Object.values(tobMcState.data||{}).forEach(sem =>
+          Object.values(sem||{}).forEach(dia =>
+            Object.values(dia||{}).forEach(arr =>
+              (arr||[]).forEach(id => usadosNow.add(id)))));
+        Object.keys(ajRaw).forEach(recId => {
+          if(!validIds.has(recId) || !usadosNow.has(recId)) return;
+          const a = ajRaw[recId] || {};
+          const factor = tobMcClampFactor(a.factor != null ? a.factor : 1);
+          // Per ara només acceptem factor (no ingredientes específicos de la IA — més arriscat).
+          const aj = { factor, motiu: String(a.motiu || '').slice(0, 140), fuente: 'ia' };
+          if(tobMcAjusteActivo(aj)) tobMcState.ajustes[recId] = aj;
+        });
+      }
+      tobMcPruneAjustes();
       return n;
     };
     let puestos = aplicar(parsed);
@@ -8915,7 +9184,8 @@ async function tobMcGenerarIA(){
       const dayKcal = (s,d) => {
         let k = 0;
         comidas.forEach(c => ((((tobMcState.data[s]||{})[d])||{})[c.id]||[]).forEach(id => {
-          const r = recById[id]; if(r) k += tobRecMacros(r).kcal / (r.raciones || 1);
+          // Usem macros amb ajustos del menú (la IA pot haver emés ajustes a la 1a passada).
+          const r = recById[id]; if(r) k += tobMcMacros(r, tobMcState.ajustes).kcal / (r.raciones || 1);
         }));
         return k;
       };
