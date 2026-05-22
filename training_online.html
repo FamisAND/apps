@@ -20,6 +20,24 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
+<script>
+// BOOT CLEANUP (v104+): elimina restes del bolcat antic a localStorage
+(function(){
+  try {
+    var KEYS = ['recetas','ingredientes','menus','_v','_syncTs'];
+    var cleaned = 0;
+    KEYS.forEach(function(k){
+      try {
+        var v = localStorage.getItem(k);
+        if(v && (v.length > 5000 || k === '_v' || k === '_syncTs')){
+          localStorage.removeItem(k); cleaned++;
+        }
+      } catch(_e){}
+    });
+    if(cleaned) console.warn('[boot] cleanup localStorage:', cleaned, 'keys');
+  } catch(_e){}
+})();
+</script>
 
 <div class="tob-topbar">
   <div class="tob-logo">

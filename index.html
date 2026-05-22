@@ -17,6 +17,38 @@
 </head>
 <body class="theme-index">
 <noscript style="position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;z-index:99999;font-family:sans-serif;text-align:center;line-height:1.6;">📊 <strong style="margin-left:10px">Mis Dashboards</strong> necesita JavaScript activado para funcionar.</noscript>
+<script>
+// ─── BOOT CLEANUP DE EMERGÈNCIA ────────────────────────────────────
+// Versions de github-sync.js anteriors a v104 bolcaven el catàleg de
+// menús (que ja viu a IndexedDB) també a localStorage, fent que la
+// quota es passés i la app no arranqués (error setItem 'recetas').
+//
+// Aquest script s'executa abans de cap altre i neteja les keys del
+// localStorage que NO haurien d'estar-hi. És ràpid i inofensiu si no
+// hi ha res a netejar. Es manté indefinidament per garantir que cap
+// dispositiu amb cache vella es quedi atrapat al deadlock.
+(function(){
+  try {
+    var KEYS = ['recetas','ingredientes','menus','_v','_syncTs'];
+    var cleaned = 0, bytes = 0;
+    KEYS.forEach(function(k){
+      try {
+        var v = localStorage.getItem(k);
+        if(v && v.length > 5000){
+          localStorage.removeItem(k);
+          cleaned++; bytes += v.length;
+        } else if(v && (k === '_v' || k === '_syncTs')){
+          localStorage.removeItem(k);
+          cleaned++;
+        }
+      } catch(_e){}
+    });
+    if(cleaned > 0){
+      console.warn('[boot] cleanup localStorage: ' + cleaned + ' keys, ~' + Math.round(bytes/1024) + ' KB alliberats.');
+    }
+  } catch(_e){ /* sense localStorage, l'app igualment fallaria després */ }
+})();
+</script>
 
 <!-- ════════ NEON FX BACKGROUND ════════ -->
 <!-- Rayo neón animado: dos paths que cruzan la pantalla en diagonal con offsets distintos -->

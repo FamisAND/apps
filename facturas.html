@@ -17,6 +17,24 @@
 </head>
 <body class="theme-fac">
 <noscript style="position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;z-index:99999;font-family:sans-serif;text-align:center;line-height:1.6;">📄 <strong style="margin-left:10px">Facturas</strong> necesita JavaScript activado para funcionar.</noscript>
+<script>
+// BOOT CLEANUP (v104+): elimina restes del bolcat antic a localStorage
+(function(){
+  try {
+    var KEYS = ['recetas','ingredientes','menus','_v','_syncTs'];
+    var cleaned = 0;
+    KEYS.forEach(function(k){
+      try {
+        var v = localStorage.getItem(k);
+        if(v && (v.length > 5000 || k === '_v' || k === '_syncTs')){
+          localStorage.removeItem(k); cleaned++;
+        }
+      } catch(_e){}
+    });
+    if(cleaned) console.warn('[boot] cleanup localStorage:', cleaned, 'keys');
+  } catch(_e){}
+})();
+</script>
 
 <!-- Botón volver al inicio (igual que el resto de HTMLs) -->
 <a href="index.html" id="ghHomeBtn" style="position:fixed;top:8px;left:8px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 11px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;text-decoration:none;opacity:.85;">← inicio</a>

@@ -14,6 +14,24 @@
 </head>
 <body class="theme-opt">
 <noscript style="position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;z-index:99999;font-family:sans-serif;text-align:center;line-height:1.6;">📈 <strong style="margin-left:10px">Options</strong> necesita JavaScript activado para funcionar.</noscript>
+<script>
+// BOOT CLEANUP (v104+): elimina restes del bolcat antic a localStorage
+(function(){
+  try {
+    var KEYS = ['recetas','ingredientes','menus','_v','_syncTs'];
+    var cleaned = 0;
+    KEYS.forEach(function(k){
+      try {
+        var v = localStorage.getItem(k);
+        if(v && (v.length > 5000 || k === '_v' || k === '_syncTs')){
+          localStorage.removeItem(k); cleaned++;
+        }
+      } catch(_e){}
+    });
+    if(cleaned) console.warn('[boot] cleanup localStorage:', cleaned, 'keys');
+  } catch(_e){}
+})();
+</script>
 
 <div class="cfg-overlay" id="cfgOverlay">
   <div class="cfg-modal">
