@@ -8688,63 +8688,131 @@ async function tobMenuPdf(cliId, menuId){
   // ── Documento del menú (se renderiza fuera de pantalla y se vuelca
   //    a un PDF descargable con html2canvas + jsPDF) ───────────────
   const hoy = new Date().toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
+  // Tokens visuals iguals al PDF de mediciones — branding consistent.
+  // ORANGE #f5a721 · BLACK #0f0f0f · GRAY_LIGHT #f7f7f7 · GRAY_DK #404040.
   const styleCss = `
     .mp-doc *{box-sizing:border-box;margin:0;padding:0;}
-    .mp-doc{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#23201a;background:#fff;width:794px;}
-    .mp-doc h2{font-size:15px;color:#9a7016;margin:0 0 10px;border-bottom:2px solid #e3c478;padding-bottom:4px;}
-    .mp-doc h4{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#a08a55;margin:0 0 5px;}
-    .mp-cover{background:linear-gradient(135deg,#1a1812,#2c2618);color:#f3e9d0;padding:36px 40px 30px;}
-    .mp-logo{font-size:27px;font-weight:800;letter-spacing:.05em;}
-    .mp-logo b{color:#e8b84b;}
-    .mp-logo-tag{font-size:10px;letter-spacing:.36em;color:#9a8a64;margin-top:3px;}
-    .mp-cover-ttl{font-size:31px;font-weight:800;margin-top:24px;color:#fff;}
-    .mp-cover-cli{font-size:17px;color:#e8b84b;font-weight:700;margin-top:3px;}
-    .mp-cover-meta{margin-top:13px;font-size:11.5px;color:#cdbf9f;}
-    .mp-cover-meta b{color:#e8b84b;}
-    .mp-body{padding:24px 40px 0;}
-    .mp-section{margin-bottom:24px;}
+    .mp-doc{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#0f0f0f;background:#fff;width:794px;position:relative;}
+    .mp-doc h2{font-size:14px;color:#0f0f0f;margin:0 0 12px;padding:6px 12px;background:#f5a721;letter-spacing:.02em;font-weight:800;text-transform:uppercase;}
+    .mp-doc h4{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#8c8c8c;margin:0 0 6px;font-weight:800;}
+
+    /* ── Cover: barra taronja a l'esquerra + logo gros ── */
+    .mp-cover{position:relative;padding:54px 40px 36px 100px;background:#fff;}
+    .mp-cover::before{content:'';position:absolute;left:0;top:0;width:60px;height:100%;background:#f5a721;}
+    .mp-logo-wrap{display:flex;align-items:baseline;gap:14px;}
+    .mp-logo-full{font-size:46px;font-weight:900;letter-spacing:.01em;color:#f5a721;line-height:1;}
+    .mp-logo-training{font-size:46px;font-weight:900;letter-spacing:.01em;color:#0f0f0f;line-height:1;}
+    .mp-cover-sub{font-size:11px;color:#8c8c8c;letter-spacing:.04em;margin-top:8px;}
+    .mp-cover-cli{font-size:28px;font-weight:800;color:#0f0f0f;margin-top:34px;}
+    .mp-cover-periodo{font-size:11px;color:#404040;margin-top:6px;letter-spacing:.02em;}
+
+    /* ── KPIs estil mediciones: fons #f7f7f7 + barra taronja a sobre ── */
+    .mp-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:30px;}
+    .mp-kpi{background:#f7f7f7;padding:18px 14px 14px;position:relative;}
+    .mp-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:#f5a721;}
+    .mp-kpi-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:#8c8c8c;font-weight:800;}
+    .mp-kpi-val{font-size:22px;font-weight:800;color:#0f0f0f;margin-top:6px;line-height:1.1;}
+    .mp-kpi-sub{font-size:8.5px;color:#8c8c8c;margin-top:3px;}
+
+    /* ── Body: header bar a cada secció (igual que pdf-lib drawHeaderBar) ── */
+    .mp-body{padding:30px 40px 0;}
+    .mp-section{margin-bottom:26px;}
     .mp-doc table{border-collapse:collapse;width:100%;}
+
+    /* ── Graella: thead taronja, cap. dies negre sobre taronja, totals gris ── */
     .mp-graella{table-layout:fixed;}
-    .mp-graella th,.mp-graella td{border:1px solid #e0d6bf;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere;}
-    .mp-graella thead th{background:#9a7016;color:#fff;font-size:9px;text-transform:uppercase;letter-spacing:.04em;}
-    .mp-graella tbody th{background:#f6efdc;color:#7a5c10;width:66px;font-size:9px;text-transform:uppercase;font-weight:700;}
+    .mp-graella th,.mp-graella td{border:1px solid #ddd;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere;}
+    .mp-graella thead th{background:#f5a721;color:#0f0f0f;font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;}
+    .mp-graella tbody th{background:#f7f7f7;color:#404040;width:64px;font-size:8.5px;text-transform:uppercase;font-weight:700;letter-spacing:.04em;}
     .mp-plato{display:flex;gap:5px;align-items:center;margin-bottom:4px;}
     .mp-plato:last-child{margin-bottom:0;}
-    .mp-foto{width:40px;height:32px;border-radius:4px;background:#eee center/cover;flex:none;border:1px solid #e0d6bf;}
-    .mp-nofoto{background:#f0e6cc;}
-    .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.18;color:#23201a;overflow-wrap:anywhere;}
-    .mp-recetari-h{margin-top:8px;}
-    .mp-plato-kcal{font-size:7.5px;color:#9a8a64;}
+    .mp-foto{width:38px;height:30px;border-radius:3px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
+    .mp-nofoto{background:#f7f7f7;}
+    .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.18;color:#0f0f0f;overflow-wrap:anywhere;}
+    .mp-plato-kcal{font-size:7.5px;color:#8c8c8c;}
     .mp-buit{color:#ccc;font-size:9px;text-align:center;padding:6px 0;}
-    .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f6efdc;color:#7a5c10;font-weight:700;font-size:8.5px;text-align:center;}
-    .mp-graella tr.mp-tot b{font-size:10.5px;}
-    .mp-compra-sec{font-size:11.5px;color:#9a7016;font-weight:700;margin:13px 0 4px;border-bottom:1px solid #e3c478;padding-bottom:2px;}
+    .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f7f7f7;color:#404040;font-weight:700;font-size:8.5px;text-align:center;border-top:2px solid #f5a721;}
+    .mp-graella tr.mp-tot b{font-size:11px;color:#0f0f0f;}
+
+    /* ── Llista de la compra: seccions en taronja, ítems en columnes ── */
+    .mp-compra-sec{font-size:10.5px;color:#0f0f0f;font-weight:800;margin:14px 0 4px;padding:4px 10px;background:#f5a721;letter-spacing:.04em;text-transform:uppercase;}
     .mp-compra{list-style:none;columns:3;column-gap:24px;}
-    .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dotted #ddd;}
-    .mp-compra .mp-g{color:#9a7016;font-weight:700;}
-    .mp-recepta{border:1px solid #e6ddc8;border-radius:8px;padding:13px 15px;margin-bottom:13px;background:#fffdf7;}
-    .mp-recepta-head{display:flex;gap:13px;align-items:center;margin-bottom:9px;}
-    .mp-recepta-foto{width:120px;height:88px;border-radius:6px;background:#eee center/cover;flex:none;border:1px solid #e0d6bf;}
-    .mp-recepta-nofoto{background:linear-gradient(135deg,#f0e6cc,#e6d6a8);}
-    .mp-recepta-nm{font-size:15px;font-weight:800;color:#23201a;}
-    .mp-recepta-mac{font-size:10px;color:#9a8a64;margin-top:3px;}
-    .mp-recepta-al{font-size:9px;color:#b23;margin-top:2px;}
-    .mp-recepta-aj{font-size:9px;color:#9a7016;margin-top:3px;font-weight:600;background:#f6efdc;padding:2px 7px;border-radius:3px;display:inline-block;}
+    .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dotted #ddd;color:#0f0f0f;}
+    .mp-compra .mp-g{color:#f5a721;font-weight:800;}
+
+    /* ── Receptari: cards blanques + barra taronja a sobre ── */
+    .mp-recepta{background:#fff;border:1px solid #e8e8e8;padding:14px 16px 12px;margin-bottom:14px;position:relative;}
+    .mp-recepta::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:#f5a721;}
+    .mp-recepta-head{display:flex;gap:14px;align-items:center;margin-bottom:10px;}
+    .mp-recepta-foto{width:110px;height:84px;border-radius:4px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
+    .mp-recepta-nofoto{background:#f7f7f7;}
+    .mp-recepta-nm{font-size:15px;font-weight:800;color:#0f0f0f;}
+    .mp-recepta-mac{font-size:10px;color:#404040;margin-top:4px;}
+    .mp-recepta-mac b{color:#f5a721;}
+    .mp-recepta-al{font-size:9px;color:#d94040;margin-top:3px;font-weight:700;}
+    .mp-recepta-aj{font-size:9px;color:#0f0f0f;margin-top:4px;font-weight:700;background:#f5a721;padding:2px 7px;border-radius:2px;display:inline-block;}
     .mp-recepta-cols{display:flex;gap:24px;}
     .mp-recepta-cols>div{flex:1;}
-    .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:16px;font-size:10px;line-height:1.5;color:#3a352c;}
-    .mp-notas{font-size:11px;line-height:1.8;color:#4a4536;background:#f6efdc;border-left:3px solid #e8b84b;border-radius:4px;padding:12px 16px;}
-    .mp-foot{margin:26px 40px 0;text-align:center;font-size:9px;color:#bbb;border-top:1px solid #eee;padding-top:10px;}
+    .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:16px;font-size:10px;line-height:1.55;color:#404040;}
+
+    /* ── Notes / recomanacions ── */
+    .mp-notas{font-size:10.5px;line-height:1.75;color:#404040;background:#f7f7f7;border-left:4px solid #f5a721;padding:14px 18px;}
+
+    /* ── Foot: brand mark a la dreta com el PDF de mediciones ── */
+    .mp-foot{margin:30px 40px 24px;text-align:right;font-size:8.5px;color:#8c8c8c;font-style:italic;}
   `;
+
+  // ─── KPIs portada (estil mediciones) ──────────────────────────────
+  // Calcular Recetes úniques, kcal mitjana/dia i prot mitjana/dia
+  // perquè la cover tingui números reals i no només els objectius.
+  const nRecsUnicas = Object.keys(usos).length;
+  let totKcalMenu = 0, totProtMenu = 0;
+  for(let s = 0; s < semanas; s++) for(let d = 0; d < 7; d++){
+    comidas.forEach(c => {
+      const ids = ((m.data[s]||{})[d]||{})[c.id] || [];
+      ids.forEach(id => {
+        const r = recsById[id]; if(!r) return;
+        const mr = macRac(r);
+        totKcalMenu += mr.kcal; totProtMenu += mr.prot;
+      });
+    });
+  }
+  const nDias = semanas * 7;
+  const kcalProm = nDias ? Math.round(totKcalMenu / nDias) : 0;
+  const protProm = nDias ? Math.round(totProtMenu / nDias) : 0;
+  const objKcal = m.kcalObj || 0;
+  const objProt = m.protObj || 0;
+  const kpiVsObj = (real, obj) => {
+    if(!obj || !real) return '';
+    const diff = Math.round(real - obj);
+    return `${diff>=0?'+':''}${diff} vs objectiu`;
+  };
+
   const bodyHtml = `<div class="mp-doc">
     <div class="mp-cover mp-blk">
-      <div class="mp-logo"><b>FULL</b> TRAINING</div>
-      <div class="mp-logo-tag">NUTRICIÓ</div>
-      <div class="mp-cover-ttl">Menú nutricional</div>
+      <div class="mp-logo-wrap">
+        <span class="mp-logo-full">FULL</span><span class="mp-logo-training">TRAINING</span>
+      </div>
+      <div class="mp-cover-sub">NUTRICIÓ · Menú setmanal personalitzat</div>
       <div class="mp-cover-cli">${esc(cli.nombre)}</div>
-      <div class="mp-cover-meta">
-        ${esc(hoy)} &nbsp;·&nbsp; <b>${semanas}</b> setmana(es) &nbsp;·&nbsp; <b>${comidas.length}</b> àpats/dia
-        &nbsp;·&nbsp; objectiu <b>${m.kcalObj||'—'}</b> kcal/dia · <b>${m.protObj||'—'}</b> g proteïna
+      <div class="mp-cover-periodo">${esc(hoy)} &nbsp;·&nbsp; ${semanas} setmana(es) &nbsp;·&nbsp; ${comidas.length} àpats/dia</div>
+
+      <div class="mp-kpis">
+        <div class="mp-kpi">
+          <div class="mp-kpi-lbl">Receptes</div>
+          <div class="mp-kpi-val">${nRecsUnicas}</div>
+          <div class="mp-kpi-sub">úniques al menú</div>
+        </div>
+        <div class="mp-kpi">
+          <div class="mp-kpi-lbl">Kcal / dia</div>
+          <div class="mp-kpi-val">${kcalProm || '—'}</div>
+          <div class="mp-kpi-sub">${objKcal ? 'objectiu ' + objKcal + ' kcal · ' + kpiVsObj(kcalProm, objKcal) : 'mitjana del menú'}</div>
+        </div>
+        <div class="mp-kpi">
+          <div class="mp-kpi-lbl">Proteïna / dia</div>
+          <div class="mp-kpi-val">${protProm || '—'} g</div>
+          <div class="mp-kpi-sub">${objProt ? 'objectiu ' + objProt + ' g · ' + kpiVsObj(protProm, objProt) : 'mitjana del menú'}</div>
+        </div>
       </div>
     </div>
     <div class="mp-body">
@@ -8753,7 +8821,7 @@ async function tobMenuPdf(cliId, menuId){
       ${compraHtml}
       ${recetariHtml}
     </div>
-    <div class="mp-foot">Generat amb Full Training · ${esc(hoy)}</div>
+    <div class="mp-foot">FULL TRAINING — BIIO System · ${esc(hoy)}</div>
   </div>`;
 
   // Render fuera de pantalla → html2canvas → jsPDF → descarga directa.
