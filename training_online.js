@@ -5164,13 +5164,48 @@ const TOB_QUEST_CHIPS = {
     { id:'fisic',     label:'Físic intens' },
     { id:'torns',     label:'Torns / nocturn' },
     { id:'casa',      label:'A casa / cura de família' }
+  ]},
+  // ── Nous grups: pistes per a la IA quan munta el menú ──
+  // No són trets físics, són preferències que ajuden a personalitzar el repartiment
+  // de kcal/proteïna durant el dia (entrevista a Sergio: "pregunto quin àpat és el
+  // més important per al client i a quina hora té més gana").
+  apatPrincipal: { mode:'radio', items:[
+    { id:'esmorzar', label:'Esmorzar' },
+    { id:'dinar',    label:'Dinar' },
+    { id:'sopar',    label:'Sopar' },
+    { id:'cap',      label:'Cap en concret' }
+  ]},
+  gana: { mode:'radio', items:[
+    { id:'mati',    label:'Més gana al matí' },
+    { id:'migdia',  label:'Més gana al migdia' },
+    { id:'tarda',   label:'Més gana a la tarda' },
+    { id:'nit',     label:'Més gana a la nit' },
+    { id:'uniforme',label:'Uniforme tot el dia' }
+  ]},
+  entrenoDies: { mode:'multi', items:[
+    { id:'dl', label:'Dl' }, { id:'dt', label:'Dt' }, { id:'dc', label:'Dc' },
+    { id:'dj', label:'Dj' }, { id:'dv', label:'Dv' }, { id:'ds', label:'Ds' },
+    { id:'dg', label:'Dg' }
+  ]},
+  entrenoMoment: { mode:'radio', items:[
+    { id:'mati',  label:'Al matí' },
+    { id:'tarda', label:'A la tarda' },
+    { id:'nit',   label:'A la nit' }
+  ]},
+  variacio: { mode:'radio', items:[
+    { id:'molta',  label:'Molta variació (cada dia diferent)' },
+    { id:'mitjana',label:'Variació mitjana (pot repetir alguns)' },
+    { id:'poca',   label:'Poca variació (li agrada repetir)' }
   ]}
 };
 // Container DOM (id del div .tob-quest-chips) por grupo.
 const TOB_QUEST_CHIP_EL = {
   objectiu:'qChipsObjectiu', apats:'qChipsApats', dieta:'qChipsDieta',
   proteina:'qChipsProteina', pref:'qChipsPref', patologies:'qChipsPatologies',
-  cuina:'qChipsCuina', tempsCuina:'qChipsTempsCuina', treball:'qChipsTreball'
+  cuina:'qChipsCuina', tempsCuina:'qChipsTempsCuina', treball:'qChipsTreball',
+  apatPrincipal:'qChipsApatPrincipal', gana:'qChipsGana',
+  entrenoDies:'qChipsEntrenoDies', entrenoMoment:'qChipsEntrenoMoment',
+  variacio:'qChipsVariacio'
 };
 // Alimentos comunes (divisivos) — mismos chips para Aliments ✗ y ✓.
 const TOB_QUEST_ALIM_PRESETS = [
@@ -9498,6 +9533,29 @@ function tobMcPerfilTexto(cli){
   if(recLines.length){
     L.push('Estructura habitual dels àpats (respecta-la al muntar el menú):');
     recLines.forEach(line => L.push(line));
+  }
+  // ── Pistes per a la IA: àpat principal · quan té gana · variació · entrenament ──
+  if(t.apatPrincipal && t.apatPrincipal !== 'cap'){
+    L.push('Àpat MÉS IMPORTANT del client: ' + lbl('apatPrincipal', t.apatPrincipal) +
+      ' — dedica-li més kcal i proteïna que als altres.');
+  }
+  if(t.gana && t.gana !== 'uniforme'){
+    L.push('Quan té més gana: ' + lbl('gana', t.gana) + ' — reparteix les kcal coherentment amb això.');
+  }
+  if(t.variacio){
+    const v = lbl('variacio', t.variacio);
+    L.push('Tolerància a repetir plats: ' + v +
+      (t.variacio === 'poca' ? ' — pots repetir més els plats principals.' :
+       t.variacio === 'molta' ? ' — varia molt els plats; mai repeteixis dins de la setmana.' :
+       ' — algunes repeticions OK, sense passar-se.'));
+  }
+  if(t.entrenoDies && t.entrenoDies.length){
+    const dMap = { dl:0, dt:1, dc:2, dj:3, dv:4, ds:5, dg:6 };
+    const ix = t.entrenoDies.map(d => dMap[d]).filter(x => x != null).sort((a,b)=>a-b);
+    const DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
+    L.push('Dies d\'entrenament: ' + ix.map(i => DIAS[i]).join(', ') +
+      (t.entrenoMoment ? ' (' + lbl('entrenoMoment', t.entrenoMoment).toLowerCase() + ')' : '') +
+      ' — aquests dies poden tenir lleugerament més HC i kcal.');
   }
   if(q.comentari)     L.push('Notes addicionals: ' + q.comentari);
   return L.join('\n');
