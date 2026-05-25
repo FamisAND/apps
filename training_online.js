@@ -8355,15 +8355,23 @@ function tobMcCheckCompat(rec, cli){
     });
   }
 
-  // 4. Restricciones de alérgenos: prefs "sense_X" del perfil + lista de
-  //    al·lèrgies del cuestionario, cruzadas con los alérgenos ICNS de la
-  //    receta (tobRecAptitud). Fallback a regex de ingredientes si la
-  //    receta no trae alérgenos.
+  // 4. Restricciones de alérgenos.
+  //    REGLA DE SERGIO (de l'entrevista):
+  //    · ALÈRGIES (lista libre `tags.alergies`) → EXCLOURE, innegociable.
+  //    · INTOLERÀNCIES (`tags.pref` amb sense_gluten/sense_lactosa) → NO exclou
+  //      la recepta. El client farà servir versió apta (pa sense gluten, llet
+  //      sense lactosa). El menú expressa la idea, el client tria l'ingredient
+  //      apte al supermercat.
+  //    · `sense_fruita_seca` és típicament alèrgia severa — el deixem
+  //      exclusiu (no és el cas de gluten/lactosa).
   const apt = tobRecAptitud(rec);
   const cliAlergies = (tags.alergies || []).join(' · ').toLowerCase();
+  // Només la lista libre `tags.alergies` exclou per gluten/lactosa.
+  // El pref `sense_gluten` queda en el camp "adapta" — NO exclou.
   const evita = {
-    gluten:     (tags.pref||[]).includes('sense_gluten')      || /gluten|cel[ií]a/.test(cliAlergies),
-    lactosa:    (tags.pref||[]).includes('sense_lactosa')     || /lact|llet|leche/.test(cliAlergies),
+    gluten:     /gluten|cel[ií]a/.test(cliAlergies),
+    lactosa:    /lact|llet|leche/.test(cliAlergies),
+    // sense_fruita_seca i alergia oficial → si excloure.
     fruitsSecs: (tags.pref||[]).includes('sense_fruita_seca') || /fruit[a-z]*\s*sec|fruto[a-z]*\s*seco|\bnut/.test(cliAlergies),
     ou:         /\bou\b|\bous\b|huevo/.test(cliAlergies),
     marisc:     /marisc|crustaci|crust[aá]ce|mol·?lusc|molusc/.test(cliAlergies),
@@ -8374,6 +8382,7 @@ function tobMcCheckCompat(rec, cli){
     if(evita[k] && apt[k]) razones.push('conté ' + aptLbl[k]);
   });
   // Fallback si la receta no tiene alérgenos ICNS: regex de ingredientes.
+  // Aplicat NOMÉS quan hi ha alèrgia formal (no per pref/intolerància).
   if(!(Array.isArray(rec.alergenos) && rec.alergenos.length)){
     const ingText = (rec.ingredientes||[]).map(it => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
@@ -9556,6 +9565,14 @@ function tobMcPerfilTexto(cli){
   if(t.alimX && t.alimX.length)         L.push('Aliments que NO vol: ' + t.alimX.join(', '));
   if(t.alimOk && t.alimOk.length)       L.push('Aliments preferits: ' + t.alimOk.join(', '));
   if(t.sentenMal && t.sentenMal.length) L.push('Li senten malament: ' + t.sentenMal.join(', '));
+  // Intoleràncies a adaptar (no excloure): el client farà servir versions aptes.
+  const adapt = [];
+  if((t.pref||[]).includes('sense_gluten') || (t.patologies||[]).includes('celiaquia')) adapt.push('GLUTEN (usa receptes amb pa/pasta normalment — el client comprarà la versió SENSE GLUTEN)');
+  if((t.pref||[]).includes('sense_lactosa')) adapt.push('LACTOSA (usa receptes amb lactis normalment — el client comprarà versió SENSE LACTOSA)');
+  if(adapt.length){
+    L.push('ADAPTAR (NO excloure) — el client té intolerància però el menú els porta amb versions aptes:');
+    adapt.forEach(a => L.push('  · ' + a));
+  }
   if(t.cuina)         L.push('Qui cuina: ' + lbl('cuina', t.cuina));
   if(t.tempsCuina)    L.push('Temps per cuinar: ' + lbl('tempsCuina', t.tempsCuina));
   // Estructura habitual de cada àpat (recordatori 24h)
@@ -9926,14 +9943,37 @@ async function tobMcGenerarIA(){
         if(problemas.length) fueras.push({ s, d, problemas });
       }
       if(fueras.length){
+        // Detectem dies amb dèficit ENORME (≤70% objectiu) per pressionar
+        // amb instruccions específiques i exemples concrets.
+        const muyLejos = fueras.filter(f => {
+          const k = ((tobMcState.data[f.s]||{})[f.d] && dayMacros(f.s, f.d).k) || 0;
+          return k > 0 && k < kcal * 0.7;
+        });
         tobToast('🤖 Corregint ' + fueras.length + ' dia(es) que no quadren…', '');
-        const fixUser = 'El menú que has generat té dies que NO compleixen els objectius:\n\n'
+        const fixUser = 'El menú que has generat té dies que NO compleixen els objectius. Objectiu: ' + Math.round(kcal) + ' kcal/dia' + (prot ? ', ' + Math.round(prot) + ' g prot' : '') + '.\n\n'
+          + 'Dies fora de marge:\n'
           + fueras.map(f => '· setmana ' + f.s + ' · dia ' + f.d + ' (' + ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'][f.d] + '): ' + f.problemas.join(' · ')).join('\n')
-          + '\n\nCorregeix aquests dies PRIORITZANT en aquest ordre:\n'
-          + '1. AJUSTA la ració d\'un plat existent amb el camp "ajustes" (factor fins a 1.8). Ex: una recepta de pollastre 200g pots posar-la a factor 1.5 i seran 300g.\n'
-          + '2. AFEGEIX un ingredient simple (∙ a la llista) al dia per pujar prot o kcal — un ou, fruits secs, un iogurt extra.\n'
-          + '3. NOMÉS substitueix el plat si l\'ajust màxim no és suficient.\n\n'
-          + 'Retorna el menú SENCER en el mateix format JSON, amb "ajustes" actualitzat si cal. La resta de dies que ja anaven bé, deixa\'ls igual.';
+          + (muyLejos.length ? '\n\n⚠ ATENCIÓ: ' + muyLejos.length + ' dia(es) estan a MENYS DEL 70% de l\'objectiu. Això és inacceptable — has de pujar les racions MOLT, no només lleugerament.\n' : '')
+          + '\n\nCORRIGEIX-LOS PUJANT RACIONS de manera DECIDIDA. La teva eina principal és el camp "ajustes":\n'
+          + '\n'
+          + 'EXEMPLE concret de com fer-ho (segueix-lo):\n'
+          + 'Si un dia té un plat principal de pollastre 150g que dona 350 kcal i 30g prot,\n'
+          + 'i necessites pujar el dia 600 kcal i 30g prot:\n'
+          + '  "ajustes": {\n'
+          + '    "ID_DEL_POLLASTRE": { "ing": { "pollastre": 250 }, "motiu": "pujar prot del dia" },\n'
+          + '    "ID_DEL_ACOMPANYAMENT": { "ing": { "arros": 100 }, "motiu": "pujar kcal del dia" }\n'
+          + '  }\n'
+          + 'Això converteix el plat en 250g de pollastre (de 150g) + 100g d\'arròs (de 60g).\n'
+          + '\n'
+          + 'NO siguis tímid. Si falten 1000 kcal, has de pujar les racions MOLT (ing 2× o factor 1.8) o canviar plats per altres més calòrics.\n'
+          + '\n'
+          + 'Ordre d\'acció:\n'
+          + '1. AJUSTA amb "ing" la prote del plat principal (pollastre, salmó, lluç, vedella…) — múltiples de 25g.\n'
+          + '2. AJUSTA amb "ing" l\'acompanyament (arròs, pasta, patata, quinoa…) — múltiples de 10g.\n'
+          + '3. SI EL PLAT ÉS POBRE en kcal i no es pot estirar més: SUBSTITUEIX per un altre del catàleg més calòric.\n'
+          + '4. NO afegeixis peces extres soltes al final del dia (iogurts random).\n'
+          + '\n'
+          + 'Retorna el menú SENCER en el mateix format JSON, amb "ajustes" ABUNDANT i agressiu si cal. Els dies que ja anaven bé, deixa\'ls igual.';
         const raw2 = await tobAiCall([
           { role:'system', content:sys }, { role:'user', content:user },
           { role:'assistant', content:raw }, { role:'user', content:fixUser }
