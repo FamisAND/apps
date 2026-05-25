@@ -9304,15 +9304,20 @@ Cada dia ha d'acostar-se a: {kcal} kcal i {prot} g de proteïna.
 
 ═══ PROCÉS d'AJUST (ordre estricte) ═══
 Si un dia està lluny de l'objectiu (>200 kcal o >20 g prot):
-  1r. PUJA LA PROTE del plat principal (factor 1.5 o 2 d'aquest plat). Mai factors com 1.3, 1.7 — usa preferiblement 0.5, 1, 1.5, 2.
-  2n. Si la prote ja està bé però falten kcal, PUJA l'ACOMPANYAMENT (factor 1.5 o 2).
-  3r. NOMÉS si l'ajust no n'hi ha prou, SUBSTITUEIX el plat per un altre del catàleg.
-PROHIBIT: afegir una peça extra solta (un iogurt random, fruits secs random) al final del dia per quadrar números. Queda sense sentit dins del menú.
+  1r. PUJA NOMÉS LA PROTE del plat principal — usa el camp "ing" amb el nom de l'ingredient
+      proteic (pollastre, salmó, lluç, vedella, ou…) i el nombre de grams desitjat per ració.
+      Ex: "ing": { "pollastre": 200 } puja la carne de ~150g a 200g sense tocar la resta.
+  2n. Si la prote ja està bé però falten kcal, PUJA L'ACOMPANYAMENT — "ing" amb el nom
+      del cereal/farinaci (arròs, pasta, quinoa, patata…). Ex: "ing": { "arros": 100 }.
+  3r. Si tot el plat ha de pujar coherentment, usa "factor" (0.5, 1, 1.5, 2 preferiblement).
+  4t. NOMÉS si l'ajust no n'hi ha prou, SUBSTITUEIX el plat per un altre del catàleg.
+PROHIBIT: afegir una peça extra solta (un iogurt random, fruits secs random) al final del dia
+per quadrar números. Queda sense sentit dins del menú.
 
 ═══ FACTORS i CANTITATS ═══
 Factors d'ajust permesos: 0.5, 1, 1.5, 2 (i excepcionalment decimals com 1.5 si donen grams nets).
-SNAPPING de grams (això NO ho controles tu amb "ajustes", però ho menciono per coherència):
-- Carns/peixos crus: múltiples de 25 g (100, 125, 150, 175, 200…)
+SNAPPING de grams — quan emetis "ing", usa quantitats limpias d'acord amb el tipus d'ingredient:
+- Carns/peixos crus: múltiples de 25 g (100, 125, 150, 175, 200, 225…)
 - Arròs/pasta/quinoa: sempre en CRU, múltiples de 10 g
 - Pa: 1 llesca = 40 g (no fraccionar)
 - Oli: 5 ml
@@ -9320,6 +9325,7 @@ SNAPPING de grams (això NO ho controles tu amb "ajustes", però ho menciono per
 - Fruita: 1 peça
 - Iogurt: 1 unitat
 - Ous: per unitats (1, 2, 3…)
+Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més pròxim (125 o 150 g).
 
 ═══ ESMORZAR — la base de Sergio ═══
 - Composició diana: ~30% prote · ~50% grasses · ~20% HC (estil low-carb).
@@ -9749,13 +9755,36 @@ async function tobMcGenerarIA(){
       'Exemple d\'un dia: {' + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}',
       '',
       'CAMP "ajustes" (al mateix nivell que les setmanes) — IMPORTANT, ÚSAL si fa falta per quadrar:',
-      '"ajustes": { "ID_RECEPTA": { "factor": 1.4, "motiu": "frase curta" } }',
-      '· factor: entre 0.6 i 1.8 (1 = sense canvi). 1.5 = 50% més gran. 1.8 = ració quasi doble.',
+      '{',
+      '  "ID_RECEPTA": {',
+      '    "factor": 1.5,                              ← OPCIONAL · escala TOTA la recepta',
+      '    "ing":    { "pollastre": 200, "arros": 80 },← OPCIONAL · grams d\'INGREDIENTS específics (per ració)',
+      '    "motiu":  "pujar prot sense afegir kcal innecessàries"',
+      '  }',
+      '}',
+      '',
+      'Quan usar "factor" vs "ing":',
+      '· FACTOR (escala tota la recepta) → quan vols pujar TOT (kcal+prot+greixos) coherentment.',
+      '  Ex: dia de descans, plat senzill, vols ració més gran en general.',
+      '  Rangs útils: 0.6 a 1.8. Prefereix valors limpios: 0.5, 1, 1.5, 2 (decimals si donen grams nets).',
+      '',
+      '· ING (grams d\'ingredients individuals) → quan vols pujar NOMÉS la proteïna.',
+      '  Ex: falten 20 g prot al dia — millor pujar el pollastre de 150 a 200 g',
+      '  que escalar tot el plat (que afegiria kcal innecessàries de verdures/sallses).',
+      '  Usa noms genèrics en cat/cas (pollastre, salmó, lluç, tonyina, vedella, arròs, pasta',
+      '  ous, llenties, formatge…). El parser fa match suau contra els ingredients reals.',
+      '  Grams permesos: fins ~2× del valor base de cada ingredient (es talla automàticament si et passes).',
+      '',
+      'PRIORITAT (segons criteri del dietista):',
+      '  1r. Si falta proteïna → "ing" amb el protein source del plat principal',
+      '  2n. Si falten kcal però la prote ja està → "ing" amb l\'acompanyament (arròs, pasta, patata…)',
+      '  3r. Si tot va escalat coherentment → "factor"',
+      'PROHIBIT afegir un ingredient simple solt (un iogurt random) al final del dia per quadrar.',
+      '',
       '· Aplica a TOTES les aparicions d\'aquesta recepta al menú.',
-      '· REGLA: si un dia es queda > 10% per sota de l\'objectiu de kcal o prot, AJUSTA abans de tancar el dia. No deixis dies a 1500 kcal quan l\'objectiu és 2200.',
-      '· Si una recepta apareix múltiples vegades i només vols ajustar-ne UNA aparició, no és possible — millor substitueix.',
+      '· Pots combinar factor + ing en el mateix ajust si fa falta.',
       '· Pots tenir tants ajustes com vulguis (un per recepta).',
-      '· motiu: frase curta en català explicant per què (ex: "pujar prot del dimarts").',
+      '· REGLA: si un dia es queda > 10% per sota de l\'objectiu de kcal o prot, AJUSTA abans de tancar el dia.',
       '· Si tot el menú quadra sense ajustar, omet "ajustes" o posa-l\'ho buit ({}).'
     ].join('\n');
 
@@ -9818,8 +9847,44 @@ async function tobMcGenerarIA(){
           if(!validIds.has(recId) || !usadosNow.has(recId)) return;
           const a = ajRaw[recId] || {};
           const factor = tobMcClampFactor(a.factor != null ? a.factor : 1);
-          // Per ara només acceptem factor (no ingredientes específicos de la IA — més arriscat).
-          const aj = { factor, motiu: String(a.motiu || '').slice(0, 140), fuente: 'ia' };
+          // Acceptem ALSO ing (gramos d'ingredients individuals). La IA emet noms
+          // genèrics (pollastre, salmó, arròs...). Matchem aquests noms contra els
+          // ingredients reals de la recepta amb normalització suau (lowercase, sense
+          // accents, comparació per substring en els dos sentits). Si no hi ha
+          // match, l'entrada s'ignora silenciosament — millor que aplicar a un
+          // ingredient incorrecte.
+          const ingMap = {};
+          if(a.ing && typeof a.ing === 'object'){
+            const rec = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+            if(rec && Array.isArray(rec.ingredientes)){
+              const norm = s => String(s||'').toLowerCase()
+                .normalize('NFD').replace(/[̀-ͯ]/g,'')
+                .replace(/[^a-z0-9]+/g,' ').trim();
+              const ingNoms = rec.ingredientes.map(it => {
+                const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+                return { it, nom: norm((ing && ing.nombre) || it._nombreFallback || '') };
+              });
+              Object.keys(a.ing).forEach(key => {
+                const targetG = parseFloat(a.ing[key]);
+                if(!isFinite(targetG) || targetG <= 0) return;
+                const keyNorm = norm(key);
+                if(!keyNorm) return;
+                // Match: el nom del ingredient REAL conté el que diu la IA, o viceversa.
+                const found = ingNoms.find(x => x.nom.includes(keyNorm) || keyNorm.includes(x.nom));
+                if(!found || !found.it.ingId) return;
+                const baseG = +found.it.gramos || 0;
+                // Aplicar cap (TOB_MC_ING_CAP = 2.2× del base, per a què no es disparin).
+                const capped = baseG > 0 ? Math.min(targetG, baseG * TOB_MC_ING_CAP) : targetG;
+                ingMap[found.it.ingId] = Math.round(capped);
+              });
+            }
+          }
+          const aj = {
+            factor,
+            ing: Object.keys(ingMap).length ? ingMap : undefined,
+            motiu: String(a.motiu || '').slice(0, 140),
+            fuente: 'ia'
+          };
           if(tobMcAjusteActivo(aj)) tobMcState.ajustes[recId] = aj;
         });
       }
