@@ -9298,7 +9298,7 @@ const TOB_AI_CFG_KEY = 'tob_ai_cfg';
 const TOB_AI_DEFAULTS = {
   gemini:     { model:'gemini-2.0-flash',          help:'Clau gratuïta a aistudio.google.com/apikey' },
   groq:       { model:'llama-3.3-70b-versatile',   help:'Clau gratuïta a console.groq.com/keys' },
-  anthropic:  { model:'claude-3-5-haiku-latest',   help:'Clau a console.anthropic.com → API Keys (requereix crèdit API, separat de la subscripció de Claude)' },
+  anthropic:  { model:'claude-haiku-4-5',          help:'Clau a console.anthropic.com → API Keys (requereix crèdit API, separat de la subscripció de Claude). Cost orientatiu: ~2-5 cèntims/menú amb Haiku 4.5. Per a millor qualitat amb instruccions complexes, posa "claude-sonnet-4-5" al camp Model (~10-15 cèntims/menú).' },
   openrouter: { model:'google/gemini-2.0-flash-001', help:'Clau a openrouter.ai/keys (requereix crèdit)' }
 };
 // Instrucciones (REGLES) del prompt de generación de menús. Editables
