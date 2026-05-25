@@ -9446,6 +9446,12 @@ function tobAiOpenConfig(){
   document.getElementById('tobAiTestResult').textContent = '';
   const rulesEl = document.getElementById('tobAiMenuRules');
   if(rulesEl) rulesEl.value = cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT;
+  // Passades de correcció — clamp a [0, 3] amb default 3.
+  const mpEl = document.getElementById('tobAiMaxPasadas');
+  if(mpEl){
+    const mp = (cfg.maxPasadas != null) ? cfg.maxPasadas : 3;
+    mpEl.value = String(Math.max(0, Math.min(3, parseInt(mp, 10) || 3)));
+  }
   document.getElementById('tobAiConfigBg').classList.add('on');
 }
 function tobAiResetMenuRules(){
@@ -9488,6 +9494,9 @@ function tobAiSaveConfigFromModal(){
   const models = Object.assign({}, existing.models || {});
   keys[provider]   = newKey;
   models[provider] = newModel;
+  // Passades de correcció — clamp 0-3.
+  const mpRaw = parseInt(document.getElementById('tobAiMaxPasadas')?.value, 10);
+  const maxPasadas = Math.max(0, Math.min(3, isFinite(mpRaw) ? mpRaw : 3));
   const cfg = {
     provider,
     keys,
@@ -9495,6 +9504,7 @@ function tobAiSaveConfigFromModal(){
     // Solo se guarda si difiere del default (así futuras mejoras del
     // default llegan a quien no lo haya tocado).
     menuRules: (rules && rules !== TOB_AI_MENU_RULES_DEFAULT.trim()) ? rules : '',
+    maxPasadas,
     // Legacy compat (poblats des del provider actiu)
     key:   newKey,
     model: newModel
@@ -10059,7 +10069,12 @@ async function tobMcGenerarIA(){
         { role:'user', content:user },
         { role:'assistant', content:raw }
       ];
-      const MAX_PASADAS = 3;
+      // Pasadas configurables des de ⚙ IA (default 3, mínim 0 = sense correcció).
+      const MAX_PASADAS = Math.max(0, Math.min(3,
+        parseInt(cfg.maxPasadas, 10) != null && isFinite(parseInt(cfg.maxPasadas, 10))
+          ? parseInt(cfg.maxPasadas, 10)
+          : 3
+      ));
       let passada = 0;
       let fueras = detectarFueras();
       while(fueras.length && passada < MAX_PASADAS){
