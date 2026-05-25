@@ -752,6 +752,33 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-hb-hist-meta{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);margin-top:2px;}
 .tob-hb-hist-empty{font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mute);padding:10px 0;text-align:center;}
 
+/* ── Llista d'ordre d'intent (fallback IA) ── */
+.tob-ai-fallback-list{
+  display:flex;flex-direction:column;gap:5px;margin-top:6px;
+}
+.tob-ai-fb-row{
+  display:flex;align-items:center;gap:8px;padding:6px 10px;
+  background:var(--card2,#161616);border:1px solid var(--border);border-radius:5px;
+  font-size:.78rem;
+}
+.tob-ai-fb-row.disabled{opacity:.5;}
+.tob-ai-fb-row .fb-pos{
+  font-family:'DM Mono',monospace;font-weight:700;color:var(--acc);
+  min-width:18px;text-align:center;font-size:.75rem;
+}
+.tob-ai-fb-row .fb-nm{flex:1;color:var(--text);font-weight:600;}
+.tob-ai-fb-row .fb-tag{
+  font-family:'DM Mono',monospace;font-size:.65rem;letter-spacing:.04em;
+  padding:2px 7px;border-radius:3px;
+}
+.tob-ai-fb-row .fb-tag.ok{background:rgba(46,153,108,.18);color:#3fb68b;}
+.tob-ai-fb-row .fb-tag.off{background:rgba(140,140,140,.12);color:var(--mute);}
+.tob-ai-fb-empty{
+  font-family:'DM Mono',monospace;font-size:.74rem;color:var(--mute);
+  padding:10px;text-align:center;background:var(--card2,#161616);
+  border:1px dashed var(--border);border-radius:5px;
+}
+
 /* ── Pestanyes de la fitxa del client (Qüestionari/Mediciones/Entrenos/Menús) ── */
 .tob-ficha-tabs{
   display:flex;gap:4px;border-bottom:1px solid var(--border);margin:18px 0 14px;flex-wrap:wrap;

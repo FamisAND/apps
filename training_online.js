@@ -9452,7 +9452,77 @@ function tobAiOpenConfig(){
     const mp = (cfg.maxPasadas != null) ? cfg.maxPasadas : 3;
     mpEl.value = String(Math.max(0, Math.min(3, parseInt(mp, 10) || 3)));
   }
+  tobAiRenderFallbackList();
   document.getElementById('tobAiConfigBg').classList.add('on');
+}
+
+// ─── Llista d'ordre d'intent (fallback automàtic) ────────────────────
+// Renderitza l'ordre de proveïdors. Cada item té:
+//   · Posició (1, 2, 3…)
+//   · Nom + estat (✓ amb clau / ✗ sense clau)
+//   · Botons ↑/↓ per a reordenar (només per als que tenen clau)
+// Es desa a cfg.fallbackOrder. Els que no tenen clau apareixen al final
+// en gris i no participen al fallback.
+const TOB_AI_PROVIDER_LBL = {
+  gemini:'Google Gemini', groq:'Groq', deepseek:'DeepSeek',
+  anthropic:'Anthropic Claude', openrouter:'OpenRouter'
+};
+function _tobAiNormalizedOrder(cfg){
+  // Ordre desat + completar amb els que falten al final
+  const all = Object.keys(TOB_AI_PROVIDER_LBL);
+  const saved = Array.isArray(cfg.fallbackOrder) ? cfg.fallbackOrder.filter(p => all.includes(p)) : [];
+  all.forEach(p => { if(!saved.includes(p)) saved.push(p); });
+  return saved;
+}
+function tobAiRenderFallbackList(){
+  const cont = document.getElementById('tobAiFallbackList');
+  if(!cont) return;
+  const cfg = tobAiGetCfg();
+  const order = _tobAiNormalizedOrder(cfg);
+  const keys = cfg.keys || {};
+  // Separar: amb clau (participen al fallback) vs sense clau (al final, gris)
+  const withKey = order.filter(p => keys[p]);
+  const noKey   = order.filter(p => !keys[p]);
+  const rows = [];
+  withKey.forEach((p, ix) => {
+    const isFirst = ix === 0;
+    const isLast  = ix === withKey.length - 1;
+    rows.push(`<div class="tob-ai-fb-row" data-prov="${p}">
+      <span class="fb-pos">${ix + 1}</span>
+      <span class="fb-nm">${tobEsc(TOB_AI_PROVIDER_LBL[p])}</span>
+      <span class="fb-tag ok">✓ amb clau</span>
+      <button type="button" class="tob-action ghost btn-xs" onclick="tobAiFallbackMove('${p}', -1)" ${isFirst?'disabled':''} title="Pujar">↑</button>
+      <button type="button" class="tob-action ghost btn-xs" onclick="tobAiFallbackMove('${p}', 1)" ${isLast?'disabled':''} title="Baixar">↓</button>
+    </div>`);
+  });
+  noKey.forEach(p => {
+    rows.push(`<div class="tob-ai-fb-row disabled" data-prov="${p}">
+      <span class="fb-pos">—</span>
+      <span class="fb-nm">${tobEsc(TOB_AI_PROVIDER_LBL[p])}</span>
+      <span class="fb-tag off">sense clau — no participa</span>
+    </div>`);
+  });
+  if(!withKey.length){
+    rows.unshift('<div class="tob-ai-fb-empty">Configura una clau primer (canvia el dropdown de Proveïdor i pega la clau).</div>');
+  }
+  cont.innerHTML = rows.join('');
+}
+function tobAiFallbackMove(prov, delta){
+  const cfg = tobAiGetCfg();
+  const order = _tobAiNormalizedOrder(cfg);
+  const keys = cfg.keys || {};
+  // Reordena només dins dels que tenen clau (la resta queden separats després)
+  const withKey = order.filter(p => keys[p]);
+  const ix = withKey.indexOf(prov);
+  if(ix < 0) return;
+  const ni = ix + delta;
+  if(ni < 0 || ni >= withKey.length) return;
+  const tmp = withKey[ix]; withKey[ix] = withKey[ni]; withKey[ni] = tmp;
+  // Reconstruim l'ordre total: primer withKey en el nou ordre, després noKey original
+  const noKey = order.filter(p => !keys[p]);
+  cfg.fallbackOrder = withKey.concat(noKey);
+  tobAiSaveCfg(cfg);
+  tobAiRenderFallbackList();
 }
 function tobAiResetMenuRules(){
   const el = document.getElementById('tobAiMenuRules');
@@ -9505,6 +9575,8 @@ function tobAiSaveConfigFromModal(){
     // default llegan a quien no lo haya tocado).
     menuRules: (rules && rules !== TOB_AI_MENU_RULES_DEFAULT.trim()) ? rules : '',
     maxPasadas,
+    // Preservar l'ordre de fallback configurat per l'usuari
+    fallbackOrder: existing.fallbackOrder || _tobAiNormalizedOrder(existing),
     // Legacy compat (poblats des del provider actiu)
     key:   newKey,
     model: newModel
@@ -9605,6 +9677,57 @@ async function tobAiCall(messages, cfgOverride){
   if(!r.ok) throw new Error(prov + ' ' + r.status + ': ' + (await r.text()).slice(0,160));
   const j = await r.json();
   return (((j.choices||[])[0]||{}).message||{}).content || '';
+}
+
+// ─── Fallback automàtic entre proveïdors ──────────────────────────────
+// Itera l'ordre desat a cfg.fallbackOrder (filtrant pels que tenen clau).
+// Si un proveïdor falla amb 429/413/500-503/error de xarxa, prova el següent.
+// Tornem el resultat del primer que funcioni, o llançem l'últim error si tots
+// fallen. Errors NO retryables (clau invàlida 401, model inexistent 404, etc.)
+// també passen al següent — si no hi ha alternativa, l'usuari veurà l'error.
+async function tobAiCallWithFallback(messages){
+  const cfg = tobAiGetCfg();
+  const order = _tobAiNormalizedOrder(cfg).filter(p => (cfg.keys||{})[p]);
+  if(!order.length){
+    throw new Error('No tens cap clau d\'IA configurada. Obre ⚙ IA i pega una clau a algun proveïdor.');
+  }
+  // Errors que justifiquen passar al següent proveïdor:
+  const isRetryable = (e) => {
+    const m = e && e.message ? e.message : '';
+    return /\b(429|413|500|502|503|504|408)\b/.test(m) ||
+           /network|fetch|timeout|aborted/i.test(m);
+  };
+  let lastErr = null;
+  for(let i = 0; i < order.length; i++){
+    const prov = order[i];
+    // Construir un cfg "actiu" per a aquest proveïdor concret
+    const provCfg = Object.assign({}, cfg, {
+      provider: prov,
+      key:   (cfg.keys||{})[prov] || '',
+      model: (cfg.models||{})[prov] || ''
+    });
+    try {
+      if(i > 0){
+        console.log('[IA fallback] Provant ' + prov + ' (intent ' + (i+1) + '/' + order.length + ')');
+        tobToast('🔄 Fallback a ' + (TOB_AI_PROVIDER_LBL[prov] || prov) + '…', '');
+      }
+      const out = await tobAiCall(messages, provCfg);
+      if(i > 0){
+        // Avisem al user que es va canviar de proveïdor en aquesta crida
+        console.log('[IA fallback] ✓ Resposta correcta des de ' + prov);
+      }
+      return out;
+    } catch(e){
+      lastErr = e;
+      console.warn('[IA fallback] ' + prov + ' ha fallat: ' + (e.message || e));
+      if(!isRetryable(e) && i < order.length - 1){
+        // Continuem el bucle igualment per provar el següent — millor que avortar
+        // (potser el proveïdor té un error puntual no contemplat).
+      }
+      // Si hi ha més proveïdors, continuem; si no, sortim del bucle amb lastErr.
+    }
+  }
+  throw lastErr || new Error('Tots els proveïdors han fallat');
 }
 
 // Extrae el objeto JSON de la respuesta del LLM (quita ``` y texto sobrante).
@@ -9952,7 +10075,7 @@ async function tobMcGenerarIA(){
     ].join('\n');
 
     tobToast('🤖 La IA està generant el menú… pot trigar uns segons', '');
-    const raw = await tobAiCall([{ role:'system', content:sys }, { role:'user', content:user }]);
+    const raw = await tobAiCallWithFallback([{ role:'system', content:sys }, { role:'user', content:user }]);
     const parsed = tobAiParseJson(raw);
 
     // Vuelca un menú parseado al estado. Devuelve nº de platos colocados.
@@ -10152,7 +10275,7 @@ async function tobMcGenerarIA(){
           '4. PROHIBIT afegir peces soltes random al final del dia.\n' +
           '\nRetorna el menú SENCER en el mateix format JSON. Els dies que ja anaven bé, deixa\'ls igual.';
 
-        const rawN = await tobAiCall(conversa.concat([{ role:'user', content:fixUser }]));
+        const rawN = await tobAiCallWithFallback(conversa.concat([{ role:'user', content:fixUser }]));
         conversa = conversa.concat([
           { role:'user', content:fixUser },
           { role:'assistant', content:rawN }

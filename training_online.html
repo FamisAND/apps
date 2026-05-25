@@ -471,6 +471,13 @@
         <option value="3" selected>3 — màxim, recomanat (1-4 requests/menú)</option>
       </select>
     </div>
+
+    <!-- ── Ordre d'intent (fallback automàtic) ───────────────────────── -->
+    <div style="margin-top:14px;">
+      <label class="tob-lbl">Ordre d'intent <span class="tob-quest-h-sub">(si el 1r proveïdor falla per quota/error, prova el 2n, 3r... Només participen els que tenen clau guardada. Reordena amb les fletxes ↑/↓)</span></label>
+      <div id="tobAiFallbackList" class="tob-ai-fallback-list"></div>
+    </div>
+
     <div id="tobAiTestResult" style="font-size:.74rem;font-family:'DM Mono',monospace;margin-top:10px;"></div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="document.getElementById('tobAiConfigBg').classList.remove('on')">Tancar</button>
