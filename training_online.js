@@ -9115,8 +9115,10 @@ async function tobMenuPdf(cliId, menuId){
 
   // ── Notes / recomanacions ──────────────────────────────────────
   const notas = String(m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
+  // Notes NO força salt de pàgina — sol ser una secció curta, que flueixi
+  // amb el que vingui darrere per evitar pàgines amb 80% de buit.
   const notasHtml = notas
-    ? `<div class="mp-section mp-blk mp-page-break"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
+    ? `<div class="mp-section mp-blk"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
     : '';
 
   // ── Documento del menú (se renderiza fuera de pantalla y se vuelca
@@ -9124,76 +9126,81 @@ async function tobMenuPdf(cliId, menuId){
   const hoy = new Date().toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
   // Tokens visuals iguals al PDF de mediciones — branding consistent.
   // ORANGE #f5a721 · BLACK #0f0f0f · GRAY_LIGHT #f7f7f7 · GRAY_DK #404040.
+  // PDF en LANDSCAPE A4 (1123×794 a 96dpi). Més ample = la graella respira,
+  // les seccions curtes (notes) no deixen tants buits, i la portada es veu
+  // millor centrada amb el logo gros.
   const styleCss = `
     .mp-doc *{box-sizing:border-box;margin:0;padding:0;}
-    .mp-doc{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#0f0f0f;background:#fff;width:794px;position:relative;}
-    .mp-doc h2{font-size:14px;color:#0f0f0f;margin:0 0 12px;padding:6px 12px;background:#f5a721;letter-spacing:.02em;font-weight:800;text-transform:uppercase;}
-    .mp-doc h4{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#8c8c8c;margin:0 0 6px;font-weight:800;}
+    .mp-doc{font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#0f0f0f;background:#fff;width:1123px;position:relative;}
+    .mp-doc h2{font-size:15px;color:#0f0f0f;margin:0 0 14px;padding:7px 14px;background:#f5a721;letter-spacing:.02em;font-weight:800;text-transform:uppercase;}
+    .mp-doc h4{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#8c8c8c;margin:0 0 6px;font-weight:800;}
 
-    /* ── Cover: barra taronja a l'esquerra + logo gros ── */
-    .mp-cover{position:relative;padding:54px 40px 36px 100px;background:#fff;}
-    .mp-cover::before{content:'';position:absolute;left:0;top:0;width:60px;height:100%;background:#f5a721;}
-    .mp-logo-wrap{display:flex;align-items:baseline;gap:14px;}
-    .mp-logo-full{font-size:46px;font-weight:900;letter-spacing:.01em;color:#f5a721;line-height:1;}
-    .mp-logo-training{font-size:46px;font-weight:900;letter-spacing:.01em;color:#0f0f0f;line-height:1;}
-    .mp-cover-sub{font-size:11px;color:#8c8c8c;letter-spacing:.04em;margin-top:8px;}
-    .mp-cover-cli{font-size:28px;font-weight:800;color:#0f0f0f;margin-top:34px;}
-    .mp-cover-periodo{font-size:11px;color:#404040;margin-top:6px;letter-spacing:.02em;}
+    /* ── Cover: barra taronja a l'esquerra + logo gros (en landscape) ── */
+    .mp-cover{position:relative;padding:90px 80px 70px 160px;background:#fff;min-height:760px;}
+    .mp-cover::before{content:'';position:absolute;left:0;top:0;width:80px;height:100%;background:#f5a721;}
+    .mp-logo-wrap{display:flex;align-items:baseline;gap:18px;}
+    .mp-logo-full{font-size:64px;font-weight:900;letter-spacing:.01em;color:#f5a721;line-height:1;}
+    .mp-logo-training{font-size:64px;font-weight:900;letter-spacing:.01em;color:#0f0f0f;line-height:1;}
+    .mp-cover-sub{font-size:13px;color:#8c8c8c;letter-spacing:.04em;margin-top:12px;}
+    .mp-cover-cli{font-size:42px;font-weight:800;color:#0f0f0f;margin-top:60px;line-height:1.05;}
+    .mp-cover-periodo{font-size:13px;color:#404040;margin-top:10px;letter-spacing:.02em;}
 
-    /* ── KPIs estil mediciones: fons #f7f7f7 + barra taronja a sobre ── */
-    .mp-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:30px;}
-    .mp-kpi{background:#f7f7f7;padding:18px 14px 14px;position:relative;}
-    .mp-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:#f5a721;}
-    .mp-kpi-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:#8c8c8c;font-weight:800;}
-    .mp-kpi-val{font-size:22px;font-weight:800;color:#0f0f0f;margin-top:6px;line-height:1.1;}
-    .mp-kpi-sub{font-size:8.5px;color:#8c8c8c;margin-top:3px;}
+    /* ── KPIs estil mediciones: més grans en landscape ── */
+    .mp-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:60px;max-width:820px;}
+    .mp-kpi{background:#f7f7f7;padding:22px 18px 18px;position:relative;}
+    .mp-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:5px;background:#f5a721;}
+    .mp-kpi-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#8c8c8c;font-weight:800;}
+    .mp-kpi-val{font-size:30px;font-weight:800;color:#0f0f0f;margin-top:8px;line-height:1.1;}
+    .mp-kpi-sub{font-size:9.5px;color:#8c8c8c;margin-top:4px;}
 
-    /* ── Body: header bar a cada secció (igual que pdf-lib drawHeaderBar) ── */
-    .mp-body{padding:30px 40px 0;}
-    .mp-section{margin-bottom:26px;}
+    /* ── Body: padding generós perquè no quedi pegat al borde ── */
+    .mp-body{padding:30px 60px 0;}
+    .mp-section{margin-bottom:30px;}
+    /* Seccions que obren pàgina: respiració extra a sobre */
+    .mp-section.mp-page-break,h2.mp-page-break{margin-top:36px;}
     .mp-doc table{border-collapse:collapse;width:100%;}
 
-    /* ── Graella: thead taronja, cap. dies negre sobre taronja, totals gris ── */
+    /* ── Graella (landscape: aprofitem amplada per a fotos i textos més grans) ── */
     .mp-graella{table-layout:fixed;}
-    .mp-graella th,.mp-graella td{border:1px solid #ddd;padding:5px;font-size:9px;vertical-align:top;overflow-wrap:anywhere;}
-    .mp-graella thead th{background:#f5a721;color:#0f0f0f;font-size:9px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;}
-    .mp-graella tbody th{background:#f7f7f7;color:#404040;width:64px;font-size:8.5px;text-transform:uppercase;font-weight:700;letter-spacing:.04em;}
-    .mp-plato{display:flex;gap:5px;align-items:center;margin-bottom:4px;}
+    .mp-graella th,.mp-graella td{border:1px solid #ddd;padding:7px;font-size:10px;vertical-align:top;overflow-wrap:anywhere;}
+    .mp-graella thead th{background:#f5a721;color:#0f0f0f;font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;padding:8px;}
+    .mp-graella tbody th{background:#f7f7f7;color:#404040;width:72px;font-size:9.5px;text-transform:uppercase;font-weight:700;letter-spacing:.04em;}
+    .mp-plato{display:flex;gap:7px;align-items:center;margin-bottom:5px;}
     .mp-plato:last-child{margin-bottom:0;}
-    .mp-foto{width:38px;height:30px;border-radius:3px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
+    .mp-foto{width:50px;height:40px;border-radius:3px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
     .mp-nofoto{background:#f7f7f7;}
-    .mp-plato-nm{font-weight:700;font-size:8.5px;line-height:1.18;color:#0f0f0f;overflow-wrap:anywhere;}
-    .mp-plato-kcal{font-size:7.5px;color:#8c8c8c;}
-    .mp-buit{color:#ccc;font-size:9px;text-align:center;padding:6px 0;}
-    .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f7f7f7;color:#404040;font-weight:700;font-size:8.5px;text-align:center;border-top:2px solid #f5a721;}
-    .mp-graella tr.mp-tot b{font-size:11px;color:#0f0f0f;}
+    .mp-plato-nm{font-weight:700;font-size:9.5px;line-height:1.22;color:#0f0f0f;overflow-wrap:anywhere;}
+    .mp-plato-kcal{font-size:8.5px;color:#8c8c8c;margin-top:1px;}
+    .mp-buit{color:#ccc;font-size:10px;text-align:center;padding:8px 0;}
+    .mp-graella tr.mp-tot th,.mp-graella tr.mp-tot td{background:#f7f7f7;color:#404040;font-weight:700;font-size:9.5px;text-align:center;border-top:2px solid #f5a721;padding:8px 6px;}
+    .mp-graella tr.mp-tot b{font-size:13px;color:#0f0f0f;}
 
-    /* ── Llista de la compra: seccions en taronja, ítems en columnes ── */
-    .mp-compra-sec{font-size:10.5px;color:#0f0f0f;font-weight:800;margin:14px 0 4px;padding:4px 10px;background:#f5a721;letter-spacing:.04em;text-transform:uppercase;}
-    .mp-compra{list-style:none;columns:3;column-gap:24px;}
-    .mp-compra li{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px dotted #ddd;color:#0f0f0f;}
+    /* ── Llista de la compra (landscape: 4 columnes en lloc de 3) ── */
+    .mp-compra-sec{font-size:11.5px;color:#0f0f0f;font-weight:800;margin:16px 0 6px;padding:5px 12px;background:#f5a721;letter-spacing:.04em;text-transform:uppercase;}
+    .mp-compra{list-style:none;columns:4;column-gap:28px;}
+    .mp-compra li{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px dotted #ddd;color:#0f0f0f;break-inside:avoid;}
     .mp-compra .mp-g{color:#f5a721;font-weight:800;}
 
-    /* ── Receptari: cards blanques + barra taronja a sobre ── */
-    .mp-recepta{background:#fff;border:1px solid #e8e8e8;padding:14px 16px 12px;margin-bottom:14px;position:relative;}
-    .mp-recepta::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:#f5a721;}
-    .mp-recepta-head{display:flex;gap:14px;align-items:center;margin-bottom:10px;}
-    .mp-recepta-foto{width:110px;height:84px;border-radius:4px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
+    /* ── Receptari (landscape: 2 receptes per fila amb dos columnes) ── */
+    .mp-recepta{background:#fff;border:1px solid #e8e8e8;padding:16px 18px 14px;margin-bottom:16px;position:relative;}
+    .mp-recepta::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:#f5a721;}
+    .mp-recepta-head{display:flex;gap:16px;align-items:center;margin-bottom:12px;}
+    .mp-recepta-foto{width:130px;height:96px;border-radius:5px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
     .mp-recepta-nofoto{background:#f7f7f7;}
-    .mp-recepta-nm{font-size:15px;font-weight:800;color:#0f0f0f;}
-    .mp-recepta-mac{font-size:10px;color:#404040;margin-top:4px;}
+    .mp-recepta-nm{font-size:17px;font-weight:800;color:#0f0f0f;}
+    .mp-recepta-mac{font-size:11px;color:#404040;margin-top:5px;}
     .mp-recepta-mac b{color:#f5a721;}
-    .mp-recepta-al{font-size:9px;color:#d94040;margin-top:3px;font-weight:700;}
-    .mp-recepta-aj{font-size:9px;color:#0f0f0f;margin-top:4px;font-weight:700;background:#f5a721;padding:2px 7px;border-radius:2px;display:inline-block;}
-    .mp-recepta-cols{display:flex;gap:24px;}
+    .mp-recepta-al{font-size:10px;color:#d94040;margin-top:4px;font-weight:700;}
+    .mp-recepta-aj{font-size:10px;color:#0f0f0f;margin-top:5px;font-weight:700;background:#f5a721;padding:3px 8px;border-radius:2px;display:inline-block;}
+    .mp-recepta-cols{display:flex;gap:30px;}
     .mp-recepta-cols>div{flex:1;}
-    .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:16px;font-size:10px;line-height:1.55;color:#404040;}
+    .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:18px;font-size:11px;line-height:1.6;color:#404040;}
 
     /* ── Notes / recomanacions ── */
-    .mp-notas{font-size:10.5px;line-height:1.75;color:#404040;background:#f7f7f7;border-left:4px solid #f5a721;padding:14px 18px;}
+    .mp-notas{font-size:11.5px;line-height:1.8;color:#404040;background:#f7f7f7;border-left:5px solid #f5a721;padding:16px 20px;}
 
     /* ── Foot: brand mark a la dreta com el PDF de mediciones ── */
-    .mp-foot{margin:30px 40px 24px;text-align:right;font-size:8.5px;color:#8c8c8c;font-style:italic;}
+    .mp-foot{margin:32px 60px 28px;text-align:right;font-size:9.5px;color:#8c8c8c;font-style:italic;}
   `;
 
   // ─── KPIs portada (estil mediciones) ──────────────────────────────
@@ -9263,22 +9270,24 @@ async function tobMenuPdf(cliId, menuId){
     tobToast('No s\'han pogut carregar les llibreries del PDF — recarrega la pàgina', 'red');
     return;
   }
+  // Layout LANDSCAPE: 297mm × 210mm a A4. En píxels CSS a 96dpi: 1123 × 794.
+  const DOC_W_PX = 1123;       // ample del .mp-doc (297mm landscape)
+  const PAGE_CSS_H = 794;      // alt d'una pàgina A4 landscape
+  const PAGE_MM_W = 297;
+  const PAGE_MM_H = 210;
   const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + DOC_W_PX + 'px;background:#fff;z-index:-1;';
   holder.innerHTML = '<style>' + styleCss + '</style>' + bodyHtml;
   document.body.appendChild(holder);
   try {
-    await new Promise(r => setTimeout(r, 150));   // dejar asentar imágenes
+    await new Promise(r => setTimeout(r, 150));
     const docEl = holder.querySelector('.mp-doc');
-    // Puntos de corte de página:
-    //   · Elements amb classe `mp-page-break` FORCEN un salt de pàgina abans
-    //     d'ells (independentment de si cabrien). Així cada secció gran
-    //     (cada setmana, notes, compra, recetari) empieza en pàgina pròpia.
-    //   · Elements amb classe `mp-blk` (receptes del recetari, etc.) tallen
-    //     només si no caben a la pàgina actual.
+    // Punts de tall:
+    //   · `mp-page-break` → FORÇA salt de pàgina abans (encara que càpiga).
+    //     Així cada setmana, compra i recetari obre pàgina pròpia.
+    //   · `mp-blk` sense page-break → talla només si no cap.
     const docTop = docEl.getBoundingClientRect().top;
     const docH = docEl.scrollHeight;
-    const pageCssH = 794 * 297 / 210;   // alto de A4 a 794px de ancho
     const cuts = [0];
     let pageStart = 0;
     holder.querySelectorAll('.mp-blk, .mp-page-break').forEach(blk => {
@@ -9287,16 +9296,11 @@ async function tobMenuPdf(cliId, menuId){
       const bot = rc.bottom - docTop;
       const force = blk.classList.contains('mp-page-break');
       if(force && top > pageStart + 4){
-        // Salt forçat: aquesta secció obre pàgina nova
-        cuts.push(top);
-        pageStart = top;
-      } else if(!force && bot - pageStart > pageCssH && top > pageStart + 4){
-        // Salt natural: el bloc no cap a la pàgina actual
-        cuts.push(top);
-        pageStart = top;
+        cuts.push(top); pageStart = top;
+      } else if(!force && bot - pageStart > PAGE_CSS_H && top > pageStart + 4){
+        cuts.push(top); pageStart = top;
       }
     });
-    // Deduplicar cuts (per si un element era alhora mp-blk i mp-page-break)
     const uniqueCuts = [];
     cuts.forEach(c => { if(!uniqueCuts.length || c > uniqueCuts[uniqueCuts.length-1] + 2) uniqueCuts.push(c); });
     uniqueCuts.push(docH);
@@ -9304,9 +9308,9 @@ async function tobMenuPdf(cliId, menuId){
 
     const canvas = await html2canvas(docEl,
       { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-    const sc = canvas.width / 794;   // px de canvas por px CSS
+    const sc = canvas.width / DOC_W_PX;
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdf = new jsPDF('l', 'mm', 'a4');     // LANDSCAPE
     for(let i = 0; i < cuts.length - 1; i++){
       const y0 = Math.round(cuts[i] * sc);
       const y1 = Math.round(cuts[i+1] * sc);
@@ -9316,8 +9320,15 @@ async function tobMenuPdf(cliId, menuId){
       seg.width = canvas.width; seg.height = segH;
       seg.getContext('2d').drawImage(canvas, 0, y0, canvas.width, segH, 0, 0, canvas.width, segH);
       if(i > 0) pdf.addPage();
-      let imgW = 210, imgH = segH * 210 / canvas.width, x = 0;
-      if(imgH > 297){ const k = 297 / imgH; imgH = 297; imgW = 210 * k; x = (210 - imgW) / 2; }
+      // En landscape: pàgina és 297mm de ample × 210mm de alt.
+      let imgW = PAGE_MM_W;
+      let imgH = segH * PAGE_MM_W / canvas.width;
+      let x = 0;
+      if(imgH > PAGE_MM_H){
+        const k = PAGE_MM_H / imgH;
+        imgH = PAGE_MM_H; imgW = PAGE_MM_W * k;
+        x = (PAGE_MM_W - imgW) / 2;
+      }
       pdf.addImage(seg.toDataURL('image/jpeg', 0.92), 'JPEG', x, 0, imgW, imgH);
     }
     const fname = 'Menu_' + String(cli.nombre||'client').replace(/[^\w\-]+/g,'_') +
