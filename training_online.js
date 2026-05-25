@@ -9608,20 +9608,50 @@ async function tobAiCall(messages, cfgOverride){
 }
 
 // Extrae el objeto JSON de la respuesta del LLM (quita ``` y texto sobrante).
+// Aplica reparacions tolerants per a JSON malformat típic de models petits
+// (Gemini Flash, Llama 70B…): comentaris, trailing commas, comes FALTANTS
+// entre propietats.
 function tobAiParseJson(txt){
   let s = String(txt || '').trim();
   s = s.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
   const a = s.indexOf('{'), b = s.lastIndexOf('}');
   if(a >= 0 && b > a) s = s.slice(a, b + 1);
-  // Tolerància a brutícies que alguns LLMs generen sense voler:
-  //   1. Comentaris d'estil JS: // foo  i  /* bar */
-  //   2. Comes finals abans de } o ]
-  // Aquestes substitucions són segures per a JSON ben format (no afecten
-  // strings perquè JSON.parse igualment validarà l'estructura).
-  s = s.replace(/\/\*[\s\S]*?\*\//g, '');                 // /* ... */
-  s = s.replace(/(^|[^:])\/\/[^\n\r]*/g, '$1');           // // ...  (evita trencar URLs amb ":" abans)
-  s = s.replace(/,(\s*[\}\]])/g, '$1');                   // trailing commas
-  return JSON.parse(s);
+  // Tolerància base: comentaris i trailing commas (segur amb JSON ben format).
+  s = s.replace(/\/\*[\s\S]*?\*\//g, '');
+  s = s.replace(/(^|[^:])\/\/[^\n\r]*/g, '$1');
+  s = s.replace(/,(\s*[\}\]])/g, '$1');
+
+  // Primer intent: JSON.parse directe
+  try { return JSON.parse(s); }
+  catch(eFirst){
+    // ── Auto-repair: comes faltants entre propietats. Típic de Gemini Flash.
+    // Heurísticas — un valor seguit d'una nova propietat ("key":) sense coma:
+    //   · "val"  "key":      →  "val", "key":
+    //   · 123    "key":      →  123, "key":
+    //   · }      "key":      →  }, "key":
+    //   · ]      "key":      →  ], "key":
+    //   · true/false/null    →  ídem
+    // El \s+ inclou salts de línia. Limitem el lookahead al patró exacte de
+    // començament de propietat ("\w+":).
+    let repaired = s;
+    repaired = repaired.replace(/("(?:[^"\\]|\\.)*")(\s+)("[\w_-]+"\s*:)/g, '$1,$2$3');
+    repaired = repaired.replace(/(\d+(?:\.\d+)?)(\s+)("[\w_-]+"\s*:)/g, '$1,$2$3');
+    repaired = repaired.replace(/(\b(?:true|false|null)\b)(\s+)("[\w_-]+"\s*:)/g, '$1,$2$3');
+    repaired = repaired.replace(/(\})(\s+)("[\w_-]+"\s*:)/g, '$1,$2$3');
+    repaired = repaired.replace(/(\])(\s+)("[\w_-]+"\s*:)/g, '$1,$2$3');
+    // També casos on un array element acabat enganxa amb el següent
+    // ("foo", "bar"  "baz"  →  "foo", "bar", "baz")
+    repaired = repaired.replace(/("(?:[^"\\]|\\.)*")(\s+)("(?:[^"\\]|\\.)*"\s*[,\]])/g, '$1,$2$3');
+
+    try { return JSON.parse(repaired); }
+    catch(eSecond){
+      // Si encara falla, llançem l'error original (és més informatiu sobre la
+      // posició real). El missatge inclou un hint sobre què fer.
+      const enriched = new Error(eFirst.message + ' (auto-repair també ha fallat — torna-ho a provar o canvia de model)');
+      enriched.stack = eFirst.stack;
+      throw enriched;
+    }
+  }
 }
 
 // Texto-resumen del perfil del cliente para el prompt de la IA.
