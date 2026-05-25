@@ -9394,9 +9394,45 @@ El cuestionari indica què menja a cada àpat. RESPECTA-HO al peu de la lletra.
 - Prioritza receptes preferides (★).
 - Usa només id de la llista de dalt.
 - Si un nom suggereix clarament un àpat (Tostada, Bocadillo, Sandvitx → esmorzar/berenar), utilitza-la encara que no estigui classificada en aquest àpat.`;
+// ─── Configuració d'IA — multi-clau (una per proveïdor) ───────────────
+// El cfg guarda les claus de TOTS els proveïdors per a què Sergio pugui
+// canviar entre Gemini / Anthropic / Groq / OpenRouter sense haver de
+// retoquinar la clau cada vegada.
+//
+// Estructura:
+//   {
+//     provider: 'anthropic',                      // el actiu
+//     keys:   { gemini:'AIza..', anthropic:'sk-ant-..', groq:'gsk_..', openrouter:'sk-or-..' },
+//     models: { gemini:'', anthropic:'claude-sonnet-4-5', ... },
+//     menuRules: '...',
+//     // Legacy fields per a compat retroactiu (key/model del proveïdor actiu)
+//     key:   '...',
+//     model: '...'
+//   }
+//
+// tobAiGetCfg sempre retorna `key` i `model` poblats des del proveïdor
+// actiu — així la resta del codi (que llegeix cfg.key i cfg.model)
+// segueix funcionant sense canvis.
 function tobAiGetCfg(){
-  try { return JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
-  catch(e){ return {}; }
+  let raw = {};
+  try { raw = JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
+  catch(e){}
+  // Migració del format antic: si no hi ha `keys` però sí `key`, l'inicialitzem
+  // amb la clau actual associada al proveïdor actiu.
+  if(!raw.keys || typeof raw.keys !== 'object') raw.keys = {};
+  if(!raw.models || typeof raw.models !== 'object') raw.models = {};
+  if(raw.key && raw.provider && !raw.keys[raw.provider]){
+    raw.keys[raw.provider] = raw.key;
+  }
+  if(raw.model && raw.provider && !raw.models[raw.provider]){
+    raw.models[raw.provider] = raw.model;
+  }
+  // Poblat dels camps "actius" segons el proveïdor seleccionat (per a què
+  // crideres existents com `cfg.key`, `cfg.model` segueixin funcionant).
+  const prov = raw.provider || 'gemini';
+  raw.key   = raw.keys[prov] || '';
+  raw.model = raw.models[prov] || '';
+  return raw;
 }
 function tobAiSaveCfg(cfg){
   try { localStorage.setItem(TOB_AI_CFG_KEY, JSON.stringify(cfg)); } catch(e){}
@@ -9404,12 +9440,11 @@ function tobAiSaveCfg(cfg){
 function tobAiOpenConfig(){
   const cfg = tobAiGetCfg();
   document.getElementById('tobAiProvider').value = cfg.provider || 'gemini';
-  document.getElementById('tobAiKey').value   = cfg.key   || '';
-  document.getElementById('tobAiModel').value = cfg.model || '';
+  // tobAiProviderChange s'encarregarà d'omplir key/model des de cfg.keys/cfg.models
+  tobAiProviderChange();
   document.getElementById('tobAiTestResult').textContent = '';
   const rulesEl = document.getElementById('tobAiMenuRules');
   if(rulesEl) rulesEl.value = cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT;
-  tobAiProviderChange();
   document.getElementById('tobAiConfigBg').classList.add('on');
 }
 function tobAiResetMenuRules(){
@@ -9423,21 +9458,50 @@ function tobAiProviderChange(){
   if(help) help.textContent = d.help || '';
   const mi = document.getElementById('tobAiModel');
   if(mi) mi.placeholder = d.model || '(per defecte)';
+  // Carregar la clau i model guardats per a aquest proveïdor (si existeixen).
+  const cfg = tobAiGetCfg();
+  const k = document.getElementById('tobAiKey');
+  if(k) k.value = (cfg.keys && cfg.keys[p]) || '';
+  if(mi) mi.value = (cfg.models && cfg.models[p]) || '';
+  // Indicador visual: si hi ha clau guardada per a aquest proveïdor, ho mostrem
+  const res = document.getElementById('tobAiTestResult');
+  if(res){
+    const tot = Object.keys(cfg.keys || {}).filter(x => cfg.keys[x]).length;
+    if(tot > 1){
+      res.style.color = 'var(--mute)';
+      res.textContent = '💡 Tens claus guardades per a ' + tot + ' proveïdors. Canvia el dropdown per alternar ràpidament.';
+    } else {
+      res.textContent = '';
+    }
+  }
 }
 function tobAiSaveConfigFromModal(){
   const rules = (document.getElementById('tobAiMenuRules')?.value || '').trim();
+  const provider = document.getElementById('tobAiProvider').value;
+  const newKey   = document.getElementById('tobAiKey').value.trim();
+  const newModel = document.getElementById('tobAiModel').value.trim();
+  if(!newKey){ tobToast('Falta la clau API per a ' + provider, 'red'); return; }
+  // Carregar el cfg existent per preservar les claus dels altres proveïdors.
+  const existing = tobAiGetCfg();
+  const keys   = Object.assign({}, existing.keys || {});
+  const models = Object.assign({}, existing.models || {});
+  keys[provider]   = newKey;
+  models[provider] = newModel;
   const cfg = {
-    provider: document.getElementById('tobAiProvider').value,
-    key:      document.getElementById('tobAiKey').value.trim(),
-    model:    document.getElementById('tobAiModel').value.trim(),
+    provider,
+    keys,
+    models,
     // Solo se guarda si difiere del default (así futuras mejoras del
     // default llegan a quien no lo haya tocado).
-    menuRules: (rules && rules !== TOB_AI_MENU_RULES_DEFAULT.trim()) ? rules : ''
+    menuRules: (rules && rules !== TOB_AI_MENU_RULES_DEFAULT.trim()) ? rules : '',
+    // Legacy compat (poblats des del provider actiu)
+    key:   newKey,
+    model: newModel
   };
-  if(!cfg.key){ tobToast('Falta la clau API', 'red'); return; }
   tobAiSaveCfg(cfg);
   document.getElementById('tobAiConfigBg').classList.remove('on');
-  tobToast('✓ Configuració de la IA guardada', 'green');
+  const tot = Object.keys(keys).filter(p => keys[p]).length;
+  tobToast('✓ Clau de ' + provider + ' guardada' + (tot > 1 ? ' (' + tot + ' proveïdors configurats)' : ''), 'green');
 }
 async function tobAiTestConfig(){
   const res = document.getElementById('tobAiTestResult');
