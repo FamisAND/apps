@@ -9698,8 +9698,13 @@ async function tobMcGenerarIA(){
 
     let catalogo = '';
     const validIds = new Set();
-    const totalCap = (cfg.provider === 'groq') ? 140 : 600;
-    const capPorMomento = Math.max(10, Math.floor(totalCap / comidas.length));
+    // Groq free tier té un límit de tokens molt baix (~6000 TPM). Per a
+    // estalviar tokens, retallem el catàleg I omettem el camp "ings" amb els
+    // ingredients de cada recepta. La IA perdrà precisió per a emetre "ing"
+    // però evitarem l'error 413.
+    const isGroq = cfg.provider === 'groq';
+    const totalCap = isGroq ? 80 : 600;
+    const capPorMomento = Math.max(8, Math.floor(totalCap / comidas.length));
     let inferidasTotales = 0;
     comidas.forEach(c => {
       const base = tobMcMealBase(c.id);
@@ -9729,31 +9734,32 @@ async function tobMcGenerarIA(){
         const mm = tobRecMacros(r); const rac = r.raciones || 1;
         const tag = r.favorito ? '★' : (r.origen === 'ingrediente' ? '∙' : '');
         const rolCode = ({ principal:'P', acompanyament:'A', postre:'D', basic:'B' })[r.rol] || '?';
-        // Top-4 ingredients per pes — així la IA sap els noms exactes i grams
-        // base per emetre "ing" correctament. Sense això, la IA ha d'endevinar.
-        // Format compacte: "pollastre 150g,arroz 60g,oli 5ml,...".
-        const topIngs = (r.ingredientes || [])
-          .map(it => {
-            const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-            const nom = (ing && ing.nombre) || it._nombreFallback || '';
-            const g = (+it.gramos || 0) / rac;   // per ració
-            return { nom, g };
-          })
-          .filter(x => x.nom && x.g > 0)
-          .sort((a,b) => b.g - a.g)
-          .slice(0, 4);
+        // Top ingredients amb grams — així la IA sap els noms exactes per
+        // emetre "ing" correctament. Per a Groq (límit de tokens molt baix)
+        // OMETEM aquesta info per estalviar prompt size.
         let ingStr = '';
-        if(topIngs.length){
-          // Normalitzar nom a lowercase i prendre primera paraula significativa
-          // (per que la IA tingui un alies curt: "Pechuga de pollo" → "pollo").
-          const shortNom = s => {
-            const w = String(s).toLowerCase()
-              .replace(/[,.()]/g,' ')
-              .split(/\s+/)
-              .filter(x => x.length > 2 && !/^(de|del|la|el|los|las|amb|con|y|i|en|sin|sense)$/.test(x));
-            return w[0] || String(s).toLowerCase();
-          };
-          ingStr = '|ings:' + topIngs.map(x => shortNom(x.nom) + ' ' + Math.round(x.g) + 'g').join(',');
+        if(!isGroq){
+          const topIngs = (r.ingredientes || [])
+            .map(it => {
+              const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+              const nom = (ing && ing.nombre) || it._nombreFallback || '';
+              const g = (+it.gramos || 0) / rac;
+              return { nom, g };
+            })
+            .filter(x => x.nom && x.g > 0)
+            .sort((a,b) => b.g - a.g)
+            .slice(0, 4);
+          if(topIngs.length){
+            // "Pechuga de pollo" → "pollo" (primera paraula útil).
+            const shortNom = s => {
+              const w = String(s).toLowerCase()
+                .replace(/[,.()]/g,' ')
+                .split(/\s+/)
+                .filter(x => x.length > 2 && !/^(de|del|la|el|los|las|amb|con|y|i|en|sin|sense)$/.test(x));
+              return w[0] || String(s).toLowerCase();
+            };
+            ingStr = '|ings:' + topIngs.map(x => shortNom(x.nom) + ' ' + Math.round(x.g) + 'g').join(',');
+          }
         }
         catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p|' + rolCode + ingStr + '\n';
       });
@@ -10049,8 +10055,19 @@ async function tobMcGenerarIA(){
   } catch(e){
     console.warn('[IA menú]', e);
     let msg = e.message || String(e);
-    if(/\b429\b/.test(msg))      msg = 'límit de quota del proveïdor IA — espera uns minuts i torna-ho a provar, o canvia de proveïdor (botó ⚙ IA)';
-    else if(/\b413\b/.test(msg)) msg = 'petició massa gran per al pla gratuït — prova amb menys setmanes';
+    if(/\b429\b/.test(msg)){
+      msg = 'límit de quota del proveïdor IA — espera uns minuts i torna-ho a provar, o canvia de proveïdor (botó ⚙ IA)';
+    } else if(/\b413\b/.test(msg)){
+      const prov = (tobAiGetCfg() || {}).provider || 'groq';
+      if(prov === 'groq'){
+        msg = 'Groq té un límit de tokens molt baix. Solucions:\n' +
+              '  1) Canvia a Gemini al ⚙ IA (gratis, prompts grans)\n' +
+              '  2) Activa "🤖 solo recetas favoritas" (redueix el catàleg)\n' +
+              '  3) Genera 1 setmana en lloc de 4';
+      } else {
+        msg = 'petició massa gran — prova amb menys setmanes o activa "🤖 solo recetas favoritas"';
+      }
+    }
     tobToast('✗ ' + msg, 'red');
   } finally {
     if(btn){ btn.disabled = false; btn.textContent = btnTxt || '🤖 Generar con IA'; }
