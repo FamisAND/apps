@@ -9447,10 +9447,13 @@ function tobAiOpenConfig(){
   const rulesEl = document.getElementById('tobAiMenuRules');
   if(rulesEl) rulesEl.value = cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT;
   // Passades de correcció — clamp a [0, 3] amb default 3.
+  // Bug previ: "parseInt(mp,10) || 3" feia que el 0 es convertís en 3 (perquè
+  // 0 és falsy). Ara distingim entre NaN i valor numèric vàlid.
   const mpEl = document.getElementById('tobAiMaxPasadas');
   if(mpEl){
-    const mp = (cfg.maxPasadas != null) ? cfg.maxPasadas : 3;
-    mpEl.value = String(Math.max(0, Math.min(3, parseInt(mp, 10) || 3)));
+    const parsed = parseInt(cfg.maxPasadas, 10);
+    const finalVal = isFinite(parsed) ? Math.max(0, Math.min(3, parsed)) : 3;
+    mpEl.value = String(finalVal);
   }
   tobAiRenderFallbackList();
   document.getElementById('tobAiConfigBg').classList.add('on');
@@ -9768,8 +9771,22 @@ function tobAiParseJson(txt){
 
     try { return JSON.parse(repaired); }
     catch(eSecond){
-      // Si encara falla, llançem l'error original (és més informatiu sobre la
-      // posició real). El missatge inclou un hint sobre què fer.
+      // Tercer intent: jsonrepair (llibreria robusta carregada via CDN al HTML).
+      // Maneja casos rars: strings sense tancar, caràcters de control no
+      // escapats, comilles dolentes, claus duplicades, comments...
+      const jr = (typeof window !== 'undefined') && (window.jsonrepair || (window.JSONRepair && window.JSONRepair.jsonrepair));
+      if(typeof jr === 'function'){
+        try {
+          const fixed = jr(s);
+          // Log per debug — útil per veure què va canviar.
+          console.log('[tobAiParseJson] reparat amb jsonrepair (' + s.length + ' → ' + fixed.length + ' chars)');
+          return JSON.parse(fixed);
+        } catch(eThird){
+          console.warn('[tobAiParseJson] jsonrepair també ha fallat:', eThird.message);
+        }
+      }
+      // Loguem el JSON crudo per a poder diagnosticar el patró concret.
+      console.warn('[tobAiParseJson] tots els repairs han fallat. Raw (primers 500 chars):\n' + s.slice(0, 500));
       const enriched = new Error(eFirst.message + ' (auto-repair també ha fallat — torna-ho a provar o canvia de model)');
       enriched.stack = eFirst.stack;
       throw enriched;
