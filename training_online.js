@@ -9729,7 +9729,33 @@ async function tobMcGenerarIA(){
         const mm = tobRecMacros(r); const rac = r.raciones || 1;
         const tag = r.favorito ? '★' : (r.origen === 'ingrediente' ? '∙' : '');
         const rolCode = ({ principal:'P', acompanyament:'A', postre:'D', basic:'B' })[r.rol] || '?';
-        catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p|' + rolCode + '\n';
+        // Top-4 ingredients per pes — així la IA sap els noms exactes i grams
+        // base per emetre "ing" correctament. Sense això, la IA ha d'endevinar.
+        // Format compacte: "pollastre 150g,arroz 60g,oli 5ml,...".
+        const topIngs = (r.ingredientes || [])
+          .map(it => {
+            const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+            const nom = (ing && ing.nombre) || it._nombreFallback || '';
+            const g = (+it.gramos || 0) / rac;   // per ració
+            return { nom, g };
+          })
+          .filter(x => x.nom && x.g > 0)
+          .sort((a,b) => b.g - a.g)
+          .slice(0, 4);
+        let ingStr = '';
+        if(topIngs.length){
+          // Normalitzar nom a lowercase i prendre primera paraula significativa
+          // (per que la IA tingui un alies curt: "Pechuga de pollo" → "pollo").
+          const shortNom = s => {
+            const w = String(s).toLowerCase()
+              .replace(/[,.()]/g,' ')
+              .split(/\s+/)
+              .filter(x => x.length > 2 && !/^(de|del|la|el|los|las|amb|con|y|i|en|sin|sense)$/.test(x));
+            return w[0] || String(s).toLowerCase();
+          };
+          ingStr = '|ings:' + topIngs.map(x => shortNom(x.nom) + ' ' + Math.round(x.g) + 'g').join(',');
+        }
+        catalogo += r.id + '|' + tag + r.nombre + '|' + Math.round(mm.kcal/rac) + 'k|' + Math.round(mm.proteina/rac) + 'p|' + rolCode + ingStr + '\n';
       });
     });
     if(inferidasTotales > 0){
@@ -9752,9 +9778,11 @@ async function tobMcGenerarIA(){
         + comidas.map(c => '"' + c.id + '"').join(', ') + '.',
       '',
       'RECEPTES DISPONIBLES — tria NOMÉS d\'aquesta llista, pel seu id.',
-      'Format de cada línia: id|nom|kcal|proteïna|rol  (ex: rec_x|Truita francesa|320k|18p|P).',
+      'Format de cada línia: id|nom|kcal|proteïna|rol|ings:<top-4 ingredients amb grams per ració>',
+      'Ex: rec_x|Truita francesa|320k|18p|P|ings:ous 100g,oli 5g',
       'Marques davant del nom: ★ = preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs).',
       'Rol del plat: P=principal · A=acompanyament · D=postre · B=bàsic/esmorzar · ?=sense classificar.',
+      'Camp "ings": els ingredients principals de la recepta. Quan emetis "ing" als ajustes, fes servir EXACTAMENT els noms que apareixen aquí (ex: si veus "ings:pollastre 150g", emet "ing":{"pollastre":200}).',
       '',
       'IMPORTANT — USA EL NOM COM A PISTA quan el rol és "?" o quan el catàleg sembla curt:',
       '· Si una recepta es diu "Tostada amb tomàquet", "Pa amb formatge", "Bocadillo de pollastre", "Sandvitx vegetal" → encaixa perfectament a ESMORZAR (i sovint a BERENAR/SOPAR).',
@@ -9931,55 +9959,87 @@ async function tobMcGenerarIA(){
       };
       const kLo = kcal * (1 - margen/100);
       const kHi = kcal * (1 + margen/100);
-      const pLo = prot ? prot * 0.90 : null;   // mínim 90% de l'objectiu de prot
-      const fueras = [];
-      for(let s = 0; s < semanas; s++) for(let d = 0; d < 7; d++){
-        const { k, p } = dayMacros(s,d);
-        if(k <= 0) continue;
-        const problemas = [];
-        if(k < kLo) problemas.push('kcal=' + Math.round(k) + ' (objectiu ' + Math.round(kcal) + ', falten ~' + Math.round(kcal - k) + ')');
-        else if(k > kHi) problemas.push('kcal=' + Math.round(k) + ' (objectiu ' + Math.round(kcal) + ', passat ~' + Math.round(k - kcal) + ')');
-        if(pLo && p < pLo) problemas.push('prot=' + Math.round(p) + 'g (objectiu ' + Math.round(prot) + 'g, falten ~' + Math.round(prot - p) + 'g)');
-        if(problemas.length) fueras.push({ s, d, problemas });
-      }
-      if(fueras.length){
-        // Detectem dies amb dèficit ENORME (≤70% objectiu) per pressionar
-        // amb instruccions específiques i exemples concrets.
-        const muyLejos = fueras.filter(f => {
-          const k = ((tobMcState.data[f.s]||{})[f.d] && dayMacros(f.s, f.d).k) || 0;
-          return k > 0 && k < kcal * 0.7;
-        });
-        tobToast('🤖 Corregint ' + fueras.length + ' dia(es) que no quadren…', '');
-        const fixUser = 'El menú que has generat té dies que NO compleixen els objectius. Objectiu: ' + Math.round(kcal) + ' kcal/dia' + (prot ? ', ' + Math.round(prot) + ' g prot' : '') + '.\n\n'
-          + 'Dies fora de marge:\n'
-          + fueras.map(f => '· setmana ' + f.s + ' · dia ' + f.d + ' (' + ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'][f.d] + '): ' + f.problemas.join(' · ')).join('\n')
-          + (muyLejos.length ? '\n\n⚠ ATENCIÓ: ' + muyLejos.length + ' dia(es) estan a MENYS DEL 70% de l\'objectiu. Això és inacceptable — has de pujar les racions MOLT, no només lleugerament.\n' : '')
-          + '\n\nCORRIGEIX-LOS PUJANT RACIONS de manera DECIDIDA. La teva eina principal és el camp "ajustes":\n'
-          + '\n'
-          + 'EXEMPLE concret de com fer-ho (segueix-lo):\n'
-          + 'Si un dia té un plat principal de pollastre 150g que dona 350 kcal i 30g prot,\n'
-          + 'i necessites pujar el dia 600 kcal i 30g prot:\n'
-          + '  "ajustes": {\n'
-          + '    "ID_DEL_POLLASTRE": { "ing": { "pollastre": 250 }, "motiu": "pujar prot del dia" },\n'
-          + '    "ID_DEL_ACOMPANYAMENT": { "ing": { "arros": 100 }, "motiu": "pujar kcal del dia" }\n'
-          + '  }\n'
-          + 'Això converteix el plat en 250g de pollastre (de 150g) + 100g d\'arròs (de 60g).\n'
-          + '\n'
-          + 'NO siguis tímid. Si falten 1000 kcal, has de pujar les racions MOLT (ing 2× o factor 1.8) o canviar plats per altres més calòrics.\n'
-          + '\n'
-          + 'Ordre d\'acció:\n'
-          + '1. AJUSTA amb "ing" la prote del plat principal (pollastre, salmó, lluç, vedella…) — múltiples de 25g.\n'
-          + '2. AJUSTA amb "ing" l\'acompanyament (arròs, pasta, patata, quinoa…) — múltiples de 10g.\n'
-          + '3. SI EL PLAT ÉS POBRE en kcal i no es pot estirar més: SUBSTITUEIX per un altre del catàleg més calòric.\n'
-          + '4. NO afegeixis peces extres soltes al final del dia (iogurts random).\n'
-          + '\n'
-          + 'Retorna el menú SENCER en el mateix format JSON, amb "ajustes" ABUNDANT i agressiu si cal. Els dies que ja anaven bé, deixa\'ls igual.';
-        const raw2 = await tobAiCall([
-          { role:'system', content:sys }, { role:'user', content:user },
-          { role:'assistant', content:raw }, { role:'user', content:fixUser }
+      const pLo = prot ? prot * 0.90 : null;
+      // Funció: identificar dies fora de marge a l'estat actual.
+      const detectarFueras = () => {
+        const out = [];
+        for(let s = 0; s < semanas; s++) for(let d = 0; d < 7; d++){
+          const { k, p } = dayMacros(s, d);
+          if(k <= 0) continue;
+          const problemas = [];
+          if(k < kLo) problemas.push('kcal=' + Math.round(k) + ' (falten ~' + Math.round(kcal - k) + ' kcal)');
+          else if(k > kHi) problemas.push('kcal=' + Math.round(k) + ' (passat ~' + Math.round(k - kcal) + ' kcal)');
+          if(pLo && p < pLo) problemas.push('prot=' + Math.round(p) + 'g (falten ~' + Math.round(prot - p) + 'g)');
+          if(problemas.length) out.push({ s, d, problemas, k, p });
+        }
+        return out;
+      };
+      // Iteració de correcció: fins a 3 passades. Cada passada veu el resultat
+      // de l'anterior i pressiona més fort.
+      let conversa = [
+        { role:'system', content:sys },
+        { role:'user', content:user },
+        { role:'assistant', content:raw }
+      ];
+      const MAX_PASADAS = 3;
+      let passada = 0;
+      let fueras = detectarFueras();
+      while(fueras.length && passada < MAX_PASADAS){
+        passada++;
+        const muyLejos = fueras.filter(f => f.k > 0 && f.k < kcal * 0.7);
+        const prefixe = passada === 1 ? '🤖 Corregint dies que no quadren…'
+                      : passada === 2 ? '🤖 Repassant — encara queden ' + fueras.length + ' dies fora…'
+                                       : '🤖 Última passada — encara hi ha ' + fueras.length + ' dies fora…';
+        tobToast(prefixe, '');
+        let fixUser =
+          'Passada ' + passada + '/' + MAX_PASADAS + ' de correcció. ' +
+          'Objectiu: ' + Math.round(kcal) + ' kcal/dia' + (prot ? ' i ' + Math.round(prot) + ' g prot' : '') + '.\n\n' +
+          'Dies que encara NO compleixen:\n' +
+          fueras.map(f => '· setmana ' + f.s + ' · dia ' + f.d + ' (' + ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'][f.d] + '): ' + f.problemas.join(' · ')).join('\n');
+        if(muyLejos.length){
+          fixUser += '\n\n⚠ CRÍTIC: ' + muyLejos.length + ' dia(es) estan a < 70% de l\'objectiu. Has de pujar les racions MOLT, no només una mica.';
+        }
+        if(passada === 1){
+          fixUser +=
+            '\n\nUSA EL CAMP "ings" del catàleg de receptes per saber el nom dels ingredients i emetre "ing" amb noms EXACTES.\n' +
+            '\nExemple concret: si la línia del catàleg és\n' +
+            '  rec_x|Pollastre amb arròs|350k|30p|P|ings:pollastre 150g,arroz 60g\n' +
+            'i necessites pujar el dia 600 kcal i 30g prot, emet:\n' +
+            '  "ajustes": {\n' +
+            '    "rec_x": { "ing": { "pollastre": 250, "arroz": 100 }, "motiu": "pujar prot+kcal del dia" }\n' +
+            '  }\n' +
+            '\nNO siguis tímid. Pujar de 150g a 200g només dona +25g prot — ja no n\'hi ha prou. Salta a 250g sense por.';
+        } else if(passada === 2){
+          fixUser +=
+            '\n\nLa correcció anterior NO ha quadrat. AUGMENTA encara més les racions, o si el plat no es pot estirar més, ' +
+            'SUBSTITUEIX el plat per un altre del catàleg més calòric (mira la columna kcal).\n' +
+            '\nSi un plat principal té només 350 kcal i necessites 800 kcal, ja no compensa ajustar — canvia per un de 600+ kcal.';
+        } else {
+          fixUser +=
+            '\n\nÚLTIMA OPORTUNITAT. La correcció anterior segueix sense quadrar. Sigues MOLT més agressiu:\n' +
+            '- Canvia els plats principals per altres més calòrics si l\'ajust no n\'hi ha prou\n' +
+            '- Combina principal + acompanyament + un altre acompanyament si cal\n' +
+            '- factor 2 o ing amb el doble dels grams base — el que sigui';
+        }
+        fixUser +=
+          '\n\nOrdre d\'acció:\n' +
+          '1. AJUSTA "ing" amb la prote del plat principal (múltiples de 25g per carns/peixos).\n' +
+          '2. AJUSTA "ing" amb l\'acompanyament (múltiples de 10g per cereals).\n' +
+          '3. Si l\'ajust no n\'hi ha prou, SUBSTITUEIX el plat per un altre més calòric.\n' +
+          '4. PROHIBIT afegir peces soltes random al final del dia.\n' +
+          '\nRetorna el menú SENCER en el mateix format JSON. Els dies que ja anaven bé, deixa\'ls igual.';
+
+        const rawN = await tobAiCall(conversa.concat([{ role:'user', content:fixUser }]));
+        conversa = conversa.concat([
+          { role:'user', content:fixUser },
+          { role:'assistant', content:rawN }
         ]);
-        const n2 = aplicar(tobAiParseJson(raw2));
+        const n2 = aplicar(tobAiParseJson(rawN));
         if(n2) puestos = n2;
+        fueras = detectarFueras();
+      }
+      if(passada > 0){
+        console.log('[IA correcció] ' + passada + ' passada(es) executada(es). Dies encara fora: ' + fueras.length);
       }
     } catch(e){ console.warn('[IA correcció]', e); }
 
