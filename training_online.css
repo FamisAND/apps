@@ -606,6 +606,11 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   margin:12px 0 6px;padding-top:9px;border-top:1px solid var(--border);
 }
 .tob-mc-side-sep span{color:var(--mute2);font-weight:400;text-transform:none;letter-spacing:0;}
+/* Variant compacta per a plats solts — més petits, no roben atenció */
+.tob-mc-side-item.mini{padding:3px 6px;font-size:.65rem;}
+.tob-mc-side-item.mini .thumb{width:22px;height:22px;font-size:.5rem;}
+.tob-mc-side-item.mini .info .nm{font-weight:600;color:var(--mute);}
+.tob-mc-side-item.mini .info .mac{font-size:.56rem;}
 
 /* Clasificar recetas por momento + rol (modal) */
 .tob-clasif-row{

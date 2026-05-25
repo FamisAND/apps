@@ -8617,13 +8617,21 @@ function tobMcRenderSidePanel(){
   const matchSearch = r => !search ||
     (r.nombre || '').toLowerCase().includes(search) ||
     (r.tags || []).some(t => t.toLowerCase().includes(search));
-  // Recetas normales: respetan el filtro de momento. Platos sueltos
-  // (ingredientes) son comodín → siempre visibles, en su mini-sección.
+  // Recetes normals: respecten el filtre de moment.
   let listRec = all.filter(r => r.origen !== 'ingrediente' && matchSearch(r));
   if(_tobMcMomentoFiltro){
     listRec = listRec.filter(r => (r.momentos || []).includes(_tobMcMomentoFiltro));
   }
+  // Plats solts (origen ingredient): també respecten el filtre de moment ara
+  // que tenen _iaMomentos sincronitzats amb r.momentos. Si no tenen moments
+  // assignats (legacy), apareixen sempre (comodí).
   let listIng = all.filter(r => r.origen === 'ingrediente' && matchSearch(r));
+  if(_tobMcMomentoFiltro){
+    listIng = listIng.filter(r => {
+      const moms = r.momentos || [];
+      return !moms.length || moms.includes(_tobMcMomentoFiltro);
+    });
+  }
 
   const evaluar = arr => arr.map(r => ({
     rec: r,
@@ -8659,11 +8667,29 @@ function tobMcRenderSidePanel(){
       ${incompatBadge}
     </div>`;
   };
+  // Plats solts: tipografia més petita i compacta, perquè com diu Sergio
+  // "no son tan importantes". Mateixa funcionalitat (drag, click).
+  const renderItemMini = ({rec: r, check}) => {
+    const m = tobRecMacros(r);
+    const kcalPer = Math.round(m.kcal / (r.raciones || 1));
+    const thumbInner = (r.nombre || '?').slice(0,2).toUpperCase();
+    const incompatBadge = check.compat ? '' :
+      `<span class="badge-incompat" title="${tobEsc(check.razones.join(' · '))}">⚠</span>`;
+    const cls = check.compat ? '' : 'incompat';
+    return `<div class="tob-mc-side-item mini ${cls}" data-rec="${r.id}" title="${tobEsc(r.nombre)}${check.razones.length ? '\\n⚠ ' + check.razones.join(' · ') : ''}">
+      <div class="thumb placeholder mini" data-foto-rec="${r.id}">${tobEsc(thumbInner)}</div>
+      <div class="info">
+        <div class="nm">∙ ${tobEsc(r.nombre || '—')}</div>
+        <div class="mac">${kcalPer}k · ${Math.round(m.proteina / (r.raciones||1))}p</div>
+      </div>
+      ${incompatBadge}
+    </div>`;
+  };
 
   let html = evalRec.map(renderItem).join('');
   if(evalIng.length){
-    html += `<div class="tob-mc-side-sep">🥩 Ingredients solts <span>(plats simples)</span></div>`
-          + evalIng.map(renderItem).join('');
+    html += `<div class="tob-mc-side-sep">∙ Ingredients solts <span>(${evalIng.length} · arrossega per inserir-los)</span></div>`
+          + evalIng.map(renderItemMini).join('');
   }
   panel.innerHTML = html ||
     '<div style="text-align:center;color:var(--mute2);padding:18px;font-family:DM Mono,monospace;font-size:.7rem;">Sin recetas que coincidan con los filtros.</div>';
@@ -9009,7 +9035,7 @@ async function tobMenuPdf(cliId, menuId){
     const totRow = '<tr class="mp-tot"><th>Total dia</th>' + dayTot.map(t =>
       `<td><b>${Math.round(t.kcal)}</b> kcal · ${Math.round(t.prot)}P · ${Math.round(t.hc)}H · ${Math.round(t.gras)}G</td>`
     ).join('') + '</tr>';
-    graellaHtml += `<div class="mp-section mp-blk">
+    graellaHtml += `<div class="mp-section mp-blk mp-page-break">
       <h2>Setmana ${s+1}</h2>
       <table class="mp-graella"><thead><tr><th></th>${DIAS.map(d=>`<th>${d}</th>`).join('')}</tr></thead>
       <tbody>${rows}${totRow}</tbody></table></div>`;
@@ -9042,7 +9068,7 @@ async function tobMenuPdf(cliId, menuId){
   let compraHtml = '';
   const secsAmbDades = TOB_SECCIONS.filter(s => porSeccion[s] && porSeccion[s].length);
   if(secsAmbDades.length){
-    compraHtml = '<div class="mp-section mp-blk"><h2>Llista de la compra</h2>';
+    compraHtml = '<div class="mp-section mp-blk mp-page-break"><h2>Llista de la compra</h2>';
     secsAmbDades.forEach(sec => {
       const items = porSeccion[sec].sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
       compraHtml += '<h4 class="mp-compra-sec">' + esc(sec) + '</h4><ul class="mp-compra">' +
@@ -9056,7 +9082,7 @@ async function tobMenuPdf(cliId, menuId){
   const recetari = Object.keys(usos).map(id => recsById[id]).filter(Boolean)
     .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'}));
   const recetariHtml = recetari.length
-    ? '<h2 class="mp-blk mp-recetari-h">Receptari</h2>' + recetari.map(r => {
+    ? '<h2 class="mp-blk mp-page-break mp-recetari-h">Receptari</h2>' + recetari.map(r => {
       const foto = fotoMap[r.id];
       const mr = macRac(r);
       const racR = r.raciones || 1;
@@ -9090,7 +9116,7 @@ async function tobMenuPdf(cliId, menuId){
   // ── Notes / recomanacions ──────────────────────────────────────
   const notas = String(m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
   const notasHtml = notas
-    ? `<div class="mp-section mp-blk"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
+    ? `<div class="mp-section mp-blk mp-page-break"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
     : '';
 
   // ── Documento del menú (se renderiza fuera de pantalla y se vuelca
@@ -9244,22 +9270,37 @@ async function tobMenuPdf(cliId, menuId){
   try {
     await new Promise(r => setTimeout(r, 150));   // dejar asentar imágenes
     const docEl = holder.querySelector('.mp-doc');
-    // Puntos de corte de página: en los límites de los bloques .mp-blk,
-    // así no se parte ninguna receta ni sección por la mitad.
+    // Puntos de corte de página:
+    //   · Elements amb classe `mp-page-break` FORCEN un salt de pàgina abans
+    //     d'ells (independentment de si cabrien). Així cada secció gran
+    //     (cada setmana, notes, compra, recetari) empieza en pàgina pròpia.
+    //   · Elements amb classe `mp-blk` (receptes del recetari, etc.) tallen
+    //     només si no caben a la pàgina actual.
     const docTop = docEl.getBoundingClientRect().top;
     const docH = docEl.scrollHeight;
     const pageCssH = 794 * 297 / 210;   // alto de A4 a 794px de ancho
     const cuts = [0];
     let pageStart = 0;
-    holder.querySelectorAll('.mp-blk').forEach(blk => {
+    holder.querySelectorAll('.mp-blk, .mp-page-break').forEach(blk => {
       const rc = blk.getBoundingClientRect();
       const top = rc.top - docTop;
       const bot = rc.bottom - docTop;
-      if(bot - pageStart > pageCssH && top > pageStart + 4){
-        cuts.push(top); pageStart = top;
+      const force = blk.classList.contains('mp-page-break');
+      if(force && top > pageStart + 4){
+        // Salt forçat: aquesta secció obre pàgina nova
+        cuts.push(top);
+        pageStart = top;
+      } else if(!force && bot - pageStart > pageCssH && top > pageStart + 4){
+        // Salt natural: el bloc no cap a la pàgina actual
+        cuts.push(top);
+        pageStart = top;
       }
     });
-    cuts.push(docH);
+    // Deduplicar cuts (per si un element era alhora mp-blk i mp-page-break)
+    const uniqueCuts = [];
+    cuts.forEach(c => { if(!uniqueCuts.length || c > uniqueCuts[uniqueCuts.length-1] + 2) uniqueCuts.push(c); });
+    uniqueCuts.push(docH);
+    cuts.length = 0; uniqueCuts.forEach(c => cuts.push(c));
 
     const canvas = await html2canvas(docEl,
       { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
