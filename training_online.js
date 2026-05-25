@@ -9299,7 +9299,8 @@ const TOB_AI_DEFAULTS = {
   gemini:     { model:'gemini-2.0-flash',          help:'Clau gratuïta a aistudio.google.com/apikey' },
   groq:       { model:'llama-3.3-70b-versatile',   help:'Clau gratuïta a console.groq.com/keys' },
   anthropic:  { model:'claude-haiku-4-5',          help:'Clau a console.anthropic.com → API Keys (requereix crèdit API, separat de la subscripció de Claude). Cost orientatiu: ~2-5 cèntims/menú amb Haiku 4.5. Per a millor qualitat amb instruccions complexes, posa "claude-sonnet-4-5" al camp Model (~10-15 cèntims/menú).' },
-  openrouter: { model:'google/gemini-2.0-flash-001', help:'Clau a openrouter.ai/keys (requereix crèdit)' }
+  openrouter: { model:'google/gemini-2.0-flash-001', help:'Clau a openrouter.ai/keys (requereix crèdit). Pots fer servir modelos gratuïts amb sufix ":free" (ex: "deepseek/deepseek-chat-v3-0324:free").' },
+  deepseek:   { model:'deepseek-chat',             help:'Clau a platform.deepseek.com/api_keys (requereix crèdit). MOLT econòmic: ~0.5-1 cèntim/menú amb "deepseek-chat" (V3, qualitat comparable a Claude Sonnet en raonament). Per millor raonament posa "deepseek-reasoner" al Model (~2-3 cèntims/menú).' }
 };
 // Instrucciones (REGLES) del prompt de generación de menús. Editables
 // desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
@@ -9568,17 +9569,24 @@ async function tobAiCall(messages, cfgOverride){
   }
   const endpoints = {
     openrouter:'https://openrouter.ai/api/v1/chat/completions',
-    groq:'https://api.groq.com/openai/v1/chat/completions'
+    groq:      'https://api.groq.com/openai/v1/chat/completions',
+    deepseek:  'https://api.deepseek.com/chat/completions'
   };
   const url = endpoints[prov];
   if(!url) throw new Error('Proveïdor desconegut: ' + prov);
   const model = cfg.model || (TOB_AI_DEFAULTS[prov] && TOB_AI_DEFAULTS[prov].model);
-  // max_tokens acotado: en Groq free el límite de TPM cuenta entrada+salida,
-  // así que la respuesta no puede dispararse o devuelve 413.
-  const payload = { model, messages, temperature:0.6, max_tokens:2500 };
-  // response_format json_object: fiable en Groq; en OpenRouter depende del
-  // modelo, así que solo lo forzamos en Groq (el prompt ya pide "només JSON").
-  if(prov === 'groq') payload.response_format = { type:'json_object' };
+  // max_tokens acotado: en Groq free el límite de TPM cuenta entrada+salida.
+  // DeepSeek i OpenRouter no tenen aquest límit tant estret, però mantenim
+  // un sostre raonable per a no disparar la resposta.
+  const payload = {
+    model,
+    messages,
+    temperature: 0.6,
+    max_tokens: prov === 'groq' ? 2500 : 4096
+  };
+  // response_format json_object: fiable en Groq i DeepSeek (OpenAI-compat).
+  // En OpenRouter depèn del model; el prompt ja demana "només JSON".
+  if(prov === 'groq' || prov === 'deepseek') payload.response_format = { type:'json_object' };
   const r = await fetch(url, {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + cfg.key },
