@@ -7607,10 +7607,144 @@ let tobClasifSoloSin = true;
 function tobClasifOpen(){
   tobClasifPage = 0;
   tobClasifSoloSin = true;
+  _tobClasifFocusIx = 0;
   const chk = document.getElementById('tobClasifSoloSin');
   if(chk) chk.checked = true;
   tobClasifRender();
   document.getElementById('tobClasifModalBg').classList.add('on');
+  // Atallar amb tecles per a no haver de clicar amb el ratolí cada chip.
+  if(!_tobClasifKbBound){
+    document.addEventListener('keydown', _tobClasifOnKey);
+    _tobClasifKbBound = true;
+  }
+}
+
+// ─── Atajos de teclado del modal Clasificar momentos ─────────────────
+// Quan el modal està obert i el focus no és en un input/textarea:
+//   1-5  → toggle moment (esmorzar/mig_mati/dinar/berenar/sopar)
+//   P A D B → set rol (principal/acompanyament/postre/basic)
+//   F    → toggle favorit
+//   X    → toggle descartada (no usar a menús)
+//   ↓ Enter Espai → següent recepta del visible
+//   ↑    → anterior
+//   Esc  → tancar modal
+let _tobClasifFocusIx = 0;     // índex dins de la slice visible
+let _tobClasifKbBound = false;
+function _tobClasifVisibleRecs(){
+  const all = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
+  const sinClasif = all.filter(_tobClasifSinClasif);
+  const list = (tobClasifSoloSin ? sinClasif : all).slice().sort((a,b) => {
+    const am = _tobClasifSinClasif(a) ? 0 : 1, bm = _tobClasifSinClasif(b) ? 0 : 1;
+    if(am !== bm) return am - bm;
+    return (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'});
+  });
+  const PER = 20;
+  return list.slice(tobClasifPage * PER, tobClasifPage * PER + PER);
+}
+function _tobClasifOnKey(e){
+  // Només quan el modal és visible i el focus NO és en un input/textarea editable.
+  const modal = document.getElementById('tobClasifModalBg');
+  if(!modal || !modal.classList.contains('on')) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+  const slice = _tobClasifVisibleRecs();
+  if(!slice.length){
+    if(e.key === 'Escape'){ modal.classList.remove('on'); tobRecRender(); e.preventDefault(); }
+    return;
+  }
+  if(_tobClasifFocusIx >= slice.length) _tobClasifFocusIx = slice.length - 1;
+  if(_tobClasifFocusIx < 0) _tobClasifFocusIx = 0;
+  const r = slice[_tobClasifFocusIx];
+
+  const MOMS = ['esmorzar','mig_mati','dinar','berenar','sopar'];
+  const ROLS = { p:'principal', a:'acompanyament', d:'postre', b:'basic' };
+  const k = e.key;
+
+  // 1-5 → toggle moment
+  if(/^[1-5]$/.test(k)){
+    const momId = MOMS[parseInt(k,10) - 1];
+    if(!Array.isArray(r.momentos)) r.momentos = [];
+    const ix = r.momentos.indexOf(momId);
+    if(ix >= 0) r.momentos.splice(ix, 1);
+    else r.momentos.push(momId);
+    tobMenusSave();
+    tobClasifRender();
+    _tobClasifApplyFocus();
+    e.preventDefault();
+    return;
+  }
+  // P/A/D/B → set rol
+  const lower = k.toLowerCase();
+  if(ROLS[lower]){
+    const newRol = ROLS[lower];
+    r.rol = (r.rol === newRol) ? '' : newRol;
+    tobMenusSave();
+    tobClasifRender();
+    _tobClasifApplyFocus();
+    e.preventDefault();
+    return;
+  }
+  // F → toggle favorit
+  if(lower === 'f'){
+    r.favorito = !r.favorito;
+    tobMenusSave();
+    tobClasifRender();
+    _tobClasifApplyFocus();
+    e.preventDefault();
+    return;
+  }
+  // X → toggle descartada
+  if(lower === 'x'){
+    r.descartada = !r.descartada;
+    tobMenusSave();
+    tobClasifRender();
+    _tobClasifApplyFocus();
+    e.preventDefault();
+    return;
+  }
+  // Navegació
+  if(k === 'ArrowDown' || k === 'Enter' || k === ' '){
+    _tobClasifFocusIx++;
+    if(_tobClasifFocusIx >= slice.length){
+      // Saltar a la següent pàgina si n'hi ha
+      const all = (tobMenusDB.recetas||[]).filter(rr => rr.origen !== 'ingrediente');
+      const sin = all.filter(_tobClasifSinClasif);
+      const total = (tobClasifSoloSin ? sin : all).length;
+      const PER = 20;
+      const pages = Math.ceil(total / PER);
+      if(tobClasifPage < pages - 1){
+        tobClasifPage++; _tobClasifFocusIx = 0;
+        tobClasifRender();
+      } else _tobClasifFocusIx = slice.length - 1;
+    }
+    _tobClasifApplyFocus();
+    e.preventDefault();
+    return;
+  }
+  if(k === 'ArrowUp'){
+    _tobClasifFocusIx--;
+    if(_tobClasifFocusIx < 0){
+      if(tobClasifPage > 0){
+        tobClasifPage--; _tobClasifFocusIx = 19;
+        tobClasifRender();
+      } else _tobClasifFocusIx = 0;
+    }
+    _tobClasifApplyFocus();
+    e.preventDefault();
+    return;
+  }
+  if(k === 'Escape'){
+    modal.classList.remove('on');
+    tobRecRender();
+    e.preventDefault();
+  }
+}
+function _tobClasifApplyFocus(){
+  const rows = document.querySelectorAll('#tobClasifBody .tob-clasif-row');
+  rows.forEach((row, i) => row.classList.toggle('focused', i === _tobClasifFocusIx));
+  const el = rows[_tobClasifFocusIx];
+  if(el) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
 }
 
 // Una receta está "sin clasificar" si le falta el momento O el rol.
@@ -7638,16 +7772,20 @@ function tobClasifRender(){
   if(!list.length){
     body.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:30px;font-family:DM Mono,monospace;font-size:.8rem;">🎉 Totes les receptes estan classificades.</div>';
   } else {
-    body.innerHTML = slice.map(r => {
+    const kbHint = '<div class="tob-clasif-kb-hint">⌨ Atalls: <b>1-5</b> moment · <b>P/A/D/B</b> rol · <b>F</b> favorit · <b>X</b> descartar · <b>↓/Enter</b> següent</div>';
+    body.innerHTML = kbHint + slice.map((r, ix) => {
       const set = new Set(r.momentos||[]);
-      const moms = TOB_REC_MOMENTOS.map(mm =>
-        `<button type="button" class="tob-quest-chip${set.has(mm.id)?' active':''}" onclick="tobClasifToggleMom('${r.id}','${mm.id}',this)">${tobEsc(mm.label)}</button>`
+      const moms = TOB_REC_MOMENTOS.map((mm, mi) =>
+        `<button type="button" class="tob-quest-chip${set.has(mm.id)?' active':''}" onclick="tobClasifToggleMom('${r.id}','${mm.id}',this)"><b class="kb">${mi+1}</b> ${tobEsc(mm.label)}</button>`
       ).join('');
+      const rolKb = { principal:'P', acompanyament:'A', postre:'D', basic:'B' };
       const roles = TOB_REC_ROLES.map(rl =>
-        `<button type="button" class="tob-quest-chip${r.rol===rl.id?' active':''}" data-rol="${rl.id}" onclick="tobClasifSetRol('${r.id}','${rl.id}',this)">${tobEsc(rl.label)}</button>`
+        `<button type="button" class="tob-quest-chip${r.rol===rl.id?' active':''}" data-rol="${rl.id}" onclick="tobClasifSetRol('${r.id}','${rl.id}',this)"><b class="kb">${rolKb[rl.id]||''}</b> ${tobEsc(rl.label)}</button>`
       ).join('');
-      return `<div class="tob-clasif-row">
-        <div class="tob-clasif-nm">${tobEsc(r.nombre||'—')}</div>
+      const flags = (r.favorito ? '<span class="tob-clasif-flag fav">★ favorita</span>' : '') +
+                    (r.descartada ? '<span class="tob-clasif-flag dis">✗ descartada</span>' : '');
+      return `<div class="tob-clasif-row${ix === _tobClasifFocusIx ? ' focused' : ''}" data-ix="${ix}">
+        <div class="tob-clasif-nm">${tobEsc(r.nombre||'—')} ${flags}</div>
         <div class="tob-clasif-line"><span class="lbl">Moments</span><div class="tob-clasif-chips">${moms}</div></div>
         <div class="tob-clasif-line"><span class="lbl">Tipus</span><div class="tob-clasif-chips" data-rolgrp="${r.id}">${roles}</div></div>
       </div>`;
@@ -7700,9 +7838,22 @@ function tobClasifSetRol(recId, rolId, btn){
 async function tobClasifAuto(){
   const cfg = tobAiGetCfg();
   if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
-  const recs = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
-  if(!recs.length){ tobToast('No hi ha receptes', 'red'); return; }
-  if(!confirm(`Classificar amb IA les ${recs.length} receptes (moment del dia + tipus de plat)?\nSobreescriu la classificació actual. Pot trigar un parell de minuts.`)) return;
+  const allRecs = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
+  if(!allRecs.length){ tobToast('No hi ha receptes', 'red'); return; }
+  // Per defecte només processa les SENSE CLASSIFICAR (estalvi de temps i diners).
+  // Sergio pot prémer Shift mentre clica per a forçar re-classificar totes.
+  const event = window.event || {};
+  const forceAll = !!(event.shiftKey);
+  const sinClasif = allRecs.filter(_tobClasifSinClasif);
+  const recs = forceAll ? allRecs : sinClasif;
+  if(!recs.length){
+    tobToast('Totes les receptes ja estan classificades. Prem amb Shift per re-classificar-les igualment.', '');
+    return;
+  }
+  const msg = forceAll
+    ? `Re-classificar TOTES les ${allRecs.length} receptes (sobreescriu la classificació actual)?`
+    : `Classificar amb IA ${sinClasif.length} receptes sense classificar (de ${allRecs.length} totals)?\n\nLes que ja tens classificades NO es toquen. Per re-classificar totes, prem amb Shift.`;
+  if(!confirm(msg)) return;
 
   const btn = document.getElementById('tobClasifAutoBtn');
   const btnTxt = btn ? btn.textContent : '';
@@ -10272,6 +10423,40 @@ async function tobMcGenerarIA(){
     if(inferidasTotales > 0){
       console.log('[IA menú] ' + inferidasTotales + ' recepta(es) afegides al catàleg per inferència del nom (sense classificació explícita).');
     }
+
+    // ── Diagnòstic d'ingredients simples al catàleg ──
+    // Llistem què hi ha al catàleg de la IA agrupat per àpat. Sergio podrà
+    // veure d'un cop si els seus ingredients (Cafè, Iogurt, Fruita...) entren.
+    try {
+      const ingsPerApat = {};
+      comidas.forEach(c => { ingsPerApat[c.label] = []; });
+      // Re-recórrer per separar ingredients simples per àpat (separats per # X (id="..."))
+      const sections = catalogo.split(/\n# /).filter(Boolean);
+      sections.forEach(sec => {
+        const lines = sec.split('\n').filter(Boolean);
+        const label = (lines[0] || '').split(' (id=')[0];
+        lines.slice(1).forEach(line => {
+          if(line.includes('|∙')){
+            const nm = (line.split('|')[1] || '').replace(/^∙/,'').trim();
+            if(!ingsPerApat[label]) ingsPerApat[label] = [];
+            ingsPerApat[label].push(nm);
+          }
+        });
+      });
+      const totIngs = Object.values(ingsPerApat).reduce((a,b) => a + b.length, 0);
+      console.log('────────── [IA menú] CATÀLEG INGREDIENTS SIMPLES ──────────');
+      console.log('  Total ingredients simples (∙) al catàleg de la IA: ' + totIngs);
+      Object.entries(ingsPerApat).forEach(([apat, list]) => {
+        console.log('  · ' + apat + ' (' + list.length + '): ' + (list.join(', ') || '(cap)'));
+      });
+      if(totIngs === 0){
+        console.warn('  ⚠ Cap ingredient simple al catàleg. Probables causes:');
+        console.warn('     · Cap ingredient té comoPlato=true al teu catàleg');
+        console.warn('     · Cap té iaMomentos marcats (caixes del modal d\'ingredient)');
+        console.warn('     · O has editat els ingredients abans del fix de sync momentos — re-edita i guarda');
+      }
+      console.log('───────────────────────────────────────────────────────────');
+    } catch(e){ console.warn('[diagnòstic ings]', e); }
 
     const sys = 'Ets un dietista-nutricionista expert. Crees menús setmanals personalitzats, '
       + 'variats i equilibrats. Respons NOMÉS amb un objecte JSON vàlid, sense text addicional.';

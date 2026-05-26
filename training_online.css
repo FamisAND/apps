@@ -622,6 +622,26 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-mc-side-item.mini .info .mac{font-size:.56rem;}
 
 /* Clasificar recetas por momento + rol (modal) */
+.tob-clasif-kb-hint{
+  font-family:'DM Mono',monospace;font-size:.7rem;color:var(--mute);
+  background:var(--card2,#1a1a1a);padding:7px 10px;border-radius:4px;
+  margin-bottom:8px;letter-spacing:.02em;line-height:1.5;
+}
+.tob-clasif-kb-hint b{color:var(--acc);font-weight:700;padding:0 3px;}
+.tob-clasif-row.focused{
+  border-left:3px solid var(--acc);background:rgba(245,167,33,.06);
+  padding-left:8px;
+}
+.tob-quest-chip .kb{
+  background:var(--acc);color:var(--bg);padding:0 4px;border-radius:2px;
+  font-size:.62rem;font-weight:800;margin-right:3px;font-family:'DM Mono',monospace;
+}
+.tob-clasif-flag{
+  font-family:'DM Mono',monospace;font-size:.62rem;padding:1px 6px;border-radius:2px;
+  letter-spacing:.04em;margin-left:6px;font-weight:600;
+}
+.tob-clasif-flag.fav{background:rgba(245,167,33,.15);color:#f5a721;}
+.tob-clasif-flag.dis{background:rgba(217,64,64,.15);color:#d94040;text-decoration:line-through;}
 .tob-clasif-row{
   display:flex;flex-direction:column;gap:5px;padding:9px 4px;
   border-bottom:1px solid var(--line);
