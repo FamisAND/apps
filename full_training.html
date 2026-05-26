@@ -423,8 +423,15 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
   <div class="modal">
     <div class="modal-title">NUEVAS CONDICIONES</div>
     <div style="font-size:.76rem;color:var(--muted);margin-bottom:10px;">El historial previo se conserva.</div>
+    <div class="fld"><label>Modo de cálculo</label>
+      <select class="inp" id="cond_modo" onchange="_condModoChange()">
+        <option value="fijoMasPct">Fijo + % sobre facturación</option>
+        <option value="hibrido">Híbrido: 100% hasta umbral, después %</option>
+      </select>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:4px;line-height:1.4;" id="cond_modo_help"></div>
+    </div>
     <div class="g2">
-      <div class="fld"><label>Fijo (€/mes)</label><input class="inp" type="number" id="cond_fijo" placeholder="0"></div>
+      <div class="fld"><label id="cond_fijo_lbl">Fijo (€/mes)</label><input class="inp" type="number" id="cond_fijo" placeholder="0"></div>
       <div class="fld"><label>% facturación</label><input class="inp" type="number" id="cond_pct" placeholder="0"></div>
     </div>
     <div class="fld"><label>Vigente desde</label><input class="inp" type="date" id="cond_date"></div>
@@ -2279,15 +2286,22 @@ function renderPayTableGeneric(tbodyId,entries,key,members){
     const tEnt=entries.filter(e=>e.trainerId===t.id);
     const bill=tEnt.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
     const cond=getCondForMonth(t,key);
-    const pctAmt=bill*(cond.pct||0)/100;
-    const total=(cond.fijo||0)+pctAmt+(cond.extras||0);
+    const calc=_ftCalcCondicion(cond, bill);
+    const fijoLbl = calc.modo === 'hibrido'
+      ? (cond.fijo ? `${fmt(cond.fijo)} umbral → ${fmt(calc.fijoComponent)}` : '—')
+      : (cond.fijo ? fmt(cond.fijo) : '—');
+    const pctLbl = cond.pct
+      ? (calc.modo === 'hibrido'
+          ? `${cond.pct}% × ${fmt(Math.max(0, bill-(cond.fijo||0)))} → ${fmt(calc.pctAmt)}`
+          : `${cond.pct}% → ${fmt(calc.pctAmt)}`)
+      : '—';
     return`<tr>
-      <td><span style="color:${t.color};font-weight:700">${t.name}</span></td>
+      <td><span style="color:${t.color};font-weight:700">${t.name}</span>${calc.modo==='hibrido'?' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>':''}</td>
       <td style="font-size:.7rem;color:var(--muted)">${roleLabels(t)}</td>
       <td class="mono">${tEnt.length}</td><td class="mono">${fmt(bill)}</td>
-      <td class="mono">${cond.fijo?fmt(cond.fijo):'—'}</td>
-      <td class="mono">${cond.pct?`${cond.pct}% → ${fmt(pctAmt)}`:'—'}</td>
-      <td class="mono yl" style="font-weight:700">${fmt(total)}</td>
+      <td class="mono">${fijoLbl}</td>
+      <td class="mono">${pctLbl}</td>
+      <td class="mono yl" style="font-weight:700">${fmt(calc.total)}</td>
       <td><button class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 8px" onclick="openTeamDetail('${t.id}')">Ver detalle</button></td>
     </tr>`;
   }).join('');
@@ -2598,15 +2612,22 @@ function renderMasPayTable(packs){
     const sessHechas=fPacks.reduce((s,p)=>s+(p.sessionsDone||0),0);
     const billBySess=fPacks.reduce((s,p)=>s+(p.sessionsDone||0)*(parseFloat(p.pricePerSession)||0),0);
     const cond=getCondAt(f,key);
-    const pctAmt=billBySess*(cond.pct||0)/100;
-    const total=(cond.fijo||0)+pctAmt;
+    const calc=_ftCalcCondicion(cond, billBySess);
+    const fijoLbl = calc.modo === 'hibrido'
+      ? (cond.fijo ? `${fmt(cond.fijo)} umbral → ${fmt(calc.fijoComponent)}` : '—')
+      : (cond.fijo ? fmt(cond.fijo) : '—');
+    const pctLbl = cond.pct
+      ? (calc.modo === 'hibrido'
+          ? `${cond.pct}% × ${fmt(Math.max(0, billBySess-(cond.fijo||0)))} → ${fmt(calc.pctAmt)}`
+          : `${cond.pct}% → ${fmt(calc.pctAmt)}`)
+      : '—';
     return`<tr>
-      <td><span style="color:${f.color};font-weight:700">${f.name}</span></td>
+      <td><span style="color:${f.color};font-weight:700">${f.name}</span>${calc.modo==='hibrido'?' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>':''}</td>
       <td class="mono">${sessHechas}</td>
       <td class="mono">${fmt(billBySess)}</td>
-      <td class="mono">${cond.fijo?fmt(cond.fijo):'—'}</td>
-      <td class="mono">${cond.pct?`${cond.pct}% → ${fmt(pctAmt)}`:'—'}</td>
-      <td class="mono yl" style="font-weight:700">${fmt(total)}</td>
+      <td class="mono">${fijoLbl}</td>
+      <td class="mono">${pctLbl}</td>
+      <td class="mono yl" style="font-weight:700">${fmt(calc.total)}</td>
     </tr>`;
   }).join('');
 }
@@ -3163,7 +3184,7 @@ function renderEquipo(){
   const curKey=monthKey(nowD.getFullYear(),nowD.getMonth()+1);
   el.innerHTML=db.team.map(t=>{
     const cond=getCondAt(t,curKey);
-    const parts=[];if(cond.fijo)parts.push(`${fmt(cond.fijo)}/mes`);if(cond.pct)parts.push(`${cond.pct}%`);
+    const parts=[];if(cond.fijo)parts.push(`${fmt(cond.fijo)}${cond.modo==='hibrido'?' umbral':'/mes'}`);if(cond.pct)parts.push(`${cond.pct}%`);
     const roles=getRoles(t);
     const roleBadges=roles.map(r=>{const rl=ALL_ROLES.find(x=>x.v===r);const cls={entrenador:'b-yl',fisio:'b-pr',nutricionista:'b-gn',otro:'b-gy'}[r]||'b-gy';return`<span class="badge ${cls}" style="font-size:.56rem">${rl?.l||r}</span>`;}).join(' ');
     // Calcular horas reales del mes actual
@@ -3357,10 +3378,9 @@ function openFicha(id){
     const ents=(db.months[k].entries||[]).filter(e=>e.trainerId===id);
     const bill=ents.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
     const cond=getCondAt(t,k);
-    const pctAmt=bill*(cond.pct||0)/100;
-    const total=(cond.fijo||0)+pctAmt;
+    const calc=_ftCalcCondicion(cond, bill);
     const[y,m]=k.split('-');
-    return{k,y,m,bill,total,n:ents.length};
+    return{k,y,m,bill,total:calc.total,n:ents.length};
   }).filter(r=>r.n>0);
   const roles=getRoles(t);
   const roleBadges=roles.map(r=>{const rl=ALL_ROLES.find(x=>x.v===r);return`<span class="badge b-gy">${rl?.l||r}</span>`;}).join(' ');
@@ -3757,22 +3777,59 @@ function adminDeleteFile(monthKey,memberId){
 function openCondModal(){
   const t=db.team.find(x=>x.id===condMemberId);if(!t)return;
   const cond=getCondAt(t,monthKey(nowD.getFullYear(),nowD.getMonth()+1));
+  document.getElementById('cond_modo').value=cond.modo||'fijoMasPct';
   document.getElementById('cond_fijo').value=cond.fijo||'';
   document.getElementById('cond_pct').value=cond.pct||'';
   document.getElementById('cond_date').value=new Date().toISOString().slice(0,10);
   document.getElementById('condErr').textContent='';
+  _condModoChange();
   document.getElementById('condModal').classList.remove('hidden');
 }
+// Actualitza la label i el help text segons el mode escollit
+function _condModoChange(){
+  const modo=document.getElementById('cond_modo').value;
+  const lbl=document.getElementById('cond_fijo_lbl');
+  const help=document.getElementById('cond_modo_help');
+  if(modo==='hibrido'){
+    if(lbl) lbl.textContent='Umbral (€) — facturación al 100%';
+    if(help) help.textContent='Ej: umbral 1000€, %=30. Si factura 5000€ → cobra 1000€ (los primeros, al 100%) + 4000€ × 30% = 2200€ total.';
+  } else {
+    if(lbl) lbl.textContent='Fijo (€/mes)';
+    if(help) help.textContent='Fijo se suma siempre. % se aplica a toda la facturación. Ej: fijo 500€, %=20, factura 3000€ → 500 + 600 = 1100€.';
+  }
+}
 function saveCondition(){
+  const modo=document.getElementById('cond_modo').value||'fijoMasPct';
   const fijo=parseFloat(document.getElementById('cond_fijo').value)||0;
   const pct=parseFloat(document.getElementById('cond_pct').value)||0;
   const date=document.getElementById('cond_date').value;
   if(!date){document.getElementById('condErr').textContent='Introduce una fecha';return;}
   const t=db.team.find(x=>x.id===condMemberId);if(!t)return;
   if(!t.conditions)t.conditions=[];
-  t.conditions.push({date,fijo,pct});
+  t.conditions.push({date,fijo,pct,modo});
   t.conditions.sort((a,b)=>a.date<b.date?-1:1);
   save();closeModal('condModal');openFicha(condMemberId);toast('✓ Condiciones actualizadas');
+}
+
+// ─── Helper centralitzat de càlcul de retribució ──────────────────────
+// Suporta dos modes:
+//   · 'fijoMasPct' (default): total = fijo + bill·pct/100 + extras
+//   · 'hibrido':              total = min(bill, fijo) + max(0, bill-fijo)·pct/100 + extras
+// (al mode híbrid, 'fijo' actua com a umbral fins on cobra el 100%)
+function _ftCalcCondicion(cond, bill){
+  bill = +bill || 0;
+  const fijo = +cond.fijo || 0;
+  const pct = +cond.pct || 0;
+  const extras = +cond.extras || 0;
+  const modo = cond.modo || 'fijoMasPct';
+  if(modo === 'hibrido' && fijo > 0){
+    const al100 = Math.min(bill, fijo);
+    const excedente = Math.max(0, bill - fijo);
+    const pctAmt = excedente * pct / 100;
+    return { modo:'hibrido', fijoComponent: al100, pctAmt, extras, total: al100 + pctAmt + extras };
+  }
+  const pctAmt = bill * pct / 100;
+  return { modo:'fijoMasPct', fijoComponent: fijo, pctAmt, extras, total: fijo + pctAmt + extras };
 }
 
 // ══════════════════════════
@@ -4275,8 +4332,8 @@ function renderMiPanel(){
     if(!entries.length)return null;
     const bill=entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
     const cond=getCondForMonth(member,mk);
-    const pctAmt=bill*(cond.pct||0)/100;
-    const earned=(cond.fijo||0)+pctAmt;
+    const calc=_ftCalcCondicion(cond, bill);
+    const earned=calc.fijoComponent+calc.pctAmt;
     totalEarned+=earned;
     const[y,m]=mk.split('-');
     const label=`${MES[parseInt(m)-1]} ${y}`;
