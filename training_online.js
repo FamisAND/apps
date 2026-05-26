@@ -10018,6 +10018,65 @@ async function tobMcGenerarIA(){
   if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
   if(!cli){ tobToast('Client no trobat', 'red'); return; }
+
+  // ── PRE-CHECK: detectar desincronització menú ↔ cuestionario ──
+  // Si Sergio ha canviat els àpats del cuestionari o els objectius kcal/prot
+  // després de tenir el menú obert, l'avisem abans de generar — sinó la IA
+  // generarà sobre dades antigues i ell es preguntarà per què no respecta els
+  // canvis. Mostrem un sol diàleg amb tots els canvis detectats.
+  const apatsCuest = (cli.cuestionario && cli.cuestionario.tags && cli.cuestionario.tags.apats) || [];
+  const apatsMenu  = tobMcState.comidasIds || [];
+  const apatsDiff  = apatsCuest.length && (
+    apatsCuest.length !== apatsMenu.length ||
+    apatsCuest.some(a => !apatsMenu.includes(a)) ||
+    apatsMenu.some(a => !apatsCuest.includes(a))
+  );
+  const kcalCuest = (cli.cuestionario||{}).kcalObjetivo;
+  const protCuest = (cli.cuestionario||{}).protObjetivo;
+  const kcalMenu  = parseFloat(document.getElementById('tobMcKcal').value);
+  const protMenu  = parseFloat(document.getElementById('tobMcProt').value);
+  const kcalDiff  = kcalCuest && isFinite(kcalMenu) && Math.abs(kcalCuest - kcalMenu) > 50;
+  const protDiff  = protCuest && isFinite(protMenu) && Math.abs(protCuest - protMenu) > 10;
+  if(apatsDiff || kcalDiff || protDiff){
+    const diffs = [];
+    if(apatsDiff){
+      diffs.push('• ÀPATS:\n   Cuestionari: ' + (apatsCuest.map(tobMcMealLabel).join(', ') || '(buit)') +
+                 '\n   Menú actual: ' + (apatsMenu.map(tobMcMealLabel).join(', ') || '(buit)'));
+    }
+    if(kcalDiff){
+      diffs.push('• KCAL/DIA:  Cuestionari ' + kcalCuest + '  vs  Menú ' + kcalMenu);
+    }
+    if(protDiff){
+      diffs.push('• PROTEÏNA/DIA:  Cuestionari ' + protCuest + 'g  vs  Menú ' + protMenu + 'g');
+    }
+    const sync = confirm(
+      'El qüestionari del client té dades diferents que el menú actual:\n\n' +
+      diffs.join('\n\n') +
+      '\n\nVols SINCRONITZAR (usar els valors del cuestionari) abans de generar?\n' +
+      '  · Sí → s\'apliquen els valors del cuestionari, després generem\n' +
+      '  · No → generem amb els valors actuals del menú (els que veus a la pantalla)'
+    );
+    if(sync){
+      if(apatsDiff){
+        tobMcState.comidasIds = apatsCuest.slice();
+        // Crear arrays buits per als àpats nous
+        for(let s = 0; s < tobMcState.semanas; s++){
+          if(!tobMcState.data[s]) tobMcState.data[s] = {};
+          for(let d = 0; d < 7; d++){
+            if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
+            apatsCuest.forEach(id => {
+              if(!Array.isArray(tobMcState.data[s][d][id])) tobMcState.data[s][d][id] = [];
+            });
+          }
+        }
+      }
+      if(kcalDiff) document.getElementById('tobMcKcal').value = kcalCuest;
+      if(protDiff) document.getElementById('tobMcProt').value = protCuest;
+      tobMcRenderGrid();
+      tobToast('✓ Sincronitzat amb el qüestionari', 'green');
+    }
+  }
+
   const comidas = (tobMcState.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
   if(!comidas.length){ tobToast('El client no té àpats definits al qüestionari', 'red'); return; }
   if(!(tobMenusDB.recetas||[]).length){ tobToast('No hi ha receptes importades', 'red'); return; }
