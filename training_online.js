@@ -7859,6 +7859,8 @@ function tobClasifBulkApply(){
     'berenar':'berenar', 'merienda':'berenar', 'snack':'berenar',
     'sopar':'sopar', 'cena':'sopar', 'dinner':'sopar'
   };
+  // Codis numèrics per dictat ràpid: 1=esmorzar, 2=mig_mati, 3=dinar, 4=berenar, 5=sopar
+  const MOM_NUM = ['', 'esmorzar','mig_mati','dinar','berenar','sopar'];
   const ROLS = {
     'principal':'principal', 'p':'principal', 'main':'principal',
     'acompanyament':'acompanyament', 'acompanyamiento':'acompanyament', 'acomp':'acompanyament', 'a':'acompanyament', 'side':'acompanyament',
@@ -7891,22 +7893,34 @@ function tobClasifBulkApply(){
       multiMatched.push({ line, n: candidats.length, chosen: candidats[0].nombre });
     }
     const r = candidats[0];
-    // Parsejar tags (separades per , espai , etc.)
-    const tags = (tagPart.match(/[a-zàáèéíïòóúüçñ]+/gi) || []).map(t => norm(t));
     const newMoms = [];
     let newRol = null;
     let setFav = null, setDesc = null;
-    tags.forEach(t => {
-      // 'mig mati' es pot escriure com dues paraules consecutives — provem combinats
-      if(MOMS[t]) newMoms.push(MOMS[t]);
-      else if(ROLS[t]) newRol = ROLS[t];
-      else if(/^fav/.test(t)) setFav = true;
-      else if(/^desc/.test(t)) setDesc = true;
+
+    // 1) PARSEAR DÍGITS — codis numèrics per moments.
+    //    Accepta "3 5", "3,5", "35" (dígits enganxats) → moments 3 i 5.
+    const digits = (tagPart.match(/\d/g) || []);
+    digits.forEach(d => {
+      const i = parseInt(d, 10);
+      if(i >= 1 && i <= 5){
+        const mom = MOM_NUM[i];
+        if(!newMoms.includes(mom)) newMoms.push(mom);
+      }
     });
-    // Detecta "mig mati" com a parell consecutiu
+
+    // 2) PARSEAR PARAULES — moments i rols com a text complet
+    const words = (tagPart.match(/[a-zàáèéíïòóúüçñ]+/gi) || []).map(t => norm(t));
+    words.forEach(t => {
+      if(MOMS[t] && !newMoms.includes(MOMS[t])) newMoms.push(MOMS[t]);
+      else if(ROLS[t]) newRol = ROLS[t];
+      else if(t === 'f' || /^fav/.test(t)) setFav = true;
+      else if(t === 'x' || /^desc/.test(t)) setDesc = true;
+    });
+    // 3) Detecta "mig mati" com a parell consecutiu (per si ve sense underscore)
     if(/mig\s*mati|migmati|media\s*manana/.test(tagPart.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')) && !newMoms.includes('mig_mati')){
       newMoms.push('mig_mati');
     }
+
     if(newMoms.length) r.momentos = Array.from(new Set(newMoms));
     if(newRol) r.rol = newRol;
     if(setFav != null) r.favorito = setFav;
@@ -10235,6 +10249,118 @@ function tobMcCandidatas(cli, comidaId, strict){
   });
 }
 
+// ─── Post-procés: forçar que els ingredients del recordatori es vegin al menú ───
+// Per a cada àpat del client, si un dia NO té cap match amb els chips del
+// recordatori, AFEGEIX un ingredient simple del catàleg que matchegi el chip.
+//
+// Així garantim que si el cuestionari diu "Iogurt + Fruits secs" al berenar,
+// cada dia de berenar tindrà com a mínim un ingredient relacionat.
+// No substitueix res — només AFEGEIX el que falta.
+//
+// Diccionari de keywords per chip del recordatori. La IA i el catàleg poden
+// usar variants (català, espanyol, anglès) — aquí hi cabem totes.
+const TOB_REC_CHIP_KEYWORDS = {
+  'iogurt':         ['iogurt', 'yogur'],
+  'cafe sol':       ['cafe sol', 'cafe negre', 'cafe sense llet', 'cafe solo'],
+  'cafe amb llet':  ['cafe amb llet', 'cafe con leche', 'tallat', 'cafe llet'],
+  'te infusio':     ['te ', ' te', 'infusio', 'infusion', 'tisana'],
+  'fruita':         ['fruita', 'fruta', 'poma', 'platan', 'taronja', 'kiwi', 'maduixa', 'pera', 'mandar'],
+  'fruits secs':    ['fruits secs', 'frutos secos', 'ametll', 'nous', 'avellan', 'pistatxo'],
+  'torrades pa':    ['torrada', 'tostada', 'llesca', ' pa ', 'pan '],
+  'cereals civada': ['cereal', 'civada', 'avena', 'muesli', 'granola'],
+  'batut':          ['batut', 'batido', 'smoothie'],
+  'ous salat':      ['ou ', ' ou', 'huevo', 'truita francesa', 'tortilla francesa', 'salat'],
+  'dolc':           ['dolc', 'dulce', 'galeta', 'galleta'],
+  'barreta':        ['barreta', 'barrita'],
+  'entrepa petit':  ['entrepa', 'bocadillo', 'sandvitx', 'sandwich'],
+  'plat unic':      [],   // sense match concret — la IA decideix
+  'principal acompanyament': [],
+  'porta postre':   ['postre', 'iogurt', 'fruita'],
+  'porta pa':       ['pa', 'llesca', 'pan']
+};
+function _tobMcNormChip(s){
+  return String(s||'').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function _tobMcForçaIngredientsRecordatori(cli){
+  const q = cli && cli.cuestionario || {};
+  const recChips = q.recChips || {};
+  if(!recChips || !Object.keys(recChips).length) return { added:0, log:[] };
+  if(!tobMcState) return { added:0, log:[] };
+
+  // Per a un chip del recordatori, troba la millor recepta-ingredient del catàleg
+  // (origen='ingrediente') que matcheja per keywords i té el moment correcte.
+  const trobaIngForChip = (chipText, momentBase) => {
+    const keys = TOB_REC_CHIP_KEYWORDS[_tobMcNormChip(chipText)];
+    if(!keys || !keys.length) return null;
+    const cand = (tobMenusDB.recetas||[]).filter(r =>
+      r.origen === 'ingrediente' && !r.descartada &&
+      (Array.isArray(r.momentos) ? r.momentos.includes(momentBase) || r.momentos.length === 0 : true) &&
+      tobMcCheckCompat(r, cli).compat
+    );
+    for(const kw of keys){
+      const found = cand.find(r => _tobMcNormChip(r.nombre).includes(kw));
+      if(found) return found;
+    }
+    return null;
+  };
+  // Match d'un plat existent del dia amb algun chip del recordatori
+  const dayHasMatch = (recIds, chips) => {
+    if(!recIds.length) return false;
+    return recIds.some(recId => {
+      const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+      if(!r) return false;
+      const nm = _tobMcNormChip(r.nombre);
+      return chips.some(chip => {
+        const kws = TOB_REC_CHIP_KEYWORDS[_tobMcNormChip(chip)];
+        if(!kws || !kws.length) return false;
+        return kws.some(kw => nm.includes(kw));
+      });
+    });
+  };
+
+  const log = [];
+  let added = 0;
+  const semanas = tobMcState.semanas;
+  const DIA_LABEL = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
+
+  tobMcState.comidasIds.forEach(mealId => {
+    const base = tobMcMealBase(mealId);
+    // recChips usa la base (esmorzar/mig_mati/dinar/...) com a clau
+    const chips = (recChips[base] || []).slice();
+    if(!chips.length) return;
+
+    // Pre-calculem el match d'ingredient per a cada chip
+    const chipsIngs = chips.map(c => ({ chip: c, ing: trobaIngForChip(c, base) }))
+                          .filter(x => x.ing);
+    const chipsSenseIng = chips.filter(c => {
+      const kws = TOB_REC_CHIP_KEYWORDS[_tobMcNormChip(c)];
+      return kws && kws.length && !chipsIngs.find(x => x.chip === c);
+    });
+    chipsSenseIng.forEach(c => {
+      log.push('ℹ ' + tobMcMealLabel(mealId) + ': chip "' + c + '" no té cap ingredient simple al catàleg — marca\'l com a "Usar com a plat solt" amb _iaMomentos.');
+    });
+    if(!chipsIngs.length) return;
+
+    for(let s = 0; s < semanas; s++){
+      for(let d = 0; d < 7; d++){
+        const arr = ((tobMcState.data[s]||{})[d]||{})[mealId] || [];
+        if(dayHasMatch(arr, chips)) continue;
+        // No té match — afegim el primer chip disponible
+        const toAdd = chipsIngs[0].ing;
+        if(!tobMcState.data[s]) tobMcState.data[s] = {};
+        if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
+        if(!Array.isArray(tobMcState.data[s][d][mealId])) tobMcState.data[s][d][mealId] = [];
+        tobMcState.data[s][d][mealId].push(toAdd.id);
+        added++;
+        log.push('+ Setm ' + (s+1) + '·' + DIA_LABEL[d] + ' ' + tobMcMealLabel(mealId) + ': afegit "' + toAdd.nombre + '" (per chip "' + chipsIngs[0].chip + '")');
+      }
+    }
+  });
+  return { added, log };
+}
+
 // ── Generación automática del menú con IA ──────────────────────
 async function tobMcGenerarIA(){
   if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
@@ -10781,6 +10907,25 @@ async function tobMcGenerarIA(){
         console.log('[IA correcció] ' + passada + ' passada(es) executada(es). Dies encara fora: ' + fueras.length);
       }
     } catch(e){ console.warn('[IA correcció]', e); }
+
+    // ── POST-PROCÉS: ingredients del recordatori del client ──
+    // La IA sovint oblida posar el iogurt, fruita, cafè... que el client té
+    // marcats al recordatori del cuestionario. Aquí ho garantim manualment:
+    // per cada àpat del client, mirem si cada dia té com a mínim UN match
+    // amb algun dels chips del recordatori. Si no, afegim l'ingredient simple
+    // corresponent del catàleg.
+    try {
+      const parche = _tobMcForçaIngredientsRecordatori(cli);
+      if(parche.added > 0){
+        console.log('[IA post-procés] ✓ Afegits ' + parche.added + ' ingredient(s) simple(s) del recordatori que la IA no havia posat.');
+        parche.log.forEach(l => console.log('   ' + l));
+        tobToast('✓ Post-procés: afegits ' + parche.added + ' ingredients del recordatori que la IA havia oblidat', 'green');
+      } else if(parche.log.length){
+        // Si hi ha avisos (chips sense ingredient al catàleg), els loguegem
+        console.log('[IA post-procés] avisos:');
+        parche.log.forEach(l => console.log('   ' + l));
+      }
+    } catch(e){ console.warn('[IA post-procés]', e); }
 
     tobMcRenderGrid();
     tobMcUpdateAllTotals();
