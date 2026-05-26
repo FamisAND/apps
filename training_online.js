@@ -5136,16 +5136,28 @@ const TOB_QUEST_CHIPS = {
     { id:'lactis_si',   label:'✓ Lactis',           excludes:'lactis_no' },
     { id:'lactis_no',   label:'✗ Sense lactis',     neg:true, excludes:'lactis_si' }
   ]},
+  // PREFERÈNCIES → eleccions del client (no exclusions). "Sense gluten/lactosa"
+  // s'ha mogut a "intolerancia". Aquí queden coses com paleo, keto, batch.
   pref: { mode:'multi', items:[
-    { id:'sense_gluten',   label:'Sense gluten',    neg:true },
-    { id:'sense_lactosa',  label:'Sense lactosa',   neg:true },
-    { id:'sense_fruita_seca', label:'Sense fruita seca', neg:true },
     { id:'fodmap',         label:'Baix FODMAP' },
     { id:'paleo',          label:'Paleo' },
     { id:'keto',           label:'Keto' },
     { id:'rapida',         label:'Cuina ràpida (<30 min)' },
-    { id:'fora',           label:'Menja fora de casa' },
+    { id:'fora',           label:'Menja fora de casa sovint' },
     { id:'sense_cuina',    label:'Sense accés a cuina', neg:true }
+  ]},
+  // INTOLERÀNCIES → adaptar amb versions aptes, no eliminar el grup d'aliments.
+  // El client celíac (intolerància severa) marca "Gluten" aquí + a "Patologies"
+  // si vol (celiaquia segueix essent una patologia clínica). El menú s'adapta
+  // usant versions sense gluten — no es treuen les receptes amb pa.
+  intolerancia: { mode:'multi', items:[
+    { id:'gluten',     label:'Gluten',           neg:true },
+    { id:'lactosa',    label:'Lactosa',          neg:true },
+    { id:'fructosa',   label:'Fructosa',         neg:true },
+    { id:'histamina',  label:'Histamina',        neg:true },
+    { id:'fruita_seca',label:'Fruita seca',      neg:true },
+    { id:'crustacis',  label:'Crustacis/marisc', neg:true },
+    { id:'soja',       label:'Soja',             neg:true }
   ]},
   patologies: { mode:'multi', items:[
     { id:'hipertensio',     label:'Hipertensió',             neg:true },
@@ -5159,7 +5171,6 @@ const TOB_QUEST_CHIPS = {
     { id:'sop',             label:'SOP / SOPQ',              neg:true },
     { id:'acid_uric',       label:'Àcid úric / gota',        neg:true },
     { id:'anemia',          label:'Anèmia',                  neg:true },
-    { id:'celiaquia',       label:'Celiaquia',               neg:true },
     { id:'sii',             label:'Còlon irritable (SII)',   neg:true },
     { id:'mii',             label:'Crohn / colitis',         neg:true },
     { id:'reflux',          label:'Reflux / acidesa',        neg:true },
@@ -5226,7 +5237,9 @@ const TOB_QUEST_CHIPS = {
 // Container DOM (id del div .tob-quest-chips) por grupo.
 const TOB_QUEST_CHIP_EL = {
   objectiu:'qChipsObjectiu', apats:'qChipsApats', dieta:'qChipsDieta',
-  proteina:'qChipsProteina', pref:'qChipsPref', patologies:'qChipsPatologies',
+  proteina:'qChipsProteina', pref:'qChipsPref',
+  intolerancia:'qChipsIntolerancia',
+  patologies:'qChipsPatologies',
   cuina:'qChipsCuina', tempsCuina:'qChipsTempsCuina', treball:'qChipsTreball',
   apatPrincipal:'qChipsApatPrincipal', gana:'qChipsGana',
   entrenoDies:'qChipsEntrenoDies', entrenoMoment:'qChipsEntrenoMoment',
@@ -5271,9 +5284,11 @@ const TOB_MEALS = [
 ];
 const TOB_MEALS_DEFAULT = ['esmorzar','dinar','sopar'];   // si no s'ha triat res
 // Chips de cada tipo de àpat para el recordatori 24h.
+// Café separado en variantes — així Sergio sap si posar cafè sol amb torrades
+// o cafè amb llet (que pot afectar la composició final de l'esmorzar).
 const TOB_QUEST_REC_SETS = {
-  esmorzar: ['Cafè','Torrades / pa','Batut','Iogurt','Fruita','Cereals / civada','Ous / salat','Dolç'],
-  snack:    ['Fruita','Iogurt','Fruits secs','Barreta','Cafè','Entrepà petit','No menja res'],
+  esmorzar: ['Cafè sol','Cafè amb llet','Te / infusió','Torrades / pa','Batut','Iogurt','Fruita','Cereals / civada','Ous / salat','Dolç'],
+  snack:    ['Fruita','Iogurt','Fruits secs','Barreta','Cafè sol','Cafè amb llet','Te / infusió','Entrepà petit','No menja res'],
   apat:     ['Plat únic','Principal + acompanyament','Porta postre','Porta pa']
 };
 
@@ -5656,6 +5671,20 @@ function tobQuestEnsureTags(cli){
     const nw = {};
     Object.keys(q.recChips).forEach(k => { nw[km[k] || k] = q.recChips[k]; });
     q.recChips = nw;
+  }
+  // Migració: 'sense_gluten'/'sense_lactosa'/'sense_fruita_seca' s'han mogut
+  // de `pref` a `intolerancia` per a evitar redundància amb patologies/alergies.
+  if(Array.isArray(t.pref)){
+    const movMap = { sense_gluten:'gluten', sense_lactosa:'lactosa', sense_fruita_seca:'fruita_seca' };
+    if(!Array.isArray(t.intolerancia)) t.intolerancia = [];
+    Object.keys(movMap).forEach(oldId => {
+      const ix = t.pref.indexOf(oldId);
+      if(ix >= 0){
+        t.pref.splice(ix, 1);
+        const newId = movMap[oldId];
+        if(t.intolerancia.indexOf(newId) === -1) t.intolerancia.push(newId);
+      }
+    });
   }
   // Grupos multi → array; radio → se deja como string|null
   Object.keys(TOB_QUEST_CHIPS).forEach(g => {
@@ -8366,16 +8395,19 @@ function tobMcCheckCompat(rec, cli){
   //      exclusiu (no és el cas de gluten/lactosa).
   const apt = tobRecAptitud(rec);
   const cliAlergies = (tags.alergies || []).join(' · ').toLowerCase();
-  // Només la lista libre `tags.alergies` exclou per gluten/lactosa.
-  // El pref `sense_gluten` queda en el camp "adapta" — NO exclou.
+  const intol = tags.intolerancia || [];
+  // Només alèrgies (lista libre `tags.alergies`) exclouen rotundament.
+  // Les intoleràncies (`tags.intolerancia`) NO exclouen — el menú s'adapta amb
+  // versions aptes (pa sense gluten, llet sense lactosa, etc.). Excepció:
+  // fruita seca i crustacis amb intolerància són tractats com alèrgia perquè
+  // típicament són reacció real (no només mala digestió).
   const evita = {
     gluten:     /gluten|cel[ií]a/.test(cliAlergies),
     lactosa:    /lact|llet|leche/.test(cliAlergies),
-    // sense_fruita_seca i alergia oficial → si excloure.
-    fruitsSecs: (tags.pref||[]).includes('sense_fruita_seca') || /fruit[a-z]*\s*sec|fruto[a-z]*\s*seco|\bnut/.test(cliAlergies),
+    fruitsSecs: intol.includes('fruita_seca') || /fruit[a-z]*\s*sec|fruto[a-z]*\s*seco|\bnut/.test(cliAlergies),
     ou:         /\bou\b|\bous\b|huevo/.test(cliAlergies),
-    marisc:     /marisc|crustaci|crust[aá]ce|mol·?lusc|molusc/.test(cliAlergies),
-    soja:       /soja|soia/.test(cliAlergies)
+    marisc:     intol.includes('crustacis') || /marisc|crustaci|crust[aá]ce|mol·?lusc|molusc/.test(cliAlergies),
+    soja:       intol.includes('soja') || /soja|soia/.test(cliAlergies)
   };
   const aptLbl = { gluten:'gluten', lactosa:'lactosa', fruitsSecs:'fruits secs', ou:'ou', marisc:'marisc', soja:'soja' };
   Object.keys(aptLbl).forEach(k => {
@@ -8721,13 +8753,35 @@ function tobMcClearSemana(){
 // ── Àpats del menú: elegir qué comidas tiene (incl. 2ª mig matí/berenar)
 function tobMcOpenMealsModal(){
   if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  const apatsCuest = (cli && cli.cuestionario && cli.cuestionario.tags && cli.cuestionario.tags.apats) || [];
   const cur = new Set(tobMcState.comidasIds || []);
-  document.getElementById('tobMcMealsBody').innerHTML = TOB_MEALS.map(d =>
-    `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--line);">
-      <input type="checkbox" id="tobMcMeal_${d.id}" ${cur.has(d.id)?'checked':''} style="accent-color:var(--acc);">
-      <span>${tobEsc(d.label)}</span>
-    </label>`
-  ).join('');
+  // Indica al costat de cada àpat si el client el té marcat al qüestionari.
+  // Així Sergio detecta de seguida quan el menú difereix del qüestionari.
+  document.getElementById('tobMcMealsBody').innerHTML = TOB_MEALS.map(d => {
+    const enCuest = apatsCuest.includes(d.id);
+    const enMenu  = cur.has(d.id);
+    const tag = enCuest && !enMenu ? ' <span class="tob-mc-meal-hint warn">⚠ al qüestionari però no al menú</span>' :
+                !enCuest && enMenu ? ' <span class="tob-mc-meal-hint info">no al qüestionari</span>' :
+                enCuest ? ' <span class="tob-mc-meal-hint ok">✓ al qüestionari</span>' : '';
+    return `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--line);">
+      <input type="checkbox" id="tobMcMeal_${d.id}" ${enMenu?'checked':''} style="accent-color:var(--acc);">
+      <span>${tobEsc(d.label)}${tag}</span>
+    </label>`;
+  }).join('');
+  // Botó "Sincronitzar amb cuestionario" — útil si Sergio ha canviat els
+  // àpats del cliente al qüestionari i vol reflectir-ho al menú actual.
+  const syncBtn = document.getElementById('tobMcMealsSyncBtn');
+  if(syncBtn){
+    syncBtn.style.display = apatsCuest.length ? '' : 'none';
+    syncBtn.onclick = () => {
+      TOB_MEALS.forEach(d => {
+        const el = document.getElementById('tobMcMeal_'+d.id);
+        if(el) el.checked = apatsCuest.includes(d.id);
+      });
+      tobToast('Àpats sincronitzats amb el qüestionari. Prem Aplicar per confirmar.', '');
+    };
+  }
   document.getElementById('tobMcMealsModalBg').classList.add('on');
 }
 // ── Notes/recomanacions del menú (apareixen al PDF) ────────────
@@ -9887,13 +9941,17 @@ function tobMcPerfilTexto(cli){
   if(t.alimOk && t.alimOk.length)       L.push('Aliments preferits: ' + t.alimOk.join(', '));
   if(t.sentenMal && t.sentenMal.length) L.push('Li senten malament: ' + t.sentenMal.join(', '));
   // Intoleràncies a adaptar (no excloure): el client farà servir versions aptes.
+  const intol = t.intolerancia || [];
   const adapt = [];
-  if((t.pref||[]).includes('sense_gluten') || (t.patologies||[]).includes('celiaquia')) adapt.push('GLUTEN (usa receptes amb pa/pasta normalment — el client comprarà la versió SENSE GLUTEN)');
-  if((t.pref||[]).includes('sense_lactosa')) adapt.push('LACTOSA (usa receptes amb lactis normalment — el client comprarà versió SENSE LACTOSA)');
+  if(intol.includes('gluten') || (t.patologies||[]).includes('celiaquia')) adapt.push('GLUTEN (usa receptes amb pa/pasta normalment — el client comprarà la versió SENSE GLUTEN)');
+  if(intol.includes('lactosa')) adapt.push('LACTOSA (usa receptes amb lactis normalment — el client comprarà versió SENSE LACTOSA)');
+  if(intol.includes('fructosa')) adapt.push('FRUCTOSA (limita fruites amb molt sucre fructos, prioritza les baixes)');
+  if(intol.includes('histamina')) adapt.push('HISTAMINA (limita peix blau curat, formatges curats, embutits, vi)');
   if(adapt.length){
     L.push('ADAPTAR (NO excloure) — el client té intolerància però el menú els porta amb versions aptes:');
     adapt.forEach(a => L.push('  · ' + a));
   }
+  if(intol.length) L.push('Intoleràncies del client: ' + intol.join(', '));
   if(t.cuina)         L.push('Qui cuina: ' + lbl('cuina', t.cuina));
   if(t.tempsCuina)    L.push('Temps per cuinar: ' + lbl('tempsCuina', t.tempsCuina));
   // Estructura habitual de cada àpat (recordatori 24h)

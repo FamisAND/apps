@@ -497,9 +497,12 @@
       Marca qué comidas tendrá este menú. Puedes añadir una 2ª media mañana o una 2ª merienda si el cliente hace más comidas.
     </p>
     <div id="tobMcMealsBody"></div>
-    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-      <button class="tob-action ghost" onclick="document.getElementById('tobMcMealsModalBg').classList.remove('on')">Cancelar</button>
-      <button class="tob-action" onclick="tobMcApplyMeals()">Aplicar</button>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:space-between;align-items:center;flex-wrap:wrap;">
+      <button type="button" class="tob-action ghost btn-xs" id="tobMcMealsSyncBtn" title="Marcar només els àpats que el client té al qüestionari">↺ Sincronitzar amb qüestionari</button>
+      <div style="display:flex;gap:8px;">
+        <button class="tob-action ghost" onclick="document.getElementById('tobMcMealsModalBg').classList.remove('on')">Cancelar</button>
+        <button class="tob-action" onclick="tobMcApplyMeals()">Aplicar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -873,9 +876,13 @@
             <div class="tob-quest-chips" id="qChipsPatologies"></div>
           </div>
           <div class="tob-quest-chip-block">
-            <label class="tob-lbl">Al·lèrgies / intoleràncies <span class="tob-quest-h-sub">(escriu i prem Enter)</span></label>
+            <label class="tob-lbl">Intoleràncies <span class="tob-quest-h-sub">(no són alèrgies — s'adapta amb versions aptes, no s'eliminen els aliments del menú)</span></label>
+            <div class="tob-quest-chips" id="qChipsIntolerancia"></div>
+          </div>
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Al·lèrgies <span class="tob-quest-h-sub">(reacció severa — INNEGOCIABLE, s'exclouen totes les receptes amb aquests aliments)</span></label>
             <div class="tob-quest-chips" id="qChipsAlergies"></div>
-            <input class="tob-input" id="qAlergiesNew" placeholder="ex: lactosa, fruita seca..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alergies',event)">
+            <input class="tob-input" id="qAlergiesNew" placeholder="ex: anacards, mango, crustacis..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alergies',event)">
           </div>
           <div class="tob-row col-2">
             <div class="tob-quest-chip-block">

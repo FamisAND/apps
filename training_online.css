@@ -606,6 +606,15 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   margin:12px 0 6px;padding-top:9px;border-top:1px solid var(--border);
 }
 .tob-mc-side-sep span{color:var(--mute2);font-weight:400;text-transform:none;letter-spacing:0;}
+/* Hints al modal d'Àpats del menú: indica si l'àpat està al qüestionari */
+.tob-mc-meal-hint{
+  font-family:'DM Mono',monospace;font-size:.62rem;padding:1px 6px;border-radius:3px;
+  letter-spacing:.04em;margin-left:6px;font-weight:600;
+}
+.tob-mc-meal-hint.ok{background:rgba(46,153,108,.15);color:#3fb68b;}
+.tob-mc-meal-hint.warn{background:rgba(217,164,64,.18);color:#e8b84b;}
+.tob-mc-meal-hint.info{background:rgba(140,140,140,.15);color:var(--mute);}
+
 /* Variant compacta per a plats solts — més petits, no roben atenció */
 .tob-mc-side-item.mini{padding:3px 6px;font-size:.65rem;}
 .tob-mc-side-item.mini .thumb{width:22px;height:22px;font-size:.5rem;}
