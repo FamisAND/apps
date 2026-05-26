@@ -10247,7 +10247,21 @@ async function tobMcGenerarIA(){
       return n;
     };
     let puestos = aplicar(parsed);
-    if(!puestos) throw new Error('la IA no ha retornat receptes vàlides — torna-ho a provar');
+    if(!puestos){
+      // Diagnòstic ràpid per a Sergio quan veu aquest error:
+      const totRec = (tobMenusDB.recetas || []).filter(r => !r.descartada).length;
+      const soloFavOn = !!(document.getElementById('tobMcIaSoloFav') || {}).checked;
+      const nFavs = (tobMenusDB.recetas || []).filter(r => r.favorito && !r.descartada).length;
+      console.warn('[IA menú] CAUSA possible:', {
+        catalegRecetes_totals: totRec,
+        soloFav_activat: soloFavOn,
+        receptes_favorites: nFavs,
+        hint: soloFavOn && nFavs < 10 ? '⚠ "Solo favoritas" actiu i poques favorites — desmarca el checkbox' :
+              totRec < 10 ? '⚠ Catàleg molt petit — importa més receptes' :
+              'La IA pot haver inventat IDs. Prova un altre proveïdor (DeepSeek, Anthropic).'
+      });
+      throw new Error('la IA no ha retornat receptes vàlides. Obre F12 → Console i mira [IA menú] per detalls. Possibles causes: catàleg petit, "solo favoritas" sense favorites, o IA inventa IDs (canvia de proveïdor).');
+    }
 
     // ── Corrección 2a pasada: días lejos del objetivo (kcal O prot) ──
     // La IA tendeix a quedar-se curta — sobretot de proteïna. Aquesta 2a passada
