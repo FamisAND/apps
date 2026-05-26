@@ -536,8 +536,29 @@
         <input type="checkbox" id="tobClasifSoloSin" checked onchange="tobClasifToggleSoloSin(this)" style="accent-color:var(--acc);">
         Solo sin clasificar
       </label>
-      <button class="tob-action btn-xs" id="tobClasifAutoBtn" onclick="tobClasifAuto()" title="La IA clasifica todas las recetas: momento del día + tipo de plato" style="margin-left:auto;">🤖 Clasificar con IA</button>
+      <button class="tob-action ghost btn-xs" onclick="tobClasifToggleBulk()" title="Importar classificacions en bloc des d'un text" style="margin-left:auto;">📋 Bulk classificar</button>
     </div>
+
+    <!-- Bulk classify: textarea per a aplicar moltes classificacions de cop -->
+    <details id="tobClasifBulkBlock" class="tob-clasif-bulk">
+      <summary>📋 Importar classificacions en bloc <span class="tob-quest-h-sub">(escriu o dicta una línia per recepta · aplica desenes de cop)</span></summary>
+      <div style="padding:8px 0;">
+        <div style="font-size:.74rem;color:var(--mute);line-height:1.55;margin-bottom:6px;">
+          Format flexible — una recepta per línia, separadors lliures (coma, dos punts, guió):<br>
+          <code style="background:var(--card2,#1a1a1a);padding:2px 5px;border-radius:2px;font-size:.7rem;">Tortilla francesa : esmorzar, basic</code><br>
+          <code style="background:var(--card2,#1a1a1a);padding:2px 5px;border-radius:2px;font-size:.7rem;">Pollastre rostit - dinar sopar principal</code><br>
+          Paraules clau reconegudes: <b>esmorzar</b> · <b>mig matí</b>/migmati · <b>dinar</b> · <b>berenar</b> · <b>sopar</b> · <b>principal</b>(P) · <b>acompanyament</b>/acomp(A) · <b>postre</b>(D) · <b>basic</b>(B) · <b>fav</b>(orit) · <b>desc</b>(artar)<br>
+          Matching del nom: substring case-insensitive sense accents. Si una línia no matcheja cap recepta, surt al log.
+        </div>
+        <textarea class="tob-input" id="tobClasifBulkText" rows="10" placeholder="Tortilla francesa: esmorzar, basic&#10;Pollastre rostit - dinar, sopar, principal&#10;Crema de pastanaga: dinar sopar acompanyament" style="font-family:'DM Mono',monospace;font-size:.78rem;line-height:1.5;"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
+          <button type="button" class="tob-action ghost btn-xs" onclick="document.getElementById('tobClasifBulkText').value=''">Buidar</button>
+          <button type="button" class="tob-action btn-xs" onclick="tobClasifBulkApply()">✓ Aplicar a totes</button>
+        </div>
+        <div id="tobClasifBulkResult" style="font-size:.74rem;font-family:'DM Mono',monospace;margin-top:8px;line-height:1.5;"></div>
+      </div>
+    </details>
+
     <div id="tobClasifBody" style="overflow-y:auto;flex:1;min-height:140px;"></div>
     <div id="tobClasifPager" style="display:flex;justify-content:center;align-items:center;gap:10px;padding:10px 0 2px;"></div>
     <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">

@@ -7833,92 +7833,104 @@ function tobClasifSetRol(recId, rolId, btn){
   _tobClasifUpdInfo();
 }
 
-// Clasifica las recetas con IA: momento del día + rol del plato.
-// Procesa por lotes (el catálogo entero no cabe en un solo prompt).
-async function tobClasifAuto(){
-  const cfg = tobAiGetCfg();
-  if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
-  const allRecs = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
-  if(!allRecs.length){ tobToast('No hi ha receptes', 'red'); return; }
-  // Per defecte només processa les SENSE CLASSIFICAR (estalvi de temps i diners).
-  // Sergio pot prémer Shift mentre clica per a forçar re-classificar totes.
-  const event = window.event || {};
-  const forceAll = !!(event.shiftKey);
-  const sinClasif = allRecs.filter(_tobClasifSinClasif);
-  const recs = forceAll ? allRecs : sinClasif;
-  if(!recs.length){
-    tobToast('Totes les receptes ja estan classificades. Prem amb Shift per re-classificar-les igualment.', '');
-    return;
-  }
-  const msg = forceAll
-    ? `Re-classificar TOTES les ${allRecs.length} receptes (sobreescriu la classificació actual)?`
-    : `Classificar amb IA ${sinClasif.length} receptes sense classificar (de ${allRecs.length} totals)?\n\nLes que ja tens classificades NO es toquen. Per re-classificar totes, prem amb Shift.`;
-  if(!confirm(msg)) return;
-
-  const btn = document.getElementById('tobClasifAutoBtn');
-  const btnTxt = btn ? btn.textContent : '';
-  if(btn) btn.disabled = true;
-
-  const MOMS = ['esmorzar','mig_mati','dinar','berenar','sopar'];
-  const ROLS = ['principal','acompanyament','postre','basic'];
-  const CHUNK = (cfg.provider === 'groq') ? 25 : 55;
-  const sys = 'Ets un dietista-nutricionista expert. Classifiques receptes pel moment del dia '
-    + 'on encaixen i pel rol de plat. Respons NOMÉS amb un objecte JSON vàlid.';
-  let done = 0, fail = 0;
-  try {
-    for(let i = 0; i < recs.length; i += CHUNK){
-      const batch = recs.slice(i, i + CHUNK);
-      if(btn) btn.textContent = `⏳ Classificant ${i}/${recs.length}…`;
-      const lines = batch.map(r => {
-        const mm = tobRecMacros(r);
-        const kcal = Math.round(mm.kcal / (r.raciones || 1));
-        const tg = (r.tags||[]).slice(0,3).join(',');
-        return r.id + '|' + r.nombre + '|' + kcal + 'kcal' + (tg ? '|' + tg : '');
-      }).join('\n');
-      const user = [
-        'Classifica cada recepta. Per cada id digues:',
-        '- "m": array de moments on encaixa BÉ. Opcions: esmorzar, mig_mati, dinar, berenar, sopar.',
-        '- "r": rol del plat. Opcions: principal, acompanyament, postre, basic.',
-        '',
-        'CRITERI (pensa-ho bé, amb sentit comú de dietista):',
-        '- esmorzar = esmorzars (torrades, batuts, ous, cereals, iogurt amb fruita...).',
-        '- mig_mati i berenar = NOMÉS snacks lleugers i ràpids (fruita, iogurt, fruits secs, barretes). Una sopa, una salsa o un plat cuinat NO és un snack.',
-        '- dinar i sopar = àpats principals: sopes, plats de cullera, carn, peix, amanides completes, pasta, arròs, truites, guisats...',
-        '- Una recepta pot encaixar en diversos moments (p. ex. un plat principal a dinar I sopar).',
-        '- rol principal = plat fort. acompanyament = guarnició, verdura, crema o salsa que acompanya. postre = dolç o fruita. basic = esmorzar o snack senzill.',
-        '- Salses i condiments → r:"acompanyament", m:["dinar","sopar"].',
-        '',
-        'RECEPTES (format id|nom|kcal|tags):',
-        lines,
-        '',
-        'Respon NOMÉS aquest JSON: {"<id>":{"m":["dinar","sopar"],"r":"principal"}, ...}'
-      ].join('\n');
-      try {
-        const raw = await tobAiCall([{ role:'system', content:sys }, { role:'user', content:user }]);
-        const parsed = tobAiParseJson(raw);
-        batch.forEach(r => {
-          const c = parsed[r.id];
-          if(!c){ fail++; return; }
-          const moms = Array.isArray(c.m) ? c.m.filter(x => MOMS.includes(x)) : [];
-          if(moms.length) r.momentos = moms;
-          if(ROLS.includes(c.r)) r.rol = c.r;
-          done++;
-        });
-        tobMenusSave();
-        tobClasifRender();
-      } catch(e){
-        console.warn('[clasif IA] lote', e);
-        fail += batch.length;
-      }
-    }
-    tobToast(`✓ ${done} receptes classificades amb IA${fail?' · '+fail+' sense classificar (reintenta)':''}`, 'green');
-  } catch(e){
-    tobToast('✗ Error: ' + (e.message || e), 'red');
-  } finally {
-    if(btn){ btn.disabled = false; btn.textContent = btnTxt || '🤖 Clasificar con IA'; }
-    tobClasifRender();
-  }
+// ─── BULK CLASSIFY: aplicar classificació de moltes receptes des d'un text ──
+// Sergio prefereix dictar les classificacions i pegar-les en bloc al modal.
+// Format flexible per cada línia: "nom receta : moments,rol[,fav,desc]"
+// Separadors acceptats: : - = + → o qualsevol whitespace múltiple.
+// Matching del nom: lowercase + sense accents + substring en els dos sentits.
+// Aplica tot d'una vegada i mostra resultats (matched / no matched).
+function tobClasifToggleBulk(){
+  const el = document.getElementById('tobClasifBulkBlock');
+  if(el) el.open = !el.open;
 }
+function tobClasifBulkApply(){
+  const txt = (document.getElementById('tobClasifBulkText')?.value || '').trim();
+  if(!txt){ document.getElementById('tobClasifBulkResult').innerHTML = '<span style="color:#d94040">⚠ Buit — afegeix línies primer</span>'; return; }
+
+  const allRecs = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
+  const norm = s => String(s||'').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]+/g,' ').trim();
+  // Diccionari de paraules clau (normalitzades) → acció
+  const MOMS = {
+    'esmorzar':'esmorzar', 'desayuno':'esmorzar', 'breakfast':'esmorzar',
+    'mig mati':'mig_mati', 'migmati':'mig_mati', 'media manana':'mig_mati', 'mediamanana':'mig_mati',
+    'dinar':'dinar', 'comida':'dinar', 'lunch':'dinar', 'almuerzo':'dinar',
+    'berenar':'berenar', 'merienda':'berenar', 'snack':'berenar',
+    'sopar':'sopar', 'cena':'sopar', 'dinner':'sopar'
+  };
+  const ROLS = {
+    'principal':'principal', 'p':'principal', 'main':'principal',
+    'acompanyament':'acompanyament', 'acompanyamiento':'acompanyament', 'acomp':'acompanyament', 'a':'acompanyament', 'side':'acompanyament',
+    'postre':'postre', 'd':'postre', 'dessert':'postre',
+    'basic':'basic', 'basico':'basic', 'b':'basic'
+  };
+  const lines = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const matched = [], notMatched = [], multiMatched = [];
+  lines.forEach(line => {
+    // Separar nom de tags. Triem el primer separador (: - = → o múltiple whitespace)
+    const sep = line.search(/[:\-=→]|\s{2,}/);
+    let nomPart = line, tagPart = '';
+    if(sep > 0){
+      const m = line.slice(sep).match(/^[:\-=→\s]+/);
+      const splitIx = sep + (m ? m[0].length : 1);
+      nomPart = line.slice(0, sep).trim();
+      tagPart = line.slice(splitIx).trim();
+    }
+    if(!nomPart){ notMatched.push({ line, reason:'sense nom' }); return; }
+    const nomN = norm(nomPart);
+    // Buscar recepta per matching fuzzy
+    const candidats = allRecs.filter(r => {
+      const rn = norm(r.nombre);
+      return rn.includes(nomN) || nomN.includes(rn);
+    });
+    if(!candidats.length){ notMatched.push({ line, reason:'cap recepta amb aquest nom' }); return; }
+    if(candidats.length > 1){
+      // Si hi ha múltiples, agafem la que té matching més exacte (longitud més propera)
+      candidats.sort((a, b) => Math.abs(norm(a.nombre).length - nomN.length) - Math.abs(norm(b.nombre).length - nomN.length));
+      multiMatched.push({ line, n: candidats.length, chosen: candidats[0].nombre });
+    }
+    const r = candidats[0];
+    // Parsejar tags (separades per , espai , etc.)
+    const tags = (tagPart.match(/[a-zàáèéíïòóúüçñ]+/gi) || []).map(t => norm(t));
+    const newMoms = [];
+    let newRol = null;
+    let setFav = null, setDesc = null;
+    tags.forEach(t => {
+      // 'mig mati' es pot escriure com dues paraules consecutives — provem combinats
+      if(MOMS[t]) newMoms.push(MOMS[t]);
+      else if(ROLS[t]) newRol = ROLS[t];
+      else if(/^fav/.test(t)) setFav = true;
+      else if(/^desc/.test(t)) setDesc = true;
+    });
+    // Detecta "mig mati" com a parell consecutiu
+    if(/mig\s*mati|migmati|media\s*manana/.test(tagPart.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')) && !newMoms.includes('mig_mati')){
+      newMoms.push('mig_mati');
+    }
+    if(newMoms.length) r.momentos = Array.from(new Set(newMoms));
+    if(newRol) r.rol = newRol;
+    if(setFav != null) r.favorito = setFav;
+    if(setDesc != null) r.descartada = setDesc;
+    matched.push({ line, rec: r.nombre, momentos: r.momentos, rol: r.rol });
+  });
+  tobMenusSave();
+  tobClasifRender();
+  // Render resultat
+  const res = document.getElementById('tobClasifBulkResult');
+  const okLines = matched.map(m => '  ✓ ' + m.rec + ' → ' + (m.momentos||[]).join(',') + (m.rol ? ' · ' + m.rol : '')).join('\n');
+  const multiLines = multiMatched.map(m => '  ⚠ "' + m.line + '" → ' + m.n + ' coincidències, escollida: ' + m.chosen).join('\n');
+  const noLines = notMatched.map(m => '  ✗ "' + m.line + '" — ' + m.reason).join('\n');
+  res.innerHTML =
+    '<div style="color:#3fb68b">✓ ' + matched.length + ' aplicades' + (multiMatched.length ? ' (' + multiMatched.length + ' amb múltiples)' : '') + '</div>' +
+    (notMatched.length ? '<div style="color:#d94040">✗ ' + notMatched.length + ' sense match</div>' : '') +
+    '<pre style="white-space:pre-wrap;font-size:.7rem;color:var(--mute);max-height:200px;overflow-y:auto;margin-top:6px;">' +
+    okLines + (multiLines ? '\n\n' + multiLines : '') + (noLines ? '\n\n' + noLines : '') +
+    '</pre>';
+  tobToast('✓ ' + matched.length + ' receptes classificades' + (notMatched.length ? ' · ' + notMatched.length + ' sense match' : ''), 'green');
+}
+
+// Funció antiga "Clasificar amb IA" eliminada — Sergio prefereix dictar
+// les classificacions i aplicar-les en bloc amb tobClasifBulkApply.
 
 // Hook al cambio de sub-tab "recetas" para re-renderizar
 const _origTobMenuShowTab = tobMenuShowTab;
