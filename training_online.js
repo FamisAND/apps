@@ -9721,9 +9721,12 @@ async function tobAiCall(messages, cfgOverride){
     temperature: 0.6,
     max_tokens: prov === 'groq' ? 2500 : 4096
   };
-  // response_format json_object: fiable en Groq i DeepSeek (OpenAI-compat).
+  // response_format json_object: a Groq és fiable. A DeepSeek causa 400 si el
+  // system prompt no conté la paraula "json" exactament, i a vegades altres
+  // problemes — preferim no activar-lo per a DeepSeek (el prompt ja demana
+  // JSON i el parser amb jsonrepair maneja qualsevol formatat).
   // En OpenRouter depèn del model; el prompt ja demana "només JSON".
-  if(prov === 'groq' || prov === 'deepseek') payload.response_format = { type:'json_object' };
+  if(prov === 'groq') payload.response_format = { type:'json_object' };
   const r = await fetch(url, {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + cfg.key },
@@ -9754,14 +9757,18 @@ async function tobAiCallWithFallback(messages){
     throw new Error('No tens cap clau d\'IA configurada. Obre ⚙ IA i pega una clau a algun proveïdor.');
   }
   // Errors que justifiquen passar al següent proveïdor.
-  // 402 = Insufficient Balance (típic DeepSeek/Anthropic sense saldo).
+  // 400 = Bad Request (típic quan el payload no és vàlid per a aquest proveïdor —
+  //       altres proveïdors poden acceptar el mateix prompt correctament).
   // 401 = Unauthorized (clau invàlida — no podem continuar amb aquest provider).
+  // 402 = Insufficient Balance (típic DeepSeek/Anthropic sense saldo).
+  // 5xx = Errors del servidor (Gemini 503 "high demand", etc.).
   const isRetryable = (e) => {
     const m = e && e.message ? e.message : '';
-    return /\b(401|402|408|413|429|500|502|503|504)\b/.test(m) ||
-           /network|fetch|timeout|aborted|insufficient/i.test(m);
+    return /\b(400|401|402|408|413|429|500|502|503|504)\b/.test(m) ||
+           /network|fetch|timeout|aborted|insufficient|overload/i.test(m);
   };
   let lastErr = null;
+  const allErrors = [];   // [{prov, msg}] de tots els fallits per a un missatge útil al final
   for(let i = 0; i < order.length; i++){
     const prov = order[i];
     // Construir un cfg "actiu" per a aquest proveïdor concret
@@ -9777,21 +9784,22 @@ async function tobAiCallWithFallback(messages){
       }
       const out = await tobAiCall(messages, provCfg);
       if(i > 0){
-        // Avisem al user que es va canviar de proveïdor en aquesta crida
         console.log('[IA fallback] ✓ Resposta correcta des de ' + prov);
       }
       return out;
     } catch(e){
       lastErr = e;
+      const errCode = (e.message || '').match(/\b(\d{3})\b/);
+      allErrors.push({ prov, code: errCode ? errCode[1] : '?', msg: (e.message || String(e)).slice(0, 100) });
       console.warn('[IA fallback] ' + prov + ' ha fallat: ' + (e.message || e));
-      if(!isRetryable(e) && i < order.length - 1){
-        // Continuem el bucle igualment per provar el següent — millor que avortar
-        // (potser el proveïdor té un error puntual no contemplat).
-      }
-      // Si hi ha més proveïdors, continuem; si no, sortim del bucle amb lastErr.
+      // Sempre continuem al següent (l'error pot ser específic d'aquest proveïdor).
     }
   }
-  throw lastErr || new Error('Tots els proveïdors han fallat');
+  // Tots han fallat — llancem un error informatiu amb el resum de tots els intents.
+  const resum = allErrors.map(x => x.prov + ' ' + x.code).join(' · ');
+  const enriched = new Error('Tots els proveïdors han fallat (' + resum + '). Detalls al log [IA fallback]. ' + (lastErr ? lastErr.message : ''));
+  enriched.allErrors = allErrors;
+  throw enriched;
 }
 
 // Extrae el objeto JSON de la respuesta del LLM (quita ``` y texto sobrante).
