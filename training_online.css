@@ -467,7 +467,17 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   grid-template-columns:1fr 300px;
   gap:14px;
   align-items:start;
+  transition:grid-template-columns .2s ease;
 }
+/* Panel lateral plegat: només la cabecera visible (amb el botó ► per a obrir-lo) */
+.tob-mc-layout.side-collapsed{grid-template-columns:1fr 44px;}
+.tob-mc-side.collapsed .tob-mc-side-body{display:none;}
+.tob-mc-side.collapsed{padding:8px 4px;min-width:0;}
+.tob-mc-side.collapsed .tob-card-title{flex-direction:column;align-items:center;gap:8px;padding:0;}
+.tob-mc-side.collapsed .tob-card-title > span:first-child{
+  writing-mode:vertical-rl;transform:rotate(180deg);font-size:.7rem;letter-spacing:.05em;
+}
+.tob-mc-side.collapsed #tobMcSideGoIngs{display:none;}
 .tob-mc-grid-card{min-width:0;overflow:hidden;}
 .tob-mc-side{
   position:sticky;top:80px;max-height:calc(100vh - 100px);

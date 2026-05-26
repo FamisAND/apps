@@ -8429,6 +8429,7 @@ function tobMcOnClienteChange(){
   }
 
   document.getElementById('tobMcWorkspace').style.display = '';
+  _tobMcSideRestoreState();
   tobMcRenderSemanasTabs();
   tobMcRenderGrid();
   tobMcRenderSidePanel();
@@ -8804,6 +8805,56 @@ function tobMcUpdateAllTotals(){
   // "Objectiu kcal/Margen/Prot" sense re-renderitzar la graella, els checks
   // del compliment han d'actualitzar-se igualment.
   if(typeof tobMcRenderChecks === 'function') tobMcRenderChecks();
+}
+
+// ─── Toggle del panel lateral del creador de menús ─────────────
+// Sergio: poder plegar el panel per a tenir més espai per a la graella
+// del menú. L'estat es manté entre sessions (localStorage).
+function tobMcSideToggle(){
+  const card = document.getElementById('tobMcSideCard');
+  if(!card) return;
+  card.classList.toggle('collapsed');
+  const collapsed = card.classList.contains('collapsed');
+  try { localStorage.setItem('tob_mc_side_collapsed', collapsed ? '1' : '0'); } catch(e){}
+  const btn = document.getElementById('tobMcSideToggle');
+  if(btn) btn.textContent = collapsed ? '◄' : '►';
+  // Si l'usuari plega, també pleguem el layout per a què la graella aprofiti
+  // tot l'espai. Si desplega, restaurem.
+  const layout = document.querySelector('.tob-mc-layout');
+  if(layout) layout.classList.toggle('side-collapsed', collapsed);
+}
+// Restaurar l'estat plegat/desplegat en cada render del workspace.
+function _tobMcSideRestoreState(){
+  try {
+    const v = localStorage.getItem('tob_mc_side_collapsed');
+    if(v === '1'){
+      const card = document.getElementById('tobMcSideCard');
+      if(card && !card.classList.contains('collapsed')){
+        card.classList.add('collapsed');
+        const btn = document.getElementById('tobMcSideToggle');
+        if(btn) btn.textContent = '◄';
+        const layout = document.querySelector('.tob-mc-layout');
+        if(layout) layout.classList.add('side-collapsed');
+      }
+    }
+  } catch(e){}
+}
+// Anar directament al separador d'ingredients simples sense haver de fer scroll.
+function tobMcSideGoToIngs(){
+  // Si el panel està plegat, el despleguem primer
+  const card = document.getElementById('tobMcSideCard');
+  if(card && card.classList.contains('collapsed')) tobMcSideToggle();
+  const sep = document.querySelector('#tobMcSidePanel .tob-mc-side-sep');
+  if(sep){
+    sep.scrollIntoView({ behavior:'smooth', block:'start' });
+    // Highlight breu per ajudar a localitzar visualment
+    sep.style.transition = 'background-color .25s';
+    const orig = sep.style.backgroundColor;
+    sep.style.backgroundColor = 'var(--acc-soft, rgba(245,167,33,.18))';
+    setTimeout(() => { sep.style.backgroundColor = orig || ''; }, 1200);
+  } else {
+    tobToast('No hi ha ingredients simples al catàleg actual. Marca\'n al modal d\'ingredient.', '');
+  }
 }
 
 // ── Render: panel lateral con recetas ──────────────────────────

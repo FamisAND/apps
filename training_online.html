@@ -387,24 +387,30 @@
         </div>
 
         <!-- Panel lateral: recetas filtradas -->
-        <div class="tob-card tob-mc-side">
+        <div class="tob-card tob-mc-side" id="tobMcSideCard">
           <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <span>🍳 Recetas <span id="tobMcRecCount" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;font-weight:400;letter-spacing:.04em;"></span></span>
+            <div style="display:flex;gap:4px;">
+              <button type="button" class="tob-action ghost btn-xs" id="tobMcSideGoIngs" onclick="tobMcSideGoToIngs()" title="Anar a la secció d'ingredients simples">∙ Ingredients</button>
+              <button type="button" class="tob-action ghost btn-xs" id="tobMcSideToggle" onclick="tobMcSideToggle()" title="Plegar/Desplegar panel">►</button>
+            </div>
           </div>
-          <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
-          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:.65rem;">
-            <button class="tob-mc-mom-btn active" data-mom="" onclick="tobMcFilterMomento('',this)">Todas</button>
-            <button class="tob-mc-mom-btn" data-mom="esmorzar" onclick="tobMcFilterMomento('esmorzar',this)">Esmorzar</button>
-            <button class="tob-mc-mom-btn" data-mom="mig_mati" onclick="tobMcFilterMomento('mig_mati',this)">Mig matí</button>
-            <button class="tob-mc-mom-btn" data-mom="dinar" onclick="tobMcFilterMomento('dinar',this)">Dinar</button>
-            <button class="tob-mc-mom-btn" data-mom="berenar" onclick="tobMcFilterMomento('berenar',this)">Berenar</button>
-            <button class="tob-mc-mom-btn" data-mom="sopar" onclick="tobMcFilterMomento('sopar',this)">Sopar</button>
+          <div class="tob-mc-side-body" id="tobMcSideBody">
+            <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
+            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:.65rem;">
+              <button class="tob-mc-mom-btn active" data-mom="" onclick="tobMcFilterMomento('',this)">Todas</button>
+              <button class="tob-mc-mom-btn" data-mom="esmorzar" onclick="tobMcFilterMomento('esmorzar',this)">Esmorzar</button>
+              <button class="tob-mc-mom-btn" data-mom="mig_mati" onclick="tobMcFilterMomento('mig_mati',this)">Mig matí</button>
+              <button class="tob-mc-mom-btn" data-mom="dinar" onclick="tobMcFilterMomento('dinar',this)">Dinar</button>
+              <button class="tob-mc-mom-btn" data-mom="berenar" onclick="tobMcFilterMomento('berenar',this)">Berenar</button>
+              <button class="tob-mc-mom-btn" data-mom="sopar" onclick="tobMcFilterMomento('sopar',this)">Sopar</button>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--mute);margin-bottom:8px;font-family:'DM Mono',monospace;">
+              <input type="checkbox" id="tobMcFiltrarPerfil" checked onchange="tobMcRenderSidePanel()">
+              Filtrar incompatibles con perfil del cliente
+            </label>
+            <div id="tobMcSidePanel" class="tob-mc-side-list"></div>
           </div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--mute);margin-bottom:8px;font-family:'DM Mono',monospace;">
-            <input type="checkbox" id="tobMcFiltrarPerfil" checked onchange="tobMcRenderSidePanel()">
-            Filtrar incompatibles con perfil del cliente
-          </label>
-          <div id="tobMcSidePanel" class="tob-mc-side-list"></div>
         </div>
       </div>
     </div>
