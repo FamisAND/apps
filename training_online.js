@@ -9746,11 +9746,13 @@ async function tobAiCallWithFallback(messages){
   if(!order.length){
     throw new Error('No tens cap clau d\'IA configurada. Obre ⚙ IA i pega una clau a algun proveïdor.');
   }
-  // Errors que justifiquen passar al següent proveïdor:
+  // Errors que justifiquen passar al següent proveïdor.
+  // 402 = Insufficient Balance (típic DeepSeek/Anthropic sense saldo).
+  // 401 = Unauthorized (clau invàlida — no podem continuar amb aquest provider).
   const isRetryable = (e) => {
     const m = e && e.message ? e.message : '';
-    return /\b(429|413|500|502|503|504|408)\b/.test(m) ||
-           /network|fetch|timeout|aborted/i.test(m);
+    return /\b(401|402|408|413|429|500|502|503|504)\b/.test(m) ||
+           /network|fetch|timeout|aborted|insufficient/i.test(m);
   };
   let lastErr = null;
   for(let i = 0; i < order.length; i++){
@@ -10390,6 +10392,13 @@ async function tobMcGenerarIA(){
       } else {
         msg = 'petició massa gran — prova amb menys setmanes o activa "🤖 solo recetas favoritas"';
       }
+    } else if(/\b402\b/.test(msg) || /Insufficient Balance/i.test(msg)){
+      msg = 'Saldo insuficient al proveïdor IA. Verifica el dashboard del proveïdor:\n' +
+            '  · DeepSeek: platform.deepseek.com → Top up\n' +
+            '  · Anthropic: console.anthropic.com → Billing\n' +
+            'Pot tardar uns minuts a actualitzar-se després del pagament.';
+    } else if(/\b401\b/.test(msg)){
+      msg = 'Clau API invàlida o caducada. Revisa la clau al modal ⚙ IA per al proveïdor que falla.';
     }
     tobToast('✗ ' + msg, 'red');
   } finally {
