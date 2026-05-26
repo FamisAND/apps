@@ -9446,13 +9446,21 @@ Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més prò
 ═══ ESMORZAR — la base de Sergio ═══
 - Composició diana: ~30% prote · ~50% grasses · ~20% HC (estil low-carb).
 - DEFAULT: tostades amb varietat → jamó dolç/salat, ou remenat, alvocat + mozzarella, formatge fresc, etc. Combina ingredients simples (∙) "Llesca de pa" + un proteic + greix saludable.
-- Cafè: solo o amb llet segons el cuestionari del client.
+- CAFÈ: si el recordatori indica "Cafè sol" o "Cafè amb llet", AFEGEIX exactament aquest
+  ingredient simple (∙) al mateix àpat. NO l'oblidis — és part de l'esmorzar habitual.
 - Si el client marca fruita/fruits secs com a opcionals, suma'ls al plat (no com a peça random — formen part de l'àpat).
 - 4 TIPUS típics de esmorzar al menú, repetibles però MAI dies consecutius.
 
 ═══ MIG MATÍ / BERENAR ═══
 - NOMÉS apareixen si el client els marca explícitament a la seva estructura habitual.
-- Si calen prot extres: fruita + iogurt proteic. Si no, fruita + fruits secs al natural (∙, 30 g).
+- USA INGREDIENTS SIMPLES (∙) tal com indica el recordatori del client. Si diu
+  "Iogurt + Fruits secs", posa exactament aquests dos ingredients simples del
+  catàleg. NO posis batuts ni smoothies que continguin iogurt — el client vol
+  el iogurt sencer i els fruits secs separats.
+- Combinacions típiques (si el client no especifica):
+   · Fruita (∙) + Fruits secs (∙) — opció lleugera
+   · Iogurt natural (∙) + Fruita (∙) — afegeix prot si fa falta
+   · Iogurt proteic (∙) + Fruits secs (∙) — més prot
 - 100-350 kcal · ≤15 g prote.
 
 ═══ DINAR / SOPAR — patró base ═══
@@ -9481,12 +9489,34 @@ Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més prò
 - Dos farinacis junts (pasta + arròs, pa + patata generosa…).
 - Postre pesat al sopar.
 
-═══ ESTRUCTURA HABITUAL DEL CLIENT ═══
-El cuestionari indica què menja a cada àpat. RESPECTA-HO al peu de la lletra.
-- "Torrades + cafè" → tostades amb les seves variants, no tortilles.
-- "Carn blanca" → pollastre/gall dindi (afegeix oli ∙ per cuinar).
-- "Pescat blanc" → lluç, bacallà, llenguado. "Pescat blau" → salmó, sardina, tonyina.
-- Si el client diu "només salmó del pescat blau" o "tot el pescat menys atún", RESPECTA-HO.
+═══ ESTRUCTURA HABITUAL DEL CLIENT — RESPECTA-LA LITERALMENT ═══
+El cuestionari indica què menja a cada àpat. Aquesta secció és INNEGOCIABLE.
+NO substitueixis amb receptes elaborades (batuts, smoothies, tortilles) si el
+client ha indicat clarament ingredients simples. Cerca al catàleg els
+ingredients simples (marca ∙) amb noms equivalents:
+
+  · "Iogurt" → posa l'ingredient simple "Iogurt natural" o equivalent (∙).
+    NO posis "Batut de iogurt amb fruita". El client vol UN IOGURT.
+  · "Fruita" → posa l'ingredient simple "Fruita (peça)" (∙).
+    NO posis batuts, smoothies, ni macedònies. Una peça de fruita.
+  · "Fruits secs" → posa l'ingredient simple "Fruits secs (mescla)" (∙).
+    NO posis "Granola" ni receptes elaborades — un grapat de fruits secs natural.
+  · "Cafè sol" o "Cafè amb llet" → afegeix l'ingredient simple corresponent (∙)
+    al MATEIX àpat. Sergio té cafè separat en "Cafè sol" i "Cafè amb llet" —
+    usa exactament el que el client va marcar.
+  · "Torrades / pa" → "Llesca de pa" (∙) + un proteic (jamó, ou, alvocat...).
+  · "Carn blanca" → pollastre/gall dindi. "Pescat blanc"/"Pescat blau" igual.
+  · Si el client diu "només salmó del pescat blau" o "tot el pescat menys atún",
+    RESPECTA-HO al detall.
+
+EXEMPLE concret:
+  · Berenar al recordatori: "Iogurt + Fruits secs"
+  · Posada CORRECTA: ID_IOGURT_NATURAL + ID_FRUITS_SECS_MESCLA (dos ingredients simples)
+  · Posada INCORRECTA: "Batut de plàtan amb fruits secs" (substitució no demanada)
+
+PRINCIPI: si el catàleg té un ingredient simple amb el mateix nom que el chip
+del recordatori, USA L'INGREDIENT SIMPLE. Les receptes elaborades són per a
+quan el client NO ha especificat res, o és un àpat principal sense recordatori.
 
 ═══ RESTRICCIONS ═══
 - Al·lèrgies: innegociables.
@@ -10190,13 +10220,19 @@ async function tobMcGenerarIA(){
       cand = cand.concat(inferidas);
       const favs = cand.filter(r => r.favorito);
       const rest = cand.filter(r => !r.favorito);
-      // barajar el resto para dar variedad dentro del tope
-      for(let i = rest.length - 1; i > 0; i--){
+      // Separar ingredients simples (∙) de receptes elaborades dins de "rest".
+      // Els ingredients simples NO es barajen i van SEMPRE primer després dels
+      // favorits — així la IA els veu primer i els prioritza si el recordatori
+      // del client menciona "Iogurt", "Cafè", "Fruita", etc.
+      const restIng = rest.filter(r => r.origen === 'ingrediente');
+      const restRec = rest.filter(r => r.origen !== 'ingrediente');
+      for(let i = restRec.length - 1; i > 0; i--){
         const j = Math.floor(Math.random() * (i + 1));
-        const tmp = rest[i]; rest[i] = rest[j]; rest[j] = tmp;
+        const tmp = restRec[i]; restRec[i] = restRec[j]; restRec[j] = tmp;
       }
-      // Los favoritos SIEMPRE entran enteros; el resto rellena hasta el tope.
-      cand = favs.concat(rest).slice(0, Math.max(capPorMomento, favs.length));
+      // Favorits + tots els ingredients simples (sempre entren) + receptes barajades fins al tope.
+      const minSlice = favs.length + restIng.length;
+      cand = favs.concat(restIng).concat(restRec).slice(0, Math.max(capPorMomento, minSlice));
       catalogo += '\n# ' + c.label + ' (id="' + c.id + '")\n';
       cand.forEach(r => {
         validIds.add(r.id);
