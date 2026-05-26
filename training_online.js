@@ -9729,7 +9729,14 @@ async function tobAiCall(messages, cfgOverride){
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + cfg.key },
     body: JSON.stringify(payload)
   });
-  if(!r.ok) throw new Error(prov + ' ' + r.status + ': ' + (await r.text()).slice(0,160));
+  if(!r.ok){
+    const bodyTxt = await r.text();
+    // Loguem el body sencer per debugging (400 de DeepSeek/OpenRouter sol
+    // venir amb un error JSON explicat — sense això no sabem què molesta).
+    console.warn('[IA call] ' + prov + ' ' + r.status + ' — body:');
+    console.warn('  ' + bodyTxt.slice(0, 800).replace(/\n/g, '\n  '));
+    throw new Error(prov + ' ' + r.status + ': ' + bodyTxt.slice(0, 220));
+  }
   const j = await r.json();
   return (((j.choices||[])[0]||{}).message||{}).content || '';
 }
@@ -10179,16 +10186,28 @@ async function tobMcGenerarIA(){
         }
       }
       if(!n){
-        // Diagnòstic per a la consola: tota la info que ajuda a entendre per què
-        // la IA no ha produït cap recepta vàlida. Cal mirar amb F12.
-        console.warn('[IA menú] aplicar() ha trobat 0 receptes vàlides', {
-          semanasEsperadas: semanas,
-          semanasConDatos,
-          idsDescartados: descartados,
-          claves: pj && typeof pj === 'object' ? Object.keys(pj) : null,
-          primeraSemana: dataSrc && dataSrc[0],
-          rawSample: String(raw || '').slice(0, 800)
-        });
+        // Diagnòstic per a Sergio — TOT escrit en línies separades a la consola
+        // perquè no calgui expandir objectes. Comprova-ho amb F12 → Console.
+        const claus = pj && typeof pj === 'object' ? Object.keys(pj) : [];
+        const prim = dataSrc && dataSrc[0];
+        const primTipo = Array.isArray(prim) ? 'array(' + prim.length + ')' : typeof prim;
+        const primMostra = JSON.stringify(prim).slice(0, 250);
+        const primDia = (Array.isArray(prim) ? prim[0] : null);
+        const idsCatRandom = Array.from(validIds).slice(0, 5);
+        console.warn('────────── [IA menú] DIAGNÒSTIC FALLAT ──────────');
+        console.warn('  ⚠ NO s\'ha trobat cap recepta vàlida al JSON de la IA');
+        console.warn('  · Setmanes esperades: ' + semanas);
+        console.warn('  · Setmanes amb dades: ' + semanasConDatos);
+        console.warn('  · IDs descartats (no estan al catàleg): ' + descartados);
+        console.warn('  · Claus del JSON rebut: [' + claus.join(', ') + ']');
+        console.warn('  · Tipus primera setmana: ' + primTipo);
+        console.warn('  · Mostra primera setmana: ' + primMostra);
+        if(primDia) console.warn('  · Primer dia (tipus ' + typeof primDia + '): ' + JSON.stringify(primDia).slice(0, 250));
+        console.warn('  · IDs catàleg vàlids (5 exemples): [' + idsCatRandom.join(', ') + ']');
+        console.warn('  · Total IDs vàlids al catàleg: ' + validIds.size);
+        console.warn('  · Raw IA (300 chars):');
+        console.warn('    ' + String(raw || '').slice(0, 300).replace(/\n/g, '\n    '));
+        console.warn('─────────────────────────────────────────────────');
       }
       // Bolcar ajustos emesos per la IA — només per a receptes que estan al menú
       // i amb factor dins del rang permès. Marquem fuente:'ia' per traçabilitat.
