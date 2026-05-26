@@ -262,7 +262,7 @@ function clearCredentials(){
 //     sumen MB i peten la quota de localStorage (~5 MB).
 //   · o són metadades de config que es gestionen amb fetchSection/updateSection.
 const NO_LOCAL_STORAGE_SECTIONS = new Set([
-  'tob_menus_catalog',   // training_online: viu a IndexedDB amb tobKvPut
+  'tob_menus_catalog',   // consulta (abans training_online): viu a IndexedDB amb tobKvPut
   '__fin',               // APIs financeres (es llegeixen via fetchSection)
   '__notif',             // config Telegram
   '__ia_config',         // config IA (clau API, model)

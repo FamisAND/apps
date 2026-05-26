@@ -6,7 +6,7 @@
 <meta name="description" content="BIIO + Mediciones — Full Training. Rutinas BIIO (plantillas, asignaciones, registro de kg/reps por microciclo) + Mediciones de composición corporal.">
 <title>BIIO + Mediciones — Full Training</title>
 <link rel="stylesheet" href="design-system.css">
-<link rel="stylesheet" href="training_online.css">
+<link rel="stylesheet" href="consulta.css">
 <link rel="manifest" href="manifest.json">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
@@ -59,7 +59,7 @@
     <button class="tob-btn" onclick="tobExport()" title="Descargar JSON con todos los datos">Export</button>
     <button class="tob-btn" onclick="document.getElementById('tobImportFile').click()" title="Cargar JSON exportado">Import</button>
     <input type="file" id="tobImportFile" accept=".json" style="display:none" onchange="tobImport(event)">
-    <button class="tob-btn" onclick="DashboardAuth.changePin('training_online','Training Online')" title="Cambiar el PIN de acceso">🔑 PIN</button>
+    <button class="tob-btn" onclick="DashboardAuth.changePin('training_online','Consulta')" title="Cambiar el PIN de acceso">🔑 PIN</button>
     <a href="index.html" class="tob-btn">← Menú</a>
   </div>
 </div>
@@ -1289,6 +1289,10 @@
 <script src="github-sync.js"></script>
 <script src="dashboard-auth.js"></script>
 <script>
+// NOTA: la sección interna sigue siendo 'training_online' a propósito —
+// el PIN está hasheado con ese nombre y los datos en GitHub viven bajo
+// esa clave. Renombrarlo aquí invalidaría tot l'històric. La UI mostra
+// "Consulta" però la sección interna queda igual per continuïtat.
 GitHubSync.attach({
   section: 'training_online',
   keys: ['tob_online_v2']
@@ -1296,8 +1300,8 @@ GitHubSync.attach({
 GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 // Gate de PIN — igual que el resto de dashboards. Tras pasarlo, se activa
 // el auto-push y la app arranca normal (tobLoad corre por su auto-init).
-DashboardAuth.gate({ section: 'training_online', title: 'Training Online' });
+DashboardAuth.gate({ section: 'training_online', title: 'Consulta' });
 </script>
-<script src="training_online.js"></script>
+<script src="consulta.js"></script>
 </body>
 </html>

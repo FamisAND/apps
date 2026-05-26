@@ -1,5 +1,11 @@
 /**
- * training_online.js — BIIO System (formato Full Training, 6 microciclos)
+ * consulta.js — BIIO System (formato Full Training, 6 microciclos)
+ *
+ * NOTA HISTÒRICA: el fitxer es deia training_online.js fins al 2026-05-26.
+ * Renombrat a "consulta" perquè és més precís (la secció ja no és només
+ * "training online"; ara inclou menús, mediciones, cuestionari, etc.).
+ * La clau interna `tob_online_v2` i la secció GitHub `training_online`
+ * NO han canviat — preserven el PIN i les dades existents.
  *
  * Modelo de datos en localStorage 'tob_online_v2':
  *
@@ -1856,7 +1862,7 @@ function tobExport(){
   const blob = new Blob([JSON.stringify(tobDB, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `training_online_${new Date().toISOString().slice(0,10)}.json`;
+  a.href = url; a.download = `consulta_${new Date().toISOString().slice(0,10)}.json`;
   a.click(); URL.revokeObjectURL(url);
   tobToast('✓ Exportado', 'green');
 }
