@@ -8152,16 +8152,51 @@ function tobMcRenderChecks(){
   const vetosDetectats = new Set();
   const descartadasUsadas = new Set();
   const esmorzarBajaProte = [];  // {sem, d, prot}
-  // Helper para detectar "mismo principal en dinar y sopar del mismo día"
-  // (regla de Sergio: si dinar = pollastre, sopar NO pollastre).
+  const proteRepetidaDia = [];   // {sem, d, fuente}  Mateix tipus de prote a dinar i sopar
+  const recordatoriIncomplet = []; // {sem, d, apat, chips missing}
+
+  // Keywords per detectar fonts de proteïna principals (per check "mateix tipus al dia")
+  const PROT_SOURCES = {
+    pollastre: ['pollastre','pollo','gall','aviram','pavo','gall dindi'],
+    vedella:   ['vedella','ternera','vaca','bou'],
+    porc:      ['porc','cerdo','llom','xulla'],
+    peix:      ['lluc','bacalla','tonyina','salmo','sardin','llenguad','peix','tonyin','dorada','llobarro'],
+    llegum:    ['llentia','cigro','garbanzo','mongeta','llegum'],
+    ous:       ['ou','truita','tortilla','huevo','revolt']
+  };
+  const detectFuente = (nombreRec) => {
+    const n = String(nombreRec||'').toLowerCase();
+    for(const [k, kws] of Object.entries(PROT_SOURCES)){
+      if(kws.some(w => n.includes(w))) return k;
+    }
+    return null;
+  };
+  // Chips del recordatori per a cada base d'àpat
+  const recChips = (q.recChips || {});
 
   for(let s = 0; s < semanas; s++){
     for(let d = 0; d < 7; d++){
       let kDia = 0, pDia = 0, tieneAlgo = false;
       const day = (tobMcState.data[s] || {})[d] || {};
       let protEsmorzar = 0;
+      const fuentePorApat = {};   // baseMid → set de fuentes
       tobMcState.comidasIds.forEach(mid => {
         const arr = day[mid] || [];
+        const baseMid = tobMcMealBase(mid);
+        // Recordatori: verificar que els chips del client apareixen al dia
+        const chips = recChips[baseMid] || [];
+        if(chips.length){
+          const arrNoms = arr.map(id => (recsById[id] && recsById[id].nombre) || '').join(' | ').toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g,'');
+          const missing = chips.filter(chip => {
+            const kws = TOB_REC_CHIP_KEYWORDS[_tobMcNormChip(chip)];
+            if(!kws || !kws.length) return false;  // chips abstractes (plat únic, etc.)
+            return !kws.some(kw => arrNoms.includes(kw));
+          });
+          if(missing.length){
+            recordatoriIncomplet.push({ s, d, apat: tobMcMealLabel(mid), missing });
+          }
+        }
         arr.forEach(recId => {
           const r = recsById[recId];
           if(!r) return;
@@ -8172,9 +8207,12 @@ function tobMcRenderChecks(){
           const rac = r.raciones || 1;
           kDia += m.kcal / rac;
           pDia += m.proteina / rac;
-          const baseMid = tobMcMealBase(mid);
-          if(baseMid === 'esmorzar'){
-            protEsmorzar += m.proteina / rac;
+          if(baseMid === 'esmorzar') protEsmorzar += m.proteina / rac;
+          // Detecta font de prote per a check "mateix tipus a dinar i sopar"
+          const f = detectFuente(r.nombre);
+          if(f && (baseMid === 'dinar' || baseMid === 'sopar')){
+            if(!fuentePorApat[baseMid]) fuentePorApat[baseMid] = new Set();
+            fuentePorApat[baseMid].add(f);
           }
           // Vetos: buscar en nombre de la receta y nombre de cada ingrediente
           if(vetos.length){
@@ -8190,6 +8228,14 @@ function tobMcRenderChecks(){
       });
       if(!tieneAlgo) continue;
       kcalTot += kDia; protTot += pDia; diasContados++;
+
+      // Check: mateix tipus de prote a dinar i sopar del mateix dia (regla Sergio)
+      const dinarF = fuentePorApat.dinar;
+      const soparF = fuentePorApat.sopar;
+      if(dinarF && soparF){
+        const both = [...dinarF].filter(f => soparF.has(f));
+        if(both.length) proteRepetidaDia.push({ s, d, fuente: both[0] });
+      }
 
       const problemas = [];
       const tolKcal = kcalObj * margen / 100;
@@ -8237,6 +8283,24 @@ function tobMcRenderChecks(){
   if(repetidos.length){
     alertasHtml += '<div class="tob-mc-check-alert info"><b>Plats repetits:</b> ' +
       repetidos.map(r => tobEsc(r.nombre) + ' (×' + r.n + ')').join(' · ') + '</div>';
+  }
+  if(proteRepetidaDia.length){
+    alertasHtml += '<div class="tob-mc-check-alert warn"><b>Mateixa font de prote a dinar i sopar:</b> ' +
+      proteRepetidaDia.map(p => 'Set ' + (p.s+1) + '·' + DIAS[p.d] + ' (' + p.fuente + ')').join(' · ') + '</div>';
+  }
+  if(recordatoriIncomplet.length){
+    // Agrupar per àpat per a no fer una llista enorme
+    const porApat = {};
+    recordatoriIncomplet.forEach(x => {
+      const key = x.apat + ' — manca ' + x.missing.join(', ');
+      if(!porApat[key]) porApat[key] = [];
+      porApat[key].push('Set ' + (x.s+1) + '·' + DIAS[x.d]);
+    });
+    const lines = Object.entries(porApat).slice(0, 6).map(([k, dies]) =>
+      '<div>· <b>' + k + '</b>: ' + dies.join(', ') + (dies.length>=7?' (totes)':'') + '</div>'
+    );
+    const totalIncomplets = Object.values(porApat).reduce((a,b) => a + b.length, 0);
+    alertasHtml += '<div class="tob-mc-check-alert warn"><b>Recordatori del client no respectat (' + totalIncomplets + ' casos):</b>' + lines.join('') + '</div>';
   }
   if(vetosDetectats.size){
     alertasHtml += '<div class="tob-mc-check-alert bad"><b>⚠ Aliments vetats al menú:</b> ' +
