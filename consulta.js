@@ -3255,14 +3255,19 @@ function tobOpenMedicionModal(medId){
   // los valores ya están en los inputs.
   const showPrev = !med;
   const refMed = showPrev ? lastMed : null;
-  document.getElementById('tobMedPlecsRow').innerHTML = TOB_MED_PLECS.map(([k,label]) => {
+  const _L_modal = tobLangOf(cli);
+  document.getElementById('tobMedPlecsRow').innerHTML = TOB_MED_PLECS.map(def => {
+    const [k] = def;
+    const label = tobMedLabel(def, _L_modal);
     const prev = refMed?.plecs?.[k];
     const hint = (prev != null)
       ? `<div class="tob-med-prev" onclick="tobMedFillPrev('tobMedPlec_${k}',${prev})" title="Clic para usar el valor de la medición anterior (${refMed.fecha})">ant: <b>${prev}</b> mm</div>`
       : '';
     return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPlec_${k}" value="${med?.plecs?.[k] ?? ''}" placeholder="mm">${hint}</div>`;
   }).join('');
-  document.getElementById('tobMedPerimRow').innerHTML = TOB_MED_PERIM.map(([k,label]) => {
+  document.getElementById('tobMedPerimRow').innerHTML = TOB_MED_PERIM.map(def => {
+    const [k] = def;
+    const label = tobMedLabel(def, _L_modal);
     const prev = refMed?.perimetres?.[k];
     const hint = (prev != null)
       ? `<div class="tob-med-prev" onclick="tobMedFillPrev('tobMedPerim_${k}',${prev})" title="Clic para usar el valor de la medición anterior (${refMed.fecha})">ant: <b>${prev}</b> cm</div>`
@@ -3399,10 +3404,10 @@ function tobRenderMedCmp(){
       ${row('Peso', A.pes, B.pes, 'kg')}
       ${row('Estatura', A.estatura, B.estatura, 'cm')}
       ${sectionRow('Pliegues (mm)')}
-      ${TOB_MED_PLECS.map(([k,l]) => row(l, A.plecs?.[k], B.plecs?.[k], 'mm', 1, true)).join('')}
+      ${TOB_MED_PLECS.map(def => row(tobMedLabel(def, tobLangOf(cli)), A.plecs?.[def[0]], B.plecs?.[def[0]], 'mm', 1, true)).join('')}
       <tr class="total">${row('Σ 6 Pliegues', sumA, sumB, 'mm').replace(/<tr[^>]*>/,'').replace(/<\/tr>/,'')}</tr>
       ${sectionRow('Perímetros (cm)')}
-      ${TOB_MED_PERIM.map(([k,l]) => row(l, A.perimetres?.[k], B.perimetres?.[k], 'cm', 1, true)).join('')}
+      ${TOB_MED_PERIM.map(def => row(tobMedLabel(def, tobLangOf(cli)), A.perimetres?.[def[0]], B.perimetres?.[def[0]], 'cm', 1, true)).join('')}
       ${sectionRow('Ratios')}
       ${row('Cintura / Cadera', rA.cinturaCadera, rB.cinturaCadera, '', 2)}
       ${row('Pliegues / Peso', rA.plecsPes, rB.plecsPes, '', 2)}
@@ -3524,10 +3529,11 @@ function tobBuildMedChartConfigs(cli, forPdf){
   cfgs.cc      = lineChart('Cintura/Cadera',  meds.map(m => { const r = tobMedRatios(m).cinturaCadera; return r != null ? +r.toFixed(3) : null; }), '#3fb68b');
   cfgs.pp      = lineChart('Pliegues/Peso',   meds.map(m => { const r = tobMedRatios(m).plecsPes; return r != null ? +r.toFixed(3) : null; }), '#a78bfa');
 
+  const _L_chart = tobLangOf(cli);
   cfgs.perim = {
     type: 'bar',
     data: {
-      labels: TOB_MED_PERIM.map(([,l]) => l),
+      labels: TOB_MED_PERIM.map(def => tobMedLabel(def, _L_chart)),
       datasets: [
         { label: 'Inicio · ' + (first.fecha||''), data: TOB_MED_PERIM.map(([k]) => first.perimetres?.[k] ?? null),
           backgroundColor: (forPdf ? '#d8d2c0' : '#4a443666'), borderColor: '#8a7f6a', borderWidth: 1, borderRadius: 4, borderSkipped: false },
@@ -3558,7 +3564,7 @@ function tobBuildMedChartConfigs(cli, forPdf){
   cfgs.radar = {
     type: 'radar',
     data: {
-      labels: TOB_MED_PLECS.map(([,l]) => l),
+      labels: TOB_MED_PLECS.map(def => tobMedLabel(def, _L_chart)),
       datasets: [
         { label: 'Inicio · ' + (first.fecha||''), data: TOB_MED_PLECS.map(([k]) => first.plecs?.[k] ?? null),
           borderColor: '#8a7f6a', backgroundColor: (forPdf ? 'rgba(138,127,106,.15)' : 'rgba(138,127,106,.22)'),
