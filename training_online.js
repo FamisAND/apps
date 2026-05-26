@@ -9589,19 +9589,30 @@ function tobAiRenderFallbackList(){
   const cfg = tobAiGetCfg();
   const order = _tobAiNormalizedOrder(cfg);
   const keys = cfg.keys || {};
-  // Separar: amb clau (participen al fallback) vs sense clau (al final, gris)
-  const withKey = order.filter(p => keys[p]);
-  const noKey   = order.filter(p => !keys[p]);
+  const disabled = new Set(Array.isArray(cfg.disabled) ? cfg.disabled : []);
+  // Separar: amb clau ACTIUS (participen) | amb clau DESACTIVATS | sense clau
+  const active   = order.filter(p => keys[p] && !disabled.has(p));
+  const inactive = order.filter(p => keys[p] && disabled.has(p));
+  const noKey    = order.filter(p => !keys[p]);
   const rows = [];
-  withKey.forEach((p, ix) => {
+  active.forEach((p, ix) => {
     const isFirst = ix === 0;
-    const isLast  = ix === withKey.length - 1;
+    const isLast  = ix === active.length - 1;
     rows.push(`<div class="tob-ai-fb-row" data-prov="${p}">
       <span class="fb-pos">${ix + 1}</span>
       <span class="fb-nm">${tobEsc(TOB_AI_PROVIDER_LBL[p])}</span>
-      <span class="fb-tag ok">✓ amb clau</span>
+      <span class="fb-tag ok">✓ actiu</span>
+      <button type="button" class="tob-action ghost btn-xs" onclick="tobAiFallbackToggleEnabled('${p}')" title="Desactivar (mantenir la clau però no participar al fallback)">⏻ Desactivar</button>
       <button type="button" class="tob-action ghost btn-xs" onclick="tobAiFallbackMove('${p}', -1)" ${isFirst?'disabled':''} title="Pujar">↑</button>
       <button type="button" class="tob-action ghost btn-xs" onclick="tobAiFallbackMove('${p}', 1)" ${isLast?'disabled':''} title="Baixar">↓</button>
+    </div>`);
+  });
+  inactive.forEach(p => {
+    rows.push(`<div class="tob-ai-fb-row off" data-prov="${p}">
+      <span class="fb-pos">—</span>
+      <span class="fb-nm">${tobEsc(TOB_AI_PROVIDER_LBL[p])}</span>
+      <span class="fb-tag off">⏻ desactivat (clau guardada)</span>
+      <button type="button" class="tob-action ghost btn-xs" onclick="tobAiFallbackToggleEnabled('${p}')" title="Reactivar">▶ Activar</button>
     </div>`);
   });
   noKey.forEach(p => {
@@ -9611,25 +9622,37 @@ function tobAiRenderFallbackList(){
       <span class="fb-tag off">sense clau — no participa</span>
     </div>`);
   });
-  if(!withKey.length){
+  if(!active.length && !inactive.length){
     rows.unshift('<div class="tob-ai-fb-empty">Configura una clau primer (canvia el dropdown de Proveïdor i pega la clau).</div>');
   }
   cont.innerHTML = rows.join('');
+}
+function tobAiFallbackToggleEnabled(prov){
+  const cfg = tobAiGetCfg();
+  const disabled = Array.isArray(cfg.disabled) ? cfg.disabled.slice() : [];
+  const ix = disabled.indexOf(prov);
+  if(ix >= 0) disabled.splice(ix, 1);   // re-activar
+  else disabled.push(prov);              // desactivar
+  cfg.disabled = disabled;
+  tobAiSaveCfg(cfg);
+  tobAiRenderFallbackList();
 }
 function tobAiFallbackMove(prov, delta){
   const cfg = tobAiGetCfg();
   const order = _tobAiNormalizedOrder(cfg);
   const keys = cfg.keys || {};
-  // Reordena només dins dels que tenen clau (la resta queden separats després)
-  const withKey = order.filter(p => keys[p]);
-  const ix = withKey.indexOf(prov);
+  const disabled = new Set(Array.isArray(cfg.disabled) ? cfg.disabled : []);
+  // Reordena només dins dels que tenen clau I estan ACTIUS.
+  const active = order.filter(p => keys[p] && !disabled.has(p));
+  const ix = active.indexOf(prov);
   if(ix < 0) return;
   const ni = ix + delta;
-  if(ni < 0 || ni >= withKey.length) return;
-  const tmp = withKey[ix]; withKey[ix] = withKey[ni]; withKey[ni] = tmp;
-  // Reconstruim l'ordre total: primer withKey en el nou ordre, després noKey original
-  const noKey = order.filter(p => !keys[p]);
-  cfg.fallbackOrder = withKey.concat(noKey);
+  if(ni < 0 || ni >= active.length) return;
+  const tmp = active[ix]; active[ix] = active[ni]; active[ni] = tmp;
+  // Reconstruim l'ordre total: primer active en el nou ordre, després inactius i sense clau
+  const inactive = order.filter(p => keys[p] && disabled.has(p));
+  const noKey    = order.filter(p => !keys[p]);
+  cfg.fallbackOrder = active.concat(inactive).concat(noKey);
   tobAiSaveCfg(cfg);
   tobAiRenderFallbackList();
 }
@@ -9686,6 +9709,8 @@ function tobAiSaveConfigFromModal(){
     maxPasadas,
     // Preservar l'ordre de fallback configurat per l'usuari
     fallbackOrder: existing.fallbackOrder || _tobAiNormalizedOrder(existing),
+    // Preservar la llista de proveïdors desactivats
+    disabled: Array.isArray(existing.disabled) ? existing.disabled : [],
     // Legacy compat (poblats des del provider actiu)
     key:   newKey,
     model: newModel
@@ -9806,9 +9831,15 @@ async function tobAiCall(messages, cfgOverride){
 // també passen al següent — si no hi ha alternativa, l'usuari veurà l'error.
 async function tobAiCallWithFallback(messages){
   const cfg = tobAiGetCfg();
-  const order = _tobAiNormalizedOrder(cfg).filter(p => (cfg.keys||{})[p]);
+  const disabled = new Set(Array.isArray(cfg.disabled) ? cfg.disabled : []);
+  // Només proveïdors amb clau I activats participen al fallback
+  const order = _tobAiNormalizedOrder(cfg).filter(p => (cfg.keys||{})[p] && !disabled.has(p));
   if(!order.length){
-    throw new Error('No tens cap clau d\'IA configurada. Obre ⚙ IA i pega una clau a algun proveïdor.');
+    const totDisabled = (cfg.disabled||[]).filter(p => (cfg.keys||{})[p]).length;
+    const hint = totDisabled > 0
+      ? 'Tens ' + totDisabled + ' proveïdor(s) desactivat(s). Obre ⚙ IA i prem "▶ Activar" en algun.'
+      : 'Obre ⚙ IA i pega una clau a algun proveïdor.';
+    throw new Error('No hi ha cap proveïdor d\'IA actiu. ' + hint);
   }
   // Errors que justifiquen passar al següent proveïdor.
   // 400 = Bad Request (típic quan el payload no és vàlid per a aquest proveïdor —

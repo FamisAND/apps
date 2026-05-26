@@ -776,6 +776,10 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
   font-size:.78rem;
 }
 .tob-ai-fb-row.disabled{opacity:.5;}
+/* Desactivat per l'usuari (tot i tenir clau) — opacitat mitjana, borde dashed */
+.tob-ai-fb-row.off{
+  opacity:.75;border-style:dashed;background:rgba(140,140,140,.06);
+}
 .tob-ai-fb-row .fb-pos{
   font-family:'DM Mono',monospace;font-weight:700;color:var(--acc);
   min-width:18px;text-align:center;font-size:.75rem;
