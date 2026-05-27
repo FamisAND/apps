@@ -1929,6 +1929,29 @@ function tobRunPasteImport(){
     return;
   }
 
+  // ── Meta del cliente (nacimiento / edad / sexo) ──
+  // sexo acepta 'H'/'M'/'U' o strings comunes (Hombre/Home, Mujer/Dona, etc.)
+  const metaUpdates = [];
+  if(data.nacimiento && /^\d{4}-\d{2}-\d{2}$/.test(data.nacimiento)){
+    cli.nacimiento = data.nacimiento;
+    delete cli.edad; delete cli.edadFecha;
+    metaUpdates.push('nacimiento ' + data.nacimiento);
+  } else if(data.edad != null && data.edadFecha){
+    cli.edad = +data.edad;
+    cli.edadFecha = data.edadFecha;
+    delete cli.nacimiento;
+    metaUpdates.push('edad ' + data.edad);
+  }
+  if(data.sexo){
+    const s = String(data.sexo).toLowerCase().trim();
+    let sx = null;
+    if(/^h$|hombre|home|man|male|masc/.test(s)) sx = 'H';
+    else if(/^m$|mujer|dona|woman|female|fem/.test(s)) sx = 'M';
+    else if(/^u$|unisex|unknown/.test(s)) sx = 'U';
+    if(sx){ cli.sexo = sx; metaUpdates.push('sexo ' + sx); }
+  }
+  if(data.estatura){ cli.estatura = +data.estatura; metaUpdates.push('estatura ' + data.estatura); }
+
   // ── Mediciones (skip duplicados por fecha) ──
   const medsIn = Array.isArray(data.mediciones) ? data.mediciones : [];
   if(!cli.mediciones) cli.mediciones = [];
@@ -1954,20 +1977,19 @@ function tobRunPasteImport(){
     asigsResolved.push({ai, pl, ids});
   }
 
-  if(!medsToAdd.length && !asigsResolved.length){
-    info.innerHTML = 'Nada que importar (todas las mediciones duplicadas y/o sin asignaciones válidas).'
+  if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length){
+    info.innerHTML = 'Nada que importar.'
       + (asigsErrors.length ? '<br>'+asigsErrors.join('<br>') : '');
     info.style.color = 'var(--amber)';
     return;
   }
 
   // Resumen + confirmación
-  const summary = [
-    'Cliente: ' + cli.nombre,
-    medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''),
-    asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : '')
-  ].join('\n');
-  if(!confirm('¿Importar lo siguiente?\n\n' + summary)) return;
+  const summaryLines = ['Cliente: ' + cli.nombre];
+  if(metaUpdates.length) summaryLines.push('Meta: ' + metaUpdates.join(', '));
+  if(medsIn.length) summaryLines.push(medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''));
+  if(asigsIn.length) summaryLines.push(asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : ''));
+  if(!confirm('¿Importar lo siguiente?\n\n' + summaryLines.join('\n'))) return;
 
   // Aplicar mediciones
   for(const m of medsToAdd){
@@ -2012,7 +2034,11 @@ function tobRunPasteImport(){
   tobClosePasteImport();
   if(typeof tobRenderClientes === 'function') tobRenderClientes();
   if(typeof tobRenderFicha === 'function' && tobCurrentFichaId === cli.id) tobRenderFicha();
-  tobToast('✓ ' + cli.nombre + ': ' + medsToAdd.length + ' mediciones + ' + asigsResolved.length + ' asignaciones', 'green');
+  const toastParts = [];
+  if(metaUpdates.length) toastParts.push(metaUpdates.length + ' meta');
+  if(medsToAdd.length) toastParts.push(medsToAdd.length + ' med');
+  if(asigsResolved.length) toastParts.push(asigsResolved.length + ' rutinas');
+  tobToast('✓ ' + cli.nombre + ': ' + toastParts.join(' · '), 'green');
 }
 
 // ═══ CONFIRM ═══
