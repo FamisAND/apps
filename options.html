@@ -4007,13 +4007,29 @@ function buildActCard(a, idx, today){
   const tpAlertOn = tpPct!=null && tpPct >= tpTarget;
   if(tpAlertOn) cardClass += ' act-tp-alert';
 
-  // Temporal efficiency
-  const primaCap = (pCur!=null&&pc>0) ? Math.min(100,Math.max(-100,(1-pCur/pc)*100)) : null;
-  const effOk = (primaCap!=null&&timeElapsed!=null) ? primaCap>timeElapsed : null;
+  // Temporal efficiency (ET)
+  // ── prima capturada ── Para spreads usamos el crédito NETO (pc-pd).
+  // Para shorts puros (NP/CC), pd=0 → misma fórmula.
+  const _netCred = pc - pd;
+  const primaCap = (pCur!=null && _netCred>0)
+    ? Math.min(100, Math.max(-100, (_netCred - pCur) / _netCred * 100))
+    : null;
+  // ET = primaCap − timeElapsed. Positivo = capturas más rápido que pasa el tiempo.
+  const etVal = (primaCap!=null && timeElapsed!=null) ? (primaCap - timeElapsed) : null;
+  const etInfo = (() => {
+    if(etVal == null) return { color:'#5a7a9a', word:'—', icon:'·' };
+    if(etVal >= 20)  return { color:'#3fb68b', word:'ÓPTIMO',    icon:'✓' };
+    if(etVal >= 0)   return { color:'#7fc9a6', word:'EN RITMO',  icon:'•' };
+    if(etVal >= -15) return { color:'#f0a500', word:'LENTO',     icon:'⏳' };
+    if(etVal >= -30) return { color:'#e69138', word:'RETRASADO', icon:'⚠' };
+    return                  { color:'#f04545', word:'PERDIENDO', icon:'⛔' };
+  })();
   const effStr = (primaCap!=null&&timeElapsed!=null)
-    ? `${primaCap.toFixed(0)}% prima / ${timeElapsed.toFixed(0)}% tiempo`
+    ? `${primaCap>=0?'+':''}${primaCap.toFixed(0)}% prima / ${timeElapsed.toFixed(0)}% tiempo`
     : '—';
-  const effColor = effOk===true ? '#3fb68b' : effOk===false ? '#f04545' : '#5a7a9a';
+  // Mantenido para legacy refs si algún sitio aún lo usa
+  const effOk = (etVal != null) ? etVal > 0 : null;
+  const effColor = etInfo.color;
 
   // Distance to strike
   let distStr='—';
@@ -4116,20 +4132,35 @@ function buildActCard(a, idx, today){
       ${(()=>{ const _mr = a.maxRisk||0; const _prof = (_mr>0 && _combinedPnl!=null) ? (_combinedPnl*100/_mr*100) : null; const _pc = _prof!=null?(_prof>=30?'green':_prof>=0?'amber':'red'):''; return `<div class="act-kv"><span class="act-k">Profit/Risk ID</span><span class="act-v ${_pc}">${_prof!=null?(_prof>=0?'+':'')+_prof.toFixed(1)+'%':'—'}</span></div>`; })()}
     </div>
 
-    <!-- Temporal efficiency bar -->
-    <div style="margin-bottom:4px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-        <span style="font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;text-transform:uppercase">Eficiencia temporal</span>
-        <span style="font-family:'Courier New',monospace;font-size:8px;color:${effColor}">${effStr}${effOk===true?' ← óptimo':''}</span>
+    <!-- Temporal efficiency — rediseñado para tomar decisiones rápido -->
+    <div class="act-et-block">
+      <div class="act-et-header">
+        <span class="act-et-lbl">Eficiencia temporal</span>
+        ${etVal!=null ? `<div class="act-et-pill" style="border-color:${etInfo.color}33;background:${etInfo.color}11;color:${etInfo.color}">
+          <span class="act-et-icon">${etInfo.icon}</span>
+          <span class="act-et-val">ET ${etVal>=0?'+':''}${etVal.toFixed(0)}</span>
+          <span class="act-et-word">${etInfo.word}</span>
+        </div>` : `<span style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a">—</span>`}
       </div>
-      <div class="act-eff-bar">
-        <div class="act-eff-time" style="width:${timeElapsed!=null?timeElapsed.toFixed(1):0}%"></div>
-        <div class="act-eff-pnl"  style="width:${primaCap!=null?Math.max(0,primaCap).toFixed(1):0}%;opacity:0.7"></div>
+      ${(timeElapsed!=null && primaCap!=null) ? `
+      <div class="act-et-rows">
+        <span class="act-et-tag">⏱ Tiempo</span>
+        <div class="act-et-track">
+          <div class="act-et-fill-time" style="width:${timeElapsed.toFixed(1)}%"></div>
+        </div>
+        <span class="act-et-num">${timeElapsed.toFixed(0)}%</span>
+
+        <span class="act-et-tag">💰 Prima</span>
+        <div class="act-et-track act-et-track-bi" title="0% en el centro. Verde a la derecha = prima capturada. Rojo a la izquierda = prima perdida.">
+          <div class="act-et-zero"></div>
+          ${primaCap >= 0
+            ? `<div class="act-et-fill-prima-pos" style="left:50%;width:${(primaCap/2).toFixed(1)}%"></div>`
+            : `<div class="act-et-fill-prima-neg" style="left:${(50 - Math.abs(primaCap)/2).toFixed(1)}%;width:${(Math.abs(primaCap)/2).toFixed(1)}%"></div>`
+          }
+        </div>
+        <span class="act-et-num ${primaCap>=0?'pos':'neg'}">${primaCap>=0?'+':''}${primaCap.toFixed(0)}%</span>
       </div>
-      <div style="display:flex;justify-content:space-between;font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;margin-top:2px">
-        <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:3px;background:#2a4a6a;display:inline-block;border-radius:1px"></span>Tiempo</span>
-        <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:3px;background:#4a9eff;display:inline-block;border-radius:1px;opacity:.7"></span>Prima cap.</span>
-      </div>
+      ` : ''}
     </div>
     `}
 

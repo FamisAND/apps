@@ -340,9 +340,39 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 .act-v.green{color:#3fb68b}
 .act-v.red{color:#f04545}
 .act-v.amber{color:#f0a500}
+/* Legacy: por si quedan refs */
 .act-eff-bar{height:4px;border-radius:2px;background:#1e2d3d;margin-top:6px;margin-bottom:10px;position:relative;overflow:hidden}
 .act-eff-time{position:absolute;height:100%;background:#2a4a6a;border-radius:2px;transition:width .3s}
 .act-eff-pnl{position:absolute;height:100%;background:#4a9eff;border-radius:2px;transition:width .3s}
+
+/* ── NUEVO: Bloque ET (Eficiencia Temporal) ──────────────────────────
+   Una mirada y sabes:
+   · qué % de tiempo ha pasado (barra superior, neutra)
+   · cuánto has capturado de prima (barra inferior, 0% en el centro:
+     verde a la dcha = ganancia, rojo a la izda = pérdida)
+   · el ET (delta) en un pill grande con color + palabra de estado */
+.act-et-block{margin:8px 0 6px;padding:8px 10px;background:#070b10;border:1px solid #1e2d3d;border-radius:4px}
+.act-et-header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.act-et-lbl{font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px}
+.act-et-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px solid;border-radius:3px;font-family:'Courier New',monospace;font-size:9px;letter-spacing:.5px;font-weight:700;text-transform:uppercase}
+.act-et-icon{font-size:10px}
+.act-et-val{font-size:10px}
+.act-et-word{font-size:8px;opacity:.85}
+
+.act-et-rows{display:grid;grid-template-columns:auto 1fr auto;column-gap:8px;row-gap:5px;align-items:center}
+.act-et-tag{font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;letter-spacing:.3px;white-space:nowrap}
+.act-et-track{position:relative;height:6px;background:#0a0e14;border:1px solid #1a2530;border-radius:3px;overflow:hidden}
+.act-et-fill-time{position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,#2a4a6a,#4a7aaa);transition:width .3s;border-radius:2px}
+
+/* Pista bidireccional para prima: marca 0% en el centro */
+.act-et-track-bi{position:relative}
+.act-et-zero{position:absolute;left:50%;top:-1px;bottom:-1px;width:1px;background:#3a5468;z-index:2}
+.act-et-fill-prima-pos{position:absolute;top:0;height:100%;background:linear-gradient(90deg,#2a6a4a,#3fb68b);transition:width .3s,left .3s;border-radius:0 2px 2px 0}
+.act-et-fill-prima-neg{position:absolute;top:0;height:100%;background:linear-gradient(90deg,#f04545,#a02530);transition:width .3s,left .3s;border-radius:2px 0 0 2px}
+
+.act-et-num{font-family:'Courier New',monospace;font-size:9px;color:#9aa9ba;font-weight:700;min-width:38px;text-align:right}
+.act-et-num.pos{color:#3fb68b}
+.act-et-num.neg{color:#f04545}
 .act-price-input{background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:3px 7px;border-radius:3px;outline:none;width:70px;text-align:right}
 .act-price-input:focus{border-color:#4a9eff}
 .act-btns{display:flex;gap:6px;margin-top:10px}
