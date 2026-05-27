@@ -2265,7 +2265,13 @@ function renderHist(){
           <td class="c-muted">${e.cierre||'—'}</td>
           <td>${e.dteIni!=null?e.dteIni+'d':'—'}</td>
           <td>${e.tiempoOp!=null?e.tiempoOp+'d':'—'}</td>
-          <td class="${e.et!=null?(e.et>0?'c-green':e.et<-20?'c-red':'c-amber'):''}" title="${e.et!=null?'TP '+e.tp.toFixed(0)+'% − tiempo '+e.timePct.toFixed(0)+'%':''}">${e.et!=null?(e.et>0?'+':'')+e.et.toFixed(0):'—'}</td>
+          ${(()=>{
+            if(e.et==null) return '<td>—</td>';
+            const et = e.et;
+            const ic = et>=20?'✓':et>=0?'•':et>=-15?'⏳':et>=-30?'⚠':'⛔';
+            const cls = et>=0?'c-green':et>=-15?'c-amber':'c-red';
+            return `<td class="${cls}" title="TP ${e.tp.toFixed(0)}% − tiempo ${e.timePct.toFixed(0)}% = ET ${et.toFixed(0)}">${ic} ${et>=0?'+':''}${et.toFixed(0)}</td>`;
+          })()}
           <td class="c-amber">${mrVal}</td>
           <td class="c-muted">${e.delta!=null?e.delta:'—'}</td>
           <td class="c-muted">${e.iv!=null?e.iv+'%':'—'}</td>
@@ -2301,7 +2307,13 @@ function renderHist(){
       <td class="c-muted">${fmtD(e.cierre)}</td>
       <td>${e.dteIni!=null?e.dteIni+'d':'—'}</td>
       <td>${e.tiempoOp!=null?e.tiempoOp+'d':'—'}</td>
-      <td class="${e.et!=null?(e.et>0?'c-green':e.et<-20?'c-red':'c-amber'):''}" title="${e.et!=null?'TP '+e.tp.toFixed(0)+'% − tiempo '+e.timePct.toFixed(0)+'%':''}">${e.et!=null?(e.et>0?'+':'')+e.et.toFixed(0):'—'}</td>
+      ${(()=>{
+        if(e.et==null) return '<td>—</td>';
+        const et = e.et;
+        const ic = et>=20?'✓':et>=0?'•':et>=-15?'⏳':et>=-30?'⚠':'⛔';
+        const cls = et>=0?'c-green':et>=-15?'c-amber':'c-red';
+        return `<td class="${cls}" title="TP ${e.tp.toFixed(0)}% − tiempo ${e.timePct.toFixed(0)}% = ET ${et.toFixed(0)}">${ic} ${et>=0?'+':''}${et.toFixed(0)}</td>`;
+      })()}
       <td class="c-amber">${e.maxRisk?'$'+(e.maxRisk*(e.contracts||1)).toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</td>
       <td class="c-muted">${fmtN(e.delta)}</td>
       <td class="c-muted">${e.iv?e.iv+'%':'—'}</td>
