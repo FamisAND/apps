@@ -1998,14 +1998,12 @@ function tobRunPasteImport(){
   cli.mediciones.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
 
   // Aplicar asignaciones
+  // Soporta dos formatos:
+  //   · Simple:  { plantilla, fechaInicio, notas, sesiones: {1:{A,B},...} }       → 1 iteración
+  //   · Extenso: { plantilla, fechaInicio, notas, iteraciones: [ {numero, fechaInicio?, sesiones}, ... ] }
   if(!cli.asignaciones) cli.asignaciones = [];
-  for(const {ai, pl, ids} of asigsResolved){
-    const asig = tobCreateAsignacion(pl.id);
-    if(ai.fechaInicio) asig.fechaInicio = ai.fechaInicio;
-    if(ai.notas) asig.notas = ai.notas;
-    const it = asig.iteraciones[0];
-    const sesionesIn = ai.sesiones || {};
-    for(const mn of Object.keys(sesionesIn)){
+  const _fillIt = (it, sesionesIn, ids) => {
+    for(const mn of Object.keys(sesionesIn || {})){
       const microNum = parseInt(mn, 10);
       if(!microNum) continue;
       const entrenosIn = sesionesIn[mn] || {};
@@ -2015,7 +2013,6 @@ function tobRunPasteImport(){
         const ejs = {};
         const ejsIn = ses.ejs || {};
         for(const ejNombre of Object.keys(ejsIn)){
-          // Resolver id: probamos letra:nombre primero, luego solo nombre
           const ejId = ids[letra + ':' + ejNombre] || ids[ejNombre];
           if(!ejId){ console.warn('[paste-import] ejercicio no mapeado:', letra, ejNombre); continue; }
           ejs[ejId] = ejsIn[ejNombre];
@@ -2027,6 +2024,20 @@ function tobRunPasteImport(){
         };
       }
     }
+  };
+  for(const {ai, pl, ids} of asigsResolved){
+    const asig = tobCreateAsignacion(pl.id);
+    if(ai.fechaInicio) asig.fechaInicio = ai.fechaInicio;
+    if(ai.notas) asig.notas = ai.notas;
+    const itsIn = Array.isArray(ai.iteraciones)
+      ? ai.iteraciones
+      : [{ numero: 1, sesiones: ai.sesiones || {} }];
+    asig.iteraciones = [];
+    itsIn.forEach((itIn, i) => {
+      const it = { id: tobUid('it'), numero: itIn.numero || (i+1), sesiones: {} };
+      _fillIt(it, itIn.sesiones, ids);
+      asig.iteraciones.push(it);
+    });
     cli.asignaciones.push(asig);
   }
 
