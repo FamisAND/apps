@@ -4279,11 +4279,30 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   }
 
   // ─── PÁGINAS DETALLE POR ENTRENO (con FORM FIELDS editables) ───
+  // ── Layout COMPACTADO 2026-05 ──
+  // Objetivo: TODO un entreno (3-5 ejercicios + circuito) cabe en 1 sola página
+  // landscape sin saltar de hoja. Alturas reducidas y márgenes ajustados:
+  //   · header pág arriba: 70 (antes 90)
+  //   · fila ejercicio (rect negro): 20 (antes 24)
+  //   · fila plan ámbar: 13 (antes 16)
+  //   · cabecera Kg/Reps: 9 (antes 10)
+  //   · fila de serie: 14 (antes 16)
+  //   · descanso: 14 (antes 18)
+  //   · separador entre ejercicios: 2 (antes 4)
+  // Si aún no cabe (entrenos con 6+ ejercicios) se mantiene la lógica de
+  // página adicional al final.
+  const ROW_H        = 14;  // altura fila de serie
+  const EJ_HEADER_H  = 20;  // altura banda negra con nombre ejercicio
+  const PLAN_ROW_H   = 13;  // altura banda ámbar con plan
+  const KG_REP_HDR_H = 9;   // altura cabecera Kg/Reps
+  const DESC_H       = 14;  // altura fila descanso
+  const SEP_H        = 2;   // espacio entre ejercicios
+
   (a.rutina?.entrenos||[]).forEach(en => {
     page = doc.addPage([W_L, H_L]);
     const sufijo = (en.nombre && en.nombre !== ('Entreno '+en.letra)) ? ' — ' + en.nombre : '';
     drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento', L, { letra: en.letra, sufijo }), rutinaShort, W_L, H_L);
-    let y = H_L - 90;
+    let y = H_L - 70;
 
     const _N = tobNumMicroOf(a?.rutina);
     const microHeaders = Array.from({length: _N}, (_,i)=>i+1);
@@ -4300,9 +4319,9 @@ async function tobBuildPdfRutina(cli, a, pl, it){
       const ses = it?.sesiones[mn]?.[en.id];
       const tf = form.createTextField(`fecha_${en.id}_${mn}`);
       if(ses?.fecha) tf.setText(ses.fecha);
-      tf.addToPage(page, { x: cellX, y: y-4, width: colW-4, height: 16, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
+      tf.addToPage(page, { x: cellX, y: y-4, width: colW-4, height: 14, borderColor: rgb(0.7,0.7,0.7), borderWidth: 0.5 });
     });
-    y -= 24;
+    y -= 20;
 
     // Fila Microciclo — ordinal sensible al idioma:
     //   CA masc. → 1r, 2n, 3r, 4t, 5è, 6è, 7è
@@ -4328,7 +4347,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
       const cellX = startX + i*colW;
       page.drawText(microOrdinal(mn), { x: cellX+5, y, size: 11, font: fontB, color: ORANGE });
     });
-    y -= 16;
+    y -= 14;
 
     // Líneas separadoras verticales entre microciclos
     const drawVertSeparators = (yTop, yBottom) => {
@@ -4348,43 +4367,37 @@ async function tobBuildPdfRutina(cli, a, pl, it){
     (en.ejercicios||[]).sort((x,y)=>(x.orden||0)-(y.orden||0)).forEach(ej => {
       // Calcular alto aproximado del bloque (header + plan + kg/reps + N filas + descanso + separador)
       // para saber si cabe entero en la página actual; si no, salto a una nueva.
+      // Usa las nuevas constantes compactas definidas arriba.
       const _maxS = Math.max(...microHeaders.map(mn => tobPlanFor(ej, mn).series || 1));
       const _linesN = ej.tipo === 'circuito'
         ? (ej.circuitoLineas?.length || 3)
         : Math.max(1, _maxS);
-      const _blockH = 24 + 16 + 10 + _linesN*16 + 18 + 6;
-      // 40pt de margen inferior: paginación + descanso del último ejercicio
-      if(y - _blockH < 40){
+      const _blockH = EJ_HEADER_H + PLAN_ROW_H + KG_REP_HDR_H + _linesN*ROW_H + DESC_H + SEP_H;
+      // 30pt de margen inferior: paginación + descanso del último ejercicio
+      if(y - _blockH < 30){
         page = doc.addPage([W_L, H_L]);
         drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento_cont', L, { letra: en.letra }), rutinaShort, W_L, H_L);
-        y = H_L - 90;
+        y = H_L - 70;
       }
       // Header ejercicio — sanitizamos el nombre por si tiene chars Unicode
       // raros (flechas, emojis, símbolos) que romperían pdf-lib WinAnsi.
       const ejNombreSafe = tobPdfSafe((ej.nombre || '').toUpperCase());
-      page.drawRectangle({ x: 24, y: y-5, width: W_L-48, height: 22, color: rgb(0.08,0.08,0.08) });
-      page.drawText(ejNombreSafe, { x: 30, y: y+2, size: 11, font: fontB, color: ORANGE });
+      page.drawRectangle({ x: 24, y: y-3, width: W_L-48, height: 18, color: rgb(0.08,0.08,0.08) });
+      page.drawText(ejNombreSafe, { x: 30, y: y+2, size: 10, font: fontB, color: ORANGE });
       if(ej.subtitle){
-        const nameWidth = tobTextWidth(ejNombreSafe, 11, fontB);
+        const nameWidth = tobTextWidth(ejNombreSafe, 10, fontB);
         page.drawText(tobPdfSafe('· ' + ej.subtitle), { x: 30 + nameWidth + 10, y: y+3, size: 8, font: fontO, color: rgb(0.85,0.85,0.85) });
       }
-      // Plan info en la derecha del header (mejor que línea "Plan" aparte)
-      const planTxt = microHeaders.map(mn => {
-        const p = tobPlanFor(ej, mn);
-        const reps = Array.isArray(p.repsTarget) ? p.repsTarget.join('/') : p.repsTarget;
-        return `${mn}º: ${p.series}×${reps}`;
-      }).join('  ·  ');
-      // Esto puede ser muy largo, lo omitimos del header y lo dejamos solo en la fila Plan abajo (compacta)
-      y -= 24;
+      y -= EJ_HEADER_H;
 
       // Fila plan (compacta, sin texto "Plan" — la celda misma es la info)
       microHeaders.forEach((mn, i) => {
         const plan = tobPlanFor(ej, mn);
         const reps = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : plan.repsTarget;
-        page.drawRectangle({ x: startX + i*colW - 1, y: y-3, width: colW-3, height: 13, color: rgb(0.97,0.94,0.85) });
-        page.drawText(`${plan.series} × ${reps}`, { x: startX + i*colW + 5, y, size: 9, font: fontB, color: rgb(0.6,0.4,0.05) });
+        page.drawRectangle({ x: startX + i*colW - 1, y: y-2, width: colW-3, height: 11, color: rgb(0.97,0.94,0.85) });
+        page.drawText(`${plan.series} × ${reps}`, { x: startX + i*colW + 5, y, size: 8, font: fontB, color: rgb(0.6,0.4,0.05) });
       });
-      y -= 16;
+      y -= PLAN_ROW_H;
 
       // Cabecera Kg/Reps por columna
       page.drawText(tobT('rut.col.series', L), { x: 30, y, size: 7, font: fontB, color: GRAY_MD });
@@ -4393,7 +4406,7 @@ async function tobBuildPdfRutina(cli, a, pl, it){
         page.drawText(tobT('rut.col.kg', L), { x: cellX+8, y, size: 7, font: fontB, color: GRAY_MD });
         page.drawText(tobT('rut.col.reps', L), { x: cellX+55, y, size: 7, font: fontB, color: GRAY_MD });
       });
-      y -= 10;
+      y -= KG_REP_HDR_H;
 
       // Series con form fields editables
       const isCirc = ej.tipo === 'circuito';
@@ -4419,13 +4432,13 @@ async function tobBuildPdfRutina(cli, a, pl, it){
           // Cuadrito kg
           const kgF = form.createTextField(`ej_${ej.id}_${mn}_${en.id}_${arrName}_${s}_kg`);
           if(sr?.kg != null) kgF.setText(String(sr.kg));
-          kgF.addToPage(page, { x: cellX+3, y: y-3, width: 44, height: 12, borderColor: rgb(0.55,0.55,0.55), borderWidth: 0.7 });
+          kgF.addToPage(page, { x: cellX+3, y: y-2, width: 44, height: 11, borderColor: rgb(0.55,0.55,0.55), borderWidth: 0.7 });
           // Cuadrito reps
           const rpF = form.createTextField(`ej_${ej.id}_${mn}_${en.id}_${arrName}_${s}_reps`);
           if(sr?.reps != null) rpF.setText(String(sr.reps));
-          rpF.addToPage(page, { x: cellX+50, y: y-3, width: 44, height: 12, borderColor: rgb(0.55,0.55,0.55), borderWidth: 0.7 });
+          rpF.addToPage(page, { x: cellX+50, y: y-2, width: 44, height: 11, borderColor: rgb(0.55,0.55,0.55), borderWidth: 0.7 });
         });
-        y -= 16;
+        y -= ROW_H;
       }
 
       // Pausa (color visible, NO gris claro)
@@ -4434,11 +4447,11 @@ async function tobBuildPdfRutina(cli, a, pl, it){
         const plan = tobPlanFor(ej, mn);
         page.drawText(plan.pausa || '—', { x: startX + i*colW + 5, y, size: 8, font: fontB, color: BLACK });
       });
-      y -= 18;
+      y -= DESC_H;
 
       // Línea separadora entre ejercicios
-      page.drawLine({ start:{x:24, y:y+4}, end:{x:W_L-24, y:y+4}, thickness:0.3, color: rgb(0.8,0.8,0.8) });
-      y -= 4;
+      page.drawLine({ start:{x:24, y:y+3}, end:{x:W_L-24, y:y+3}, thickness:0.3, color: rgb(0.8,0.8,0.8) });
+      y -= SEP_H;
     });
 
     // Separadores verticales entre microciclos (cubren toda la tabla del entreno)
