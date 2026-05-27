@@ -1884,6 +1884,137 @@ function tobImport(ev){
   r.readAsText(f);
 }
 
+// ── Paste-import: pega JSON con datos de UN cliente (mediciones + asignaciones) ──
+// Formato esperado:
+// {
+//   "cliente": "Carlos Ferri",                 // nombre (busca por includes) o id
+//   "mediciones": [{fecha,pes,estatura,plecs,perimetres,notas?}, ...],
+//   "asignaciones": [{
+//     "plantilla": "Reacondicionamiento — Hombre",  // nombre de plantilla
+//     "fechaInicio": "2026-04-27",
+//     "notas": "...",
+//     "sesiones": {
+//       "1": { "A": { fecha, ejs:{ "BOX SQUAT":{series:[{kg,reps}]},
+//                                  "CURL + HIPEREXT + CALF":{lineas:[{kg,reps}]} } },
+//              "B": {...} }, ...
+//     }
+//   }]
+// }
+function tobOpenPasteImport(){
+  document.getElementById('tobPasteImportTxt').value = '';
+  document.getElementById('tobPasteImportInfo').textContent = '';
+  document.getElementById('tobPasteImportBg').classList.add('on');
+}
+function tobClosePasteImport(){
+  document.getElementById('tobPasteImportBg').classList.remove('on');
+}
+function tobRunPasteImport(){
+  const txt = document.getElementById('tobPasteImportTxt').value.trim();
+  const info = document.getElementById('tobPasteImportInfo');
+  if(!txt){ info.textContent = 'Pega un JSON primero.'; info.style.color = 'var(--red)'; return; }
+  let data;
+  try { data = JSON.parse(txt); }
+  catch(e){ info.textContent = 'JSON inválido: ' + e.message; info.style.color = 'var(--red)'; return; }
+  if(!data.cliente){ info.textContent = 'Falta campo "cliente".'; info.style.color = 'var(--red)'; return; }
+
+  // Buscar cliente (por id exacto o nombre includes case-insensitive)
+  const needle = String(data.cliente).toLowerCase();
+  const cli = tobDB.clientes.find(c => c.id === data.cliente)
+           || tobDB.clientes.find(c => (c.nombre||'').toLowerCase() === needle)
+           || tobDB.clientes.find(c => (c.nombre||'').toLowerCase().includes(needle));
+  if(!cli){
+    info.innerHTML = 'No encontré cliente "<b>'+data.cliente+'</b>". Créalo primero.<br>Clientes existentes: '
+      + tobDB.clientes.map(c=>c.nombre).join(', ');
+    info.style.color = 'var(--red)';
+    return;
+  }
+
+  // ── Mediciones (skip duplicados por fecha) ──
+  const medsIn = Array.isArray(data.mediciones) ? data.mediciones : [];
+  if(!cli.mediciones) cli.mediciones = [];
+  const existing = new Set(cli.mediciones.map(m => m.fecha));
+  const medsToAdd = medsIn.filter(m => m && m.fecha && !existing.has(m.fecha));
+
+  // ── Asignaciones ──
+  const asigsIn = Array.isArray(data.asignaciones) ? data.asignaciones : [];
+  const asigsResolved = []; // [{pl, sesiones, ...}, ...] preparadas para insertar
+  const asigsErrors = [];
+  for(const ai of asigsIn){
+    const pl = tobDB.plantillas.find(p => p.id === ai.plantilla)
+            || tobDB.plantillas.find(p => p.nombre === ai.plantilla)
+            || tobDB.plantillas.find(p => (p.nombre||'').toLowerCase().includes(String(ai.plantilla||'').toLowerCase()));
+    if(!pl){ asigsErrors.push('Plantilla no encontrada: '+ai.plantilla); continue; }
+    // Mapa nombre ejercicio → id (por entreno+letra)
+    const ids = {};
+    pl.entrenos.forEach(en => en.ejercicios.forEach(ej => {
+      ids[en.letra + ':' + ej.nombre] = ej.id;
+      // También mapeo solo por nombre (por si el JSON no indica letra)
+      ids[ej.nombre] = ids[ej.nombre] || ej.id;
+    }));
+    asigsResolved.push({ai, pl, ids});
+  }
+
+  if(!medsToAdd.length && !asigsResolved.length){
+    info.innerHTML = 'Nada que importar (todas las mediciones duplicadas y/o sin asignaciones válidas).'
+      + (asigsErrors.length ? '<br>'+asigsErrors.join('<br>') : '');
+    info.style.color = 'var(--amber)';
+    return;
+  }
+
+  // Resumen + confirmación
+  const summary = [
+    'Cliente: ' + cli.nombre,
+    medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''),
+    asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : '')
+  ].join('\n');
+  if(!confirm('¿Importar lo siguiente?\n\n' + summary)) return;
+
+  // Aplicar mediciones
+  for(const m of medsToAdd){
+    cli.mediciones.push(Object.assign({}, m, { id: tobUid('med') }));
+  }
+  cli.mediciones.sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+
+  // Aplicar asignaciones
+  if(!cli.asignaciones) cli.asignaciones = [];
+  for(const {ai, pl, ids} of asigsResolved){
+    const asig = tobCreateAsignacion(pl.id);
+    if(ai.fechaInicio) asig.fechaInicio = ai.fechaInicio;
+    if(ai.notas) asig.notas = ai.notas;
+    const it = asig.iteraciones[0];
+    const sesionesIn = ai.sesiones || {};
+    for(const mn of Object.keys(sesionesIn)){
+      const microNum = parseInt(mn, 10);
+      if(!microNum) continue;
+      const entrenosIn = sesionesIn[mn] || {};
+      it.sesiones[microNum] = it.sesiones[microNum] || {};
+      for(const letra of Object.keys(entrenosIn)){
+        const ses = entrenosIn[letra] || {};
+        const ejs = {};
+        const ejsIn = ses.ejs || {};
+        for(const ejNombre of Object.keys(ejsIn)){
+          // Resolver id: probamos letra:nombre primero, luego solo nombre
+          const ejId = ids[letra + ':' + ejNombre] || ids[ejNombre];
+          if(!ejId){ console.warn('[paste-import] ejercicio no mapeado:', letra, ejNombre); continue; }
+          ejs[ejId] = ejsIn[ejNombre];
+        }
+        it.sesiones[microNum][letra] = {
+          fecha: ses.fecha || '',
+          aerobica: ses.aerobica || { tipo:'', tiempo:'', intensidad:'' },
+          ejs
+        };
+      }
+    }
+    cli.asignaciones.push(asig);
+  }
+
+  tobSave();
+  tobClosePasteImport();
+  if(typeof tobRenderClientes === 'function') tobRenderClientes();
+  if(typeof tobRenderFicha === 'function' && tobCurrentFichaId === cli.id) tobRenderFicha();
+  tobToast('✓ ' + cli.nombre + ': ' + medsToAdd.length + ' mediciones + ' + asigsResolved.length + ' asignaciones', 'green');
+}
+
 // ═══ CONFIRM ═══
 function tobConfirm(title, msg, cb){
   document.getElementById('tobConfirmTitle').textContent = title;

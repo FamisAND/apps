@@ -59,6 +59,7 @@
     <button class="tob-btn" onclick="tobExport()" title="Descargar JSON con todos los datos">Export</button>
     <button class="tob-btn" onclick="document.getElementById('tobImportFile').click()" title="Cargar JSON exportado">Import</button>
     <input type="file" id="tobImportFile" accept=".json" style="display:none" onchange="tobImport(event)">
+    <button class="tob-btn" onclick="tobOpenPasteImport()" title="Pegar JSON de mediciones/asignaciones de un cliente" style="padding:2px 6px;opacity:.55" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.55'">📥</button>
     <button class="tob-btn" onclick="DashboardAuth.changePin('training_online','Consulta')" title="Cambiar el PIN de acceso">🔑 PIN</button>
     <a href="index.html" class="tob-btn">← Menú</a>
   </div>
@@ -1284,6 +1285,25 @@
 
 <!-- Sync badge (estado de sincronización con GitHub) -->
 <div id="ghSyncBadge" style="position:fixed;bottom:10px;right:10px;background:#0e0d0a;border:1px solid var(--border2);color:var(--mute);padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;pointer-events:none;opacity:.85;"></div>
+
+<!-- Paste-import modal: pega JSON con mediciones / asignaciones de un cliente -->
+<div id="tobPasteImportBg" class="tob-modal-bg">
+  <div class="tob-modal" style="max-width:760px;width:92%">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h3 style="margin:0;font-size:1rem">📥 Importar datos de cliente</h3>
+      <button class="tob-btn ghost" onclick="tobClosePasteImport()">✕</button>
+    </div>
+    <div style="font-size:.78rem;color:var(--mute);line-height:1.5;margin-bottom:10px">
+      Pega aquí un JSON con <code>cliente</code> + <code>mediciones</code> y/o <code>asignaciones</code>. Solo afecta al cliente indicado. Las mediciones duplicadas por fecha se ignoran.
+    </div>
+    <textarea id="tobPasteImportTxt" placeholder='{"cliente":"Carlos Ferri","mediciones":[...],"asignaciones":[...]}' style="width:100%;height:320px;font-family:'DM Mono',monospace;font-size:.72rem;background:#0a0a0a;color:#d4d4d4;border:1px solid var(--border2);border-radius:6px;padding:10px;outline:none;resize:vertical"></textarea>
+    <div id="tobPasteImportInfo" style="margin-top:8px;font-size:.78rem;color:var(--mute);min-height:1.2em"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="tob-btn ghost" onclick="tobClosePasteImport()">Cancelar</button>
+      <button class="tob-btn" onclick="tobRunPasteImport()" style="background:var(--acc);color:#000">Importar</button>
+    </div>
+  </div>
+</div>
 
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
