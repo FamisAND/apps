@@ -4981,8 +4981,12 @@ function computeCashRecon(month){
   const toReal = (val, ctr) => (val || 0) * 100 * ctr * 100;
 
   let aperturasCash = 0, cierresCash = 0, nAper = 0, nCierre = 0;
-  const appByTicker = {};   // subyacente → cash neto en la app
-  const addApp = (tk, v) => { appByTicker[tk] = (appByTicker[tk]||0) + v; };
+  // Separamos por subyacente Y por tipo (apertura nueva vs cierre) para que el
+  // desglose distinga un cierre de operativa de una apertura que sigue abierta.
+  const aperByTicker = {};    // subyacente → cash de aperturas del mes
+  const cierreByTicker = {};  // subyacente → cash de cierres del mes
+  const addAper   = (tk, v) => { aperByTicker[tk]   = (aperByTicker[tk]||0)   + v; };
+  const addCierre = (tk, v) => { cierreByTicker[tk] = (cierreByTicker[tk]||0) + v; };
 
   // Aperturas del mes (incluye ops que siguen abiertas → están en ACTIVAS).
   const allOpen = [...(typeof HIST!=='undefined'?HIST:[]), ...(typeof ACTIVAS!=='undefined'?ACTIVAS:[])];
@@ -4991,7 +4995,7 @@ function computeCashRecon(month){
       // crédito neto recibido al abrir (resta el débito de la pata larga en spreads)
       const cash = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
       aperturasCash += cash;
-      addApp(e.activo || '?', cash);
+      addAper(e.activo || '?', cash);
       nAper++;
     }
   });
@@ -5007,7 +5011,7 @@ function computeCashRecon(month){
       const credito = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
       const cash = (pnl - credito);   // = −coste de cierre (tramo del mes)
       cierresCash += cash;
-      addApp(e.activo || '?', cash);
+      addCierre(e.activo || '?', cash);
       nCierre++;
     }
   });
@@ -5024,11 +5028,12 @@ function computeCashRecon(month){
     }
   });
 
-  // Desglose por subyacente: une ambos lados.
-  const tickers = [...new Set([...Object.keys(appByTicker), ...Object.keys(csvByTicker)])].sort();
+  // Desglose por subyacente: cierres + aperturas (app) vs Tasty.
+  const tickers = [...new Set([...Object.keys(aperByTicker), ...Object.keys(cierreByTicker), ...Object.keys(csvByTicker)])].sort();
   const byTicker = tickers.map(tk => {
-    const a = appByTicker[tk]||0, t = csvByTicker[tk]||0;
-    return { ticker: tk, app: a, csv: t, diff: a - t };
+    const aper = aperByTicker[tk]||0, cierre = cierreByTicker[tk]||0, t = csvByTicker[tk]||0;
+    const app = aper + cierre;
+    return { ticker: tk, aper, cierre, app, csv: t, diff: app - t };
   });
 
   return { myCash, csvCash, diff: myCash - csvCash, aperturasCash, cierresCash, nAper, nCierre, nCsv, byTicker };
@@ -5188,32 +5193,42 @@ function renderTtVerifyResult(month, result, cashRecon){
     // app=0 suele ser una posición abierta este mes que sigue activa (su
     // apertura está en el CSV pero el cierre aún no existe) → normal.
     if(cashRecon.byTicker && cashRecon.byTicker.length){
-      const fmt = v => (v>=0?'+':'') + '$' + v.toLocaleString('es-ES',{maximumFractionDigits:0});
+      const fmt = v => (Math.abs(v)<0.5) ? '—' : (v>=0?'+':'') + '$' + v.toLocaleString('es-ES',{maximumFractionDigits:0});
       const rows = cashRecon.byTicker.map(r => {
         const ok = Math.abs(r.diff) <= 10;  // ±$10 = comisiones
-        const col = ok ? '#5a7a9a' : (Math.abs(r.diff) > 100 ? '#f87171' : '#fbbf24');
-        // Heurística: app=0 y csv≠0 → posición abierta este mes aún viva
-        let nota = '';
-        if(!ok){
-          if(Math.abs(r.app) < 1 && Math.abs(r.csv) > 1) nota = 'posición abierta (sin cerrar)';
-          else nota = 'revisar';
+        const col = ok ? '#22c55e' : (Math.abs(r.diff) > 100 ? '#f87171' : '#fbbf24');
+        const hasAper = Math.abs(r.aper) > 0.5, hasCierre = Math.abs(r.cierre) > 0.5;
+        // Estado claro según composición:
+        let estado;
+        if(ok){
+          estado = '<span style="color:#22c55e">✓ cuadra</span>';
+        } else if(!hasCierre && hasAper){
+          // Solo aperturas y descuadra → posición nueva abierta este mes
+          estado = '<span style="color:#4a9eff">↑ abierta nueva</span>';
+        } else {
+          estado = '<span style="color:'+col+'">⚠ revisar</span>';
         }
         return `<tr style="border-bottom:1px solid #0f1d2e;color:#c9d1d9">
           <td style="padding:3px 6px;font-weight:600">${r.ticker}</td>
-          <td style="padding:3px 6px;text-align:right" class="mono">${fmt(r.app)}</td>
+          <td style="padding:3px 6px;text-align:right;color:#9aa9ba" class="mono">${fmt(r.cierre)}</td>
+          <td style="padding:3px 6px;text-align:right;color:#4a9eff" class="mono">${fmt(r.aper)}</td>
+          <td style="padding:3px 6px;text-align:right;font-weight:600" class="mono">${fmt(r.app)}</td>
           <td style="padding:3px 6px;text-align:right;color:#5a7a9a" class="mono">${fmt(r.csv)}</td>
           <td style="padding:3px 6px;text-align:right;color:${col};font-weight:${ok?'400':'700'}" class="mono">${fmt(r.diff)}</td>
-          <td style="padding:3px 6px;color:${col};font-size:9px">${ok?'✓':'⚠ '+nota}</td>
+          <td style="padding:3px 6px;font-size:9px">${estado}</td>
         </tr>`;
       }).join('');
       html += `
-        <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Desglose por subyacente (${month})</div>
+        <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Desglose por subyacente (${month})</div>
+        <div style="font-family:'Courier New',monospace;font-size:8px;color:#3a5468;margin-bottom:6px">Cierres = operativas cerradas · Aperturas = posiciones nuevas (incl. las que siguen abiertas) · Neto = suma · debe cuadrar con Tasty (±comisiones)</div>
         <table style="width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:10px;margin-bottom:20px">
           <thead><tr style="color:#5a7a9a;border-bottom:1px solid #1e2d3d">
             <th style="text-align:left;padding:4px 6px">Activo</th>
-            <th style="text-align:right;padding:4px 6px">App ($)</th>
-            <th style="text-align:right;padding:4px 6px">Tasty ($)</th>
-            <th style="text-align:right;padding:4px 6px">Diff ($)</th>
+            <th style="text-align:right;padding:4px 6px">Cierres</th>
+            <th style="text-align:right;padding:4px 6px">Aperturas</th>
+            <th style="text-align:right;padding:4px 6px">Neto app</th>
+            <th style="text-align:right;padding:4px 6px">Tasty</th>
+            <th style="text-align:right;padding:4px 6px">Diff</th>
             <th style="text-align:left;padding:4px 6px">Estado</th>
           </tr></thead>
           <tbody>${rows}</tbody>
