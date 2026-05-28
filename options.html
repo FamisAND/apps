@@ -5847,7 +5847,11 @@ function confirmCloseLeg(){
   // long put cerrado con ganancia y daba P&L negativo erróneo.
   const diffPerShare = isLong ? (pclose_leg - pcred_leg) : (pcred_leg - pclose_leg);
   const pnetoBruto   = diffPerShare * 100 * ctr;
-  const totalneto    = pnetoBruto - comi_leg - (legComiOp || 0);
+  // Solo descontamos la comisión de CIERRE de esta pata. La comisión de
+  // APERTURA NO se reclama aquí — se queda íntegra en la posición restante
+  // (se cuenta una sola vez al cerrar la operativa del todo). Antes se sumaba
+  // legComiOp aquí Y permanecía en a.comi → se duplicaba.
+  const totalneto    = pnetoBruto - comi_leg;
   const pnetoEscalaPrima     = diffPerShare * ctr;
   const totalNetoEscalaPrima = totalneto / 100;
   // TP% = recuperación relativa sobre la prima inicial. Para shorts es
@@ -5888,8 +5892,8 @@ function confirmCloseLeg(){
     pCredito:   pcred_leg/100,
     pDebito:    0,
     pCierre:    pclose_leg/100,
-    comi:       comi_leg + (legComiOp || 0),  // legacy: total (apertura+cierre)
-    comiOpen:   legComiOp != null ? legComiOp : 0,  // antes era 0, ahora viene de a.legs
+    comi:       comi_leg,   // SOLO cierre de esta pata (la apertura se queda en la posición restante)
+    comiOpen:   0,          // la comi de apertura NO se reclama aquí — evita duplicarla
     comiClose:  comi_leg,
     nota:       (`🪓 PATA CERRADA (${legLbl}). ` + nota_leg).trim(),
     pNetoOvr:   parseFloat(pnetoEscalaPrima.toFixed(4)),
