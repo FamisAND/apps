@@ -5003,11 +5003,16 @@ function computeCashRecon(month){
   // Cierres del mes (solo las cerradas → HIST).
   HIST.forEach(e => {
     if((e.cierre || '').startsWith(month)){
-      let pnl = e.totalNetoOvr;
-      if(pnl == null){
-        pnl = ((e.pCredito||0) - (e.pCierre||0)) * 100 * ctrOf(e) - (e.comi||0);
+      // P&L total en $ reales. OJO escala: si hay override está en escala /100
+      // (×100 → $). Si no, el fallback debe llevar (pc-pd-pcl) a $ ANTES de
+      // restar la comisión (que ya está en $). Restar comi antes del ×100 era
+      // el bug que inflaba el error ×100.
+      let pnl;
+      if(e.totalNetoOvr != null){
+        pnl = e.totalNetoOvr * 100;
+      } else {
+        pnl = ((e.pCredito||0) - (e.pDebito||0) - (e.pCierre||0)) * 10000 * ctrOf(e) - (e.comi||0);
       }
-      pnl = pnl * 100;
       const credito = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
       const cash = (pnl - credito);   // = −coste de cierre (tramo del mes)
       cierresCash += cash;
@@ -5088,19 +5093,19 @@ function matchClosures(myCloses, csvCloses, month){
       return;
     }
     const ctr = my.contracts || 1;
-    // P/L total de tu operativa (en escala interna)
-    let myPnL = my.totalNetoOvr;
-    if(myPnL == null){
-      const pc = my.pCredito || 0;
-      const pcl = my.pCierre || 0;
-      const comi = my.comi || 0;
-      myPnL = (pc - pcl) * 100 * ctr - comi;
+    // P/L total de tu operativa en $ reales. Si hay override está en escala
+    // /100 (×100 → $). Si no, el fallback lleva (pc-pd-pcl) a $ ANTES de restar
+    // la comisión (que ya está en $) — restarla antes del ×100 era un bug que
+    // inflaba el error ×100.
+    let myPnL;
+    if(my.totalNetoOvr != null){
+      myPnL = my.totalNetoOvr * 100;
+    } else {
+      myPnL = ((my.pCredito||0) - (my.pDebito||0) - (my.pCierre||0)) * 10000 * ctr - (my.comi||0);
     }
-    // Parche de escala: ×100 para alinear con el broker (Bug #3 pendiente).
-    myPnL = myPnL * 100;
 
     // Cash del cierre = P&L total − crédito de apertura. Es lo que el CSV ve.
-    const creditoApertura = (my.pCredito || 0) * 100 * ctr * 100;
+    const creditoApertura = ((my.pCredito||0) - (my.pDebito||0)) * 10000 * ctr;
     const myCierreCash = myPnL - creditoApertura;
     // ¿La apertura cae en el mes analizado? Si NO, es una op "a caballo".
     const aperturaEnMes = month ? (my.apertura || '').startsWith(month) : true;
