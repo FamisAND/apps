@@ -748,24 +748,31 @@ function tobPlanLabel(plan){
 }
 
 // ═══ CLIENTES ═══
-// Filtro del listado: 'activos' (default) | 'todos' | 'inactivos'
+// Filtro del listado: 'activos' (default) | 'todos' | 'inactivos' + buscador
 let tobCliFiltro = 'activos';
+let tobCliBuscar = '';
 function tobSetCliFiltro(v){
   tobCliFiltro = v;
   document.querySelectorAll('.tob-cli-filtro-btn').forEach(b =>
     b.classList.toggle('on', b.dataset.f === v));
   tobRenderClientes();
 }
+const _tobNormBuscar = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+function tobSetCliBuscar(v){ tobCliBuscar = _tobNormBuscar(v); tobRenderClientes(); }
 function tobRenderClientes(){
   const tbody = document.getElementById('tobClientesBody');
   const empty = document.getElementById('tobClientesEmpty');
   if(!tobDB.clientes.length){ tbody.innerHTML=''; empty.style.display='block'; empty.innerHTML='Aún no hay clientes. Crea el primero con <strong>+ Nuevo cliente</strong>.'; return; }
-  // Aplicar filtro activo/inactivo
+  // Aplicar filtro activo/inactivo + buscador (nombre o contacto)
   const lista = tobDB.clientes.filter(c => {
     const activo = (c.activo !== false);
-    if(tobCliFiltro === 'activos')   return activo;
-    if(tobCliFiltro === 'inactivos') return !activo;
-    return true; // 'todos'
+    if(tobCliFiltro === 'activos' && !activo) return false;
+    if(tobCliFiltro === 'inactivos' && activo) return false;
+    if(tobCliBuscar){
+      const hay = _tobNormBuscar((c.nombre||'') + ' ' + (c.contacto||''));
+      if(!hay.includes(tobCliBuscar)) return false;
+    }
+    return true;
   });
   // Actualizar contador del filtro (cuántos activos hay)
   const nAct = tobDB.clientes.filter(c => c.activo !== false).length;
@@ -774,11 +781,13 @@ function tobRenderClientes(){
   if(!lista.length){
     tbody.innerHTML='';
     empty.style.display='block';
-    empty.innerHTML = tobCliFiltro==='activos'
-      ? 'No hay clientes activos. Cambia el filtro a <strong>Todos</strong> para verlos.'
-      : tobCliFiltro==='inactivos'
-        ? 'No hay clientes inactivos.'
-        : 'Sin clientes.';
+    empty.innerHTML = tobCliBuscar
+      ? 'Ningún cliente coincide con la búsqueda.'
+      : tobCliFiltro==='activos'
+        ? 'No hay clientes activos. Cambia el filtro a <strong>Todos</strong> para verlos.'
+        : tobCliFiltro==='inactivos'
+          ? 'No hay clientes inactivos.'
+          : 'Sin clientes.';
     return;
   }
   empty.style.display = 'none';
@@ -2039,13 +2048,17 @@ function tobRunPasteImport(){
   //   data.menu = { fecha?, semanas?, comidasIds?[], kcalObj?, protObj?, margenPct?,
   //                 notas?, data:{ [semana]:{ [dia 0-6]:{ [comidaId]:[platoNombre,...] } } } }
   // Los nombres de plato se normalizan (sin acentos, sin cantidades iniciales) y se
-  // buscan en tobMenusDB.recetas por nombre. Los que no casen se omiten y se reportan.
+  // buscan PRIMERO en tobMenusDB.recetas y, si no, en tobMenusDB.ingredientes. Si casa
+  // con un ingrediente, se crea/reutiliza su "plato suelto" (receta recing_<ingId>),
+  // igual que al arrastrar un ingrediente en el creador. Los que no casen se reportan.
   let menuResolved = null;
   if(data.menu && data.menu.data){
     const recs = (tobMenusDB.recetas || []);
+    const ings = (tobMenusDB.ingredientes || []);
     const _norm = s => (s||'').toString().toLowerCase()
       .normalize('NFD').replace(/[̀-ͯ]/g,'')
       .replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
+    const _stripNum = s => String(s||'').trim().replace(/^\d+(\s*\/\s*\d+)?\s+/,'');  // solo el número inicial
     const _stripQty = s => {
       let t = String(s||'').trim();
       t = t.replace(/^\d+(\s*\/\s*\d+)?\s+/,'');               // "1 ", "1/2 "
@@ -2053,11 +2066,32 @@ function tobRunPasteImport(){
       t = t.replace(/^(vaso|vasos|cucharada|cucharadas|pieza|piezas|onza|onzas|tarta|tartas|porcion|porci[oó]n|porciones|loncha|lonchas|tortilla|tortillas|hamburguesa|hamburguesas|tostada)\s+(de\s+)?/i,'');
       return t.trim();
     };
-    const idx = new Map();
-    recs.forEach(r => { const k = _norm(r.nombre); if(k && !idx.has(k)) idx.set(k, r.id); });
-    const _stripNum = s => String(s||'').trim().replace(/^\d+(\s*\/\s*\d+)?\s+/,'');  // solo el número inicial
+    const recIdx = new Map();
+    recs.forEach(r => { const k = _norm(r.nombre); if(k && !recIdx.has(k)) recIdx.set(k, r.id); });
+    const ingIdx = new Map();
+    ings.forEach(i => { const k = _norm(i.nombre); if(k && !ingIdx.has(k)) ingIdx.set(k, i.id); });
+    const variants = p => [ _norm(p), _norm(_stripNum(p)), _norm(_stripQty(p)) ];
+    let createdPlatos = 0;
+    // Asegura la receta "plato suelto" de un ingrediente y devuelve su id recing_.
+    const ensurePlatoSuelto = ing => {
+      const recId = 'recing_' + ing.id;
+      if(!recs.find(r => r.id === recId)){
+        if(!ing.comoPlato){ ing.comoPlato = true; }
+        if(!ing.platoGramos) ing.platoGramos = 150;
+        if(!Array.isArray(ing.iaMomentos)) ing.iaMomentos = [];
+        if(typeof tobIngSyncPlato === 'function') tobIngSyncPlato(ing);  // crea la receta-ingrediente
+        createdPlatos++;
+      }
+      return recId;
+    };
     const findRec = plato => {
-      for(const c of [ _norm(plato), _norm(_stripNum(plato)), _norm(_stripQty(plato)) ]){ if(idx.has(c)) return idx.get(c); }
+      // 1) receta por nombre exacto/normalizado
+      for(const c of variants(plato)){ if(recIdx.has(c)) return recIdx.get(c); }
+      // 2) ingrediente por nombre → plato suelto
+      for(const c of variants(plato)){
+        if(ingIdx.has(c)){ const ing = ings.find(i => i.id === ingIdx.get(c)); if(ing) return ensurePlatoSuelto(ing); }
+      }
+      // 3) substring tolerante en recetas
       const pn = _norm(plato);
       let best = null;
       recs.forEach(r => {
@@ -2106,7 +2140,7 @@ function tobRunPasteImport(){
       ajustes: {},
       savedAt: new Date().toISOString()
     };
-    menuResolved = { snapshot, matchedCount, totalCount, unmatched };
+    menuResolved = { snapshot, matchedCount, totalCount, unmatched, createdPlatos };
   }
 
   if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length && !menuResolved){
@@ -2121,8 +2155,9 @@ function tobRunPasteImport(){
   if(metaUpdates.length) summaryLines.push('Meta: ' + metaUpdates.join(', '));
   if(medsIn.length) summaryLines.push(medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''));
   if(asigsIn.length) summaryLines.push(asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : ''));
-  if(menuResolved) summaryLines.push('1 menú: ' + menuResolved.matchedCount + '/' + menuResolved.totalCount + ' platos casados con recetas'
-    + (menuResolved.unmatched.length ? ' (' + menuResolved.unmatched.length + ' sin receta en catálogo, se omiten)' : ''));
+  if(menuResolved) summaryLines.push('1 menú: ' + menuResolved.matchedCount + '/' + menuResolved.totalCount + ' platos casados'
+    + (menuResolved.createdPlatos ? ' (' + menuResolved.createdPlatos + ' platos sueltos creados desde ingredientes)' : '')
+    + (menuResolved.unmatched.length ? ' (' + menuResolved.unmatched.length + ' sin casar, se omiten)' : ''));
   if(!confirm('¿Importar lo siguiente?\n\n' + summaryLines.join('\n'))) return;
 
   // Aplicar mediciones

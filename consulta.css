@@ -920,6 +920,15 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-mc-aj-ing .aj-ing-nm{flex:1;color:var(--text);}
 .tob-mc-aj-ing .aj-ing-base{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);min-width:64px;}
 
+/* ── Buscador de clientes ── */
+.tob-cli-buscar{
+  font-family:'DM Mono',monospace; font-size:.78rem; color:var(--text);
+  background:rgba(0,0,0,.2); border:1px solid var(--border2); border-radius:10px;
+  padding:6px 12px; width:200px; outline:none; transition:border-color .15s;
+}
+.tob-cli-buscar::placeholder{ color:var(--mute2); }
+.tob-cli-buscar:focus{ border-color:var(--acc); }
+
 /* ── Filtro Activos / Todos / Inactivos del listado ── */
 .tob-cli-filtro{
   display:inline-flex; border:1px solid var(--border2); border-radius:10px;

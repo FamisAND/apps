@@ -73,6 +73,8 @@
       <div class="tob-sub">Asigna plantillas, registra sus kg/reps, ve su progreso entre iteraciones.</div>
     </div>
     <div style="margin-left:auto;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+      <input id="tobCliBuscar" type="search" placeholder="🔍 Buscar cliente…" oninput="tobSetCliBuscar(this.value)"
+        class="tob-cli-buscar" autocomplete="off" />
       <div class="tob-cli-filtro" title="Filtrar clientes por estado">
         <button class="tob-cli-filtro-btn on" data-f="activos"   onclick="tobSetCliFiltro('activos')">Activos</button>
         <button class="tob-cli-filtro-btn"    data-f="todos"     onclick="tobSetCliFiltro('todos')">Todos</button>
