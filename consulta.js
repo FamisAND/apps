@@ -1044,6 +1044,8 @@ function tobRenderPlantillas(){
               <td class="num">${(p.entrenos||[]).length}</td>
               <td class="num">${nEj}</td>
               <td class="actions">
+                <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobPreviewPlantillaPdf('${p.id}')" title="Ver el PDF de la plantilla en blanco (campos editables)">👁</button>
+                <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobDownloadPlantillaPdf('${p.id}')" title="Descargar el PDF de la plantilla en blanco">📄</button>
                 <button class="tob-action ghost" style="padding:4px 9px;" onclick="tobEditarPlantilla('${p.id}')">✏️</button>
                 <button class="tob-action danger" style="padding:4px 9px;" onclick="tobDelPlantilla('${p.id}')">🗑</button>
               </td>
@@ -4228,6 +4230,37 @@ async function tobPreviewPdfActual(){
   await tobBuildPdfRutina(cli, a, pl, it, true).catch(e => { console.error(e); tobToast('Error: '+e.message, 'red'); });
 }
 
+// ─── PDF de una PLANTILLA en blanco (sin cliente) ───────────────────────
+// Construye una asignación temporal a partir de la plantilla, con la
+// iteración vacía (sin kg/reps rellenados). Sirve para imprimir la plantilla
+// con los campos editables en blanco. preview=true abre en pestaña nueva.
+function _tobPlantillaAsigTemp(plantId){
+  const pl = tobDB.plantillas.find(p => p.id === plantId);
+  if(!pl) return null;
+  const a = {
+    id: 'tmp', plantillaId: plantId, fechaInicio: '', estado: 'plantilla', notas: '',
+    rutina: JSON.parse(JSON.stringify({ entrenos: pl.entrenos, numMicro: tobNumMicroOf(pl) })),
+    iteraciones: [{ id: 'tmp_it', numero: 1, sesiones: {} }]
+  };
+  return { pl, a, it: a.iteraciones[0] };
+}
+async function tobPreviewPlantillaPdf(plantId){
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+  const t = _tobPlantillaAsigTemp(plantId);
+  if(!t){ tobToast('Plantilla no encontrada', 'red'); return; }
+  tobToast('⏳ Generando vista previa...', '');
+  const cliFake = { nombre: '(plantilla)' };
+  await tobBuildPdfRutina(cliFake, t.a, t.pl, t.it, true).catch(e => { console.error(e); tobToast('Error: '+e.message, 'red'); });
+}
+async function tobDownloadPlantillaPdf(plantId){
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+  const t = _tobPlantillaAsigTemp(plantId);
+  if(!t){ tobToast('Plantilla no encontrada', 'red'); return; }
+  tobToast('⏳ Generando PDF...', '');
+  const cliFake = { nombre: tobRutinaShortName(t.pl) };
+  await tobBuildPdfRutina(cliFake, t.a, t.pl, t.it, false).catch(e => { console.error(e); tobToast('Error: '+e.message, 'red'); });
+}
+
 async function tobBuildPdfRutina(cli, a, pl, it, preview){
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
@@ -4303,18 +4336,18 @@ async function tobBuildPdfRutina(cli, a, pl, it, preview){
   //   · separador entre ejercicios: 2 (antes 4)
   // Si aún no cabe (entrenos con 6+ ejercicios) se mantiene la lógica de
   // página adicional al final.
-  const ROW_H        = 12;  // altura fila de serie
-  const EJ_HEADER_H  = 18;  // altura banda negra con nombre ejercicio
-  const PLAN_ROW_H   = 11;  // altura banda ámbar con plan
-  const KG_REP_HDR_H = 8;   // altura cabecera Kg/Reps
-  const DESC_H       = 12;  // altura fila descanso
-  const SEP_H        = 2;   // espacio entre ejercicios
+  const ROW_H        = 13;  // altura fila de serie
+  const EJ_HEADER_H  = 19;  // altura banda negra con nombre ejercicio
+  const PLAN_ROW_H   = 12;  // altura banda ámbar con plan
+  const KG_REP_HDR_H = 12;  // altura cabecera Kg/Reps (aire para que el input no tape "Kg/Reps")
+  const DESC_H       = 16;  // altura fila descanso (aire para que no toque la banda del siguiente)
+  const SEP_H        = 4;   // espacio entre ejercicios
 
   (a.rutina?.entrenos||[]).forEach(en => {
     page = doc.addPage([W_L, H_L]);
     const sufijo = (en.nombre && en.nombre !== ('Entreno '+en.letra)) ? ' — ' + en.nombre : '';
     drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento', L, { letra: en.letra, sufijo }), rutinaShort, W_L, H_L);
-    let y = H_L - 70;
+    let y = H_L - 62;
 
     const _N = tobNumMicroOf(a?.rutina);
     const microHeaders = Array.from({length: _N}, (_,i)=>i+1);
@@ -4389,7 +4422,7 @@ async function tobBuildPdfRutina(cli, a, pl, it, preview){
       if(y - _blockH < 30){
         page = doc.addPage([W_L, H_L]);
         drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('rut.page.entrenamiento_cont', L, { letra: en.letra }), rutinaShort, W_L, H_L);
-        y = H_L - 70;
+        y = H_L - 62;
       }
       // Header ejercicio — sanitizamos el nombre por si tiene chars Unicode
       // raros (flechas, emojis, símbolos) que romperían pdf-lib WinAnsi.

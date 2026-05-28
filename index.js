@@ -808,13 +808,6 @@ const NOTIF_SECTIONS = [
     { id: 'sesiones_hoy',  label: 'Sesiones programadas hoy',              default: false },
     { id: 'stock_critico', label: 'Stock crítico (≤2 unidades)',           default: false }
   ]},
-  { id: 'facturas', icon: '📄', label: 'Facturas', items: [
-    { id: 'profile_id',    label: 'Perfil a usar', type: 'profile', source: 'facturas.fac_v1', default: 'all' },
-    { id: 'pendientes',    label: 'Facturas pendientes',                   default: true  },
-    { id: 'vencidas',      label: 'Facturas vencidas',                     default: true  },
-    { id: 'total_mes',     label: 'Total facturado este mes',              default: true  },
-    { id: 'top_cliente',   label: 'Top cliente del mes',                   default: false }
-  ]},
   { id: 'actualidad', icon: '🌍', label: 'Actualidad', items: [
     { id: 'mercados_selected', label: 'Mercados (los que quieras)', type: 'multi', max: 10,
       default: ['spy','eurusd','btcusd'],
@@ -1216,7 +1209,7 @@ async function previewNotifMessage(){
 function _esc(s){ return String(s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'})[c]); }
 
 // Genera el resumen en cliente (mirror de telegram-summary.js)
-const _NOTIF_DEFAULT_ORDER = ['actualidad','patrimonio','options','training','facturas'];
+const _NOTIF_DEFAULT_ORDER = ['actualidad','patrimonio','options','training'];
 
 function _buildSummaryClient(data, cfg){
   const S = (cfg && cfg.sections) || {};
@@ -1241,8 +1234,8 @@ function _buildSummaryClient(data, cfg){
     actualidad: _previewActualidad(ctx, data, S.actualidad || {}),
     patrimonio: _previewPatrimonio(ctx, data, S.patrimonio || {}),
     options:    _previewOptions   (ctx, data, S.options    || {}),
-    training:   _previewTraining  (ctx, data, S.training   || {}),
-    facturas:   _previewFacturas  (ctx, data, S.facturas   || {})
+    training:   _previewTraining  (ctx, data, S.training   || {})
+    // facturas: eliminado de notificaciones a petición del usuario (2026-05)
   };
   const urgent = _previewUrgent(ctx, data);
 
@@ -1717,22 +1710,7 @@ function _previewFacturas(ctx, data, sec){
 // — URGENTE (preview) —
 function _previewUrgent(ctx, data){
   const out = [];
-  try {
-    const profiles = _pmaybe(data?.facturas?.fac_v1);
-    if(Array.isArray(profiles)){
-      const venc = [];
-      profiles.forEach(p => (p.facturas||[]).forEach(f => {
-        if(_getEstadoFactura(f) === 'vencida'){
-          const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
-          venc.push({ cli: f.clienteName || f.cliente?.name || '?', total: t });
-        }
-      }));
-      if(venc.length){
-        const tot = venc.reduce((s,x) => s + x.total, 0);
-        out.push(`🔴 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${_fnum(tot)}`);
-      }
-    }
-  } catch(e){}
+  // Facturas eliminadas de notificaciones (incluidas las alertas urgentes) — 2026-05
   try {
     const arr = _pmaybe(data?.options?.ot_activas);
     if(Array.isArray(arr)){
