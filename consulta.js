@@ -55,7 +55,7 @@ function tobNumMicroOf(o){ return (o && o.numMicro) || TOB_NUM_MICRO; }
 const TOB_IT_COLORS = ['#f5a623','#8b5cf6','#2563eb','#10b981','#dc2626','#06b6d4','#f97316','#db2777'];
 
 // Versión de las descripciones. Al subirla, el backfill reaplica los textos.
-const TOB_DESC_VERSION = 5;
+const TOB_DESC_VERSION = 6;
 
 // Descripciones por categoría — texto que aparece en el PDF de la rutina que
 // recibe el cliente. Resumen del esquema BIIO MODIFICADO real (1º macrociclo),
@@ -72,21 +72,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: 3 series por ejercicio principal, con onda descendente (1ª serie más reps a peso menor, 3ª serie menos reps a peso mayor).\n\n' +
       'PESOS: Que te cueste pero pudiendo completar todas las repeticiones con técnica correcta. La 1ª serie de cada par de bloques debería ser asequible — sube algo en el siguiente.\n\n' +
       'DESCANSOS: 1\'30" en los primeros bloques · 1\'45" en los del medio · 2\'00" en los últimos. El circuito accesorio con 30" entre ejercicios.\n\n' +
-      'CONSEJOS: 3 entrenos por semana (Lun-Mié-Vie). División A+B (simil full body). En accesorios va circuito sin pausa (jump set). Foco en técnica y recorrido completo.',
+      'CONSEJOS: Mínimo 3 días por semana (Lun-Mié-Vie). División A+B (simil full body). En accesorios va circuito sin pausa (jump set). Foco en técnica y recorrido completo.',
     ca:
       'OBJECTIU: Tornar al gimnàs o començar una nova etapa. Recuperes la tècnica, treballes rangs mitjans de repeticions, prepares el cos per a mesociclos més exigents.\n\n' +
       'COM PROGRESSA: 6 microciclos (blocs) — cada parella puja un esglaó. Ona 15/12/10 > 12/10/8 > 10/8/6. Vas al teu ritme, sense calendari fix.\n\n' +
       'REPETICIONS: 3 sèries per exercici principal, amb ona descendent (1a sèrie més reps a pes menor, 3a sèrie menys reps a pes major).\n\n' +
       'PESOS: Que et costi però podent completar totes les repeticions amb tècnica correcta. La 1a sèrie de cada parell de blocs hauria de ser assequible — puja una mica al següent.\n\n' +
       'DESCANSOS: 1\'30" als primers blocs · 1\'45" als del mig · 2\'00" als últims. El circuit accessori amb 30" entre exercicis.\n\n' +
-      'CONSELLS: 3 entrenaments per setmana (Dl-Dc-Dv). Divisió A+B (similar full body). Als accessoris va circuit sense pausa (jump set). Focus en tècnica i recorregut complet.',
+      'CONSELLS: Mínim 3 dies per setmana (Dl-Dc-Dv). Divisió A+B (similar full body). Als accessoris va circuit sense pausa (jump set). Focus en tècnica i recorregut complet.',
     en:
       'GOAL: Get back to the gym or start a new phase. Recover technique, work mid-range reps, and prepare the body for more demanding mesocycles.\n\n' +
       'PROGRESSION: 6 microcycles (blocks) — each pair moves up one step. Wave 15/12/10 > 12/10/8 > 10/8/6. Move at your own pace, no fixed calendar.\n\n' +
       'REPS: 3 sets per main exercise, with descending wave (1st set more reps at lower weight, 3rd set fewer reps at higher weight).\n\n' +
       'WEIGHTS: It should be challenging but still allow you to complete every rep with clean technique. The 1st set of each block-pair should feel manageable — bump it up in the next.\n\n' +
       'REST: 1\'30" on early blocks · 1\'45" on middle ones · 2\'00" on the last. Accessory circuit with 30" between exercises.\n\n' +
-      'TIPS: 3 sessions per week (Mon-Wed-Fri). A+B split (full-body style). Accessories run as a circuit with no rest (jump set). Focus on technique and full range of motion.'
+      'TIPS: At least 3 days per week (Mon-Wed-Fri). A+B split (full-body style). Accessories run as a circuit with no rest (jump set). Focus on technique and full range of motion.'
   },
 
   'Preparación fuerza': {
@@ -96,21 +96,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: Onda 8/6/4 en grandes (3 series). En apoyos onda 10/8/6 (3 series). Descarga = 8×3 cluster.\n\n' +
       'PESOS: RPE 10 — al fallo técnico en cada serie. Si en la 1ª serie del 1º bloque consigues las 8 repeticiones target, sube un kg en cada ejercicio para el siguiente bloque.\n\n' +
       'DESCANSOS: 2\'00" en bloques 1-2, 2\'30" en bloques 3-4, 1\'00" en descarga.\n\n' +
-      'CONSEJOS: 3 entrenos semanales (Lun-Mié-Vie). División A+B+C: piernas-hombros-abdomen / pecho-tríceps-piernas (recall) / espalda-bíceps-abdomen-cuádriceps.',
+      'CONSEJOS: Mínimo 3 días por semana (Lun-Mié-Vie). División A+B+C: piernas-hombros-abdomen / pecho-tríceps-piernas (recall) / espalda-bíceps-abdomen-cuádriceps.',
     ca:
       'OBJECTIU: Treballar força amb ones 8-6-4 als exercicis grans. És el pas intermedi abans de Força 1.\n\n' +
       'COM PROGRESSA: 3 microciclos BIIO + descàrrega tècnica. A l\'app surten com a 6 blocs: els 1-2 són el "primer micro BIIO" amb pausa 2\', els 3-4 són el "segon micro" amb pausa 2\'30, i els 5-6 són la descàrrega tècnica (8 sèries de 3 reps amb pausa curta).\n\n' +
       'REPETICIONS: Ona 8/6/4 als grans (3 sèries). Als auxiliars ona 10/8/6 (3 sèries). Descàrrega = 8×3 clúster.\n\n' +
       'PESOS: RPE 10 — fins a la fallada tècnica a cada sèrie. Si a la 1a sèrie del 1r bloc aconsegueixes les 8 repeticions target, puja un kg a cada exercici per al bloc següent.\n\n' +
       'DESCANSOS: 2\'00" als blocs 1-2, 2\'30" als blocs 3-4, 1\'00" a la descàrrega.\n\n' +
-      'CONSELLS: 3 entrenaments setmanals (Dl-Dc-Dv). Divisió A+B+C: cames-espatlles-abdomen / pit-tríceps-cames (recall) / esquena-bíceps-abdomen-quàdriceps.',
+      'CONSELLS: Mínim 3 dies per setmana (Dl-Dc-Dv). Divisió A+B+C: cames-espatlles-abdomen / pit-tríceps-cames (recall) / esquena-bíceps-abdomen-quàdriceps.',
     en:
       'GOAL: Build strength with 8-6-4 waves on big lifts. The bridge between Reconditioning and Strength 1.\n\n' +
       'PROGRESSION: 3 BIIO microcycles + technical deload. In the app they show as 6 blocks: 1-2 are the "first BIIO micro" with 2\' rest, 3-4 are the "second micro" with 2\'30 rest, and 5-6 are the technical deload (8 sets of 3 reps with short rest).\n\n' +
       'REPS: 8/6/4 wave on big lifts (3 sets). 10/8/6 wave on accessories (3 sets). Deload = 8×3 cluster.\n\n' +
       'WEIGHTS: RPE 10 — train to technical failure every set. If you hit the target 8 reps on the 1st set of the 1st block, add 1 kg to each exercise for the next block.\n\n' +
       'REST: 2\'00" on blocks 1-2, 2\'30" on blocks 3-4, 1\'00" on deload.\n\n' +
-      'TIPS: 3 sessions per week (Mon-Wed-Fri). A+B+C split: legs-shoulders-core / chest-triceps-legs (recall) / back-biceps-core-quads.'
+      'TIPS: At least 3 days per week (Mon-Wed-Fri). A+B+C split: legs-shoulders-core / chest-triceps-legs (recall) / back-biceps-core-quads.'
   },
 
   'Especialización técnica': {
@@ -120,21 +120,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: 8×3, 7×4, 6×5 alternando — siempre series clúster (varias series de pocas reps con pausa corta).\n\n' +
       'PESOS: Buffer — guarda 1-2 repeticiones en el depósito en cada serie. La idea es velocidad y técnica perfecta, no fallo.\n\n' +
       'DESCANSOS: 1\'00" (8×3) · 1\'15" (7×4) · 1\'30" (6×5). En descarga 1\'30" para todas.\n\n' +
-      'CONSEJOS: 3 entrenos por semana. Fase concéntrica explosiva, pausa isométrica abajo y arriba de 1". Es el bloque de calidad técnica antes de Fuerza 1 y 2.',
+      'CONSEJOS: Mínimo 3 días por semana. Fase concéntrica explosiva, pausa isométrica abajo y arriba de 1". Es el bloque de calidad técnica antes de Fuerza 1 y 2.',
     ca:
       'OBJECTIU: Polir la tècnica amb pes mig-alt. Ones 345 BUFFER — 8×3, 7×4, 6×5 al 75% del 1RM, després repeteix al 80%, tanca amb descàrrega 8×2 al 85%.\n\n' +
       'COM PROGRESSA: 7 microciclos BIIO (mapejats a 6 blocs de l\'app). Blocs 1-3 al 75% amb sèries clúster decreixents, blocs 4-5 al 80%, bloc 6 = descàrrega tècnica al 85% amb buffer.\n\n' +
       'REPETICIONS: 8×3, 7×4, 6×5 alternant — sempre sèries clúster (diverses sèries de poques reps amb pausa curta).\n\n' +
       'PESOS: Buffer — guarda 1-2 repeticions al dipòsit a cada sèrie. La idea és velocitat i tècnica perfecta, no fallada.\n\n' +
       'DESCANSOS: 1\'00" (8×3) · 1\'15" (7×4) · 1\'30" (6×5). A la descàrrega 1\'30" per a totes.\n\n' +
-      'CONSELLS: 3 entrenaments per setmana. Fase concèntrica explosiva, pausa isomètrica abaix i amunt d\'1". És el bloc de qualitat tècnica abans de Força 1 i 2.',
+      'CONSELLS: Mínim 3 dies per setmana. Fase concèntrica explosiva, pausa isomètrica abaix i amunt d\'1". És el bloc de qualitat tècnica abans de Força 1 i 2.',
     en:
       'GOAL: Sharpen technique with medium-high weights. 345 BUFFER waves — 8×3, 7×4, 6×5 at 75% of 1RM, then repeat at 80%, finish with 8×2 deload at 85%.\n\n' +
       'PROGRESSION: 7 BIIO microcycles (mapped to 6 app blocks). Blocks 1-3 at 75% with decreasing cluster sets, blocks 4-5 at 80%, block 6 = technical deload at 85% with buffer.\n\n' +
       'REPS: 8×3, 7×4, 6×5 alternating — always cluster sets (multiple sets of few reps with short rest).\n\n' +
       'WEIGHTS: Buffer — keep 1-2 reps in the tank every set. The goal is speed and clean technique, not failure.\n\n' +
       'REST: 1\'00" (8×3) · 1\'15" (7×4) · 1\'30" (6×5). 1\'30" for everything on deload.\n\n' +
-      'TIPS: 3 sessions per week. Explosive concentric phase, 1" isometric pause at top and bottom. This is the technical-quality block before Strength 1 and 2.'
+      'TIPS: At least 3 days per week. Explosive concentric phase, 1" isometric pause at top and bottom. This is the technical-quality block before Strength 1 and 2.'
   },
 
   'Fuerza 1': {
@@ -144,21 +144,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: 4 series de 4 reps en los grandes. Accesorios con jump set 3×12.\n\n' +
       'PESOS: Sube ~2.5% del 1RM cada bloque. La técnica manda — si se rompe, baja peso. Subida explosiva, control en la bajada.\n\n' +
       'DESCANSOS: 3\'00" entre series en los grandes (necesitas estar fresco). 1\'00" en descarga. 30" entre ejercicios del jump set.\n\n' +
-      'CONSEJOS: 3 entrenos por semana. Foco en arrancadas (sin rebote en peso muerto), pausa al pecho en banca, dominadas explosivas hasta el pecho.',
+      'CONSEJOS: Mínimo 3 días por semana. Foco en arrancadas (sin rebote en peso muerto), pausa al pecho en banca, dominadas explosivas hasta el pecho.',
     ca:
       'OBJECTIU: Pujar intensitat de debò. 4×4 progressiu del 80% al 87.5% del 1RM amb RPE creixent.\n\n' +
       'COM PROGRESSA: 5 microciclos BIIO (mapejats a 6 blocs de l\'app). 1r: 80% RPE 7/8. 2n: 82.5% RPE 8/9. 3r: 85% RPE 9/10. 4t: 87.5% RPE 10. Blocs 5-6: descàrrega tècnica 8×3 al 75%.\n\n' +
       'REPETICIONS: 4 sèries de 4 reps als grans. Accessoris amb jump set 3×12.\n\n' +
       'PESOS: Puja ~2.5% del 1RM cada bloc. La tècnica mana — si es trenca, baixa el pes. Pujada explosiva, control a la baixada.\n\n' +
       'DESCANSOS: 3\'00" entre sèries als grans (cal estar fresc). 1\'00" a la descàrrega. 30" entre exercicis del jump set.\n\n' +
-      'CONSELLS: 3 entrenaments per setmana. Focus en arrancades (sense rebot al pes mort), pausa al pit al banc, dominades explosives fins al pit.',
+      'CONSELLS: Mínim 3 dies per setmana. Focus en arrancades (sense rebot al pes mort), pausa al pit al banc, dominades explosives fins al pit.',
     en:
       'GOAL: Real intensity step-up. Progressive 4×4 from 80% to 87.5% of 1RM with rising RPE.\n\n' +
       'PROGRESSION: 5 BIIO microcycles (mapped to 6 app blocks). 1st: 80% RPE 7/8. 2nd: 82.5% RPE 8/9. 3rd: 85% RPE 9/10. 4th: 87.5% RPE 10. Blocks 5-6: technical deload 8×3 at 75%.\n\n' +
       'REPS: 4 sets of 4 reps on the big lifts. Accessories with jump set 3×12.\n\n' +
       'WEIGHTS: Add ~2.5% of 1RM each block. Technique comes first — if it breaks, drop the weight. Explosive lift, controlled descent.\n\n' +
       'REST: 3\'00" between sets on big lifts (you need to be fresh). 1\'00" on deload. 30" between exercises in the jump set.\n\n' +
-      'TIPS: 3 sessions per week. Focus on clean starts (no bounce on deadlift), pause at the chest on bench, explosive pull-ups all the way to the chest.'
+      'TIPS: At least 3 days per week. Focus on clean starts (no bounce on deadlift), pause at the chest on bench, explosive pull-ups all the way to the chest.'
   },
 
   'Fuerza 2': {
@@ -168,21 +168,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: Cada serie son 8 reps simples con una pausa corta entre cada una (rest-pause) — sueltas la barra entre reps pero sin bajar peso. El objetivo es completar las 8 con técnica perfecta.\n\n' +
       'PESOS: % del 1RM. Si completas las 8 reps con técnica correcta en una serie, suma 2.5% al peso para esa serie en el siguiente bloque.\n\n' +
       'DESCANSOS: 4\'00" entre series clúster. 2\'00" en descarga. 5-6\' antes de cada intento de máximo.\n\n' +
-      'CONSEJOS: 3 entrenos por semana + 2 sesiones de Maximales separadas (1ª: Squat/Press Militar/Press Estrecho. 2ª: Peso Muerto/Jalones invertidos/Curl con barra). Calentamiento progresivo siempre antes de cada intento de máximo.',
+      'CONSEJOS: Mínimo 3 días por semana + 2 sesiones de Maximales separadas (1ª: Squat/Press Militar/Press Estrecho. 2ª: Peso Muerto/Jalones invertidos/Curl con barra). Calentamiento progresivo siempre antes de cada intento de máximo.',
     ca:
       'OBJECTIU: Demostrar la força guanyada. Clúster carregat al 87.5% / 90% / 92.5% amb rest-pause de 15"/20"/25", i al final 2 sessions de MÀXIMS per batre el teu 1RM.\n\n' +
       'COM PROGRESSA: 4 microciclos BIIO + 2 sessions de màxims. A l\'app, els blocs 1-2 són el 87.5% amb RP 15", el 3 és 90% RP 20", el 4 és 92.5% RP 25", i els 5-6 són la descàrrega 10×1 al 95%. L\'entrenament "Màxims" va a part.\n\n' +
       'REPETICIONS: Cada sèrie són 8 reps simples amb una pausa curta entre cadascuna (rest-pause) — deixes anar la barra entre reps però sense baixar el pes. L\'objectiu és completar les 8 amb tècnica perfecta.\n\n' +
       'PESOS: % del 1RM. Si completes les 8 reps amb tècnica correcta en una sèrie, suma 2.5% al pes per a aquella sèrie al bloc següent.\n\n' +
       'DESCANSOS: 4\'00" entre sèries clúster. 2\'00" a la descàrrega. 5-6\' abans de cada intent màxim.\n\n' +
-      'CONSELLS: 3 entrenaments per setmana + 2 sessions de Màxims separades (1a: Squat/Press Militar/Press Estret. 2a: Pes Mort/Jalons invertits/Curl amb barra). Escalfament progressiu sempre abans de cada intent màxim.',
+      'CONSELLS: Mínim 3 dies per setmana + 2 sessions de Màxims separades (1a: Squat/Press Militar/Press Estret. 2a: Pes Mort/Jalons invertits/Curl amb barra). Escalfament progressiu sempre abans de cada intent màxim.',
     en:
       'GOAL: Show the strength you\'ve built. Loaded cluster at 87.5% / 90% / 92.5% with rest-pause of 15"/20"/25", and 2 final MAXES sessions to beat your 1RM.\n\n' +
       'PROGRESSION: 4 BIIO microcycles + 2 maxes sessions. In the app, blocks 1-2 are 87.5% with RP 15", block 3 is 90% RP 20", block 4 is 92.5% RP 25", and 5-6 are the 10×1 deload at 95%. The "Maxes" workout is separate.\n\n' +
       'REPS: Each set is 8 single reps with a short pause between each (rest-pause) — release the bar between reps but don\'t lower the weight. Goal is to complete all 8 with perfect technique.\n\n' +
       'WEIGHTS: % of 1RM. If you complete the 8 reps with clean technique on a set, add 2.5% to that set\'s weight for the next block.\n\n' +
       'REST: 4\'00" between cluster sets. 2\'00" on deload. 5-6\' before each max attempt.\n\n' +
-      'TIPS: 3 sessions per week + 2 separate Maxes sessions (1st: Squat/Overhead Press/Close-Grip Press. 2nd: Deadlift/Inverted Rows/Barbell Curl). Always warm up progressively before each max attempt.'
+      'TIPS: At least 3 days per week + 2 separate Maxes sessions (1st: Squat/Overhead Press/Close-Grip Press. 2nd: Deadlift/Inverted Rows/Barbell Curl). Always warm up progressively before each max attempt.'
   },
 
   'Hibrido': {
@@ -192,21 +192,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: En el principal, 3 series con onda 4-6-8 reps + serie extra DROP (bajada de peso al fallo). En el Rest-Pause, 20 reps totales con pausa breve de respiración SIN soltar la barra.\n\n' +
       'PESOS: 1ª serie 85% (apunta 4 reps), 2ª 75% (6 reps), 3ª 65% (8 reps). Si llegas al numero target, añade el DROP. En Rest-Pause empieza al 70%.\n\n' +
       'DESCANSOS: 2\'00" entre series en bloque 1, 3\'00" en bloque 2 (Rest-Pause), 2\'30" en descarga.\n\n' +
-      'CONSEJOS: 3 entrenos por semana. División A+B+C: piernas-hombros-abdomen / pecho-tríceps / espalda-bíceps. Todas las series al fallo técnico (RPE 10).',
+      'CONSEJOS: Mínimo 3 días por semana. División A+B+C: piernas-hombros-abdomen / pecho-tríceps / espalda-bíceps. Todas las series al fallo técnico (RPE 10).',
     ca:
       'OBJECTIU: Barrejar força i hipertròfia a la mateixa sessió. Treballa fins a la fallada tècnica amb ones 4-6-8 + DROP al final.\n\n' +
       'COM PROGRESSA: 3 microciclos BIIO (mapejats a 6 blocs). 1r (blocs 1-2): 3×4/6/8 + DROP fins a la fallada, al 85/75/65% del 1RM. 2n (blocs 3-4): 2×20 Rest-Pause al 70% del 1RM. 3r (blocs 5-6): descàrrega parcial.\n\n' +
       'REPETICIONS: Al principal, 3 sèries amb ona 4-6-8 reps + sèrie extra DROP (baixada de pes fins a la fallada). Al Rest-Pause, 20 reps totals amb pausa breu de respiració SENSE deixar anar la barra.\n\n' +
       'PESOS: 1a sèrie 85% (apunta 4 reps), 2a 75% (6 reps), 3a 65% (8 reps). Si arribes al número target, afegeix el DROP. Al Rest-Pause comença al 70%.\n\n' +
       'DESCANSOS: 2\'00" entre sèries al bloc 1, 3\'00" al bloc 2 (Rest-Pause), 2\'30" a la descàrrega.\n\n' +
-      'CONSELLS: 3 entrenaments per setmana. Divisió A+B+C: cames-espatlles-abdomen / pit-tríceps / esquena-bíceps. Totes les sèries fins a la fallada tècnica (RPE 10).',
+      'CONSELLS: Mínim 3 dies per setmana. Divisió A+B+C: cames-espatlles-abdomen / pit-tríceps / esquena-bíceps. Totes les sèries fins a la fallada tècnica (RPE 10).',
     en:
       'GOAL: Blend strength and hypertrophy in the same session. Train to technical failure with 4-6-8 waves + a DROP at the end.\n\n' +
       'PROGRESSION: 3 BIIO microcycles (mapped to 6 blocks). 1st (blocks 1-2): 3×4/6/8 + DROP to failure, at 85/75/65% of 1RM. 2nd (blocks 3-4): 2×20 Rest-Pause at 70% of 1RM. 3rd (blocks 5-6): partial deload.\n\n' +
       'REPS: On the main lift, 3 sets with 4-6-8 rep wave + an extra DROP set (lower weight, lift to failure). On Rest-Pause, 20 total reps with a brief breathing pause WITHOUT releasing the bar.\n\n' +
       'WEIGHTS: 1st set 85% (aim for 4 reps), 2nd 75% (6 reps), 3rd 65% (8 reps). If you hit the target, add the DROP. Start Rest-Pause at 70%.\n\n' +
       'REST: 2\'00" between sets in block 1, 3\'00" in block 2 (Rest-Pause), 2\'30" on deload.\n\n' +
-      'TIPS: 3 sessions per week. A+B+C split: legs-shoulders-core / chest-triceps / back-biceps. All sets to technical failure (RPE 10).'
+      'TIPS: At least 3 days per week. A+B+C split: legs-shoulders-core / chest-triceps / back-biceps. All sets to technical failure (RPE 10).'
   },
 
   'Hipertrofia': {
@@ -216,21 +216,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: 3 series con onda 8-6-4. Después de la última, Rest Pause: descansa 20", coge más reps; descansa 20" otra vez, coge más reps. En apoyos jump set 20/12 reps.\n\n' +
       'PESOS: 75% del 1RM. Si alcanzas las 8/6/4 reps target, +1% para la próxima sesión.\n\n' +
       'DESCANSOS: 2\'00" entre series. 30" entre ejercicios del jump set. En descarga 1\'00".\n\n' +
-      'CONSEJOS: 3 entrenos por semana. División A+B+C. Foco en SENTIR el músculo, técnica estricta. Hay BURNS (parciales hasta el fallo) en algunos accesorios.',
+      'CONSEJOS: Mínimo 3 días por semana. División A+B+C. Foco en SENTIR el músculo, técnica estricta. Hay BURNS (parciales hasta el fallo) en algunos accesorios.',
     ca:
       'OBJECTIU: Massa muscular pura. Ona 8-6-4 fins a la fallada tècnica + Rest Pause 20"/20" per apurar al màxim cada sèrie.\n\n' +
       'COM PROGRESSA: 3 microciclos BIIO (a l\'app 6 blocs). 1r (blocs 1-2): 3×8/6/4 + Rest Pause al 75% del 1RM. 2n (blocs 3-4): mateix esquema, puja 1% si has assolit les reps target. 3r (blocs 5-6): descàrrega parcial 8×3 al 75%.\n\n' +
       'REPETICIONS: 3 sèries amb ona 8-6-4. Després de l\'última, Rest Pause: descansa 20", aconsegueix més reps; descansa 20" altra vegada, aconsegueix més reps. Als auxiliars jump set 20/12 reps.\n\n' +
       'PESOS: 75% del 1RM. Si assoleixes les 8/6/4 reps target, +1% per a la propera sessió.\n\n' +
       'DESCANSOS: 2\'00" entre sèries. 30" entre exercicis del jump set. A la descàrrega 1\'00".\n\n' +
-      'CONSELLS: 3 entrenaments per setmana. Divisió A+B+C. Focus en SENTIR el múscul, tècnica estricta. Hi ha BURNS (parcials fins a la fallada) en alguns accessoris.',
+      'CONSELLS: Mínim 3 dies per setmana. Divisió A+B+C. Focus en SENTIR el múscul, tècnica estricta. Hi ha BURNS (parcials fins a la fallada) en alguns accessoris.',
     en:
       'GOAL: Pure muscle mass. 8-6-4 wave to technical failure + Rest Pause 20"/20" to squeeze every set to the max.\n\n' +
       'PROGRESSION: 3 BIIO microcycles (6 app blocks). 1st (blocks 1-2): 3×8/6/4 + Rest Pause at 75% of 1RM. 2nd (blocks 3-4): same scheme, +1% if you hit the target reps. 3rd (blocks 5-6): partial deload 8×3 at 75%.\n\n' +
       'REPS: 3 sets with 8-6-4 wave. After the last, Rest Pause: rest 20", grab more reps; rest 20" again, grab more reps. Accessories with jump set 20/12 reps.\n\n' +
       'WEIGHTS: 75% of 1RM. If you hit the 8/6/4 target reps, +1% for the next session.\n\n' +
       'REST: 2\'00" between sets. 30" between jump-set exercises. 1\'00" on deload.\n\n' +
-      'TIPS: 3 sessions per week. A+B+C split. Focus on FEELING the muscle, strict technique. BURNS (partials to failure) on some accessories.'
+      'TIPS: At least 3 days per week. A+B+C split. Focus on FEELING the muscle, strict technique. BURNS (partials to failure) on some accessories.'
   },
 
   'Calidad muscular': {
@@ -240,21 +240,21 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONES: Series clúster — 8 series de 2-3 reps con pausa 1\'. Accesorios MAX PUMP 10-12 reps en SUPERSERIE (2 ejs alternados) o TRISERIE (3 ejs alternados).\n\n' +
       'PESOS: % del 1RM. Tempo crítico: 3 segundos eccéntrica · 2 segundos pausa abajo · 3 segundos concéntrica · 2 segundos pausa arriba (3232).\n\n' +
       'DESCANSOS: 1\'00" entre series clúster, 1\'30" entre superseries / triseries. En accesorios solo el tiempo de alternar.\n\n' +
-      'CONSEJOS: 3 entrenos por semana. División A+B+C. El tempo 3232 es lo que da la calidad — sin él pierdes el objetivo. En el último ejercicio de cada grupo se hacen STRIPPING (drop sets) para apurar.',
+      'CONSEJOS: Mínimo 3 días por semana. División A+B+C. El tempo 3232 es lo que da la calidad — sin él pierdes el objetivo. En el último ejercicio de cada grupo se hacen STRIPPING (drop sets) para apurar.',
     ca:
       'OBJECTIU: Qualitat i definició muscular. Clúster al 75% / 77.5% amb tempo 3232, accessoris en SUPERSÈRIE / TRISÈRIE buscant MAX PUMP.\n\n' +
       'COM PROGRESSA: 6 microciclos BIIO. Blocs 1-3 al 75% del 1RM (8×2, 8×3, 8×3 alternant). Blocs 4-6 al 77.5% (mateix esquema). Cardio progressiu de 15\' a 50\' al 60-70% del FCM.\n\n' +
       'REPETICIONS: Sèries clúster — 8 sèries de 2-3 reps amb pausa 1\'. Accessoris MAX PUMP 10-12 reps en SUPERSÈRIE (2 exs alternats) o TRISÈRIE (3 exs alternats).\n\n' +
       'PESOS: % del 1RM. Tempo crític: 3 segons excèntrica · 2 segons pausa abaix · 3 segons concèntrica · 2 segons pausa amunt (3232).\n\n' +
       'DESCANSOS: 1\'00" entre sèries clúster, 1\'30" entre supersèries / trisèries. Als accessoris només el temps d\'alternar.\n\n' +
-      'CONSELLS: 3 entrenaments per setmana. Divisió A+B+C. El tempo 3232 és el que dóna la qualitat — sense això perds l\'objectiu. A l\'últim exercici de cada grup es fan STRIPPING (drop sets) per apurar.',
+      'CONSELLS: Mínim 3 dies per setmana. Divisió A+B+C. El tempo 3232 és el que dóna la qualitat — sense això perds l\'objectiu. A l\'últim exercici de cada grup es fan STRIPPING (drop sets) per apurar.',
     en:
       'GOAL: Muscle quality and definition. Cluster at 75% / 77.5% with 3232 tempo, accessories as SUPERSET / TRISET chasing MAX PUMP.\n\n' +
       'PROGRESSION: 6 BIIO microcycles. Blocks 1-3 at 75% of 1RM (8×2, 8×3, 8×3 alternating). Blocks 4-6 at 77.5% (same scheme). Progressive cardio from 15\' to 50\' at 60-70% of max HR.\n\n' +
       'REPS: Cluster sets — 8 sets of 2-3 reps with 1\' rest. MAX PUMP accessories 10-12 reps in SUPERSET (2 exercises alternated) or TRISET (3 exercises alternated).\n\n' +
       'WEIGHTS: % of 1RM. Critical tempo: 3 seconds eccentric · 2 seconds pause at bottom · 3 seconds concentric · 2 seconds pause at top (3232).\n\n' +
       'REST: 1\'00" between cluster sets, 1\'30" between supersets / trisets. On accessories, just the time to alternate.\n\n' +
-      'TIPS: 3 sessions per week. A+B+C split. The 3232 tempo is what brings the quality — without it you lose the goal. On the last exercise of each group, STRIPPING (drop sets) to push past failure.'
+      'TIPS: At least 3 days per week. A+B+C split. The 3232 tempo is what brings the quality — without it you lose the goal. On the last exercise of each group, STRIPPING (drop sets) to push past failure.'
   }
 };
 
@@ -4213,10 +4213,22 @@ async function tobGeneratePdfActual(){
   const it = tobIt();
   if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
   tobToast('⏳ Generando PDF...', '');
-  await tobBuildPdfRutina(cli, a, pl, it).catch(e => { console.error(e); tobToast('Error: '+e.message, 'red'); });
+  await tobBuildPdfRutina(cli, a, pl, it, false).catch(e => { console.error(e); tobToast('Error: '+e.message, 'red'); });
 }
 
-async function tobBuildPdfRutina(cli, a, pl, it){
+// Igual que tobGeneratePdfActual pero abre el PDF en pestaña nueva para
+// previsualizar sin descargar (útil para ver el layout antes de enviarlo).
+async function tobPreviewPdfActual(){
+  const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
+  const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
+  const it = tobIt();
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+  tobToast('⏳ Generando vista previa...', '');
+  await tobBuildPdfRutina(cli, a, pl, it, true).catch(e => { console.error(e); tobToast('Error: '+e.message, 'red'); });
+}
+
+async function tobBuildPdfRutina(cli, a, pl, it, preview){
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -4291,11 +4303,11 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   //   · separador entre ejercicios: 2 (antes 4)
   // Si aún no cabe (entrenos con 6+ ejercicios) se mantiene la lógica de
   // página adicional al final.
-  const ROW_H        = 14;  // altura fila de serie
-  const EJ_HEADER_H  = 20;  // altura banda negra con nombre ejercicio
-  const PLAN_ROW_H   = 13;  // altura banda ámbar con plan
-  const KG_REP_HDR_H = 9;   // altura cabecera Kg/Reps
-  const DESC_H       = 14;  // altura fila descanso
+  const ROW_H        = 12;  // altura fila de serie
+  const EJ_HEADER_H  = 18;  // altura banda negra con nombre ejercicio
+  const PLAN_ROW_H   = 11;  // altura banda ámbar con plan
+  const KG_REP_HDR_H = 8;   // altura cabecera Kg/Reps
+  const DESC_H       = 12;  // altura fila descanso
   const SEP_H        = 2;   // espacio entre ejercicios
 
   (a.rutina?.entrenos||[]).forEach(en => {
@@ -4488,6 +4500,15 @@ async function tobBuildPdfRutina(cli, a, pl, it){
   const bytes = await doc.save();
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
+  if(preview){
+    // Vista previa: abrir en pestaña nueva sin descargar.
+    const win = window.open(url, '_blank');
+    if(!win){ tobToast('Permite las ventanas emergentes para previsualizar', 'red'); }
+    else { tobToast('✓ Vista previa abierta', 'green'); }
+    // No revocamos inmediatamente — la pestaña necesita el blob. Se limpia al cerrar.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return;
+  }
   const link = document.createElement('a');
   link.href = url;
   link.download = `${(cli?.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_${tobRutinaShortName(pl).replace(/[^a-zA-Z0-9]/g,'_')}_it${it?.numero}_completada.pdf`;
