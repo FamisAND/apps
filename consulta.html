@@ -56,11 +56,18 @@
   </div>
   <div class="tob-tools">
     <span id="tobSaveBadge" style="font-size:.7rem;color:var(--mute);font-family:'DM Mono',monospace;"></span>
-    <button class="tob-btn" onclick="tobExport()" title="Descargar JSON con todos los datos">Export</button>
-    <button class="tob-btn" onclick="document.getElementById('tobImportFile').click()" title="Cargar JSON exportado">Import</button>
     <input type="file" id="tobImportFile" accept=".json" style="display:none" onchange="tobImport(event)">
-    <button class="tob-btn" onclick="tobOpenPasteImport()" title="Pegar JSON de mediciones/asignaciones de un cliente" style="padding:2px 6px;opacity:.55" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.55'">📥</button>
-    <button class="tob-btn" onclick="DashboardAuth.changePin('training_online','Consulta')" title="Cambiar el PIN de acceso">🔑 PIN</button>
+    <div class="tob-settings-wrap">
+      <button class="tob-btn" onclick="tobToggleSettingsMenu(event)" title="Ajustes · datos · PIN">⚙ Ajustes</button>
+      <div class="tob-settings-menu" id="tobSettingsMenu">
+        <button onclick="tobOpenPasteImport();tobCloseSettingsMenu()">📥 Importar cliente (pegar JSON)</button>
+        <div class="tob-settings-sep"></div>
+        <button onclick="tobExport();tobCloseSettingsMenu()">⬇ Exportar todos los datos</button>
+        <button onclick="document.getElementById('tobImportFile').click();tobCloseSettingsMenu()">⬆ Importar datos (JSON)</button>
+        <div class="tob-settings-sep"></div>
+        <button onclick="DashboardAuth.changePin('training_online','Consulta');tobCloseSettingsMenu()">🔑 Cambiar PIN</button>
+      </div>
+    </div>
     <a href="index.html" class="tob-btn">← Menú</a>
   </div>
 </div>

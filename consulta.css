@@ -920,6 +920,22 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-mc-aj-ing .aj-ing-nm{flex:1;color:var(--text);}
 .tob-mc-aj-ing .aj-ing-base{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);min-width:64px;}
 
+/* ── Menú ⚙ Ajustes de la topbar ── */
+.tob-settings-wrap{ position:relative; display:inline-block; }
+.tob-settings-menu{
+  display:none; position:absolute; right:0; top:calc(100% + 6px); z-index:1000;
+  background:#0e0d0a; border:1px solid var(--border2); border-radius:10px;
+  padding:5px; min-width:240px; box-shadow:0 8px 24px rgba(0,0,0,.5);
+}
+.tob-settings-menu.on{ display:block; }
+.tob-settings-menu button{
+  display:block; width:100%; text-align:left; background:transparent; border:none;
+  color:var(--text); font-family:'DM Mono',monospace; font-size:.78rem;
+  padding:8px 10px; border-radius:7px; cursor:pointer; transition:background .12s;
+}
+.tob-settings-menu button:hover{ background:rgba(255,255,255,.06); }
+.tob-settings-sep{ height:1px; background:var(--border); margin:4px 6px; }
+
 /* ── Buscador de clientes ── */
 .tob-cli-buscar{
   font-family:'DM Mono',monospace; font-size:.78rem; color:var(--text);

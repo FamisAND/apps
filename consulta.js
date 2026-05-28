@@ -1974,6 +1974,22 @@ function tobOpenPasteImport(){
 function tobClosePasteImport(){
   document.getElementById('tobPasteImportBg').classList.remove('on');
 }
+
+// ── Menú ⚙ Ajustes de la topbar (export/import/PIN agrupados) ──
+function tobToggleSettingsMenu(ev){
+  if(ev) ev.stopPropagation();
+  const m = document.getElementById('tobSettingsMenu');
+  if(m) m.classList.toggle('on');
+}
+function tobCloseSettingsMenu(){
+  const m = document.getElementById('tobSettingsMenu');
+  if(m) m.classList.remove('on');
+}
+// Cerrar al clicar fuera
+document.addEventListener('click', e => {
+  const wrap = e.target.closest('.tob-settings-wrap');
+  if(!wrap) tobCloseSettingsMenu();
+});
 function tobRunPasteImport(){
   const txt = document.getElementById('tobPasteImportTxt').value.trim();
   const info = document.getElementById('tobPasteImportInfo');
