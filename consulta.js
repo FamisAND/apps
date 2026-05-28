@@ -748,12 +748,41 @@ function tobPlanLabel(plan){
 }
 
 // ═══ CLIENTES ═══
+// Filtro del listado: 'activos' (default) | 'todos' | 'inactivos'
+let tobCliFiltro = 'activos';
+function tobSetCliFiltro(v){
+  tobCliFiltro = v;
+  document.querySelectorAll('.tob-cli-filtro-btn').forEach(b =>
+    b.classList.toggle('on', b.dataset.f === v));
+  tobRenderClientes();
+}
 function tobRenderClientes(){
   const tbody = document.getElementById('tobClientesBody');
   const empty = document.getElementById('tobClientesEmpty');
-  if(!tobDB.clientes.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  if(!tobDB.clientes.length){ tbody.innerHTML=''; empty.style.display='block'; empty.innerHTML='Aún no hay clientes. Crea el primero con <strong>+ Nuevo cliente</strong>.'; return; }
+  // Aplicar filtro activo/inactivo
+  const lista = tobDB.clientes.filter(c => {
+    const activo = (c.activo !== false);
+    if(tobCliFiltro === 'activos')   return activo;
+    if(tobCliFiltro === 'inactivos') return !activo;
+    return true; // 'todos'
+  });
+  // Actualizar contador del filtro (cuántos activos hay)
+  const nAct = tobDB.clientes.filter(c => c.activo !== false).length;
+  const cntEl = document.getElementById('tobCliFiltroCount');
+  if(cntEl) cntEl.textContent = `${nAct}/${tobDB.clientes.length} activos`;
+  if(!lista.length){
+    tbody.innerHTML='';
+    empty.style.display='block';
+    empty.innerHTML = tobCliFiltro==='activos'
+      ? 'No hay clientes activos. Cambia el filtro a <strong>Todos</strong> para verlos.'
+      : tobCliFiltro==='inactivos'
+        ? 'No hay clientes inactivos.'
+        : 'Sin clientes.';
+    return;
+  }
   empty.style.display = 'none';
-  tbody.innerHTML = tobDB.clientes.map(c => {
+  tbody.innerHTML = lista.map(c => {
     const last = (c.asignaciones||[]).slice(-1)[0];
     const lastInfo = last
       ? tobPlantillaName(last.plantillaId) + ` <span class="tob-badge ${last.estado}">${last.estado}</span>`
@@ -785,8 +814,6 @@ function tobRenderClientes(){
       <td class="num">${(c.asignaciones||[]).length}</td>
       <td>${lastInfo}</td>
       <td class="actions">
-        <button class="tob-action btn-xs" onclick="tobAbrirUltimaRutina('${c.id}')" title="Abrir la última rutina del cliente">🏋 Rutina</button>
-        <button class="tob-action btn-xs" onclick="tobAbrirMediciones('${c.id}')" title="Ver/añadir mediciones de composición corporal">📏 Med</button>
         <button class="tob-action ghost btn-xs" onclick="tobOpenFicha('${c.id}')" title="Ficha general — rutinas + mediciones + histórico">📋 Ficha</button>
       </td>
     </tr>`;
@@ -2007,7 +2034,82 @@ function tobRunPasteImport(){
     asigsResolved.push({ai, pl, ids});
   }
 
-  if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length){
+  // ── Menú (snapshot interactivo: casa cada plato → receta del catálogo por nombre) ──
+  // Estructura esperada:
+  //   data.menu = { fecha?, semanas?, comidasIds?[], kcalObj?, protObj?, margenPct?,
+  //                 notas?, data:{ [semana]:{ [dia 0-6]:{ [comidaId]:[platoNombre,...] } } } }
+  // Los nombres de plato se normalizan (sin acentos, sin cantidades iniciales) y se
+  // buscan en tobMenusDB.recetas por nombre. Los que no casen se omiten y se reportan.
+  let menuResolved = null;
+  if(data.menu && data.menu.data){
+    const recs = (tobMenusDB.recetas || []);
+    const _norm = s => (s||'').toString().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
+    const _stripQty = s => {
+      let t = String(s||'').trim();
+      t = t.replace(/^\d+(\s*\/\s*\d+)?\s+/,'');               // "1 ", "1/2 "
+      t = t.replace(/^(medio|media|medios)\s+/i,'');
+      t = t.replace(/^(vaso|vasos|cucharada|cucharadas|pieza|piezas|onza|onzas|tarta|tartas|porcion|porci[oó]n|porciones|loncha|lonchas|tortilla|tortillas|hamburguesa|hamburguesas|tostada)\s+(de\s+)?/i,'');
+      return t.trim();
+    };
+    const idx = new Map();
+    recs.forEach(r => { const k = _norm(r.nombre); if(k && !idx.has(k)) idx.set(k, r.id); });
+    const _stripNum = s => String(s||'').trim().replace(/^\d+(\s*\/\s*\d+)?\s+/,'');  // solo el número inicial
+    const findRec = plato => {
+      for(const c of [ _norm(plato), _norm(_stripNum(plato)), _norm(_stripQty(plato)) ]){ if(idx.has(c)) return idx.get(c); }
+      const pn = _norm(plato);
+      let best = null;
+      recs.forEach(r => {
+        const rn = _norm(r.nombre);
+        if(rn.length > 6 && (pn.includes(rn) || rn.includes(pn))){
+          if(!best || rn.length > _norm(best.nombre).length) best = r;
+        }
+      });
+      return best ? best.id : null;
+    };
+    const comidasIds = (Array.isArray(data.menu.comidasIds) && data.menu.comidasIds.length)
+      ? data.menu.comidasIds.slice() : ['esmorzar','dinar','berenar','sopar'];
+    const semanas = data.menu.semanas || Object.keys(data.menu.data).length || 1;
+    const outData = {};
+    const unmatched = [];
+    let matchedCount = 0, totalCount = 0;
+    Object.keys(data.menu.data).forEach(s => {
+      outData[s] = {};
+      const dias = data.menu.data[s] || {};
+      for(let d = 0; d < 7; d++){
+        outData[s][d] = {};
+        comidasIds.forEach(cid => { outData[s][d][cid] = []; });
+        const diaIn = dias[d] || dias[String(d)] || {};
+        Object.keys(diaIn).forEach(cid => {
+          if(!outData[s][d][cid]) outData[s][d][cid] = [];
+          (Array.isArray(diaIn[cid]) ? diaIn[cid] : []).forEach(p => {
+            totalCount++;
+            const rid = findRec(p);
+            if(rid){ outData[s][d][cid].push(rid); matchedCount++; }
+            else unmatched.push(p);
+          });
+        });
+      }
+    });
+    const snapshot = {
+      id: tobUid('menu'),
+      fecha: data.menu.fecha || new Date().toISOString().slice(0,10),
+      cliId: cli.id,
+      semanas,
+      comidasIds,
+      kcalObj: data.menu.kcalObj || null,
+      margenPct: data.menu.margenPct || 10,
+      protObj: data.menu.protObj || null,
+      notas: data.menu.notas || '',
+      data: outData,
+      ajustes: {},
+      savedAt: new Date().toISOString()
+    };
+    menuResolved = { snapshot, matchedCount, totalCount, unmatched };
+  }
+
+  if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length && !menuResolved){
     info.innerHTML = 'Nada que importar.'
       + (asigsErrors.length ? '<br>'+asigsErrors.join('<br>') : '');
     info.style.color = 'var(--amber)';
@@ -2019,6 +2121,8 @@ function tobRunPasteImport(){
   if(metaUpdates.length) summaryLines.push('Meta: ' + metaUpdates.join(', '));
   if(medsIn.length) summaryLines.push(medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''));
   if(asigsIn.length) summaryLines.push(asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : ''));
+  if(menuResolved) summaryLines.push('1 menú: ' + menuResolved.matchedCount + '/' + menuResolved.totalCount + ' platos casados con recetas'
+    + (menuResolved.unmatched.length ? ' (' + menuResolved.unmatched.length + ' sin receta en catálogo, se omiten)' : ''));
   if(!confirm('¿Importar lo siguiente?\n\n' + summaryLines.join('\n'))) return;
 
   // Aplicar mediciones
@@ -2071,15 +2175,32 @@ function tobRunPasteImport(){
     cli.asignaciones.push(asig);
   }
 
+  // Aplicar menú
+  if(menuResolved){
+    if(!cli.menus) cli.menus = [];
+    cli.menus.unshift(menuResolved.snapshot);
+  }
+
   tobSave();
   tobClosePasteImport();
   if(typeof tobRenderClientes === 'function') tobRenderClientes();
   if(typeof tobRenderFicha === 'function' && tobCurrentFichaId === cli.id) tobRenderFicha();
+  if(typeof tobFichaRenderMenus === 'function' && tobCurrentFichaId === cli.id) tobFichaRenderMenus();
   const toastParts = [];
   if(metaUpdates.length) toastParts.push(metaUpdates.length + ' meta');
   if(medsToAdd.length) toastParts.push(medsToAdd.length + ' med');
   if(asigsResolved.length) toastParts.push(asigsResolved.length + ' rutinas');
+  if(menuResolved) toastParts.push('menú ' + menuResolved.matchedCount + '/' + menuResolved.totalCount);
   tobToast('✓ ' + cli.nombre + ': ' + toastParts.join(' · '), 'green');
+
+  // Reportar platos del menú que no casaron con ninguna receta del catálogo
+  if(menuResolved && menuResolved.unmatched.length){
+    const uniq = [...new Set(menuResolved.unmatched)];
+    alert('Menú importado en ' + cli.nombre + '.\n\n'
+      + uniq.length + ' plato(s) NO se encontraron en tu catálogo de recetas y se omitieron.\n'
+      + 'Ábrelos en el creador de menús y añádelos a mano (o crea la receta):\n\n'
+      + uniq.map(u => '• ' + u).join('\n'));
+  }
 }
 
 // ═══ CONFIRM ═══

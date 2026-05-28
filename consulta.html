@@ -72,7 +72,13 @@
       <div class="tob-h">Clientes online</div>
       <div class="tob-sub">Asigna plantillas, registra sus kg/reps, ve su progreso entre iteraciones.</div>
     </div>
-    <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+    <div style="margin-left:auto;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+      <div class="tob-cli-filtro" title="Filtrar clientes por estado">
+        <button class="tob-cli-filtro-btn on" data-f="activos"   onclick="tobSetCliFiltro('activos')">Activos</button>
+        <button class="tob-cli-filtro-btn"    data-f="todos"     onclick="tobSetCliFiltro('todos')">Todos</button>
+        <button class="tob-cli-filtro-btn"    data-f="inactivos" onclick="tobSetCliFiltro('inactivos')">Inactivos</button>
+      </div>
+      <span id="tobCliFiltroCount" style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.72rem;"></span>
       <button class="tob-action" onclick="tobOpenClienteModal()">+ Nuevo cliente</button>
     </div>
   </div>
@@ -1295,7 +1301,7 @@
       <button class="tob-btn ghost" onclick="tobClosePasteImport()">✕</button>
     </div>
     <div style="font-size:.78rem;color:var(--mute);line-height:1.5;margin-bottom:10px">
-      Pega aquí un JSON con <code>cliente</code> + <code>mediciones</code> y/o <code>asignaciones</code>. Solo afecta al cliente indicado. Las mediciones duplicadas por fecha se ignoran.
+      Pega aquí un JSON con <code>cliente</code> + <code>mediciones</code>, <code>asignaciones</code> y/o <code>menu</code>. Solo afecta al cliente indicado. Las mediciones duplicadas por fecha se ignoran. En <code>menu</code>, cada plato se casa con una receta de tu catálogo por nombre; los que no encuentre se omiten y se reportan.
     </div>
     <textarea id="tobPasteImportTxt" placeholder='{"cliente":"Carlos Ferri","mediciones":[...],"asignaciones":[...]}' style="width:100%;height:320px;font-family:'DM Mono',monospace;font-size:.72rem;background:#0a0a0a;color:#d4d4d4;border:1px solid var(--border2);border-radius:6px;padding:10px;outline:none;resize:vertical"></textarea>
     <div id="tobPasteImportInfo" style="margin-top:8px;font-size:.78rem;color:var(--mute);min-height:1.2em"></div>
