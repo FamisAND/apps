@@ -760,10 +760,28 @@ function tobRenderClientes(){
       : '<span style="color:var(--mute2)">—</span>';
     const sexoCls = c.sexo==='M'?'m':c.sexo==='H'?'h':'u';
     const sexoTxt = c.sexo==='M'?'♀':c.sexo==='H'?'♂':'U';
-    return `<tr>
+
+    // ── Estado activo/inactivo (toggle manual). Default: activo si no se ha tocado.
+    const activo = (c.activo !== false);
+    const estadoBadge = `<button class="tob-estado-toggle ${activo?'on':'off'}" onclick="event.stopPropagation();tobToggleActivo('${c.id}')" title="${activo?'Cliente activo — clic para marcar inactivo':'Cliente inactivo — clic para marcar activo'}">${activo?'● Activo':'○ Inactivo'}</button>`;
+
+    // ── Indicadores de qué tiene registrado (brillan si tiene) ──
+    const tieneRutina = (c.asignaciones||[]).length > 0;
+    const tieneMenu   = (c.menus||[]).length > 0;
+    const tieneMed    = (c.mediciones||[]).length > 0;
+    const chip = (on, icon, label, titOn, titOff) =>
+      `<span class="tob-reg-chip ${on?'on':'off'}" title="${on?titOn:titOff}">${icon}</span>`;
+    const registrado =
+      chip(tieneRutina, '🏋', 'Rutina', tieneRutina?'Tiene rutina asignada':'Sin rutina') +
+      chip(tieneMenu,   '🍽', 'Menú',   tieneMenu?'Tiene menú guardado':'Sin menú') +
+      chip(tieneMed,    '📏', 'Med',    tieneMed?`${c.mediciones.length} mediciones`:'Sin mediciones');
+
+    return `<tr class="${activo?'':'tob-cli-inactivo'}">
       <td style="cursor:pointer;" onclick="tobOpenFicha('${c.id}')" title="Abrir ficha histórica"><strong>${tobEsc(c.nombre)}</strong></td>
+      <td>${estadoBadge}</td>
       <td><span style="color:var(--mute);font-family:DM Mono,monospace;font-size:.78rem;">${tobEsc(c.contacto||'—')}</span></td>
       <td><span class="tob-badge ${sexoCls}">${sexoTxt}</span></td>
+      <td><span class="tob-reg-chips">${registrado}</span></td>
       <td class="num">${(c.asignaciones||[]).length}</td>
       <td>${lastInfo}</td>
       <td class="actions">
@@ -773,6 +791,16 @@ function tobRenderClientes(){
       </td>
     </tr>`;
   }).join('');
+}
+
+// Alterna el estado activo/inactivo del cliente (control manual del entrenador).
+function tobToggleActivo(cliId){
+  const c = tobDB.clientes.find(x => x.id === cliId);
+  if(!c) return;
+  c.activo = (c.activo === false);  // si estaba inactivo (false) → true; si activo/undefined → false
+  tobSave();
+  tobRenderClientes();
+  tobToast(c.activo ? '✓ Cliente activo' : 'Cliente marcado inactivo', c.activo ? 'green' : '');
 }
 
 function tobPlantillaName(plantId){

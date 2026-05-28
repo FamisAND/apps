@@ -919,3 +919,36 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 }
 .tob-mc-aj-ing .aj-ing-nm{flex:1;color:var(--text);}
 .tob-mc-aj-ing .aj-ing-base{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);min-width:64px;}
+
+/* ── Listado de clientes: estado activo/inactivo + indicadores de registro ── */
+.tob-estado-toggle{
+  font-family:'DM Mono',monospace;font-size:.68rem;font-weight:600;
+  padding:3px 9px;border-radius:12px;border:1px solid;cursor:pointer;
+  background:transparent;letter-spacing:.3px;transition:all .15s;white-space:nowrap;
+}
+.tob-estado-toggle.on{ color:var(--green); border-color:var(--green); background:rgba(63,182,139,.10); }
+.tob-estado-toggle.on:hover{ background:rgba(63,182,139,.22); }
+.tob-estado-toggle.off{ color:var(--mute2); border-color:var(--border2); }
+.tob-estado-toggle.off:hover{ color:var(--mute); border-color:var(--mute); }
+
+/* Fila de cliente inactivo: atenuada */
+tr.tob-cli-inactivo > td{ opacity:.45; }
+tr.tob-cli-inactivo > td:last-child,
+tr.tob-cli-inactivo > td:nth-child(2){ opacity:1; }  /* estado y acciones siempre visibles */
+
+/* Chips de "qué tiene registrado": brillan si lo tiene, apagados si no */
+.tob-reg-chips{ display:inline-flex; gap:5px; align-items:center; }
+.tob-reg-chip{
+  font-size:.95rem; line-height:1; width:24px; height:24px; border-radius:6px;
+  display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid transparent; transition:all .15s;
+}
+.tob-reg-chip.on{
+  background:rgba(245,166,35,.14); border-color:rgba(245,166,35,.45);
+  filter:none; opacity:1;
+  box-shadow:0 0 6px rgba(245,166,35,.35);
+}
+.tob-reg-chip.off{
+  filter:grayscale(1); opacity:.28;
+  background:transparent; border-color:var(--border);
+}
