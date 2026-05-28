@@ -4988,12 +4988,18 @@ function computeCashRecon(month){
   const addAper   = (tk, v) => { aperByTicker[tk]   = (aperByTicker[tk]||0)   + v; };
   const addCierre = (tk, v) => { cierreByTicker[tk] = (cierreByTicker[tk]||0) + v; };
 
+  const esLong = e => (typeof _entryIsLong === 'function') ? _entryIsLong(e) : false;
+  // cash de apertura: short cobra crédito (+), long paga débito (−).
+  const cashApertura = e => {
+    const base = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
+    return esLong(e) ? -base : base;
+  };
+
   // Aperturas del mes (incluye ops que siguen abiertas → están en ACTIVAS).
   const allOpen = [...(typeof HIST!=='undefined'?HIST:[]), ...(typeof ACTIVAS!=='undefined'?ACTIVAS:[])];
   allOpen.forEach(e => {
     if((e.apertura || '').startsWith(month)){
-      // crédito neto recibido al abrir (resta el débito de la pata larga en spreads)
-      const cash = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
+      const cash = cashApertura(e);
       aperturasCash += cash;
       addAper(e.activo || '?', cash);
       nAper++;
@@ -5003,18 +5009,18 @@ function computeCashRecon(month){
   // Cierres del mes (solo las cerradas → HIST).
   HIST.forEach(e => {
     if((e.cierre || '').startsWith(month)){
-      // P&L total en $ reales. OJO escala: si hay override está en escala /100
-      // (×100 → $). Si no, el fallback debe llevar (pc-pd-pcl) a $ ANTES de
-      // restar la comisión (que ya está en $). Restar comi antes del ×100 era
-      // el bug que inflaba el error ×100.
+      // P&L total en $ reales. Escala: con override está en /100 (×100 → $).
+      // Sin override, el fallback lleva precios a $ ANTES de restar la comisión.
+      // Patas LONG invierten el signo (pagas al abrir, cobras al cerrar).
       let pnl;
       if(e.totalNetoOvr != null){
         pnl = e.totalNetoOvr * 100;
+      } else if(esLong(e)){
+        pnl = ((e.pCierre||0) - (e.pCredito||0) - (e.pDebito||0)) * 10000 * ctrOf(e) - (e.comi||0);
       } else {
         pnl = ((e.pCredito||0) - (e.pDebito||0) - (e.pCierre||0)) * 10000 * ctrOf(e) - (e.comi||0);
       }
-      const credito = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
-      const cash = (pnl - credito);   // = −coste de cierre (tramo del mes)
+      const cash = (pnl - cashApertura(e));   // = cash neto del tramo de cierre
       cierresCash += cash;
       addCierre(e.activo || '?', cash);
       nCierre++;
@@ -5093,19 +5099,23 @@ function matchClosures(myCloses, csvCloses, month){
       return;
     }
     const ctr = my.contracts || 1;
-    // P/L total de tu operativa en $ reales. Si hay override está en escala
-    // /100 (×100 → $). Si no, el fallback lleva (pc-pd-pcl) a $ ANTES de restar
-    // la comisión (que ya está en $) — restarla antes del ×100 era un bug que
-    // inflaba el error ×100.
+    const myIsLong = (typeof _entryIsLong === 'function') ? _entryIsLong(my) : false;
+    // P/L total de tu operativa en $ reales. Con override está en /100 (×100→$).
+    // Sin override, el fallback lleva precios a $ ANTES de restar la comisión.
+    // Patas LONG invierten el signo (pagas al abrir, cobras al cerrar).
     let myPnL;
     if(my.totalNetoOvr != null){
       myPnL = my.totalNetoOvr * 100;
+    } else if(myIsLong){
+      myPnL = ((my.pCierre||0) - (my.pCredito||0) - (my.pDebito||0)) * 10000 * ctr - (my.comi||0);
     } else {
       myPnL = ((my.pCredito||0) - (my.pDebito||0) - (my.pCierre||0)) * 10000 * ctr - (my.comi||0);
     }
 
-    // Cash del cierre = P&L total − crédito de apertura. Es lo que el CSV ve.
-    const creditoApertura = ((my.pCredito||0) - (my.pDebito||0)) * 10000 * ctr;
+    // Cash del cierre = P&L total − cash de apertura. Es lo que el CSV ve.
+    // En patas LONG el cash de apertura es un débito (negativo).
+    const baseApert = ((my.pCredito||0) - (my.pDebito||0)) * 10000 * ctr;
+    const creditoApertura = myIsLong ? -baseApert : baseApert;
     const myCierreCash = myPnL - creditoApertura;
     // ¿La apertura cae en el mes analizado? Si NO, es una op "a caballo".
     const aperturaEnMes = month ? (my.apertura || '').startsWith(month) : true;
