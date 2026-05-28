@@ -5069,7 +5069,10 @@ function matchClosures(myCloses, csvCloses, month){
 
   const csvUsed = new Set();
   const myWithMatch = [];   // {my, csvOrder, status, diff}
-  const TOL_DAYS = 2;
+  // Ventana de fechas amplia (±7 días): el usuario no siempre registra el
+  // cierre el día exacto en que Tasty lo ejecutó. Dentro de esa ventana,
+  // emparejamos por IMPORTE más parecido (más distintivo que la fecha).
+  const TOL_DAYS = 7;
   const TOL_DOLLARS = 5;
 
   myCloses.forEach(my => {
@@ -5097,18 +5100,20 @@ function matchClosures(myCloses, csvCloses, month){
     // ¿La apertura cae en el mes analizado? Si NO, es una op "a caballo".
     const aperturaEnMes = month ? (my.apertura || '').startsWith(month) : true;
 
-    // Buscar candidatos del CSV: mismo ticker, fecha dentro de ±TOL_DAYS
-    let bestMatch = null;
-    let bestDayDiff = Infinity;
+    // Candidatos del CSV: mismo ticker, dentro de ±TOL_DAYS. Elegimos el de
+    // IMPORTE más cercano a nuestro cash de cierre; si empata, el de fecha
+    // más próxima. Así casa aunque la fecha registrada baile unos días.
+    let bestMatch = null, bestAmtDiff = Infinity, bestDayDiff = Infinity;
     csvCloses.forEach(o => {
       if(csvUsed.has(o.orderId)) return;
       if(o.ticker !== myTicker) return;
       const oDate = (o.date||'').slice(0,10);
       const dayDiff = Math.abs(daysBetween(myDate, oDate));
       if(dayDiff > TOL_DAYS) return;
-      if(dayDiff < bestDayDiff){
-        bestDayDiff = dayDiff;
-        bestMatch = o;
+      const amtDiff = Math.abs(myCierreCash - csvOrderPnL(o));
+      // Prioridad: importe más parecido; desempate por fecha.
+      if(amtDiff < bestAmtDiff - 0.5 || (Math.abs(amtDiff - bestAmtDiff) <= 0.5 && dayDiff < bestDayDiff)){
+        bestAmtDiff = amtDiff; bestDayDiff = dayDiff; bestMatch = o;
       }
     });
 
