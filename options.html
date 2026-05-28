@@ -4976,15 +4976,22 @@ function computeCashRecon(month){
   // multiplica ×100 para alinearlo con el broker. pCredito/pCierre están en
   // "$/share /100", así que $reales = valor × 100 (a $/contrato) × 100 (parche)
   //  = valor × 100 × contratos × 100. Lo encapsulamos aquí.
+  // Verificado contra CSV real de Tastytrade (mayo 2026): cuadra al céntimo
+  // salvo comisiones (~$1/leg).
   const toReal = (val, ctr) => (val || 0) * 100 * ctr * 100;
 
   let aperturasCash = 0, cierresCash = 0, nAper = 0, nCierre = 0;
+  const appByTicker = {};   // subyacente → cash neto en la app
+  const addApp = (tk, v) => { appByTicker[tk] = (appByTicker[tk]||0) + v; };
 
   // Aperturas del mes (incluye ops que siguen abiertas → están en ACTIVAS).
   const allOpen = [...(typeof HIST!=='undefined'?HIST:[]), ...(typeof ACTIVAS!=='undefined'?ACTIVAS:[])];
   allOpen.forEach(e => {
     if((e.apertura || '').startsWith(month)){
-      aperturasCash += toReal(e.pCredito, ctrOf(e));
+      // crédito neto recibido al abrir (resta el débito de la pata larga en spreads)
+      const cash = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
+      aperturasCash += cash;
+      addApp(e.activo || '?', cash);
       nAper++;
     }
   });
@@ -4997,8 +5004,10 @@ function computeCashRecon(month){
         pnl = ((e.pCredito||0) - (e.pCierre||0)) * 100 * ctrOf(e) - (e.comi||0);
       }
       pnl = pnl * 100;
-      const credito = toReal(e.pCredito, ctrOf(e));
-      cierresCash += (pnl - credito);   // = −coste de cierre (tramo del mes)
+      const credito = toReal((e.pCredito||0) - (e.pDebito||0), ctrOf(e));
+      const cash = (pnl - credito);   // = −coste de cierre (tramo del mes)
+      cierresCash += cash;
+      addApp(e.activo || '?', cash);
       nCierre++;
     }
   });
@@ -5007,11 +5016,22 @@ function computeCashRecon(month){
 
   // CSV: suma de netTotal de TODAS las órdenes del mes (apertura+cierre+roll+asignación).
   let csvCash = 0, nCsv = 0;
+  const csvByTicker = {};
   Object.values(_ttVerOrders).forEach(o => {
-    if((o.date || '').startsWith(month)){ csvCash += o.netTotal; nCsv++; }
+    if((o.date || '').startsWith(month)){
+      csvCash += o.netTotal; nCsv++;
+      csvByTicker[o.ticker||'?'] = (csvByTicker[o.ticker||'?']||0) + o.netTotal;
+    }
   });
 
-  return { myCash, csvCash, diff: myCash - csvCash, aperturasCash, cierresCash, nAper, nCierre, nCsv };
+  // Desglose por subyacente: une ambos lados.
+  const tickers = [...new Set([...Object.keys(appByTicker), ...Object.keys(csvByTicker)])].sort();
+  const byTicker = tickers.map(tk => {
+    const a = appByTicker[tk]||0, t = csvByTicker[tk]||0;
+    return { ticker: tk, app: a, csv: t, diff: a - t };
+  });
+
+  return { myCash, csvCash, diff: myCash - csvCash, aperturasCash, cierresCash, nAper, nCierre, nCsv, byTicker };
 }
 
 // Calcula el P/L "realizado" de una orden de cierre/roll del CSV.
@@ -5154,9 +5174,47 @@ function renderTtVerifyResult(month, result, cashRecon){
         </div>
         ${cashOk
           ? '<div style="color:#22c55e;font-size:9px;margin-top:6px">El mes cuadra a nivel de caja. La diferencia está dentro de tolerancia (comisiones/fees).</div>'
-          : '<div style="color:'+cCol+';font-size:9px;margin-top:6px">El mes NO cuadra. Revisa el detalle de abajo para localizar la operación que falta o tiene un precio mal registrado.</div>'}
+          : '<div style="color:'+cCol+';font-size:9px;margin-top:6px">El mes NO cuadra. Revisa el desglose por subyacente para localizar el problema.</div>'}
       </div>
     `;
+
+    // ── Bloque 1b: DESGLOSE POR SUBYACENTE ──
+    // La forma más rápida de localizar qué descuadra. Un ticker con diff≠0 y
+    // app=0 suele ser una posición abierta este mes que sigue activa (su
+    // apertura está en el CSV pero el cierre aún no existe) → normal.
+    if(cashRecon.byTicker && cashRecon.byTicker.length){
+      const fmt = v => (v>=0?'+':'') + '$' + v.toLocaleString('es-ES',{maximumFractionDigits:0});
+      const rows = cashRecon.byTicker.map(r => {
+        const ok = Math.abs(r.diff) <= 10;  // ±$10 = comisiones
+        const col = ok ? '#5a7a9a' : (Math.abs(r.diff) > 100 ? '#f87171' : '#fbbf24');
+        // Heurística: app=0 y csv≠0 → posición abierta este mes aún viva
+        let nota = '';
+        if(!ok){
+          if(Math.abs(r.app) < 1 && Math.abs(r.csv) > 1) nota = 'posición abierta (sin cerrar)';
+          else nota = 'revisar';
+        }
+        return `<tr style="border-bottom:1px solid #0f1d2e;color:#c9d1d9">
+          <td style="padding:3px 6px;font-weight:600">${r.ticker}</td>
+          <td style="padding:3px 6px;text-align:right" class="mono">${fmt(r.app)}</td>
+          <td style="padding:3px 6px;text-align:right;color:#5a7a9a" class="mono">${fmt(r.csv)}</td>
+          <td style="padding:3px 6px;text-align:right;color:${col};font-weight:${ok?'400':'700'}" class="mono">${fmt(r.diff)}</td>
+          <td style="padding:3px 6px;color:${col};font-size:9px">${ok?'✓':'⚠ '+nota}</td>
+        </tr>`;
+      }).join('');
+      html += `
+        <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Desglose por subyacente (${month})</div>
+        <table style="width:100%;border-collapse:collapse;font-family:'Courier New',monospace;font-size:10px;margin-bottom:20px">
+          <thead><tr style="color:#5a7a9a;border-bottom:1px solid #1e2d3d">
+            <th style="text-align:left;padding:4px 6px">Activo</th>
+            <th style="text-align:right;padding:4px 6px">App ($)</th>
+            <th style="text-align:right;padding:4px 6px">Tasty ($)</th>
+            <th style="text-align:right;padding:4px 6px">Diff ($)</th>
+            <th style="text-align:left;padding:4px 6px">Estado</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
   }
 
   // ── Bloque 2: detalle por operación (matching) ──
