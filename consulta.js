@@ -8923,6 +8923,18 @@ function tobMcApplyAjuste(){
 }
 
 // Notas/recomanacions que se incluyen por defecto en el PDF del menú.
+// Detecta notas autogeneradas por el import (que NO son recomendaciones reales)
+// para descartarlas y caer al texto por defecto. Solo casa mis textos automáticos.
+function _tobNotasEsAuto(n){
+  const s = String(n||'').toLowerCase();
+  return /import/.test(s) && /(pdf|validad|cat[aà]leg|catalog|cantidades exactas)/.test(s);
+}
+// Devuelve las notas a mostrar: las del menú si son reales, si no el texto por defecto.
+function tobNotasMenu(m){
+  const n = m && m.notas;
+  if(n && String(n).trim() && !_tobNotasEsAuto(n)) return String(n);
+  return TOB_MENU_NOTAS_DEFAULT;
+}
 const TOB_MENU_NOTAS_DEFAULT =
   "- El saltat de verdures simbolitza un PLAT DE VERDURA: fes-lo amb les verdures que més t'agradin i com més t'agradi (saltades, al vapor, amanida, al forn...).\n" +
   "- Les cremes de verdura es poden variar lliurement: canvia les verdures, combina-les, juga amb les textures... el valor nutricional gairebé no canvia.\n" +
@@ -9700,7 +9712,7 @@ function tobMcLoadMenu(menuId){
     semanaActiva: 0,
     data: JSON.parse(JSON.stringify(m.data || {})),
     ajustes: JSON.parse(JSON.stringify(m.ajustes || {})),
-    notas: (m.notas && String(m.notas).trim()) ? m.notas : TOB_MENU_NOTAS_DEFAULT,
+    notas: tobNotasMenu(m),
     _menuId: m.id,
     // Es preserva per comparar amb _editTs de cada receta del catàleg i
     // detectar canvis en la BD posteriors al desament del menú.
@@ -9975,7 +9987,7 @@ async function tobMenuPdf(cliId, menuId){
     : '';
 
   // ── Notes / recomanacions ──────────────────────────────────────
-  const notas = String((m.notas && String(m.notas).trim()) ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
+  const notas = tobNotasMenu(m).trim();
   // Notes NO força salt de pàgina — sol ser una secció curta, que flueixi
   // amb el que vingui darrere per evitar pàgines amb 80% de buit.
   const notasHtml = notas
