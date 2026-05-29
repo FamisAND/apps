@@ -2001,14 +2001,27 @@ function tobRunPasteImport(){
 
   // Buscar cliente (por id exacto o nombre includes case-insensitive)
   const needle = String(data.cliente).toLowerCase();
-  const cli = tobDB.clientes.find(c => c.id === data.cliente)
-           || tobDB.clientes.find(c => (c.nombre||'').toLowerCase() === needle)
-           || tobDB.clientes.find(c => (c.nombre||'').toLowerCase().includes(needle));
+  let cli = tobDB.clientes.find(c => c.id === data.cliente)
+         || tobDB.clientes.find(c => (c.nombre||'').toLowerCase() === needle)
+         || tobDB.clientes.find(c => (c.nombre||'').toLowerCase().includes(needle));
+  let clienteCreado = false;
   if(!cli){
-    info.innerHTML = 'No encontré cliente "<b>'+data.cliente+'</b>". Créalo primero.<br>Clientes existentes: '
-      + tobDB.clientes.map(c=>c.nombre).join(', ');
-    info.style.color = 'var(--red)';
-    return;
+    // Crear el cliente si el JSON lo pide (crearCliente:true) — útil para altas nuevas.
+    if(data.crearCliente){
+      // Se añade a tobDB.clientes tras confirmar (no antes, por si cancela).
+      cli = {
+        id: tobUid('cli'),
+        nombre: String(data.nombre || data.cliente).trim(),
+        sexo: 'H', contacto: '', alta: new Date().toISOString().slice(0,10),
+        nacimiento: '', idioma: 'ca', asignaciones: [], activo: true
+      };
+      clienteCreado = true;
+    } else {
+      info.innerHTML = 'No encontré cliente "<b>'+data.cliente+'</b>". Créalo primero (o añade <code>"crearCliente":true</code> al JSON).<br>Clientes existentes: '
+        + tobDB.clientes.map(c=>c.nombre).join(', ');
+      info.style.color = 'var(--red)';
+      return;
+    }
   }
 
   // ── Meta del cliente (nacimiento / edad / sexo) ──
@@ -2033,6 +2046,37 @@ function tobRunPasteImport(){
     if(sx){ cli.sexo = sx; metaUpdates.push('sexo ' + sx); }
   }
   if(data.estatura){ cli.estatura = +data.estatura; metaUpdates.push('estatura ' + data.estatura); }
+
+  // ── Cuestionario (anamnesis): merge en cli.cuestionario ──
+  // data.cuestionario = { pesObjetivo?, ..., horaris?, esport?, motivacio?, comentari?,
+  //   tags:{ apats:[], alimX:[], alimOk:[], cuina?, treball?, ... }, recChips:{ [mealId]:[...] } }
+  // Campos libres: se sobrescriben si vienen. Arrays de tags/recChips: se UNEN (sin duplicar).
+  let cuestUpdated = false;
+  if(data.cuestionario && typeof data.cuestionario === 'object'){
+    if(!cli.cuestionario) cli.cuestionario = {};
+    const cq = cli.cuestionario, inq = data.cuestionario;
+    ['pesObjetivo','sumObjetivo','kcalObjetivo','protObjetivo','pal','horaris','esport','motivacio','comentari']
+      .forEach(k => { if(inq[k] != null && inq[k] !== '') { cq[k] = inq[k]; cuestUpdated = true; } });
+    if(inq.tags && typeof inq.tags === 'object'){
+      if(!cq.tags) cq.tags = {};
+      Object.keys(inq.tags).forEach(k => {
+        const v = inq.tags[k];
+        if(Array.isArray(v)){
+          const prev = Array.isArray(cq.tags[k]) ? cq.tags[k] : [];
+          cq.tags[k] = [...new Set([...prev, ...v])];
+        } else { cq.tags[k] = v; }
+        cuestUpdated = true;
+      });
+    }
+    if(inq.recChips && typeof inq.recChips === 'object'){
+      if(!cq.recChips) cq.recChips = {};
+      Object.keys(inq.recChips).forEach(k => {
+        const prev = Array.isArray(cq.recChips[k]) ? cq.recChips[k] : [];
+        cq.recChips[k] = [...new Set([...prev, ...(inq.recChips[k]||[])])];
+      });
+      cuestUpdated = true;
+    }
+  }
 
   // ── Mediciones (skip duplicados por fecha) ──
   const medsIn = Array.isArray(data.mediciones) ? data.mediciones : [];
@@ -2183,7 +2227,7 @@ function tobRunPasteImport(){
     menuResolved = { snapshot, matchedCount, totalCount, unmatched, createdPlatos, ajustados };
   }
 
-  if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length && !menuResolved){
+  if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length && !menuResolved && !cuestUpdated && !clienteCreado){
     info.innerHTML = 'Nada que importar.'
       + (asigsErrors.length ? '<br>'+asigsErrors.join('<br>') : '');
     info.style.color = 'var(--amber)';
@@ -2191,7 +2235,8 @@ function tobRunPasteImport(){
   }
 
   // Resumen + confirmación
-  const summaryLines = ['Cliente: ' + cli.nombre];
+  const summaryLines = ['Cliente: ' + cli.nombre + (clienteCreado ? '  (NUEVO — se creará)' : '')];
+  if(cuestUpdated) summaryLines.push('Cuestionario (anamnesis) a rellenar');
   if(metaUpdates.length) summaryLines.push('Meta: ' + metaUpdates.join(', '));
   if(medsIn.length) summaryLines.push(medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''));
   if(asigsIn.length) summaryLines.push(asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : ''));
@@ -2200,6 +2245,9 @@ function tobRunPasteImport(){
     + (menuResolved.ajustados ? ' · ' + menuResolved.ajustados + ' cantidades ajustadas (gramos/kcal del PDF)' : '')
     + (menuResolved.unmatched.length ? ' · ' + menuResolved.unmatched.length + ' sin casar (se omiten)' : ''));
   if(!confirm('¿Importar lo siguiente?\n\n' + summaryLines.join('\n'))) return;
+
+  // Añadir el cliente nuevo (ahora que se ha confirmado)
+  if(clienteCreado && !tobDB.clientes.includes(cli)) tobDB.clientes.push(cli);
 
   // Aplicar mediciones
   for(const m of medsToAdd){
@@ -2262,7 +2310,10 @@ function tobRunPasteImport(){
   if(typeof tobRenderClientes === 'function') tobRenderClientes();
   if(typeof tobRenderFicha === 'function' && tobCurrentFichaId === cli.id) tobRenderFicha();
   if(typeof tobFichaRenderMenus === 'function' && tobCurrentFichaId === cli.id) tobFichaRenderMenus();
+  if(typeof tobQuestLoad === 'function' && tobCurrentFichaId === cli.id) tobQuestLoad();
   const toastParts = [];
+  if(clienteCreado) toastParts.push('cliente creado');
+  if(cuestUpdated) toastParts.push('cuestionario');
   if(metaUpdates.length) toastParts.push(metaUpdates.length + ' meta');
   if(medsToAdd.length) toastParts.push(medsToAdd.length + ' med');
   if(asigsResolved.length) toastParts.push(asigsResolved.length + ' rutinas');
