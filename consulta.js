@@ -8924,9 +8924,11 @@ function tobMcApplyAjuste(){
 
 // Notas/recomanacions que se incluyen por defecto en el PDF del menú.
 const TOB_MENU_NOTAS_DEFAULT =
-  "- Les receptes es poden adaptar al teu gust: amb els mateixos ingredients del dia, prepara-la com més t'agradi.\n" +
-  "- Les cremes i les verdures es poden variar lliurement (amanir-les, combinar-les, textures diferents...) — el valor nutricional gairebé no canvia.\n" +
-  "- Esmorzars, mig matins i berenars són intercanviables entre dies: si un dia et ve de gust el d'un altre, cap problema.\n" +
+  "- El saltat de verdures simbolitza un PLAT DE VERDURA: fes-lo amb les verdures que més t'agradin i com més t'agradi (saltades, al vapor, amanida, al forn...).\n" +
+  "- Les cremes de verdura es poden variar lliurement: canvia les verdures, combina-les, juga amb les textures... el valor nutricional gairebé no canvia.\n" +
+  "- Si et quedes amb gana, pots augmentar les racions de verdura sense cap problema.\n" +
+  "- Les receptes es poden adaptar al teu gust amb els mateixos ingredients del dia.\n" +
+  "- Esmorzars i berenars són intercanviables entre dies: si un dia et ve de gust el d'un altre, cap problema.\n" +
   "- Davant de qualsevol dubte amb una recepta o una substitució, consulta'm.";
 
 // Comidas/día del cliente, según los àpats elegidos en su cuestionario.
@@ -9698,7 +9700,7 @@ function tobMcLoadMenu(menuId){
     semanaActiva: 0,
     data: JSON.parse(JSON.stringify(m.data || {})),
     ajustes: JSON.parse(JSON.stringify(m.ajustes || {})),
-    notas: m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT,
+    notas: (m.notas && String(m.notas).trim()) ? m.notas : TOB_MENU_NOTAS_DEFAULT,
     _menuId: m.id,
     // Es preserva per comparar amb _editTs de cada receta del catàleg i
     // detectar canvis en la BD posteriors al desament del menú.
@@ -9788,6 +9790,9 @@ function tobMenusGuardadosRender(){
 }
 
 function tobMenuGuardadoOpen(cliId, menuId){
+  // Cambiar primero al tab principal "Menús" (si se llamó desde la ficha,
+  // si no, no se ve nada porque solo cambiaría el sub-tab).
+  tobShowTab('menus', document.querySelector('.tob-tab[onclick*="\'menus\'"]'));
   const btn = document.querySelector('.tob-sub-tab[data-mtab="creador"]');
   tobMenuShowTab('creador', btn);
   const sel = document.getElementById('tobMcCliente');
@@ -9970,7 +9975,7 @@ async function tobMenuPdf(cliId, menuId){
     : '';
 
   // ── Notes / recomanacions ──────────────────────────────────────
-  const notas = String(m.notas != null ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
+  const notas = String((m.notas && String(m.notas).trim()) ? m.notas : TOB_MENU_NOTAS_DEFAULT).trim();
   // Notes NO força salt de pàgina — sol ser una secció curta, que flueixi
   // amb el que vingui darrere per evitar pàgines amb 80% de buit.
   const notasHtml = notas
