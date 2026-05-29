@@ -6855,6 +6855,42 @@ async function tobHydrateFotos(rootSelector){
   }
 }
 
+// Icono de comida genérico por nombre (offline-safe) — para platos/ingredientes
+// que no tienen foto, así no se ven vacíos en la rejilla y el panel.
+function tobFoodEmoji(nombre){
+  const n = (nombre||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const has = (...kw) => kw.some(k => n.includes(k));
+  if(has('cafe')) return '☕';
+  if(has('chocolate','cacao')) return '🍫';
+  if(has('yogur','iogurt')) return '🥛';
+  if(has('arandano','fresa','frambuesa','mora ','baya')) return '🫐';
+  if(has('platano','banana')) return '🍌';
+  if(has('manzana','poma')) return '🍎';
+  if(has('naranja','mandarina','citric')) return '🍊';
+  if(has('fruta','fruita')) return '🍎';
+  if(has('muesli','granola','cereal','avena','copos')) return '🥣';
+  if(has('tortita','galleta','barrita','cracker')) return '🍘';
+  if(has('pan ','tostada','torrada','bocadillo','entrepa','rebanada')) return '🍞';
+  if(has('huevo',' ou','tortilla','revuelto')) return '🥚';
+  if(has('queso','formatge','mozzarella','feta','tranchete')) return '🧀';
+  if(has('hamburgues')) return '🍔';
+  if(has('pollo','pollastre','alitas','pechuga')) return '🍗';
+  if(has('entrecot','ternera','solomillo','filete','carne','cerdo','jamon','bacon','lomo','chuleta')) return '🥩';
+  if(has('salmon','atun','pescado','merluza','bacalao','marisco','gamba','langostino','sardina')) return '🐟';
+  if(has('ensalada','lechuga','rucula','espinaca','canonigo')) return '🥗';
+  if(has('crema','sopa','pure','gazpacho','salmorejo','caldo')) return '🍲';
+  if(has('pasta','espagueti','macarron','fideos','espirales','noodle')) return '🍝';
+  if(has('arroz','quinoa','cuscus')) return '🍚';
+  if(has('cebolla','ajo','puerro')) return '🧅';
+  if(has('tomate','tomaquet')) return '🍅';
+  if(has('aguacate','aguacat')) return '🥑';
+  if(has('brocoli','calabacin','esparrago','pimiento','zanahoria','verdura','champin','seta','guisante','lenteja','garbanzo','judia','legumbre','col ','coliflor')) return '🥦';
+  if(has('almendra','nuez','nuece','frutos secos','pistacho','cacahuete','semilla','pinon')) return '🥜';
+  if(has('aceite','oliva','mantequilla','nata')) return '🫒';
+  if(has('miel','azucar','mermelada','dulce')) return '🍯';
+  return '🍽️';
+}
+
 // Sub-tabs del módulo Menús
 function tobMenuShowTab(name, btn){
   document.querySelectorAll('.tob-mtab-page').forEach(p => p.style.display = 'none');
@@ -9219,7 +9255,7 @@ function tobMcRenderGrid(){
           <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
           <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
           ${staleBadge}
-          <div class="mc-it-foto placeholder" data-foto-rec="${recId}">${tobEsc((r.nombre||'?').slice(0,2).toUpperCase())}</div>
+          <div class="mc-it-foto placeholder icono" data-foto-rec="${recId}">${tobFoodEmoji(r.nombre)}</div>
           <div class="mc-it-body">
             <div class="mc-it-nm">${ajBadge}${tobEsc(r.nombre || '—')}</div>
             <div class="mc-it-mac">${kcalPer} kcal · ${protPer}g prot</div>
@@ -9449,13 +9485,13 @@ function tobMcRenderSidePanel(){
   const renderItem = ({rec: r, check}) => {
     const m = tobRecMacros(r);
     const kcalPer = Math.round(m.kcal / (r.raciones || 1));
-    const thumbInner = (r.nombre || '?').slice(0,2).toUpperCase();
+    const thumbInner = tobFoodEmoji(r.nombre);
     const incompatBadge = check.compat ? '' :
       `<span class="badge-incompat" title="${tobEsc(check.razones.join(' · '))}">⚠</span>`;
     const favBadge = r.favorito ? '<span class="tob-mc-side-fav" title="Favorita">★</span>' : '';
     const cls = check.compat ? '' : 'incompat';
     return `<div class="tob-mc-side-item ${cls}" data-rec="${r.id}" title="${tobEsc(r.nombre)}${check.razones.length ? '\\n⚠ ' + check.razones.join(' · ') : ''}">
-      <div class="thumb placeholder" data-foto-rec="${r.id}">${tobEsc(thumbInner)}</div>
+      <div class="thumb placeholder icono" data-foto-rec="${r.id}">${thumbInner}</div>
       <div class="info">
         <div class="nm">${favBadge}${tobEsc(r.nombre || '—')}</div>
         <div class="mac">${kcalPer} kcal · ${Math.round(m.proteina / (r.raciones||1))}p</div>
@@ -9468,12 +9504,12 @@ function tobMcRenderSidePanel(){
   const renderItemMini = ({rec: r, check}) => {
     const m = tobRecMacros(r);
     const kcalPer = Math.round(m.kcal / (r.raciones || 1));
-    const thumbInner = (r.nombre || '?').slice(0,2).toUpperCase();
+    const thumbInner = tobFoodEmoji(r.nombre);
     const incompatBadge = check.compat ? '' :
       `<span class="badge-incompat" title="${tobEsc(check.razones.join(' · '))}">⚠</span>`;
     const cls = check.compat ? '' : 'incompat';
     return `<div class="tob-mc-side-item mini ${cls}" data-rec="${r.id}" title="${tobEsc(r.nombre)}${check.razones.length ? '\\n⚠ ' + check.razones.join(' · ') : ''}">
-      <div class="thumb placeholder mini" data-foto-rec="${r.id}">${tobEsc(thumbInner)}</div>
+      <div class="thumb placeholder mini icono" data-foto-rec="${r.id}">${thumbInner}</div>
       <div class="info">
         <div class="nm">∙ ${tobEsc(r.nombre || '—')}</div>
         <div class="mac">${kcalPer}k · ${Math.round(m.proteina / (r.raciones||1))}p</div>
@@ -9897,7 +9933,9 @@ async function tobMenuPdf(cliId, menuId){
   }
 
   // ── Receptari ── (cada recepta es un bloc paginable per separat)
+  // Els "plats solts" (origen ingredient) NO són receptes: no van al receptari.
   const recetari = Object.keys(usos).map(id => recsById[id]).filter(Boolean)
+    .filter(r => r.origen !== 'ingrediente')
     .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'}));
   const recetariHtml = recetari.length
     ? '<h2 class="mp-blk mp-page-break mp-recetari-h">Receptari</h2>' + recetari.map(r => {
