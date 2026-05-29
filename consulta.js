@@ -5810,8 +5810,8 @@ const TOB_MEALS_DEFAULT = ['esmorzar','dinar','sopar'];   // si no s'ha triat re
 // Café separado en variantes — així Sergio sap si posar cafè sol amb torrades
 // o cafè amb llet (que pot afectar la composició final de l'esmorzar).
 const TOB_QUEST_REC_SETS = {
-  esmorzar: ['Cafè sol','Cafè amb llet','Te / infusió','Torrades / pa','Batut','Iogurt','Fruita','Cereals / civada','Ous / salat','Dolç'],
-  snack:    ['Fruita','Iogurt','Fruits secs','Barreta','Cafè sol','Cafè amb llet','Te / infusió','Entrepà petit','No menja res'],
+  esmorzar: ['Cafè sol','Cafè amb llet','Te / infusió','Torrades / pa','Biscotes amb embotit','Batut','Batut de proteïna','Iogurt','Fruita','Cereals / civada','Ous / salat','Dolç'],
+  snack:    ['Fruita','Iogurt','Batut de proteïna','Fruits secs','Barreta','Biscotes amb embotit','Cafè sol','Cafè amb llet','Te / infusió','Entrepà petit','No menja res'],
   apat:     ['Plat únic','Principal + acompanyament','Porta postre','Porta pa']
 };
 
@@ -10314,8 +10314,12 @@ SNAPPING de grams — quan emetis "ing", usa quantitats limpias d'acord amb el t
 Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més pròxim (125 o 150 g).
 
 ═══ ESMORZAR — la base de Sergio ═══
-- Composició diana: ~30% prote · ~50% grasses · ~20% HC (estil low-carb).
-- DEFAULT: tostades amb varietat → jamó dolç/salat, ou remenat, alvocat + mozzarella, formatge fresc, etc. Combina ingredients simples (∙) "Llesca de pa" + un proteic + greix saludable.
+- ⛔ REGLA #1 (INNEGOCIABLE): si el client té RECORDATORI d'esmorzar, MANA el recordatori, NO el DEFAULT.
+  Posa NOMÉS el que el client ha marcat. Si el recordatori diu només "Cafè amb llet", l'esmorzar és
+  NOMÉS cafè amb llet — PROHIBIT afegir batuts, tostades, iogurts ni res que el client no hagi marcat,
+  encara que l'àpat sembli "incomplet" o curt de kcal/proteïna. El client esmorza així i punt.
+- Composició diana (NOMÉS si el client NO ha especificat l'esmorzar): ~30% prote · ~50% grasses · ~20% HC (estil low-carb).
+- DEFAULT (NOMÉS si el recordatori d'esmorzar és buit): tostades amb varietat → jamó dolç/salat, ou remenat, alvocat + mozzarella, formatge fresc, etc. Combina ingredients simples (∙) "Llesca de pa" + un proteic + greix saludable.
 - CAFÈ: si el recordatori indica "Cafè sol" o "Cafè amb llet", AFEGEIX exactament aquest
   ingredient simple (∙) al mateix àpat. NO l'oblidis — és part de l'esmorzar habitual.
 - Si el client marca fruita/fruits secs com a opcionals, suma'ls al plat (no com a peça random — formen part de l'àpat).
@@ -10340,8 +10344,12 @@ Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més prò
 - COHERÈNCIA DE COCCIÓ: si el principal és AL FORN (alitas, pollastre rostit), l'acompanyament també al forn (escalivada, patates al forn). Aprofita el forn.
 - VARIAR dins del dia: si el dinar és pollastre, el sopar NO sigui pollastre. Alterna fonts.
 
-═══ VARIETAT SETMANAL ═══
-- Plats principals (rol P) del DINAR: 7 receptes DIFERENTS en 7 dies (és la regla principal). Mateix per a sopar.
+═══ VARIETAT SETMANAL — ⛔ REGLA DURA ═══
+- Plats principals (rol P) del DINAR: 7 receptes DIFERENTS en 7 dies. Mateix per a sopar.
+- ⛔ CAP plat principal es pot repetir MÉS D'UN COP a la setmana (excepte si "Tolerància a repetir plats: Poca").
+  Repetir el MATEIX plat 2 cops ja és el màxim absolut; repetir-lo 3+ cops és INACCEPTABLE i invalida el menú.
+- ⛔ Tampoc repeteixis el mateix ACOMPANYAMENT (cremes, amanides) 3+ cops: alterna (crema de carbassa, de pèsols, d'espàrrecs, amanida, escalivada, saltat...).
+- Si el catàleg apte té poques opcions, fes VARIACIONS (mateixa base proteica, recepta/cocció diferent) en lloc de clonar el mateix plat. MAI omplis la setmana repetint 2-3 plats en bucle.
 - Si una fuente de prote es repeteix (típic amb pollastre, que és comodí), NO en dies consecutius i amb RECEPTA DIFERENT.
 - Frequències típiques (depèn del cuestionari del client):
    · Pollastre / carn blanca: comodí, 2-3 dies habitualment
@@ -10361,6 +10369,11 @@ Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més prò
 
 ═══ ESTRUCTURA HABITUAL DEL CLIENT — RESPECTA-LA LITERALMENT ═══
 El cuestionari indica què menja a cada àpat. Aquesta secció és INNEGOCIABLE.
+⛔ NO AFEGEIXIS res que el client no hagi marcat al recordatori d'aquell àpat:
+ni un batut, ni un iogurt, ni fruita, ni una tostada "per completar". Si el
+client a l'esmorzar només marca "Cafè amb llet", l'esmorzar és NOMÉS cafè amb
+llet — encara que quedi curt de kcal/proteïna. Només pots completar lliurement
+els àpats que el client ha deixat SENSE especificar al recordatori.
 NO substitueixis amb receptes elaborades (batuts, smoothies, tortilles) si el
 client ha indicat clarament ingredients simples. Cerca al catàleg els
 ingredients simples (marca ∙) amb noms equivalents:
@@ -10375,6 +10388,8 @@ ingredients simples (marca ∙) amb noms equivalents:
     al MATEIX àpat. Sergio té cafè separat en "Cafè sol" i "Cafè amb llet" —
     usa exactament el que el client va marcar.
   · "Torrades / pa" → "Llesca de pa" (∙) + un proteic (jamó, ou, alvocat...).
+  · "Batut de proteïna" → ingredient simple "Proteïna en pols" / "Batut de proteïna" (∙). NO una recepta de batut elaborada: el client es fa el batut amb aigua/llet.
+  · "Biscotes amb embotit" → "Biscotes" / "Tortites de blat" (∙) + un embotit magre (pernil dolç, gall dindi, pernil salat) (∙). Dos ingredients simples.
   · "Carn blanca" → pollastre/gall dindi. "Pescat blanc"/"Pescat blau" igual.
   · Si el client diu "només salmó del pescat blau" o "tot el pescat menys atún",
     RESPECTA-HO al detall.
