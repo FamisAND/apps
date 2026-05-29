@@ -9877,7 +9877,7 @@ async function tobMenuPdf(cliId, menuId){
           dayTot[d].kcal += mr.kcal; dayTot[d].prot += mr.prot;
           dayTot[d].hc += mr.hc; dayTot[d].gras += mr.gras;
           return `<div class="mp-plato">
-            ${foto ? `<div class="mp-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-foto mp-nofoto"></div>'}
+            ${foto ? `<div class="mp-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-foto mp-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
             <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(r.nombre||'—')}</div>
             <div class="mp-plato-kcal">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot</div></div>
           </div>`;
@@ -9957,7 +9957,7 @@ async function tobMenuPdf(cliId, menuId){
         : '';
       return `<div class="mp-recepta mp-blk">
         <div class="mp-recepta-head">
-          ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : '<div class="mp-recepta-foto mp-recepta-nofoto"></div>'}
+          ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
           <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
           <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
           ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}
@@ -10024,7 +10024,7 @@ async function tobMenuPdf(cliId, menuId){
     .mp-plato{display:flex;gap:7px;align-items:center;margin-bottom:5px;}
     .mp-plato:last-child{margin-bottom:0;}
     .mp-foto{width:50px;height:40px;border-radius:3px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
-    .mp-nofoto{background:#f7f7f7;}
+    .mp-nofoto{background:#f7f7f7;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:1;}
     .mp-plato-nm{font-weight:700;font-size:9.5px;line-height:1.22;color:#0f0f0f;overflow-wrap:anywhere;}
     .mp-plato-kcal{font-size:8.5px;color:#8c8c8c;margin-top:1px;}
     .mp-buit{color:#ccc;font-size:10px;text-align:center;padding:8px 0;}
@@ -10042,7 +10042,7 @@ async function tobMenuPdf(cliId, menuId){
     .mp-recepta::before{content:'';position:absolute;top:0;left:0;width:5px;height:100%;background:#f5a721;}
     .mp-recepta-head{display:flex;gap:16px;align-items:center;margin-bottom:12px;}
     .mp-recepta-foto{width:130px;height:96px;border-radius:5px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
-    .mp-recepta-nofoto{background:#f7f7f7;}
+    .mp-recepta-nofoto{background:#f7f7f7;display:flex;align-items:center;justify-content:center;font-size:60px;line-height:1;}
     .mp-recepta-nm{font-size:17px;font-weight:800;color:#0f0f0f;}
     .mp-recepta-mac{font-size:11px;color:#404040;margin-top:5px;}
     .mp-recepta-mac b{color:#f5a721;}
