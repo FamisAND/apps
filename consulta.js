@@ -2142,6 +2142,30 @@ function tobRunPasteImport(){
         });
       }
     });
+    // ── Porciones: cantidades exactas por plato (del PDF) ──
+    // data.menu.porciones = { [platoNombre]: { gramos } | { kcal } }
+    //   · gramos: para platos sueltos (recetas de 1 ingrediente) → ajuste ing-level exacto.
+    //   · kcal:   aporte real por ración de la receta → factor = kcal / kcalPorRación catálogo.
+    // Permite reproducir el kcal/macros exacto aunque la receta del catálogo haya cambiado.
+    const ajustes = {};
+    let ajustados = 0;
+    const porciones = data.menu.porciones || {};
+    Object.keys(porciones).forEach(nm => {
+      const rid = findRec(nm);
+      if(!rid) return;
+      const rec = recs.find(r => r.id === rid);
+      if(!rec) return;
+      const por = porciones[nm] || {};
+      if(por.gramos != null && Array.isArray(rec.ingredientes) && rec.ingredientes.length === 1){
+        ajustes[rid] = { ing: { [rec.ingredientes[0].ingId]: +por.gramos }, motiu: 'importado del PDF', fuente: 'import' };
+        ajustados++;
+      } else if(por.kcal != null){
+        const total = (typeof tobRecMacros === 'function') ? (tobRecMacros(rec).kcal || 0) : 0;
+        const base = total / (rec.raciones || 1);
+        const factor = base > 0 ? (+por.kcal) / base : 1;
+        if(Math.abs(factor - 1) > 0.001){ ajustes[rid] = { factor, motiu: 'importado del PDF', fuente: 'import' }; ajustados++; }
+      }
+    });
     const snapshot = {
       id: tobUid('menu'),
       fecha: data.menu.fecha || new Date().toISOString().slice(0,10),
@@ -2153,10 +2177,10 @@ function tobRunPasteImport(){
       protObj: data.menu.protObj || null,
       notas: data.menu.notas || '',
       data: outData,
-      ajustes: {},
+      ajustes,
       savedAt: new Date().toISOString()
     };
-    menuResolved = { snapshot, matchedCount, totalCount, unmatched, createdPlatos };
+    menuResolved = { snapshot, matchedCount, totalCount, unmatched, createdPlatos, ajustados };
   }
 
   if(!medsToAdd.length && !asigsResolved.length && !metaUpdates.length && !menuResolved){
@@ -2172,8 +2196,9 @@ function tobRunPasteImport(){
   if(medsIn.length) summaryLines.push(medsToAdd.length + ' mediciones a añadir' + (medsIn.length - medsToAdd.length > 0 ? ' (' + (medsIn.length - medsToAdd.length) + ' duplicadas, ignoradas)' : ''));
   if(asigsIn.length) summaryLines.push(asigsResolved.length + ' asignaciones a crear' + (asigsErrors.length ? ' (' + asigsErrors.length + ' con plantilla no encontrada)' : ''));
   if(menuResolved) summaryLines.push('1 menú: ' + menuResolved.matchedCount + '/' + menuResolved.totalCount + ' platos casados'
-    + (menuResolved.createdPlatos ? ' (' + menuResolved.createdPlatos + ' platos sueltos creados desde ingredientes)' : '')
-    + (menuResolved.unmatched.length ? ' (' + menuResolved.unmatched.length + ' sin casar, se omiten)' : ''));
+    + (menuResolved.createdPlatos ? ' · ' + menuResolved.createdPlatos + ' platos sueltos creados' : '')
+    + (menuResolved.ajustados ? ' · ' + menuResolved.ajustados + ' cantidades ajustadas (gramos/kcal del PDF)' : '')
+    + (menuResolved.unmatched.length ? ' · ' + menuResolved.unmatched.length + ' sin casar (se omiten)' : ''));
   if(!confirm('¿Importar lo siguiente?\n\n' + summaryLines.join('\n'))) return;
 
   // Aplicar mediciones
