@@ -2192,7 +2192,7 @@ function renderHist(){
       // Max Risk total (expuesto en el ID) — suma de (maxRisk × contracts) de cada pierna
       const maxRiskTotal = g.entries.reduce((s,e)=>s + (e.maxRisk||0)*(e.contracts||1), 0);
       // Delta / IV / IVR medios
-      const avgDelta = avgOf('delta');
+      const avgDelta = (()=>{ const a=nums('delta').map(Math.abs); return a.length? a.reduce((s,x)=>s+x,0)/a.length : null; })();  // delta en positivo
       const avgIv    = avgOf('iv');
       const avgIvr   = avgOf('ivr');
       // P. Crédito / P. Cierre sumados (en $ reales → ×100 porque se guardan en $/share)
@@ -2273,7 +2273,7 @@ function renderHist(){
             return `<td class="${cls}" title="TP ${e.tp.toFixed(0)}% − tiempo ${e.timePct.toFixed(0)}% = ET ${et.toFixed(0)}">${ic} ${et>=0?'+':''}${et.toFixed(0)}</td>`;
           })()}
           <td class="c-amber">${mrVal}</td>
-          <td class="c-muted">${e.delta!=null?e.delta:'—'}</td>
+          <td class="c-muted">${e.delta!=null?Math.abs(e.delta):'—'}</td>
           <td class="c-muted">${e.iv!=null?e.iv+'%':'—'}</td>
           <td class="${e.ivr>=50?'c-green':e.ivr>=30?'c-amber':'c-red'}">${e.ivr!=null?e.ivr+'%':'—'}</td>
           <td class="c-green">${e.pCredito!=null?'$'+(e.pCredito*100).toFixed(2):'—'}</td>
@@ -2315,7 +2315,7 @@ function renderHist(){
         return `<td class="${cls}" title="TP ${e.tp.toFixed(0)}% − tiempo ${e.timePct.toFixed(0)}% = ET ${et.toFixed(0)}">${ic} ${et>=0?'+':''}${et.toFixed(0)}</td>`;
       })()}
       <td class="c-amber">${e.maxRisk?'$'+(e.maxRisk*(e.contracts||1)).toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</td>
-      <td class="c-muted">${fmtN(e.delta)}</td>
+      <td class="c-muted">${e.delta!=null?fmtN(Math.abs(e.delta)):fmtN(e.delta)}</td>
       <td class="c-muted">${e.iv?e.iv+'%':'—'}</td>
       <td class="${e.ivr>=50?'c-green':e.ivr>=30?'c-amber':'c-red'}">${e.ivr?e.ivr+'%':'—'}</td>
       <td class="c-green">${e.pCredito?'$'+(e.pCredito*100).toFixed(2):'—'}</td>
@@ -3588,7 +3588,7 @@ function renderDash(){
   });
 
   // 6. Delta / IV / IVR
-  const dltArr = months.map(m=>{ const a=avg(byMonth[m].delta); return a!=null?parseFloat(a.toFixed(1)):null; });
+  const dltArr = months.map(m=>{ const a=avg(byMonth[m].delta.map(Math.abs)); return a!=null?parseFloat(a.toFixed(1)):null; });
   const ivArr  = months.map(m=>{ const a=avg(byMonth[m].iv);    return a!=null?parseFloat(a.toFixed(1)):null; });
   const ivrArr = months.map(m=>{ const a=avg(byMonth[m].ivr);   return a!=null?parseFloat(a.toFixed(1)):null; });
   mkChart('cDelta',{
@@ -4131,7 +4131,7 @@ function buildActCard(a, idx, today){
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
       <div class="act-kv"><span class="act-k">Prima neta</span><span class="act-v">${a.pCredito!=null?(a.pCredito*100).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
-      <div class="act-kv"><span class="act-k" title="Delta neto posición">Δ neto</span><span class="act-v">${a.delta!=null?a.delta:'—'}</span></div>
+      <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
       <div class="act-kv"><span class="act-k">IV</span><span class="act-v">${a.iv!=null?a.iv+'%':'—'}</span></div>
       <div class="act-kv"><span class="act-k">IVR</span><span class="act-v">${a.ivr!=null?a.ivr+'%':'—'}</span></div>
       <div class="act-kv">
@@ -4367,7 +4367,7 @@ function legsRecalcTotals(containerId){
     el.value = (decimals != null) ? val.toFixed(decimals) : String(val);
     el.dispatchEvent(new Event('input', { bubbles: true })); // dispara recalcs externos (p.ej. updateAccMaxRisk)
   };
-  if(hasDelta) setIf(map.delta, netDelta, 2);
+  if(hasDelta) setIf(map.delta, Math.abs(netDelta), 2);  // delta siempre positivo (decisión de análisis)
   if(hasPrima){
     // hf_pCredito está en escala ×100 (cents/dollars-per-contract), am_pcred en escala /share.
     setIf(map.prima, netPrima * map.primaScale, 2);
@@ -5949,7 +5949,7 @@ function confirmCloseLeg(){
         netDelta += sign * Math.abs(l.delta);
         anyD = true;
       });
-      if(anyD) a.delta = parseFloat(netDelta.toFixed(2));
+      if(anyD) a.delta = Math.abs(parseFloat(netDelta.toFixed(2)));  // delta siempre positivo
       // Recalcular pCredito desde primas supervivientes (sign-aware → /100)
       const survCred = legsSumCredit(a.legs);
       if(survCred != null) a.pCredito = survCred / 100;
@@ -7179,7 +7179,7 @@ function renderStratDash(){
 
   // Delta/IV/IVR
   mkStratChart('sDelta',{ data:{ labels, datasets:[
-    { type:'line', label:'Delta medio', data:months.map(m=>avg(byM[m].delta)), borderColor:C.blue, borderWidth:2, pointRadius:2, fill:false, tension:0.3 },
+    { type:'line', label:'Delta medio', data:months.map(m=>avg(byM[m].delta.map(Math.abs))), borderColor:C.blue, borderWidth:2, pointRadius:2, fill:false, tension:0.3 },
     { type:'line', label:'IV% medio', data:months.map(m=>avg(byM[m].iv)), borderColor:C.amber, borderWidth:2, pointRadius:2, fill:false, tension:0.3 },
     { type:'line', label:'IVR% medio', data:months.map(m=>avg(byM[m].ivr)), borderColor:C.purple, borderWidth:2, pointRadius:2, fill:false, tension:0.3 }
   ]}, options:{ ...baseOpts, scales:{ x:{ticks:{color:C.text,font:{size:8,family:'Courier New'},maxRotation:45},grid:{color:C.grid}}, y:{ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>Math.round(v)},grid:{color:C.grid}} }}});
