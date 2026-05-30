@@ -3610,6 +3610,27 @@ function tobMedsSorted(cli){
   if(_tobMedFilterFrom) arr = arr.filter(m => (m.fecha||'') >= _tobMedFilterFrom);
   return arr;
 }
+// ─── Rangos óptimos de composición (BIIO) — umbrales superiores por categoría ───
+// Hombre / Dona. Categorías: Atleta · Actiu · General · Sobrepès.
+const TOB_BF_RANGES = {
+  H: { greix:{atleta:10, actiu:15, general:20, sobrepes:25}, pp:{atleta:0.6, actiu:0.9, general:1.2, sobrepes:1.5} },
+  M: { greix:{atleta:16, actiu:24, general:28, sobrepes:32}, pp:{atleta:1.0, actiu:1.4, general:1.8, sobrepes:2.2} }
+};
+const TOB_BF_CATS = ['atleta','actiu','general','sobrepes'];
+const TOB_BF_CAT_LABEL = { atleta:'Atleta', actiu:'Actiu', general:'General', sobrepes:'Sobrepès' };
+// Yuhasz (% greix a partir de Σ6 plecs, ajustada al estándar BIIO):
+//   Home:  3.64 + Σ × 0.097     ·     Dona: 4.56 + Σ × 0.143
+function tobMedBodyFat(sex, sumPlecs){
+  if(!isFinite(sumPlecs) || sumPlecs <= 0) return null;
+  if(sex === 'H') return Math.max(0, 3.64 + sumPlecs * 0.097);
+  if(sex === 'M') return Math.max(0, 4.56 + sumPlecs * 0.143);
+  return null;
+}
+function tobMedCategory(value, thr){
+  if(value == null || !isFinite(value)) return null;
+  for(const k of TOB_BF_CATS){ if(value <= thr[k]) return k; }
+  return 'sobrepes';  // fuera del rango → tope superior
+}
 function tobMedSum(med){
   return TOB_MED_PLECS.reduce((s,[k]) => s + (parseFloat(med?.plecs?.[k])||0), 0);
 }
@@ -4192,9 +4213,12 @@ async function tobBuildPdfMediciones(cli){
     page.drawText(kp[1], { x: x+14, y: kpiY+32, size: 24, font: fontB, color: BLACK });
     if(kp[2]) page.drawText(kp[2] + vsInicio, { x: x+14, y: kpiY+14, size: 8, font, color: GRAY });
   });
-  page.drawText('FULL TRAINING - BIIO System', { x: W-230, y: 40, size: 9, font: fontO, color: GRAY });
+  // Panel de rangos óptimos (% Greix + Plecs/Pes) sobre la última medición
+  _tobDrawRangesPanel(page, ctx, cli, last, 100, 55, W - 200, 92);
 
-  // Páginas: evolución + composición + detalle por medición
+  page.drawText('FULL TRAINING - BIIO System', { x: W-230, y: 18, size: 9, font: fontO, color: GRAY });
+
+  // Páginas: evolución + composición + mini-gráficas por métrica + detalle
   await _tobPdfMedicionPages(doc, ctx, cli);
 
   // Paginación
@@ -4212,9 +4236,98 @@ async function tobBuildPdfMediciones(cli){
   tobToast('✓ PDF de evolución descargado', 'green');
 }
 
+// Dibuja el panel "Rangos óptimos (composición)" — % Greix y Plecs/Pes con
+// categorías BIIO por sexo. Resalta la categoría actual.
+function _tobDrawRangesPanel(page, ctx, cli, med, x, y, w, h){
+  const { font, fontB, GRAY, GRAY_DK, BLACK, ORANGE, rgb } = ctx;
+  const sex = (cli.sexo === 'H' || cli.sexo === 'M') ? cli.sexo : null;
+  if(!sex) return;
+  const tb = TOB_BF_RANGES[sex];
+  const sum = tobMedSum(med);
+  const bf  = tobMedBodyFat(sex, sum);
+  const pp  = (med && med.pes) ? sum / med.pes : null;
+  const bfCat = bf != null ? tobMedCategory(bf, tb.greix) : null;
+  const ppCat = pp != null ? tobMedCategory(pp, tb.pp)    : null;
+  // Marco
+  page.drawRectangle({ x, y, width: w, height: h, color: rgb(0.97,0.97,0.97) });
+  page.drawRectangle({ x, y: y+h-3, width: w, height: 3, color: ORANGE });
+  page.drawText('Rangs òptims (' + (sex==='M'?'dona':'home') + ')', { x: x+10, y: y+h-18, size: 9, font: fontB, color: GRAY_DK });
+  // Cabeceras de columna (4 categorías)
+  const startX = x + 110;
+  const cellW  = (w - 120) / 4;
+  const yHead  = y + h - 36;
+  TOB_BF_CATS.forEach((k,i) => {
+    page.drawText(TOB_BF_CAT_LABEL[k], { x: startX + i*cellW + 6, y: yHead, size: 8, font: fontB, color: GRAY });
+  });
+  // Fila helper: muestra etiqueta, valor actual, categoría, y los umbrales por columna; resalta su celda.
+  const drawRow = (label, value, cat, thresholds, fmtThr, fmtVal, yRow) => {
+    page.drawText(label, { x: x+10, y: yRow+10, size: 8, font, color: GRAY });
+    page.drawText(value != null ? fmtVal(value) : '—', { x: x+10, y: yRow-3, size: 12, font: fontB, color: BLACK });
+    if(cat) page.drawText(TOB_BF_CAT_LABEL[cat], { x: x+10, y: yRow-16, size: 7.5, font: fontB, color: ORANGE });
+    TOB_BF_CATS.forEach((k,i) => {
+      const cx = startX + i*cellW;
+      // Highlight de la categoría actual
+      if(cat === k){
+        page.drawRectangle({ x: cx, y: yRow-19, width: cellW-2, height: 30, color: rgb(0.96,0.65,0.13), opacity: 0.18 });
+      }
+      page.drawText(fmtThr(thresholds[k]), { x: cx + 6, y: yRow-3, size: 10, font: fontB, color: GRAY_DK });
+    });
+  };
+  const yRow1 = yHead - 22;
+  drawRow('% Greix', bf, bfCat, tb.greix, v => v.toFixed(0)+'%', v => v.toFixed(2)+'%', yRow1);
+  const yRow2 = yRow1 - 34;
+  drawRow('Plecs/Pes', pp, ppCat, tb.pp, v => v.toFixed(1), v => v.toFixed(2), yRow2);
+}
+
+// Añade 2 páginas: una con un mini-chart por cada PLEC y otra por cada PERÍMETRE.
+// Respeta el rango temporal (las meds ya vienen filtradas por _tobMedFilterFrom).
+async function _tobPdfMedicionMiniCharts(doc, ctx, cli){
+  const { font, fontB, fontO, ORANGE, BLACK, GRAY, GRAY_DK, W, H } = ctx;
+  const meds = tobMedsSorted(cli);
+  if(meds.length < 2) return;
+  const L = tobLangOf(cli);
+  const groups = [
+    { kind:'plecs', defs:TOB_MED_PLECS, unit:'mm', title:'Evolució per plec cutani (mm)' },
+    { kind:'perim', defs:TOB_MED_PERIM, unit:'cm', title:'Evolució per perímetre (cm)' }
+  ];
+  for(const g of groups){
+    const page = doc.addPage([W, H]);
+    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, g.title, cli.nombre || '', W, H);
+    const cols = 3, rows = Math.ceil(g.defs.length / cols);
+    const margin = 32, gapX = 16, gapY = 26;
+    const chW = Math.floor((W - 2*margin - (cols-1)*gapX) / cols);
+    const chH = Math.floor((H - 110 - (rows-1)*gapY - 30) / rows);
+    for(let i = 0; i < g.defs.length; i++){
+      const def = g.defs[i];
+      const [k] = def;
+      const label = tobMedLabel(def, L);
+      const col = i % cols, row = Math.floor(i / cols);
+      const x = margin + col*(chW+gapX);
+      const y = H - 100 - row*(chH+gapY) - chH;
+      const data = meds.map(m => (g.kind==='plecs' ? m.plecs?.[k] : m.perimetres?.[k]) ?? null);
+      const labels = meds.map(m => (m.fecha||'').slice(2));   // yy-mm-dd
+      const cfg = {
+        type: 'line',
+        data: { labels, datasets: [{ label, data, borderColor:'#f5a721', backgroundColor:'rgba(245,166,35,0.12)', borderWidth:2, fill:true, pointRadius:2.5, tension:0.3, spanGaps:true }] },
+        options: {
+          responsive:false, animation:false, devicePixelRatio:2,
+          plugins:{ legend:{ display:false }, title:{ display:true, text:label, font:{ size:13, weight:'bold' }, color:'#333' } },
+          scales:{
+            x:{ ticks:{ font:{ size:9 }, maxRotation:0, autoSkip:true, maxTicksLimit:6 }, grid:{ display:false } },
+            y:{ ticks:{ font:{ size:9 } }, grid:{ color:'rgba(0,0,0,0.06)' } }
+          }
+        }
+      };
+      try {
+        const png = await tobChartToPng(cfg, chW*2, chH*2);
+        page.drawImage(await doc.embedPng(png), { x, y, width: chW, height: chH });
+      } catch(e){ console.warn('mini', g.kind, k, e); page.drawText(label, { x, y: y+chH/2, size: 9, font: fontO, color: GRAY }); }
+    }
+  }
+}
+
 // Añade las páginas de mediciones (evolución + composición inicio-vs-actual +
-// detalle por medición) a un PDF existente. Reutilizado por "PDF Evolución"
-// y por "PDF Histórico" (cuando el cliente tiene mediciones).
+// detalle por medición) a un PDF existente.
 async function _tobPdfMedicionPages(doc, ctx, cli){
   const { font, fontB, fontO, ORANGE, BLACK, GRAY, GRAY_DK, GREEN, RED, W, H, rgb } = ctx;
   const meds = tobMedsSorted(cli);
@@ -4267,6 +4380,9 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
       page.drawImage(await doc.embedPng(png2), { x: ox + chW + gapX, y: yTop - chH, width: chW, height: chH });
     } catch(e){ console.warn(e); }
   }
+
+  // ─── PÁGINAS MINI-GRÁFICAS: una para plecs y otra para perímetros ───
+  await _tobPdfMedicionMiniCharts(doc, ctx, cli);
 
   // ─── PÁGINAS DETALLE: una por medición (más reciente primero) ───
   // Convención de datos: H=Hombre/Home/Male, M=Mujer/Dona/Female.
