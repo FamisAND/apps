@@ -47,6 +47,52 @@ function getEstado(f){
 const ESTADO_LABELS = { pendiente:'Pendiente', pagada:'Pagada', vencida:'Vencida' };
 const ESTADO_EMOJI = { pendiente:'🟡', pagada:'🟢', vencida:'🔴' };
 
+// ── Defaults de cfg por cliente ────────────────────────────────
+// Estos campos viven en cliente.cfg, NO en p.cfg. p.cfg solo guarda los
+// defaults globales que se pre-rellenan al crear un cliente nuevo.
+const CLIENT_CFG_KEYS = [
+  'sinIgi','kwEnabled','kwBreakdown','kwLast','kwLastPrice',
+  'saldoEnabled','saldoCuota','saldoPeriodo','saldoFechaCorte','saldoAcumulado'
+];
+function defaultClientCfg(){
+  return {
+    sinIgi:false, kwEnabled:false, kwBreakdown:false, kwLast:0, kwLastPrice:0,
+    saldoEnabled:false, saldoCuota:100, saldoPeriodo:6, saldoFechaCorte:"", saldoAcumulado:0
+  };
+}
+// Devuelve cliente.cfg garantizando que existe (no muta el cliente).
+function clientCfg(c){
+  if(!c) return defaultClientCfg();
+  if(!c.cfg) c.cfg = defaultClientCfg();
+  // Rellenar claves que falten (cfg viejos)
+  const d = defaultClientCfg();
+  for(const k of CLIENT_CFG_KEYS) if(c.cfg[k] === undefined) c.cfg[k] = d[k];
+  return c.cfg;
+}
+// Cliente de una factura. Devuelve null si no hay cliente seleccionado.
+function facCliente(f){
+  if(!f || !f.clienteId) return null;
+  const p = prof(); if(!p) return null;
+  return (p.clientes||[]).find(c => c.id === f.clienteId) || null;
+}
+
+// Migración: si p.cfg tenía las claves per-cliente (modelo viejo), se copian
+// a cada cliente del perfil que aún no tenga c.cfg.
+function migrateClientCfg(){
+  let migrated = false;
+  profiles.forEach(p => {
+    if(!p.cfg) return;
+    (p.clientes||[]).forEach(c => {
+      if(!c.cfg){
+        c.cfg = defaultClientCfg();
+        CLIENT_CFG_KEYS.forEach(k => { if(p.cfg[k] !== undefined) c.cfg[k] = p.cfg[k]; });
+        migrated = true;
+      }
+    });
+  });
+  if(migrated){ save(); console.log('[facturas] migrate: cliente.cfg poblado desde p.cfg'); }
+}
+
 function load(){
   try{ profiles = JSON.parse(localStorage.getItem(SK)||"[]"); }catch{ profiles = []; }
   // Migración: el estilo "minimal" se eliminó. Pasamos a "corporativo".
@@ -58,6 +104,8 @@ function load(){
     }
   });
   if(migrated) save();
+  // Migración per-cliente
+  migrateClientCfg();
 }
 function save(){ localStorage.setItem(SK, JSON.stringify(profiles)); flashSave(); }
 function flashSave(){ const b=document.getElementById("saveBadge"); if(!b)return; b.textContent="✓"; setTimeout(()=>b.textContent="",1500); }
@@ -165,6 +213,28 @@ function enterApp(id){
   document.getElementById("hdrProfile").textContent = (p.emoji||'📄') + " " + p.name;
   showScreen("appScreen");
   showTab("facturas");
+  // Aviso de liquidaciones vencidas (clientes con fecha de corte ya pasada).
+  setTimeout(checkLiquidacionVencida, 200);
+}
+
+// Avisos por cliente cuando llega/pasa su fecha de corte (1 vez/sesión).
+const _liqWarned = new Set();
+function checkLiquidacionVencida(){
+  const p = prof(); if(!p) return;
+  const today = todayISO();
+  (p.clientes||[]).forEach(c => {
+    const cfg = clientCfg(c);
+    if(!cfg.saldoEnabled || !cfg.saldoFechaCorte) return;
+    if(cfg.saldoFechaCorte > today) return;  // aún no vence
+    const key = c.id + '|' + cfg.saldoFechaCorte;
+    if(_liqWarned.has(key)) return;
+    _liqWarned.add(key);
+    const r = confirm(`📅 ${c.name}: llegó la fecha de corte (${fmtDate(cfg.saldoFechaCorte)}).\n\nSaldo acumulado: ${fmt(cfg.saldoAcumulado)}.\n\n¿Has hecho ya la liquidación?\n\n(Aceptar = ir al cliente para liquidar · Cancelar = más tarde)`);
+    if(r){
+      // Abre el modal del cliente directo en su sección de saldo
+      openCliente(c.id);
+    }
+  });
 }
 
 function logout(){
@@ -327,19 +397,25 @@ function renderAjustes(){
   document.getElementById("cfg_prefix").value = p.cfg.prefix||"";
   document.getElementById("cfg_next").value = p.cfg.next||1;
   document.getElementById("cfg_igi").value = p.cfg.igi!=null ? p.cfg.igi : 4.5;
-  // Toggles nuevos
-  const elSinIgi = document.getElementById("cfg_sinIgi");
-  if(elSinIgi) elSinIgi.checked = !!p.cfg.sinIgi;
-  const elKw = document.getElementById("cfg_kwEnabled");
-  if(elKw) elKw.checked = !!p.cfg.kwEnabled;
-  if(typeof updateSinIgiUI === 'function') updateSinIgiUI();
-  if(typeof updateKwUI === 'function') updateKwUI();
+  // Toggles per-cliente (defaults del perfil para nuevos clientes)
+  const setChk = (id, v) => { const el = document.getElementById(id); if(el) el.checked = !!v; };
+  setChk('cfg_sinIgi',       p.cfg.sinIgi);
+  setChk('cfg_kwEnabled',    p.cfg.kwEnabled);
+  setChk('cfg_kwBreakdown',  p.cfg.kwBreakdown);
+  setChk('cfg_saldoEnabled', p.cfg.saldoEnabled);
+  const setVal = (id, v) => { const el = document.getElementById(id); if(el) el.value = (v==null?'':v); };
+  setVal('cfg_saldoCuota',      p.cfg.saldoCuota!=null ? p.cfg.saldoCuota : 100);
+  setVal('cfg_saldoPeriodo',    p.cfg.saldoPeriodo!=null ? p.cfg.saldoPeriodo : 6);
+  setVal('cfg_saldoFechaCorte', p.cfg.saldoFechaCorte || '');
+  updateSinIgiUI();
+  updateKwUI();
+  updateSaldoUI();
   updateCfgPreview();
   renderEstilos();
   renderPlantillas();
 }
 
-// Muestra/oculta el input de IGI según el toggle "Sin IGI"
+// Muestra/oculta el input de IGI según el toggle "Sin IGI" (default del perfil)
 function updateSinIgiUI(){
   const sinIgi = document.getElementById("cfg_sinIgi")?.checked;
   const row = document.getElementById("cfg_igi_row");
@@ -347,8 +423,110 @@ function updateSinIgiUI(){
 }
 function updateKwUI(){
   const on = document.getElementById("cfg_kwEnabled")?.checked;
-  const panel = document.getElementById("cfg_kw_panel");
+  const row = document.getElementById("cfg_kwBreakdown_row");
+  if(row) row.style.display = on ? '' : 'none';
+}
+function updateSaldoUI(){
+  const on = document.getElementById("cfg_saldoEnabled")?.checked;
+  const panel = document.getElementById("cfg_saldo_panel");
   if(panel) panel.style.display = on ? '' : 'none';
+}
+
+// ── Toggle de Ajustes con flujo masivo per-cliente ─────────────
+// Al ACTIVAR → modal "¿A qué clientes aplicar?". Al DESACTIVAR → confirm
+// "¿Quitar de todos los clientes?". Tanto p.cfg[feature] (default para nuevos)
+// como cliente.cfg[feature] se actualizan en consecuencia.
+function onCfgToggle(feature, checked){
+  const p = prof(); if(!p) return;
+  if(checked){
+    // El default del perfil se marca; el flujo decide qué clientes lo reciben.
+    p.cfg[feature] = true;
+    // Caso kwBreakdown / saldoEnabled requieren kwEnabled. Si activa éstos sin
+    // kw, lo señalamos pero igual abrimos el modal (el cliente lo decide).
+    openApplyToClientsModal(feature);
+  } else {
+    const label = APPLY_LABELS[feature]?.titulo || feature;
+    if(!confirm(`¿Quitar "${label}" de TODOS los clientes de este perfil?`)){
+      // Re-checkear (revertir UI)
+      const el = document.getElementById('cfg_' + feature);
+      if(el) el.checked = true;
+      return;
+    }
+    p.cfg[feature] = false;
+    (p.clientes||[]).forEach(c => { clientCfg(c)[feature] = false; });
+    save();
+    renderAjustes();
+    toast(`✓ "${label}" desactivado en todos los clientes`);
+  }
+  // Sincronizar UI (el modal de aplicar quizá no se ha abierto si el feature no necesitaba: igual conviene refrescar)
+  if(checked && feature === 'sinIgi') updateSinIgiUI();
+  if(checked && feature === 'kwEnabled') updateKwUI();
+  if(checked && feature === 'saldoEnabled') updateSaldoUI();
+}
+
+const APPLY_LABELS = {
+  sinIgi:      { titulo:'Facturas sin IGI',         desc:'Sus facturas no llevarán la columna IGI y no se aplicará el impuesto.' },
+  kwEnabled:   { titulo:'Consumo eléctrico (kWh)',  desc:'En el editor de sus facturas aparece el panel de lectura anterior/actual y precio €/kWh.' },
+  kwBreakdown: { titulo:'Desglose del consumo',     desc:'Al final del PDF de sus facturas aparecerá el bloque con lectura previa/actual, kWh, precio e importe.' },
+  saldoEnabled:{ titulo:'Saldo mensual',            desc:'Sus facturas inyectarán "Gastos mensuales" automáticamente y el consumo eléctrico se descontará del saldo (no se factura).' }
+};
+
+let _applyToClientsFeature = null;
+function openApplyToClientsModal(feature){
+  const p = prof(); if(!p) return;
+  _applyToClientsFeature = feature;
+  const info = APPLY_LABELS[feature] || { titulo:feature, desc:'' };
+  document.getElementById('applyToClientsTitle').textContent = `¿A qué clientes aplicar "${info.titulo}"?`;
+  document.getElementById('applyToClientsDesc').textContent = info.desc;
+  const list = document.getElementById('applyToClientsList');
+  const clientes = (p.clientes||[]);
+  if(!clientes.length){
+    list.innerHTML = `<div style="font-size:.78rem;color:var(--mute);padding:14px;text-align:center;">Este perfil aún no tiene clientes. Crea clientes y vuelve aquí.</div>`;
+  } else {
+    list.innerHTML = clientes.map(c => {
+      const on = !!clientCfg(c)[feature];
+      return `<label style="display:flex;align-items:center;gap:10px;padding:7px 4px;cursor:pointer;font-size:.84rem;border-bottom:1px solid var(--bd2);">
+        <input type="checkbox" class="apply-cli-chk" data-cid="${c.id}" ${on?'checked':''} style="width:16px;height:16px;accent-color:var(--acc);">
+        <span><strong>${c.name||''}</strong>${c.nrt?` <span style="color:var(--mute2);font-size:.74rem;">· ${c.nrt}</span>`:''}</span>
+      </label>`;
+    }).join('');
+  }
+  openModal('applyToClientsModal');
+}
+function applyToClientsToggleAll(state){
+  document.querySelectorAll('#applyToClientsList .apply-cli-chk').forEach(c => { c.checked = !!state; });
+}
+function applyToClientsSave(){
+  const p = prof(); if(!p || !_applyToClientsFeature) return;
+  const feature = _applyToClientsFeature;
+  const checks = document.querySelectorAll('#applyToClientsList .apply-cli-chk');
+  let on = 0;
+  checks.forEach(chk => {
+    const cid = chk.dataset.cid;
+    const c = (p.clientes||[]).find(x => x.id === cid);
+    if(!c) return;
+    const cfg = clientCfg(c);
+    cfg[feature] = !!chk.checked;
+    // Si activamos saldo, heredar parámetros default del perfil
+    if(feature === 'saldoEnabled' && chk.checked){
+      if(!cfg.saldoCuota)      cfg.saldoCuota      = p.cfg.saldoCuota      || 100;
+      if(!cfg.saldoPeriodo)    cfg.saldoPeriodo    = p.cfg.saldoPeriodo    || 6;
+      if(!cfg.saldoFechaCorte) cfg.saldoFechaCorte = p.cfg.saldoFechaCorte || '';
+    }
+    if(chk.checked) on++;
+  });
+  save();
+  closeModal('applyToClientsModal');
+  toast(`✓ "${APPLY_LABELS[feature]?.titulo||feature}" aplicado a ${on} cliente${on===1?'':'s'}`);
+  _applyToClientsFeature = null;
+  // Si el cliente editado en el editor de facturas está afectado, refrescar
+  if(editingFactura) renderEditor();
+  if(editingClienteId){
+    // si el modal de cliente está abierto, refrescar sus checks
+    const c = (p.clientes||[]).find(x => x.id === editingClienteId);
+    if(c) loadClienteCfgIntoModal(c);
+  }
+  renderCliList();
 }
 
 // ── Plantillas de líneas frecuentes ──
@@ -607,9 +785,15 @@ function cfgSave(){
     prefix: document.getElementById("cfg_prefix").value,
     next: parseInt(document.getElementById("cfg_next").value)||1,
     igi: parseFloat(document.getElementById("cfg_igi").value)||0,
-    sinIgi: !!document.getElementById("cfg_sinIgi")?.checked,
-    kwEnabled: !!document.getElementById("cfg_kwEnabled")?.checked,
-    // Estos los gestiona el editor de facturas, NO ajustes. Los preservamos.
+    // ── DEFAULTS del perfil para nuevos clientes (no son el estado real) ──
+    sinIgi:      !!document.getElementById("cfg_sinIgi")?.checked,
+    kwEnabled:   !!document.getElementById("cfg_kwEnabled")?.checked,
+    kwBreakdown: !!document.getElementById("cfg_kwBreakdown")?.checked,
+    saldoEnabled:!!document.getElementById("cfg_saldoEnabled")?.checked,
+    saldoCuota:  parseFloat(document.getElementById("cfg_saldoCuota")?.value)||0,
+    saldoPeriodo:parseInt(document.getElementById("cfg_saldoPeriodo")?.value)||6,
+    saldoFechaCorte: document.getElementById("cfg_saldoFechaCorte")?.value || '',
+    // Legacy: kwLast/kwLastPrice ahora viven por cliente. Preservamos por compat.
     kwLast: prev.kwLast || 0,
     kwLastPrice: prev.kwLastPrice || 0
   };
@@ -634,11 +818,19 @@ function renderCliList(){
     return;
   }
   let h = `<div class="card"><div class="tbl-wrap"><table><thead><tr>
-    <th>Nombre</th><th>NRT</th><th>Email</th><th>Tel</th><th class="td-c"></th>
+    <th>Nombre</th><th>Funciones</th><th>NRT</th><th>Email</th><th>Tel</th><th class="td-c"></th>
   </tr></thead><tbody>`;
   list.forEach(c=>{
+    const cfg = clientCfg(c);
+    // Badges de funciones activas
+    const badges = [];
+    if(cfg.sinIgi)       badges.push('<span class="cli-badge" title="Sin IGI">🚫IGI</span>');
+    if(cfg.kwEnabled)    badges.push('<span class="cli-badge" title="Consumo eléctrico (kWh) activo">⚡kWh</span>');
+    if(cfg.kwBreakdown)  badges.push('<span class="cli-badge" title="Desglose del consumo en PDF">📊desglose</span>');
+    if(cfg.saldoEnabled) badges.push(`<span class="cli-badge" title="Saldo mensual · acumulado ${fmt(cfg.saldoAcumulado)}">💼saldo</span>`);
     h += `<tr>
       <td><strong>${c.name||""}</strong>${c.city?`<div style="font-size:.7rem;color:var(--mute2);">${c.city}</div>`:""}</td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap;">${badges.join('') || '<span style="color:var(--mute2);font-size:.72rem;">—</span>'}</div></td>
       <td class="td-num">${c.nrt||"—"}</td>
       <td>${c.email||"—"}</td>
       <td>${c.tel||"—"}</td>
@@ -663,12 +855,87 @@ function openCliente(id){
     document.getElementById("cl_tel").value = c.tel||"";
     document.getElementById("cl_notes").value = c.notes||"";
     document.getElementById("cl_del_btn").style.display = "inline-block";
+    loadClienteCfgIntoModal(c);
   } else {
     document.getElementById("cliModalTitle").textContent = "Nuevo cliente";
     ["cl_name","cl_nrt","cl_addr","cl_city","cl_email","cl_tel","cl_notes"].forEach(f=>document.getElementById(f).value="");
     document.getElementById("cl_del_btn").style.display = "none";
+    // Heredar defaults del perfil para un cliente nuevo
+    const dummy = { cfg: defaultClientCfg() };
+    if(p && p.cfg){
+      CLIENT_CFG_KEYS.forEach(k => { if(p.cfg[k] !== undefined) dummy.cfg[k] = p.cfg[k]; });
+    }
+    loadClienteCfgIntoModal(dummy);
   }
   openModal("clienteModal");
+}
+
+// Carga los campos de cfg del cliente en los inputs del modal.
+function loadClienteCfgIntoModal(c){
+  const cfg = clientCfg(c);
+  const setChk = (id, v) => { const el = document.getElementById(id); if(el) el.checked = !!v; };
+  const setVal = (id, v) => { const el = document.getElementById(id); if(el) el.value = (v==null?'':v); };
+  setChk('cl_sinIgi',       cfg.sinIgi);
+  setChk('cl_kwEnabled',    cfg.kwEnabled);
+  setChk('cl_kwBreakdown',  cfg.kwBreakdown);
+  setChk('cl_saldoEnabled', cfg.saldoEnabled);
+  setVal('cl_saldoCuota',      cfg.saldoCuota);
+  setVal('cl_saldoPeriodo',    cfg.saldoPeriodo);
+  setVal('cl_saldoFechaCorte', cfg.saldoFechaCorte);
+  const dispSaldo = document.getElementById('cl_saldoAcumulado_disp');
+  if(dispSaldo) dispSaldo.textContent = fmt(cfg.saldoAcumulado);
+  const dispKw = document.getElementById('cl_kwLast_disp');
+  if(dispKw) dispKw.textContent = (cfg.kwLast||0).toString();
+  const dispPr = document.getElementById('cl_kwLastPrice_disp');
+  if(dispPr) dispPr.textContent = (cfg.kwLastPrice||0).toFixed(4);
+  onCliKwToggle();
+  onCliSaldoToggle();
+}
+function onCliKwToggle(){
+  const on = !!document.getElementById('cl_kwEnabled')?.checked;
+  const row = document.getElementById('cl_kwBreakdown_row');
+  if(row) row.style.display = on ? '' : 'none';
+}
+function onCliSaldoToggle(){
+  const on = !!document.getElementById('cl_saldoEnabled')?.checked;
+  const panel = document.getElementById('cl_saldo_panel');
+  if(panel) panel.style.display = on ? '' : 'none';
+}
+// Ajuste manual de saldoAcumulado / kwLast / kwLastPrice (correcciones puntuales).
+function adjustClienteValue(field, label, isMoney){
+  if(!editingClienteId){ toast("Guarda el cliente primero", 'red'); return; }
+  const p = prof(); const c = p.clientes.find(x => x.id === editingClienteId);
+  if(!c) return;
+  const cfg = clientCfg(c);
+  const cur = cfg[field] || 0;
+  const v = prompt(`${label} (valor actual: ${isMoney?fmt(cur):cur})\n\nIntroduce el nuevo valor:`, cur);
+  if(v == null) return;
+  const n = parseFloat(String(v).replace(',','.'));
+  if(!isFinite(n)){ toast("Valor no válido", 'red'); return; }
+  cfg[field] = n;
+  save();
+  loadClienteCfgIntoModal(c);
+  renderCliList();
+  toast(`✓ ${label} actualizado`);
+}
+// "He hecho la liquidación" para el cliente: resetea saldo + pide nueva fecha.
+function doLiquidacionCliente(){
+  if(!editingClienteId){ toast("Guarda el cliente primero", 'red'); return; }
+  const p = prof(); const c = p.clientes.find(x => x.id === editingClienteId);
+  if(!c) return;
+  const cfg = clientCfg(c);
+  if(!confirm(`✅ Marcar liquidación hecha para ${c.name}?\n\nSaldo actual: ${fmt(cfg.saldoAcumulado)}\n\nEsto pone el saldo a 0 y te pide la nueva fecha de corte.`)) return;
+  cfg.saldoAcumulado = 0;
+  // Sugerir hoy + periodo meses
+  const today = new Date();
+  const periodo = parseInt(cfg.saldoPeriodo) || 6;
+  const sug = new Date(today.getFullYear(), today.getMonth() + periodo, today.getDate()).toISOString().slice(0,10);
+  const newDate = prompt('Nueva fecha de corte:', sug);
+  if(newDate) cfg.saldoFechaCorte = newDate;
+  save();
+  loadClienteCfgIntoModal(c);
+  renderCliList();
+  toast('✓ Liquidación registrada');
 }
 
 function saveCliente(){
@@ -683,15 +950,33 @@ function saveCliente(){
     tel: document.getElementById("cl_tel").value.trim(),
     notes: document.getElementById("cl_notes").value.trim()
   };
+  // ── cfg fiscal del cliente ──
+  const getChk = id => !!document.getElementById(id)?.checked;
+  const getNum = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const getInt = id => parseInt(document.getElementById(id)?.value) || 0;
+  const cfgPatch = {
+    sinIgi:       getChk('cl_sinIgi'),
+    kwEnabled:    getChk('cl_kwEnabled'),
+    kwBreakdown:  getChk('cl_kwBreakdown'),
+    saldoEnabled: getChk('cl_saldoEnabled'),
+    saldoCuota:   getNum('cl_saldoCuota'),
+    saldoPeriodo: getInt('cl_saldoPeriodo') || 6,
+    saldoFechaCorte: document.getElementById('cl_saldoFechaCorte')?.value || ''
+  };
+  let c;
   if(editingClienteId){
-    const c = p.clientes.find(x=>x.id===editingClienteId);
+    c = p.clientes.find(x => x.id === editingClienteId);
     Object.assign(c, data);
+    const cfg = clientCfg(c);
+    Object.assign(cfg, cfgPatch);
   } else {
-    p.clientes.push({ id: uid(), ...data });
+    c = { id: uid(), ...data, cfg: { ...defaultClientCfg(), ...cfgPatch } };
+    p.clientes.push(c);
   }
   save();
   closeModal("clienteModal");
   renderCliList();
+  if(editingFactura) renderEditor();
 }
 
 function deleteCliente(){
@@ -776,7 +1061,6 @@ function renderFacList(){
       <td class="td-c" style="white-space:nowrap;">
         <button class="btn-sec" onclick="toggleEstado('${f.id}')" title="${isPagada?'Marcar como pendiente':'Marcar como pagada'}">${isPagada?'↺':'✓'}</button>
         <button class="btn-sec" onclick="editFactura('${f.id}')" title="Abrir y editar">📂</button>
-        <button class="btn-sec" onclick="duplicateFactura('${f.id}')" title="Duplicar">📋</button>
         <button class="btn-sec" onclick="quickPDF('${f.id}')" title="Descargar PDF">📥</button>
         <button class="btn-sec" onclick="quickShareEmail('${f.id}')" title="Enviar por email">✉️</button>
         <button class="btn-sec" onclick="deleteFactura('${f.id}')" title="Borrar factura" style="color:#f87171;border-color:#3a1818;">🗑</button>
@@ -1081,13 +1365,27 @@ function edClienteChange(){
   const p = prof();
   const cli = (p.clientes||[]).find(c=>c.id===f.clienteId);
   document.getElementById("ed_cli_info").innerHTML = cli ? cliInfoHTML(cli) : `<div style="font-size:.7rem;color:var(--mute2);">Selecciona un cliente o <a href="#" onclick="event.preventDefault();showTab('clientes')" style="color:var(--acc2);">crea uno nuevo</a>.</div>`;
+  // Si el cliente tiene saldoEnabled y la factura está "limpia", inyectar línea "Gastos mensuales"
+  if(cli){
+    const cfg = clientCfg(cli);
+    const lineas = f.lineas || [];
+    const isEmpty = !lineas.length || (lineas.length === 1 && !lineas[0].desc && !lineas[0].precio);
+    const hasGastos = lineas.some(l => /^gastos mensuales$/i.test((l.desc||'').trim()));
+    if(cfg.saldoEnabled && isEmpty && !hasGastos){
+      f.lineas = [{ desc:'Gastos mensuales', cant:1, precio: +cfg.saldoCuota || 0, igi: p.cfg?.igi || 0 }];
+    }
+  }
+  // Refrescar paneles / totales / líneas (recalcTotales leerá del cliente)
+  renderEdLines();
+  recalcTotales();
 }
 
 function renderEdLines(){
   const cont = document.getElementById("ed_lines");
+  if(!cont) return;
   cont.innerHTML = "";
-  const p = prof();
-  const sinIgi = !!(p && p.cfg && p.cfg.sinIgi);
+  const cli = facCliente(editingFactura);
+  const sinIgi = !!(cli && clientCfg(cli).sinIgi);
   // Toggle también la cabecera de la tabla
   const head = document.querySelector(".fac-line-head");
   if(head) head.classList.toggle("no-igi", sinIgi);
@@ -1169,7 +1467,8 @@ function edRemoveLine(i){
 function recalcTotales(){
   const f = editingFactura;
   const p = prof();
-  const sinIgi = !!(p && p.cfg && p.cfg.sinIgi);
+  const cli = facCliente(f);
+  const sinIgi = !!(cli && clientCfg(cli).sinIgi);
   let subt = 0, igi = 0;
   f.lineas.forEach(l=>{
     const base = (l.cant||0) * (l.precio||0);
@@ -1193,18 +1492,17 @@ function recalcTotales(){
 // input para lectura actual. El botón añade la línea calculada a la factura.
 // Al guardar la factura, kwLast se actualiza con la nueva lectura.
 function refreshKwPanel(){
-  const p = prof(); if(!p) return;
   const card = document.getElementById("ed_kw_card");
   if(!card) return;
-  if(!p.cfg?.kwEnabled){ card.style.display = 'none'; return; }
+  const cli = facCliente(editingFactura);
+  const cfg = cli ? clientCfg(cli) : null;
+  if(!cfg || !cfg.kwEnabled){ card.style.display = 'none'; return; }
   card.style.display = '';
-  // Pre-rellena anterior con la última lectura guardada; precio con el último
-  // usado (orientativo, el user puede cambiarlo)
-  const prev = parseFloat(p.cfg.kwLast) || 0;
-  const lastPrice = parseFloat(p.cfg.kwLastPrice) || 0;
+  // Pre-rellena anterior con la última lectura guardada del CLIENTE; precio igual.
+  const prev = parseFloat(cfg.kwLast) || 0;
+  const lastPrice = parseFloat(cfg.kwLastPrice) || 0;
   const prevEl = document.getElementById("ed_kw_prev");
   const priceEl = document.getElementById("ed_kw_price");
-  // Solo pre-rellena si están vacíos (no pisar lo que escribió el user)
   if(prevEl && !prevEl.value) prevEl.value = prev || '';
   if(priceEl && !priceEl.value) priceEl.value = lastPrice || '';
   updateKwPreview();
@@ -1223,6 +1521,10 @@ function updateKwPreview(){
 
 function addKwLine(){
   const p = prof(); if(!p || !editingFactura) return;
+  const f = editingFactura;
+  const cli = facCliente(f);
+  if(!cli){ alert("Selecciona un cliente antes de añadir consumo."); return; }
+  const cfg = clientCfg(cli);
   const prev = parseFloat(document.getElementById("ed_kw_prev")?.value) || 0;
   const curr = parseFloat(document.getElementById("ed_kw_curr")?.value) || 0;
   const price = parseFloat(document.getElementById("ed_kw_price")?.value) || 0;
@@ -1230,18 +1532,23 @@ function addKwLine(){
   if(price <= 0){ alert("Mete el precio €/kWh de este período."); return; }
   const cons = curr - prev;
   const importe = cons * price;
-  editingFactura.lineas.push({
-    desc: `Consumo eléctrico ${prev.toFixed(2)} → ${curr.toFixed(2)} kWh (${cons.toFixed(2)} kWh × ${price.toFixed(4)} €)`,
-    cant: 1,
-    precio: parseFloat(importe.toFixed(2)),
-    igi: p.cfg?.igi || 0
-  });
-  // Guardar lectura actual + precio como "último usado" para pre-rellenar
-  // la próxima factura. NO afecta a esta factura ni a las pasadas (la línea
-  // creada queda congelada con los valores actuales).
-  p.cfg.kwLast = curr;
-  p.cfg.kwLastPrice = price;
-  if(typeof save === 'function') save();
+  // SIEMPRE guardamos el detalle del consumo (render lo decide después).
+  f.consumoDetalle = { prev, curr, cons, price, importe, fecha: todayISO() };
+  if(cfg.saldoEnabled){
+    // Con saldo activo, el consumo se descuenta del saldo: NO se añade como línea.
+    toast('Consumo registrado (descuenta del saldo, no factura)');
+  } else {
+    f.lineas.push({
+      desc: `Consumo eléctrico ${prev.toFixed(2)} → ${curr.toFixed(2)} kWh (${cons.toFixed(2)} kWh × ${price.toFixed(4)} €)`,
+      cant: 1,
+      precio: parseFloat(importe.toFixed(2)),
+      igi: p.cfg?.igi || 0
+    });
+  }
+  // Guardar últimas lecturas EN EL CLIENTE (no en el perfil)
+  cfg.kwLast = curr;
+  cfg.kwLastPrice = price;
+  save();
   renderEdLines();
   recalcTotales();
   // Resetear inputs y refrescar (la anterior pasa a ser la actual)
@@ -1257,13 +1564,38 @@ function saveFactura(){
   edBaseUpd();
   if(!f.clienteId){ if(!confirm("No has seleccionado cliente. ¿Guardar igualmente?")) return; }
 
-  // ── Histórico inmutable: congelar style + textos al guardar ──
-  // Si la factura no tiene style aún, se le pone el del perfil.
+  // ── Histórico inmutable: congelar style + textos + sinIgi al guardar ──
   if(!f.style) f.style = (p.cfgStyle?.id) || 'corporativo';
-  // Congelar los textos efectivos (idioma actual + overrides) en la factura.
-  // Así, si cambias el idioma o los textos en Ajustes después, esta factura mantiene los suyos.
   f.textosFreezed = getTextosTemplate(p, f.style);
   f.langFreezed = p.cfgStyle?.lang || 'ca';
+  // sinIgi se congela LEYENDO DEL CLIENTE (no de p.cfg).
+  const cli = facCliente(f);
+  const cfg = cli ? clientCfg(cli) : null;
+  f.sinIgi = !!(cfg && cfg.sinIgi);
+
+  // ── Saldo mensual: actualizar saldoAcumulado del cliente y guardar snapshot ──
+  // Si la factura ya tenía snapshot previo (edición), deshacemos su efecto antes de
+  // aplicar el nuevo (evita doble cuenta cuando se edita).
+  if(cfg && cfg.saldoEnabled && f.consumoDetalle){
+    if(f.saldoSnapshot){
+      // Deshacer: previo = final - añadido + consumido  (inverso de aplicar)
+      const prev = f.saldoSnapshot;
+      cfg.saldoAcumulado = (cfg.saldoAcumulado||0) - (prev.añadido||0) + (prev.consumido||0);
+    }
+    const previo    = +cfg.saldoAcumulado || 0;
+    const añadido   = +cfg.saldoCuota || 0;
+    const consumido = +f.consumoDetalle.importe || 0;
+    const final     = previo + añadido - consumido;
+    const aviso     = !!(cfg.saldoFechaCorte && f.fecha && f.fecha > cfg.saldoFechaCorte);
+    f.saldoSnapshot = { previo, añadido, consumido, final, fecha: todayISO(), fechaCorte: cfg.saldoFechaCorte || '', aviso };
+    cfg.saldoAcumulado = final;
+  } else if(f.saldoSnapshot && (!cfg || !cfg.saldoEnabled)){
+    // Si el cliente ya no tiene saldo activo, deshacer snapshot previo y borrarlo.
+    if(cfg){
+      cfg.saldoAcumulado = (cfg.saldoAcumulado||0) - (f.saldoSnapshot.añadido||0) + (f.saldoSnapshot.consumido||0);
+    }
+    delete f.saldoSnapshot;
+  }
 
   if(editingFacIsNew){
     p.facturas = p.facturas || [];
@@ -1352,6 +1684,60 @@ function getTextosTemplate(p, styleId){
 // ║ SISTEMA DE TEMPLATES DE FACTURA                              ║
 // ╚══════════════════════════════════════════════════════════════╝
 
+// ── Helpers de bloques al final de la factura (consumo eléctrico + saldo) ──
+function buildConsumoDetalleHTML(detalle, theme){
+  if(!detalle) return '';
+  const c = theme;
+  return `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:8px;padding:14px 18px;margin-top:18px;font-size:12px;color:${c.fg};">
+    <div style="font-size:11px;color:${c.mute};text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:10px;">⚡ Desglose del consumo eléctrico</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;line-height:1.6;">
+      <div><span style="color:${c.mute};">Lectura anterior:</span> <strong>${fmtN(detalle.prev)} kWh</strong></div>
+      <div><span style="color:${c.mute};">Lectura actual:</span> <strong>${fmtN(detalle.curr)} kWh</strong></div>
+      <div><span style="color:${c.mute};">Consumo:</span> <strong>${fmtN(detalle.cons)} kWh</strong></div>
+      <div><span style="color:${c.mute};">Precio:</span> <strong>${(detalle.price||0).toFixed(4)} €/kWh</strong></div>
+    </div>
+    <div style="border-top:1px solid ${c.border};margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="color:${c.mute};">Importe del consumo</span>
+      <span style="font-weight:700;color:${c.acc};font-size:14px;">${fmtN(detalle.importe)} €</span>
+    </div>
+  </div>`;
+}
+function buildSaldoSnapshotHTML(snap, theme){
+  if(!snap) return '';
+  const c = theme;
+  const colPrev  = (snap.previo >= 0) ? c.green : c.red;
+  const colFinal = (snap.final  >= 0) ? c.green : c.red;
+  const fmtSign = (v, sign) => `${sign}${fmtN(Math.abs(v))} €`;
+  return `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:8px;padding:14px 18px;margin-top:14px;font-size:12px;color:${c.fg};">
+    <div style="font-size:11px;color:${c.mute};text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:10px;">💼 Saldo de meses</div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:6px 18px;line-height:1.7;">
+      <div style="color:${c.mute};">Saldo previo (meses anteriores)</div><div style="text-align:right;color:${colPrev};font-weight:600;">${fmtN(snap.previo)} €</div>
+      <div style="color:${c.mute};">Añadido este mes (cuota)</div><div style="text-align:right;color:${c.green};font-weight:600;">${fmtSign(snap.añadido, '+')}</div>
+      <div style="color:${c.mute};">Consumido este mes</div><div style="text-align:right;color:${c.red};font-weight:600;">${fmtSign(snap.consumido, '−')}</div>
+    </div>
+    <div style="border-top:1px solid ${c.border};margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="color:${c.mute};">Saldo final tras esta factura</span>
+      <span style="font-weight:700;color:${colFinal};font-size:14px;">${fmtN(snap.final)} €</span>
+    </div>
+    ${snap.aviso ? `<div style="color:${c.red};font-size:11px;margin-top:8px;">⚠ Esta factura es posterior a la fecha de corte (${fmtDate(snap.fechaCorte)}). Toca liquidar.</div>` : ''}
+  </div>`;
+}
+const TEMA_CONSUMO = {
+  corporativo: {bg:'#f8fafc',fg:'#1f2937',mute:'#64748b',acc:'#1d4ed8',border:'#e2e8f0',green:'#15803d',red:'#b91c1c'},
+  editorial:   {bg:'#fafafa',fg:'#1f2937',mute:'#6b7280',acc:'#0f172a',border:'#e5e7eb',green:'#15803d',red:'#b91c1c'},
+  dark:        {bg:'#262626',fg:'#f5efde',mute:'#a09a85',acc:'#f5efde',border:'#3a3a3a',green:'#86efac',red:'#fca5a5'}
+};
+// Devuelve los HTML de los bloques opcionales al final de la factura.
+function buildExtraBlocks(p, f, themeKey){
+  const theme = TEMA_CONSUMO[themeKey] || TEMA_CONSUMO.corporativo;
+  const cli = (p.clientes||[]).find(c=>c.id===f.clienteId);
+  const cfg = cli ? clientCfg(cli) : null;
+  let out = '';
+  if(cfg && cfg.kwBreakdown && f.consumoDetalle) out += buildConsumoDetalleHTML(f.consumoDetalle, theme);
+  if(f.saldoSnapshot) out += buildSaldoSnapshotHTML(f.saldoSnapshot, theme);
+  return out;
+}
+
 const STYLE_TEMPLATES = {
   // ── 1. CORPORATIU BLAU ───────────────────────────────────────
   corporativo: {
@@ -1360,16 +1746,17 @@ const STYLE_TEMPLATES = {
     build: (p, f, t) => {
       const cli = (p.clientes||[]).find(c=>c.id===f.clienteId);
       const e = p.emisor || {};
+      const sinIgi = !!f.sinIgi;
       let lines = "";
       f.lineas.forEach((l,i)=>{
         const base = (l.cant||0)*(l.precio||0);
-        const igi = base * ((l.igi||0)/100);
+        const igi = sinIgi ? 0 : base * ((l.igi||0)/100);
         const bg = i % 2 === 1 ? "background:#fafbfc;" : "";
         lines += `<tr style="${bg}">
           <td style="padding:11px 14px;border-bottom:1px solid #eef0f3;font-size:12.5px;color:#1f2937;">${l.desc||""}</td>
           <td style="padding:11px 14px;text-align:right;border-bottom:1px solid #eef0f3;font-size:12.5px;color:#1f2937;">${fmtN(l.cant)}</td>
           <td style="padding:11px 14px;text-align:right;border-bottom:1px solid #eef0f3;font-size:12.5px;color:#1f2937;">${fmtN(l.precio)} €</td>
-          <td style="padding:11px 14px;text-align:right;border-bottom:1px solid #eef0f3;font-size:12.5px;color:#94a3b8;">${l.igi||0}%</td>
+          ${sinIgi ? '' : `<td style="padding:11px 14px;text-align:right;border-bottom:1px solid #eef0f3;font-size:12.5px;color:#94a3b8;">${l.igi||0}%</td>`}
           <td style="padding:11px 14px;text-align:right;border-bottom:1px solid #eef0f3;font-size:12.5px;color:#1f2937;font-weight:600;">${fmtN(base+igi)} €</td>
         </tr>`;
       });
@@ -1429,7 +1816,7 @@ const STYLE_TEMPLATES = {
               <th style="text-align:left;padding:10px 14px;font-weight:600;">${t.colDesc}</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;width:65px;">${t.colCant}</th>
               <th style="text-align:right;padding:10px 14px;font-weight:600;width:90px;">${t.colPrecio}</th>
-              <th style="text-align:right;padding:10px 14px;font-weight:600;width:60px;">${t.colIgi}</th>
+              ${sinIgi ? '' : `<th style="text-align:right;padding:10px 14px;font-weight:600;width:60px;">${t.colIgi}</th>`}
               <th style="text-align:right;padding:10px 14px;font-weight:600;width:100px;">${t.colTotal}</th>
             </tr>
           </thead>
@@ -1448,6 +1835,7 @@ const STYLE_TEMPLATES = {
           </div>
         </div>
 
+        ${buildExtraBlocks(p, f, 'corporativo')}
         ${t.footer ? `<div style="text-align:center;font-size:10.5px;color:#94a3b8;margin-top:30px;padding-top:16px;border-top:1px solid #f0f0f0;">${t.footer}</div>` : ""}
       </div>`;
     }
@@ -1460,15 +1848,16 @@ const STYLE_TEMPLATES = {
     build: (p, f, t) => {
       const cli = (p.clientes||[]).find(c=>c.id===f.clienteId);
       const e = p.emisor || {};
+      const sinIgi = !!f.sinIgi;
       let lines = "";
       f.lineas.forEach(l => {
         const base = (l.cant||0)*(l.precio||0);
-        const igi = base * ((l.igi||0)/100);
+        const igi = sinIgi ? 0 : base * ((l.igi||0)/100);
         lines += `<tr>
           <td style="padding:13px 4px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#1f2937;">${l.desc||""}</td>
           <td style="padding:13px 4px;text-align:center;border-bottom:1px solid #e5e7eb;font-size:13px;color:#1f2937;">${fmtN(l.cant)}</td>
           <td style="padding:13px 4px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;color:#1f2937;">${fmtN(l.precio)} €</td>
-          <td style="padding:13px 4px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;color:#9ca3af;">${l.igi||0}%</td>
+          ${sinIgi ? '' : `<td style="padding:13px 4px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;color:#9ca3af;">${l.igi||0}%</td>`}
           <td style="padding:13px 4px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;color:#1f2937;font-weight:600;">${fmtN(base+igi)} €</td>
         </tr>`;
       });
@@ -1517,7 +1906,7 @@ const STYLE_TEMPLATES = {
               <th style="text-align:left;padding:10px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f172a;border-bottom:2px solid #0f172a;text-transform:uppercase;">${t.colDesc}</th>
               <th style="text-align:center;padding:10px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f172a;border-bottom:2px solid #0f172a;width:80px;text-transform:uppercase;">${t.colCant}</th>
               <th style="text-align:right;padding:10px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f172a;border-bottom:2px solid #0f172a;width:90px;text-transform:uppercase;">${t.colPrecio}</th>
-              <th style="text-align:right;padding:10px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f172a;border-bottom:2px solid #0f172a;width:60px;text-transform:uppercase;">${t.colIgi}</th>
+              ${sinIgi ? '' : `<th style="text-align:right;padding:10px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f172a;border-bottom:2px solid #0f172a;width:60px;text-transform:uppercase;">${t.colIgi}</th>`}
               <th style="text-align:right;padding:10px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#0f172a;border-bottom:2px solid #0f172a;width:100px;text-transform:uppercase;">${t.colTotal}</th>
             </tr>
           </thead>
@@ -1538,6 +1927,7 @@ const STYLE_TEMPLATES = {
           ${e.iban ? `${t.labelIban}: <span style="font-family:'DM Mono',monospace;">${e.iban}</span>` : ""}
         </div>` : ""}
 
+        ${buildExtraBlocks(p, f, 'editorial')}
         ${t.footer ? `<div style="text-align:center;font-size:11px;color:#9ca3af;margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;">${t.footer}</div>` : ""}
       </div>`;
     }
@@ -1550,15 +1940,16 @@ const STYLE_TEMPLATES = {
     build: (p, f, t) => {
       const cli = (p.clientes||[]).find(c=>c.id===f.clienteId);
       const e = p.emisor || {};
+      const sinIgi = !!f.sinIgi;
       let lines = "";
       f.lineas.forEach(l => {
         const base = (l.cant||0)*(l.precio||0);
-        const igi = base * ((l.igi||0)/100);
+        const igi = sinIgi ? 0 : base * ((l.igi||0)/100);
         lines += `<tr>
           <td style="padding:14px 4px;font-size:12.5px;color:#d4cfb8;border-bottom:1px solid #2a2a2a;">${l.desc||""}</td>
           <td style="padding:14px 4px;text-align:center;font-size:12.5px;color:#d4cfb8;border-bottom:1px solid #2a2a2a;">${fmtN(l.cant)}</td>
           <td style="padding:14px 4px;text-align:right;font-size:12.5px;color:#d4cfb8;border-bottom:1px solid #2a2a2a;">${fmtN(l.cant*l.precio)} €</td>
-          <td style="padding:14px 4px;text-align:right;font-size:12.5px;color:#d4cfb8;border-bottom:1px solid #2a2a2a;">${fmtN(igi)} €</td>
+          ${sinIgi ? '' : `<td style="padding:14px 4px;text-align:right;font-size:12.5px;color:#d4cfb8;border-bottom:1px solid #2a2a2a;">${fmtN(igi)} €</td>`}
           <td style="padding:14px 4px;text-align:right;font-size:12.5px;color:#f5efde;font-weight:600;border-bottom:1px solid #2a2a2a;">${fmtN(base+igi)} €</td>
         </tr>`;
       });
@@ -1607,7 +1998,7 @@ const STYLE_TEMPLATES = {
               <th style="text-align:left;padding:10px 4px;font-size:11px;color:#a09a85;font-weight:600;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #3a3a3a;">${t.colDesc}</th>
               <th style="text-align:center;padding:10px 4px;font-size:11px;color:#a09a85;font-weight:600;width:70px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #3a3a3a;">${t.colCant}</th>
               <th style="text-align:right;padding:10px 4px;font-size:11px;color:#a09a85;font-weight:600;width:90px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #3a3a3a;">${t.colPrecio}</th>
-              <th style="text-align:right;padding:10px 4px;font-size:11px;color:#a09a85;font-weight:600;width:80px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #3a3a3a;">${t.colIgi}</th>
+              ${sinIgi ? '' : `<th style="text-align:right;padding:10px 4px;font-size:11px;color:#a09a85;font-weight:600;width:80px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #3a3a3a;">${t.colIgi}</th>`}
               <th style="text-align:right;padding:10px 4px;font-size:11px;color:#a09a85;font-weight:600;width:100px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid #3a3a3a;">${t.colTotal}</th>
             </tr>
           </thead>
@@ -1627,6 +2018,7 @@ const STYLE_TEMPLATES = {
           ${f.notas ? f.notas.replace(/\n/g,"<br>")+"<br>" : ""}
           ${t.footer || ""}
         </div>` : ""}
+        ${buildExtraBlocks(p, f, 'dark')}
       </div>`;
     }
   }

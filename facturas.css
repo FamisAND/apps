@@ -184,6 +184,11 @@ tr:hover td{background:var(--bg2);}
 .badge.pagada{background:#052e16;color:#86efac;border:1px solid #15803d;}
 .badge.vencida{background:#450a0a;color:#fca5a5;border:1px solid #991b1b;}
 
+/* Badges de funciones activas por cliente (listado de clientes) */
+.cli-badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:.66rem;
+  font-weight:600;letter-spacing:.02em;font-family:'DM Mono',monospace;
+  background:#1e293b;color:#cbd5e1;border:1px solid #334155;white-space:nowrap;}
+
 /* ════════ TABLET (≤768px) — sidebar arriba, layout apilado ════════ */
 @media (max-width: 768px){
   body{ overflow:auto; font-size:13px; }

@@ -192,7 +192,7 @@
           <div class="card-title">💸 Impuestos (IGI Andorra)</div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;color:var(--text);">
-              <input type="checkbox" id="cfg_sinIgi" onchange="cfgSave(); updateSinIgiUI();" style="width:16px;height:16px;accent-color:var(--acc);">
+              <input type="checkbox" id="cfg_sinIgi" onchange="onCfgToggle('sinIgi', this.checked)" style="width:16px;height:16px;accent-color:var(--acc);">
               Facturas sin IGI (no se aplica impuesto)
             </label>
           </div>
@@ -201,18 +201,41 @@
               <input class="inp" type="number" step="0.5" id="cfg_igi" oninput="cfgSave()"></div>
           </div>
           <div style="font-size:.7rem;color:var(--mute2);line-height:1.5;">
-            Tipos vigentes en Andorra: <strong>0%</strong> (servicios médicos, educación), <strong>1%</strong> (alimentación), <strong>2.5%</strong> (transporte, cultura), <strong>4.5%</strong> (general), <strong>9.5%</strong> (servicios bancarios).
+            ⚙️ Se aplica <strong>por cliente</strong>. Al activarlo aquí te pregunta a qué clientes aplicarlo (luego cada cliente lo puede tener distinto). Tipos vigentes en Andorra: <strong>0%</strong> (médico/educación), <strong>1%</strong> (alimentación), <strong>2.5%</strong> (transporte/cultura), <strong>4.5%</strong> (general), <strong>9.5%</strong> (bancarios).
           </div>
         </div>
 
         <div class="card">
           <div class="card-title">⚡ Cálculo de consumo eléctrico (kWh)</div>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;color:var(--text);margin-bottom:6px;">
-            <input type="checkbox" id="cfg_kwEnabled" onchange="cfgSave(); updateKwUI();" style="width:16px;height:16px;accent-color:var(--acc);">
+            <input type="checkbox" id="cfg_kwEnabled" onchange="onCfgToggle('kwEnabled', this.checked)" style="width:16px;height:16px;accent-color:var(--acc);">
             Activar módulo de consumo eléctrico en facturas
           </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;color:var(--text);margin-bottom:6px;" id="cfg_kwBreakdown_row">
+            <input type="checkbox" id="cfg_kwBreakdown" onchange="onCfgToggle('kwBreakdown', this.checked)" style="width:16px;height:16px;accent-color:var(--acc);">
+            Mostrar desglose del consumo al final de la factura
+          </label>
           <div style="font-size:.7rem;color:var(--mute2);line-height:1.55;">
-            Al editar una factura aparece un panel donde metes <strong>lectura anterior, lectura actual y precio €/kWh</strong> de ese período. Se añade una línea calculada a la factura. La <em>lectura actual</em> queda guardada como "anterior" para la próxima factura automáticamente.
+            ⚙️ Se aplica <strong>por cliente</strong>. Al editar una factura del cliente aparece un panel para <strong>lectura anterior, lectura actual y precio €/kWh</strong>. La lectura actual queda como "anterior" para la próxima factura de ese cliente.
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">💼 Sistema de saldo mensual (cuota − consumo)</div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.85rem;color:var(--text);margin-bottom:8px;">
+            <input type="checkbox" id="cfg_saldoEnabled" onchange="onCfgToggle('saldoEnabled', this.checked)" style="width:16px;height:16px;accent-color:var(--acc);">
+            Activar saldo mensual (requiere kWh activado)
+          </label>
+          <div class="row-3" id="cfg_saldo_panel" style="display:none;">
+            <div><label class="fld-lbl">Cuota mensual (€) por defecto</label>
+              <input class="inp" type="number" step="0.01" id="cfg_saldoCuota" oninput="cfgSave()" placeholder="100"></div>
+            <div><label class="fld-lbl">Liquidar cada (meses)</label>
+              <input class="inp" type="number" min="1" id="cfg_saldoPeriodo" oninput="cfgSave()" placeholder="6"></div>
+            <div><label class="fld-lbl">Próxima fecha de corte por defecto</label>
+              <input class="inp" type="date" id="cfg_saldoFechaCorte" oninput="cfgSave()"></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--mute2);line-height:1.55;margin-top:6px;">
+            ⚙️ Se aplica <strong>por cliente</strong>. La factura cobra lo que metas en sus líneas; el saldo es un libro paralelo informativo: cada mes <em>previo + cuota − consumo = final</em>, acumulando. La factura inyecta automáticamente "Gastos mensuales" del cliente y el consumo se descuenta del saldo (no se factura). Pasados X meses, "He hecho la liquidación" en el modal del cliente resetea el saldo.
           </div>
         </div>
 
@@ -312,10 +335,69 @@
     </div>
     <div><label class="fld-lbl">Notas</label>
       <textarea class="inp" id="cl_notes"></textarea></div>
+
+    <!-- ── Configuración fiscal per-cliente ── -->
+    <div class="card" style="margin:14px 0 6px;background:var(--bg2);">
+      <div class="card-title" style="font-size:.85rem;">⚙️ Configuración fiscal de este cliente</div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;margin-bottom:6px;">
+        <input type="checkbox" id="cl_sinIgi" style="width:15px;height:15px;accent-color:var(--acc);">
+        Facturar sin IGI
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;margin-bottom:6px;">
+        <input type="checkbox" id="cl_kwEnabled" onchange="onCliKwToggle()" style="width:15px;height:15px;accent-color:var(--acc);">
+        Consumo eléctrico (kWh) activo
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;margin-bottom:8px;margin-left:18px;" id="cl_kwBreakdown_row">
+        <input type="checkbox" id="cl_kwBreakdown" style="width:15px;height:15px;accent-color:var(--acc);">
+        Mostrar desglose del consumo en el PDF
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;margin-bottom:6px;">
+        <input type="checkbox" id="cl_saldoEnabled" onchange="onCliSaldoToggle()" style="width:15px;height:15px;accent-color:var(--acc);">
+        Saldo mensual (cuota − consumo)
+      </label>
+      <div id="cl_saldo_panel" style="display:none;margin-left:18px;padding:8px 0;">
+        <div class="row-3" style="margin-bottom:8px;">
+          <div><label class="fld-lbl">Cuota €/mes</label>
+            <input class="inp" type="number" step="0.01" id="cl_saldoCuota" placeholder="100"></div>
+          <div><label class="fld-lbl">Periodo (meses)</label>
+            <input class="inp" type="number" min="1" id="cl_saldoPeriodo" placeholder="6"></div>
+          <div><label class="fld-lbl">Próxima fecha de corte</label>
+            <input class="inp" type="date" id="cl_saldoFechaCorte"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.75rem;color:var(--mute);margin-bottom:6px;">
+          <span>Saldo acumulado: <strong id="cl_saldoAcumulado_disp" style="color:var(--acc2);font-family:'DM Mono',monospace;">0,00 €</strong></span>
+          <button type="button" class="btn-sec" onclick="adjustClienteValue('saldoAcumulado','Saldo acumulado',true)" style="padding:3px 8px;font-size:.7rem;">✎ Ajustar</button>
+          <span style="margin-left:14px;">Última lectura kWh: <strong id="cl_kwLast_disp" style="color:var(--acc2);font-family:'DM Mono',monospace;">0</strong></span>
+          <button type="button" class="btn-sec" onclick="adjustClienteValue('kwLast','Última lectura kWh',false)" style="padding:3px 8px;font-size:.7rem;">✎ Ajustar</button>
+          <span style="margin-left:14px;">Precio €/kWh: <strong id="cl_kwLastPrice_disp" style="color:var(--acc2);font-family:'DM Mono',monospace;">0,0000</strong></span>
+          <button type="button" class="btn-sec" onclick="adjustClienteValue('kwLastPrice','Precio €/kWh',false)" style="padding:3px 8px;font-size:.7rem;">✎ Ajustar</button>
+        </div>
+        <button type="button" class="btn-sec" onclick="doLiquidacionCliente()" style="font-size:.78rem;">✅ He hecho la liquidación</button>
+        <div style="font-size:.68rem;color:var(--mute2);margin-top:4px;line-height:1.4;">"He hecho la liquidación" → resetea el saldo a 0 y pide nueva fecha de corte (sugerencia: hoy + periodo).</div>
+      </div>
+    </div>
+
     <div class="btn-row">
       <button class="btn-cancel" onclick="closeModal('clienteModal')">Cancelar</button>
       <button class="btn-danger" id="cl_del_btn" onclick="deleteCliente()" style="display:none;">🗑 Eliminar</button>
       <button class="btn-primary" onclick="saveCliente()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal "¿A qué clientes aplicar X?" — flujo de activación masiva desde Ajustes -->
+<div class="modal-bg" id="applyToClientsModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title" id="applyToClientsTitle">¿A qué clientes aplicar?</div>
+    <div style="font-size:.78rem;color:var(--mute);margin-bottom:10px;line-height:1.5;" id="applyToClientsDesc"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button class="btn-sec" type="button" onclick="applyToClientsToggleAll(true)">Marcar todos</button>
+      <button class="btn-sec" type="button" onclick="applyToClientsToggleAll(false)">Desmarcar todos</button>
+    </div>
+    <div id="applyToClientsList" style="max-height:300px;overflow-y:auto;border:1px solid var(--bd);border-radius:6px;padding:8px;background:var(--bg2);"></div>
+    <div class="btn-row">
+      <button class="btn-cancel" onclick="closeModal('applyToClientsModal')">Cancelar</button>
+      <button class="btn-primary" onclick="applyToClientsSave()">Aplicar a los marcados</button>
     </div>
   </div>
 </div>
