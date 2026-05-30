@@ -21,7 +21,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v135';
+const CACHE_VERSION = 'mis-dashboards-v136';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).

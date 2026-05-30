@@ -3601,8 +3601,14 @@ function tobSlug(s){ return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
 // ═════════════════════════════════════════════════════════════════
 // MEDICIONES — composición corporal (pliegues, perímetros, peso)
 // ═════════════════════════════════════════════════════════════════
+// Filtro temporal de mediciones por fecha mínima (YYYY-MM-DD). Lo activa el
+// PDF cuando el usuario elige "Últimos 12 meses". Se debe limpiar siempre en
+// el flujo que lo activa (try/finally).
+let _tobMedFilterFrom = null;
 function tobMedsSorted(cli){
-  return [...(cli?.mediciones||[])].sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+  let arr = [...(cli?.mediciones||[])].sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+  if(_tobMedFilterFrom) arr = arr.filter(m => (m.fecha||'') >= _tobMedFilterFrom);
+  return arr;
 }
 function tobMedSum(med){
   return TOB_MED_PLECS.reduce((s,[k]) => s + (parseFloat(med?.plecs?.[k])||0), 0);
@@ -3670,6 +3676,43 @@ function tobCalcMedKPIs(cli){
 }
 
 // ── Modal medición ──
+// Hint "ant: X · Δ +/−" reutilizable para los inputs del modal de medición.
+// Devuelve el HTML del hint (incluye el span del Δ que se actualizará al teclear).
+function _tobMedHintHtml(inputId, prev, unit){
+  if(prev == null) return '';
+  return `<div class="tob-med-prev">`
+    + `<span onclick="tobMedFillPrev('${inputId}',${prev})" title="Clic para copiar el valor anterior" style="cursor:pointer">ant: <b>${prev}</b> ${unit}</span>`
+    + ` <span class="tob-med-delta" data-target="${inputId}" data-prev="${prev}" data-unit="${unit}"></span>`
+    + `</div>`;
+}
+// Recalcula los Δ de todos los hints en función del valor actual del input.
+function _tobMedRefreshDeltas(){
+  document.querySelectorAll('#tobMedicionModalBg .tob-med-delta').forEach(span => {
+    const id = span.dataset.target;
+    const prev = parseFloat(span.dataset.prev);
+    const unit = span.dataset.unit || '';
+    const inp = document.getElementById(id);
+    if(!inp || !isFinite(prev)){ span.textContent = ''; return; }
+    const cur = parseFloat(inp.value);
+    if(!isFinite(cur)){ span.textContent = ''; return; }
+    const d = cur - prev;
+    if(Math.abs(d) < 0.05){ span.innerHTML = ` · Δ <b style="color:var(--mute2)">±0</b>`; return; }
+    const sign = d > 0 ? '+' : '';
+    const color = d > 0 ? 'var(--amber)' : 'var(--green)';   // baja = verde (típico objetivo de composición)
+    span.innerHTML = ` · Δ <b style="color:${color}">${sign}${d.toFixed(1)}</b> ${unit}`;
+  });
+}
+// Engancha listeners de input en los campos numéricos del modal de medición.
+function _tobMedBindDeltas(){
+  const inputs = document.querySelectorAll('#tobMedicionModalBg input[type="number"]');
+  inputs.forEach(inp => {
+    if(inp._deltaBound) return;
+    inp._deltaBound = true;
+    inp.addEventListener('input', _tobMedRefreshDeltas);
+  });
+  _tobMedRefreshDeltas();
+}
+
 function tobOpenMedicionModal(medId){
   if(!tobCurrentFichaId){ tobToast('Abre la ficha de un cliente primero', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
@@ -3702,27 +3745,25 @@ function tobOpenMedicionModal(medId){
   const showPrev = !med;
   const refMed = showPrev ? lastMed : null;
   const _L_modal = tobLangOf(cli);
+  // Hint del PESO (ant + Δ que se actualizará al teclear)
+  const pesHintEl = document.getElementById('tobMedPesHint');
+  if(pesHintEl) pesHintEl.innerHTML = (showPrev && refMed?.pes != null) ? _tobMedHintHtml('tobMedPes', refMed.pes, 'kg') : '';
   document.getElementById('tobMedPlecsRow').innerHTML = TOB_MED_PLECS.map(def => {
     const [k] = def;
     const label = tobMedLabel(def, _L_modal);
     const prev = refMed?.plecs?.[k];
-    const hint = (prev != null)
-      ? `<div class="tob-med-prev" onclick="tobMedFillPrev('tobMedPlec_${k}',${prev})" title="Clic para usar el valor de la medición anterior (${refMed.fecha})">ant: <b>${prev}</b> mm</div>`
-      : '';
-    return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPlec_${k}" value="${med?.plecs?.[k] ?? ''}" placeholder="mm">${hint}</div>`;
+    return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPlec_${k}" value="${med?.plecs?.[k] ?? ''}" placeholder="mm">${_tobMedHintHtml('tobMedPlec_'+k, prev, 'mm')}</div>`;
   }).join('');
   document.getElementById('tobMedPerimRow').innerHTML = TOB_MED_PERIM.map(def => {
     const [k] = def;
     const label = tobMedLabel(def, _L_modal);
     const prev = refMed?.perimetres?.[k];
-    const hint = (prev != null)
-      ? `<div class="tob-med-prev" onclick="tobMedFillPrev('tobMedPerim_${k}',${prev})" title="Clic para usar el valor de la medición anterior (${refMed.fecha})">ant: <b>${prev}</b> cm</div>`
-      : '';
-    return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPerim_${k}" value="${med?.perimetres?.[k] ?? ''}" placeholder="cm">${hint}</div>`;
+    return `<div><label class="tob-lbl">${label}</label><input class="tob-input" type="number" step="0.1" id="tobMedPerim_${k}" value="${med?.perimetres?.[k] ?? ''}" placeholder="cm">${_tobMedHintHtml('tobMedPerim_'+k, prev, 'cm')}</div>`;
   }).join('');
   document.getElementById('tobMedDelBtn').style.display = med ? '' : 'none';
   document.getElementById('tobMedicionModalBg').dataset.editId = med?.id || '';
   document.getElementById('tobMedicionModalBg').classList.add('on');
+  _tobMedBindDeltas();
 }
 function tobCloseMedicionModal(){ document.getElementById('tobMedicionModalBg').classList.remove('on'); }
 
@@ -4078,10 +4119,27 @@ async function tobGeneratePdfMediciones(){
   if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
-  if(!(cli.mediciones||[]).length){ tobToast('Este cliente no tiene mediciones', 'red'); return; }
+  const allMeds = (cli.mediciones||[]).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
+  if(!allMeds.length){ tobToast('Este cliente no tiene mediciones', 'red'); return; }
   if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
-  tobToast('⏳ Generando PDF de evolución...', '');
-  await tobBuildPdfMediciones(cli).catch(e => { console.error(e); tobToast('Error: ' + e.message, 'red'); });
+  // Si hay mediciones de hace > 12 meses, preguntar rango (gráficas más limpias).
+  const today = new Date();
+  const cutoffDate = new Date(today.getFullYear(), today.getMonth()-12, today.getDate());
+  const cutoff = cutoffDate.toISOString().slice(0,10);
+  const oldest = allMeds[0].fecha || '';
+  let dateFrom = null;
+  if(oldest && oldest < cutoff){
+    const r = confirm('¿Incluir TODAS las mediciones?\n\n'
+      + 'Aceptar = completo (todas).\n'
+      + 'Cancelar = solo últimos 12 meses (gráficas más limpias).');
+    if(!r) dateFrom = cutoff;
+  }
+  tobToast('⏳ Generando PDF de evolución' + (dateFrom?' (últimos 12 meses)':'') + '...', '');
+  _tobMedFilterFrom = dateFrom;
+  try {
+    await tobBuildPdfMediciones(cli);
+  } catch(e){ console.error(e); tobToast('Error: ' + e.message, 'red'); }
+  finally { _tobMedFilterFrom = null; }
 }
 
 // Bundle de fuentes + colores reutilizable por los PDFs (mediciones, resumen,
