@@ -10118,8 +10118,11 @@ async function tobMenuPdf(cliId, menuId){
           const mr = macRac(r);
           dayTot[d].kcal += mr.kcal; dayTot[d].prot += mr.prot;
           dayTot[d].hc += mr.hc; dayTot[d].gras += mr.gras;
+          // Plats solts (origen ingredient) → miniatura petita: és només un emoji,
+          // no té sentit una foto gran com a les receptes de veritat.
+          const fcls = r.origen === 'ingrediente' ? 'mp-foto mp-foto-ing' : 'mp-foto';
           return `<div class="mp-plato">
-            ${foto ? `<div class="mp-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-foto mp-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
+            ${foto ? `<div class="${fcls}" style="background-image:url('${esc(foto)}')"></div>` : `<div class="${fcls} mp-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
             <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(r.nombre||'—')}</div>
             <div class="mp-plato-kcal">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot</div></div>
           </div>`;
@@ -10267,6 +10270,9 @@ async function tobMenuPdf(cliId, menuId){
     .mp-plato:last-child{margin-bottom:0;}
     .mp-foto{width:50px;height:40px;border-radius:3px;background:#eee center/cover;flex:none;border:1px solid #ddd;}
     .mp-nofoto{background:#f7f7f7;display:flex;align-items:center;justify-content:center;font-size:24px;line-height:1;}
+    /* Plats solts (ingredient): miniatura petita — només és un emoji. */
+    .mp-foto-ing{width:26px;height:26px;}
+    .mp-foto-ing.mp-nofoto{font-size:15px;}
     .mp-plato-nm{font-weight:700;font-size:9.5px;line-height:1.22;color:#0f0f0f;overflow-wrap:anywhere;}
     .mp-plato-kcal{font-size:8.5px;color:#8c8c8c;margin-top:1px;}
     .mp-buit{color:#ccc;font-size:10px;text-align:center;padding:8px 0;}
@@ -11187,20 +11193,16 @@ function _tobMcForçaIngredientsRecordatori(cli){
     }
     return null;
   };
-  // Match d'un plat existent del dia amb algun chip del recordatori
-  const dayHasMatch = (recIds, chips) => {
-    if(!recIds.length) return false;
-    return recIds.some(recId => {
-      const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
-      if(!r) return false;
-      const nm = _tobMcNormChip(r.nombre);
-      return chips.some(chip => {
-        const kws = TOB_REC_CHIP_KEYWORDS[_tobMcNormChip(chip)];
-        if(!kws || !kws.length) return false;
-        return kws.some(kw => nm.includes(kw));
-      });
-    });
+  // Un plat del dia matcheja UN chip concret del recordatori?
+  const recMatchesChip = (recId, chip) => {
+    const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+    if(!r) return false;
+    const kws = TOB_REC_CHIP_KEYWORDS[_tobMcNormChip(chip)];
+    if(!kws || !kws.length) return false;
+    const nm = _tobMcNormChip(r.nombre);
+    return kws.some(kw => nm.includes(kw));
   };
+  const dayHasChip = (recIds, chip) => recIds.some(id => recMatchesChip(id, chip));
 
   const log = [];
   let added = 0;
@@ -11227,16 +11229,20 @@ function _tobMcForçaIngredientsRecordatori(cli){
 
     for(let s = 0; s < semanas; s++){
       for(let d = 0; d < 7; d++){
-        const arr = ((tobMcState.data[s]||{})[d]||{})[mealId] || [];
-        if(dayHasMatch(arr, chips)) continue;
-        // No té match — afegim el primer chip disponible
-        const toAdd = chipsIngs[0].ing;
         if(!tobMcState.data[s]) tobMcState.data[s] = {};
         if(!tobMcState.data[s][d]) tobMcState.data[s][d] = {};
         if(!Array.isArray(tobMcState.data[s][d][mealId])) tobMcState.data[s][d][mealId] = [];
-        tobMcState.data[s][d][mealId].push(toAdd.id);
-        added++;
-        log.push('+ Setm ' + (s+1) + '·' + DIA_LABEL[d] + ' ' + tobMcMealLabel(mealId) + ': afegit "' + toAdd.nombre + '" (per chip "' + chipsIngs[0].chip + '")');
+        const arr = tobMcState.data[s][d][mealId];
+        // Garantim que CADA chip amb ingredient al catàleg estigui representat
+        // al dia. Abans només s'afegia UN si no n'hi havia cap — deixava menús
+        // amb "Fruita" però sense "Cafè" ni "Fruits secs" que el client també
+        // havia marcat al recordatori.
+        chipsIngs.forEach(({ chip, ing }) => {
+          if(dayHasChip(arr, chip)) return;
+          arr.push(ing.id);
+          added++;
+          log.push('+ Setm ' + (s+1) + '·' + DIA_LABEL[d] + ' ' + tobMcMealLabel(mealId) + ': afegit "' + ing.nombre + '" (per chip "' + chip + '")');
+        });
       }
     }
   });
