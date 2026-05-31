@@ -8856,6 +8856,26 @@ function tobMcQuitarAjuste(id){
 //   · Receptes amb el flag "descartada" que segueixen al menú
 // Tot informatiu, no bloqueja res.
 // ═════════════════════════════════════════════════════════════════
+
+// Fonts de proteïna principals — per detectar varietat (mateixa base massa
+// dies). 'truita'/'tortilla' compten com a OUS: és el cas típic de "totes
+// les cenes són tortilla" (receptes diferents però mateixa base).
+const TOB_PROT_SOURCES = {
+  pollastre: ['pollastre','pollo','gall','aviram','pavo','gall dindi'],
+  vedella:   ['vedella','ternera','vaca','bou'],
+  porc:      ['porc','cerdo','llom','xulla'],
+  peix:      ['lluc','bacalla','tonyina','salmo','sardin','llenguad','peix','tonyin','dorada','llobarro'],
+  llegum:    ['llentia','cigro','garbanzo','mongeta','llegum'],
+  ous:       ['ou','truita','tortilla','huevo','revolt']
+};
+function tobDetectFuente(nombreRec){
+  const n = String(nombreRec||'').toLowerCase();
+  for(const k in TOB_PROT_SOURCES){
+    if(TOB_PROT_SOURCES[k].some(w => n.includes(w))) return k;
+  }
+  return null;
+}
+
 function tobMcRenderChecks(){
   const box = document.getElementById('tobMcChecksBox');
   if(!box || !tobMcState) return;
@@ -8888,22 +8908,7 @@ function tobMcRenderChecks(){
   const proteRepetidaDia = [];   // {sem, d, fuente}  Mateix tipus de prote a dinar i sopar
   const recordatoriIncomplet = []; // {sem, d, apat, chips missing}
 
-  // Keywords per detectar fonts de proteïna principals (per check "mateix tipus al dia")
-  const PROT_SOURCES = {
-    pollastre: ['pollastre','pollo','gall','aviram','pavo','gall dindi'],
-    vedella:   ['vedella','ternera','vaca','bou'],
-    porc:      ['porc','cerdo','llom','xulla'],
-    peix:      ['lluc','bacalla','tonyina','salmo','sardin','llenguad','peix','tonyin','dorada','llobarro'],
-    llegum:    ['llentia','cigro','garbanzo','mongeta','llegum'],
-    ous:       ['ou','truita','tortilla','huevo','revolt']
-  };
-  const detectFuente = (nombreRec) => {
-    const n = String(nombreRec||'').toLowerCase();
-    for(const [k, kws] of Object.entries(PROT_SOURCES)){
-      if(kws.some(w => n.includes(w))) return k;
-    }
-    return null;
-  };
+  // Fonts de proteïna: helper compartit tobDetectFuente (definit més amunt).
   // Chips del recordatori per a cada base d'àpat
   const recChips = (q.recChips || {});
 
@@ -8942,7 +8947,7 @@ function tobMcRenderChecks(){
           pDia += m.proteina / rac;
           if(baseMid === 'esmorzar') protEsmorzar += m.proteina / rac;
           // Detecta font de prote per a check "mateix tipus a dinar i sopar"
-          const f = detectFuente(r.nombre);
+          const f = tobDetectFuente(r.nombre);
           if(f && (baseMid === 'dinar' || baseMid === 'sopar')){
             if(!fuentePorApat[baseMid]) fuentePorApat[baseMid] = new Set();
             fuentePorApat[baseMid].add(f);
@@ -10526,6 +10531,7 @@ Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més prò
 
 ═══ VARIETAT SETMANAL — ⛔ REGLA DURA ═══
 - Plats principals (rol P) del DINAR: 7 receptes DIFERENTS en 7 dies. Mateix per a sopar.
+- ⛔ VARIA LA BASE PROTEICA, no només el nom: 7 truites/tortilles DIFERENTS segueix sent MALAMENT (totes són OUS). Alterna la font entre dies — ous, pollastre, peix blanc, peix blau, vedella, llegums, porc… Mateixa base proteica al mateix àpat: màx 2-3 dies/setmana (OUS màx 2). Un menú on tots els sopars són a base d'ou és INACCEPTABLE.
 - ⛔ CAP plat principal es pot repetir MÉS D'UN COP a la setmana (excepte si "Tolerància a repetir plats: Poca").
   Repetir el MATEIX plat 2 cops ja és el màxim absolut; repetir-lo 3+ cops és INACCEPTABLE i invalida el menú.
 - ⛔ Tampoc repeteixis el mateix ACOMPANYAMENT (cremes, amanides) 3+ cops: alterna (crema de carbassa, de pèsols, d'espàrrecs, amanida, escalivada, saltat...).
@@ -11249,6 +11255,109 @@ function _tobMcForçaIngredientsRecordatori(cli){
   return { added, log };
 }
 
+// ─── Post-procés: varietat de FONT proteica (sentit comú) ───────────────
+// La IA (sobretot models fluixos) sovint posa "7 receptes diferents" que en
+// realitat són la MATEIXA base proteica (típic: totes les cenes són tortilla
+// → totes són OUS). Aquí ho corregim: per cada àpat principal (dinar/sopar) i
+// setmana, si una font proteica supera el seu tope, substituïm els dies
+// sobrants pel plat principal d'una font infrarepresentada del catàleg complet
+// (compatible amb el client). No depèn de la qualitat del model.
+//
+// Topes per font i àpat-setmana. Conservadors: ous=2 (el cas de Sergio),
+// la resta segueix la guia de freqüències del prompt.
+const TOB_FONT_CAP = { ous:2, vedella:2, porc:2, pollastre:3, peix:3, llegum:3 };
+function _tobMcDiversificaFonts(cli){
+  if(!tobMcState) return { swaps:0, log:[] };
+  const recsById = {};
+  (tobMenusDB.recetas||[]).forEach(r => { recsById[r.id] = r; });
+  const DIA_LABEL = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
+  const semanas = tobMcState.semanas;
+  const capOf = f => (TOB_FONT_CAP[f] != null ? TOB_FONT_CAP[f] : 3);
+  const log = [];
+  let swaps = 0;
+
+  // Plat "principal" d'un dia: rol principal si n'hi ha, sinó el primer amb
+  // font detectable (per no tocar acompanyaments / postres).
+  const mainOfDay = (arr) => {
+    let id = arr.find(x => recsById[x] && recsById[x].rol === 'principal' && tobDetectFuente(recsById[x].nombre));
+    if(!id) id = arr.find(x => recsById[x] && tobDetectFuente(recsById[x].nombre));
+    return id || null;
+  };
+
+  // Fonts que el client veta com a CATEGORIA (ex: veto "Llegums" → no hi
+  // substituïm; "Entrecot" NO veta tota la vedella, només l'entrecot concret).
+  const q = (cli && cli.cuestionario) || {}; const tg = q.tags || {};
+  const vetoTxt = [].concat(tg.sentenMal||[], tg.alimX||[]).map(_tobMcNormChip).filter(Boolean);
+  const vetoedSources = new Set();
+  Object.keys(TOB_PROT_SOURCES).forEach(f => {
+    const hit = TOB_PROT_SOURCES[f].some(kw => kw.length >= 4 && vetoTxt.some(v => v === kw || v.includes(kw)));
+    if(hit) vetoedSources.add(f);
+  });
+
+  const slots = (tobMcState.comidasIds||[]).filter(m => ['dinar','sopar'].includes(tobMcMealBase(m)));
+  slots.forEach(mealId => {
+    // Candidates principals compatibles amb font detectable (catàleg COMPLET,
+    // no el retallat que veu la IA — així compensem el límit de Groq). Excloem
+    // les fonts vetades pel client.
+    const cands = tobMcCandidatas(cli, mealId)
+      .filter(r => { const f = tobDetectFuente(r.nombre); return f && !vetoedSources.has(f); });
+
+    for(let s = 0; s < semanas; s++){
+      // Plat principal de cada dia amb la seva font.
+      const dayMain = [];   // {d, recId, fuente}
+      for(let d = 0; d < 7; d++){
+        const arr = ((tobMcState.data[s]||{})[d]||{})[mealId] || [];
+        if(!arr.length) continue;
+        const recId = mainOfDay(arr);
+        if(!recId) continue;
+        dayMain.push({ d, recId, fuente: tobDetectFuente(recsById[recId].nombre) });
+      }
+      const count = {};
+      dayMain.forEach(x => { count[x.fuente] = (count[x.fuente]||0) + 1; });
+
+      // Tria una recepta de reemplaçament: font sota tope, no usada al dia,
+      // prioritza la font MENYS usada i les favorites.
+      const pickRepl = (item) => {
+        const dayArr = tobMcState.data[s][item.d][mealId];
+        const scored = cands.map(r => {
+          const f = tobDetectFuente(r.nombre);
+          if(!f || f === item.fuente) return null;
+          if((count[f]||0) >= capOf(f)) return null;
+          if(dayArr.includes(r.id)) return null;
+          return { r, cur: count[f]||0, fav: r.favorito ? 1 : 0 };
+        }).filter(Boolean);
+        if(!scored.length) return null;
+        scored.sort((a,b) => (a.cur - b.cur) || (b.fav - a.fav));
+        return scored[0].r;
+      };
+
+      Object.keys(count).forEach(fuente => {
+        if(count[fuente] <= capOf(fuente)) return;
+        // Dies amb aquesta font; mantenim els primers `cap`, substituïm la resta.
+        const dies = dayMain.filter(x => x.fuente === fuente).slice(capOf(fuente));
+        dies.forEach(item => {
+          if(count[fuente] <= capOf(fuente)) return;   // ja resolt per swaps previs
+          const repl = pickRepl(item);
+          if(!repl) return;
+          const dayArr = tobMcState.data[s][item.d][mealId];
+          const ix = dayArr.indexOf(item.recId);
+          if(ix < 0) return;
+          const old = recsById[item.recId] ? recsById[item.recId].nombre : '?';
+          dayArr[ix] = repl.id;
+          count[fuente]--;
+          const nf = tobDetectFuente(repl.nombre);
+          count[nf] = (count[nf]||0) + 1;
+          item.recId = repl.id; item.fuente = nf;
+          swaps++;
+          log.push('↻ Setm ' + (s+1) + '·' + DIA_LABEL[item.d] + ' ' + tobMcMealLabel(mealId) +
+            ': "' + old + '" → "' + repl.nombre + '" (massa ' + fuente + ' aquesta setmana)');
+        });
+      });
+    }
+  });
+  return { swaps, log };
+}
+
 // ── Generación automática del menú con IA ──────────────────────
 async function tobMcGenerarIA(){
   if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
@@ -11814,6 +11923,18 @@ async function tobMcGenerarIA(){
         parche.log.forEach(l => console.log('   ' + l));
       }
     } catch(e){ console.warn('[IA post-procés]', e); }
+
+    // ── POST-PROCÉS: varietat de font proteica ──
+    // Trenca el cas "totes les cenes són tortilla" (mateixa base, receptes
+    // diferents) substituint els excessos per fonts infrarepresentades.
+    try {
+      const div = _tobMcDiversificaFonts(cli);
+      if(div.swaps > 0){
+        console.log('[IA varietat] ✓ ' + div.swaps + ' plat(s) substituït(s) per variar la font proteica:');
+        div.log.forEach(l => console.log('   ' + l));
+        tobToast('✓ Varietat: ' + div.swaps + ' plats canviats perquè no es repeteixi la mateixa base proteica', 'green');
+      }
+    } catch(e){ console.warn('[IA varietat]', e); }
 
     tobMcRenderGrid();
     tobMcUpdateAllTotals();
