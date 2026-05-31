@@ -11299,16 +11299,40 @@ function _tobMcForçaIngredientsRecordatori(cli){
 // sobrants pel plat principal d'una font infrarepresentada del catàleg complet
 // (compatible amb el client). No depèn de la qualitat del model.
 //
-// Topes per font i àpat-setmana. Conservadors: ous=2 (el cas de Sergio),
-// la resta segueix la guia de freqüències del prompt.
+// Topes BASE per font (només per VARIAR — són MÀXIMS, mai mínims). ous=2 (massa
+// ous no és sa); la resta segueix la guia de freqüències del prompt.
 const TOB_FONT_CAP = { ous:2, vedella:2, porc:2, pollastre:3, peix:3, llegum:3 };
+const _tobBaseCapOf = f => (TOB_FONT_CAP[f] != null ? TOB_FONT_CAP[f] : 3);
+
+// Topes ADAPTATIUS per setmana-àpat. Si el client veta fonts (o el catàleg no
+// en té prou), el pool d'opcions baixa i els topes de les que queden pugen sols
+// perquè TOTS els dies puguin portar proteïna — mai forcem un mínim, només
+// relaxem el màxim quan cal. Repartim primer entre les fonts NO-ou; l'ou és
+// "l'últim a pujar" (per salut) i només supera el seu base si és l'única font
+// disponible. Garanteix sum(topes) >= dies a omplir, sigui quin sigui el perfil.
+function _tobMcCapsAdaptatius(availSources, slots){
+  const caps = {};
+  const srcs = [...availSources];
+  if(!srcs.length || slots <= 0) return caps;
+  const nonEgg = srcs.filter(f => f !== 'ous');
+  if(nonEgg.length){
+    const share = Math.ceil(slots / nonEgg.length);
+    nonEgg.forEach(f => { caps[f] = Math.max(_tobBaseCapOf(f), share); });
+    if(srcs.includes('ous')){
+      const sumNonEgg = nonEgg.reduce((a,f) => a + caps[f], 0);
+      caps.ous = Math.max(_tobBaseCapOf('ous'), slots - sumNonEgg);
+    }
+  } else {
+    caps.ous = Math.max(_tobBaseCapOf('ous'), slots);   // només queda l'ou
+  }
+  return caps;
+}
 function _tobMcDiversificaFonts(cli){
   if(!tobMcState) return { swaps:0, log:[] };
   const recsById = {};
   (tobMenusDB.recetas||[]).forEach(r => { recsById[r.id] = r; });
   const DIA_LABEL = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
   const semanas = tobMcState.semanas;
-  const capOf = f => (TOB_FONT_CAP[f] != null ? TOB_FONT_CAP[f] : 3);
   const log = [];
   let swaps = 0;
 
@@ -11337,6 +11361,9 @@ function _tobMcDiversificaFonts(cli){
     // les fonts vetades pel client.
     const cands = tobMcCandidatas(cli, mealId)
       .filter(r => { const f = tobDetectFuente(r.nombre); return f && !vetoedSources.has(f); });
+    // Fonts realment disponibles per aquest àpat (no vetades + amb candidats al
+    // catàleg). Els topes s'adapten a la mida d'aquest pool.
+    const availSources = new Set(cands.map(r => tobDetectFuente(r.nombre)).filter(Boolean));
 
     for(let s = 0; s < semanas; s++){
       // Plat principal de cada dia amb la seva font.
@@ -11350,6 +11377,11 @@ function _tobMcDiversificaFonts(cli){
       }
       const count = {};
       dayMain.forEach(x => { count[x.fuente] = (count[x.fuente]||0) + 1; });
+
+      // Topes adaptatius a partir del pool disponible i els dies a omplir
+      // aquesta setmana (no fixos: pugen si queden poques fonts).
+      const caps = _tobMcCapsAdaptatius(availSources, dayMain.length);
+      const capOf = f => (caps[f] != null ? caps[f] : _tobBaseCapOf(f));
 
       // Tria una recepta de reemplaçament: font sota tope, no usada al dia,
       // prioritza la font MENYS usada i les favorites.
