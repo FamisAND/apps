@@ -378,8 +378,15 @@
         🤖 La IA solo usa recetas favoritas <span class="tob-quest-h-sub">(+ ingredientes simples permitidos para media mañana y merienda)</span>
       </label>
 
-      <!-- Resumen perfil alimentario del cliente (lectura, no editable) -->
-      <div id="tobMcPerfilResumen" style="display:none;margin-top:10px;padding:10px 14px;background:var(--card2);border-radius:6px;border-left:3px solid var(--acc);font-family:'DM Mono',monospace;font-size:.72rem;color:var(--mute);line-height:1.6;"></div>
+      <!-- Fitxa ràpida del client (lectura): recordatori 24h, gustos i quan té
+           més gana. Es desplega en passar-hi el ratolí (hover); clicar la fixa
+           (per a tàctil). Així es consulta sense sortir del creador de menús. -->
+      <div id="tobMcFitxaWrap" class="tob-mc-fitxa-wrap" style="display:none;">
+        <button type="button" id="tobMcFitxaBtn" class="tob-action ghost btn-xs tob-mc-fitxa-btn"
+          onclick="this.parentNode.querySelector('.tob-mc-fitxa-pop').classList.toggle('pinned')"
+          title="Recordatori, què li agrada i què no, i quan té més gana — passa el ratolí per veure-ho (o clica per fixar-ho)">📋 Fitxa del client ▾</button>
+        <div id="tobMcPerfilResumen" class="tob-mc-fitxa-pop"></div>
+      </div>
     </div>
 
     <!-- Vista del menú activo -->

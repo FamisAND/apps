@@ -9253,7 +9253,8 @@ function tobMcOnClienteChange(){
 
 function tobMcHideWorkspace(){
   document.getElementById('tobMcWorkspace').style.display = 'none';
-  document.getElementById('tobMcPerfilResumen').style.display = 'none';
+  document.getElementById('tobMcFitxaWrap').style.display = 'none';
+  document.getElementById('tobMcPerfilResumen').classList.remove('pinned');
   document.getElementById('tobMcClienteHint').textContent = '';
   document.getElementById('tobMcComidas').textContent = '—';
   tobMcState = null;
@@ -9263,50 +9264,85 @@ function tobMcHideWorkspace(){
 function tobMcRenderPerfilResumen(cli){
   const q = cli.cuestionario || {};
   const tags = q.tags || {};
-  const blocks = [];
+  const el = document.getElementById('tobMcPerfilResumen');
+  const wrap = document.getElementById('tobMcFitxaWrap');
+  if(!el) return;
+  if(wrap) wrap.style.display = '';   // mostrar el botó quan hi ha client triat
 
+  // Etiqueta humana d'un chip (radio/multi) a partir del seu id.
+  const lblOf = (grp, id) => {
+    const it = (((TOB_QUEST_CHIPS||{})[grp] || {}).items || []).find(x => x.id === id);
+    return it ? it.label : id;
+  };
+
+  const secs = [];
+
+  // ── 1. Recordatori 24h: què menja habitualment a cada àpat. recChips[mealId]
+  //    ja guarda les etiquetes llegibles ('Cafè amb llet'...), no cal mapejar.
+  const recChips = q.recChips || {};
+  const apats = (Array.isArray(tags.apats) && tags.apats.length) ? tags.apats : TOB_MEALS_DEFAULT;
+  const recRows = TOB_MEALS.filter(m => apats.includes(m.id)).map(m => {
+    const v = recChips[m.id];
+    if(!v || !v.length) return '';
+    return `<div><span class="rec-meal">${tobEsc(m.label)}:</span> ${tobEsc(v.join(', '))}</div>`;
+  }).filter(Boolean);
+  if(recRows.length){
+    secs.push(`<div class="tob-mc-fitxa-sec"><span class="tob-mc-fitxa-h">📋 Recordatori 24h</span>${recRows.join('')}</div>`);
+  }
+
+  // ── 2. Gana / àpat principal: on repartir les kcal. ──
+  const gana = [];
+  if(tags.gana) gana.push(`<div>🔥 <span class="rec-meal">${tobEsc(lblOf('gana', tags.gana))}</span></div>`);
+  if(tags.apatPrincipal && tags.apatPrincipal !== 'cap')
+    gana.push(`<div>⭐ Àpat principal: <span class="rec-meal">${tobEsc(lblOf('apatPrincipal', tags.apatPrincipal))}</span></div>`);
+  if(gana.length){
+    secs.push(`<div class="tob-mc-fitxa-sec"><span class="tob-mc-fitxa-h">⏰ Gana / prioritat</span>${gana.join('')}</div>`);
+  }
+
+  // ── 3. Li agrada ──
+  if(tags.alimOk && tags.alimOk.length){
+    secs.push(`<div class="tob-mc-fitxa-sec"><span class="tob-mc-fitxa-h" style="color:var(--green)">✓ Li agrada</span><div style="color:var(--green)">${tobEsc(tags.alimOk.join(', '))}</div></div>`);
+  }
+
+  // ── 4. Evitar: no vol / al·lèrgies / li senten malament ──
+  const evitar = [];
+  if(tags.alergies && tags.alergies.length)   evitar.push(`<div><strong style="color:#dc6a6a">Al·lèrgies (mai):</strong> ${tobEsc(tags.alergies.join(', '))}</div>`);
+  if(tags.alimX && tags.alimX.length)         evitar.push(`<div><strong style="color:#dc6a6a">No vol:</strong> ${tobEsc(tags.alimX.join(', '))}</div>`);
+  if(tags.sentenMal && tags.sentenMal.length) evitar.push(`<div><strong style="color:#e0a458">Li senten malament:</strong> ${tobEsc(tags.sentenMal.join(', '))}</div>`);
+  if(evitar.length){
+    secs.push(`<div class="tob-mc-fitxa-sec"><span class="tob-mc-fitxa-h" style="color:#dc6a6a">✗ Evitar</span>${evitar.join('')}</div>`);
+  }
+
+  // ── 5. Perfil: dieta, restriccions, patologies, preferències ──
+  const perfil = [];
   if(tags.dieta){
-    const lbl = ({omnivor:'Omnívor', vegetaria:'Vegetarià', vega:'Vegà', pescetaria:'Pescetarià', flexitaria:'Flexitarià'})[tags.dieta] || tags.dieta;
-    blocks.push(`<strong style="color:var(--acc)">Dieta:</strong> ${tobEsc(lbl)}`);
+    const m = {omnivor:'Omnívor', vegetaria:'Vegetarià', vega:'Vegà', pescetaria:'Pescetarià', flexitaria:'Flexitarià'};
+    perfil.push('Dieta: ' + tobEsc(m[tags.dieta] || tags.dieta));
   }
   const protRestric = (tags.proteina || []).filter(t => t.endsWith('_no'));
   if(protRestric.length){
-    const lbls = protRestric.map(t => {
-      const m = { carn_no:'sin carne roja', pollastre_no:'sin pollastre', peix_no:'sin pescado', marisc_no:'sin marisco', ous_no:'sin huevos', lactis_no:'sin lácteos' };
-      return m[t] || t;
-    });
-    blocks.push(`<strong style="color:#dc6a6a">Restricciones:</strong> ${tobEsc(lbls.join(', '))}`);
+    const m = {carn_no:'sin carne roja', pollastre_no:'sin pollastre', peix_no:'sin pescado', marisc_no:'sin marisco', ous_no:'sin huevos', lactis_no:'sin lácteos'};
+    perfil.push('Restriccions: ' + tobEsc(protRestric.map(t => m[t] || t).join(', ')));
   }
   const prefNeg = (tags.pref || []).filter(t => ['sense_gluten','sense_lactosa','sense_fruita_seca','sense_cuina'].includes(t));
   if(prefNeg.length){
-    const lbls = prefNeg.map(t => ({sense_gluten:'sin gluten', sense_lactosa:'sin lactosa', sense_fruita_seca:'sin frutos secos', sense_cuina:'sin cocina'})[t]);
-    blocks.push(`<strong style="color:#dc6a6a">Sin:</strong> ${tobEsc(lbls.join(', '))}`);
-  }
-  const prefPos = (tags.pref || []).filter(t => !['sense_gluten','sense_lactosa','sense_fruita_seca','sense_cuina'].includes(t));
-  if(prefPos.length){
-    blocks.push(`<strong style="color:var(--acc2)">Preferencias:</strong> ${tobEsc(prefPos.join(', '))}`);
-  }
-  if(tags.custom?.length){
-    blocks.push(`<strong style="color:var(--acc2)">Etiquetas:</strong> ${tobEsc(tags.custom.join(', '))}`);
+    const m = {sense_gluten:'sin gluten', sense_lactosa:'sin lactosa', sense_fruita_seca:'sin frutos secos', sense_cuina:'sin cocina'};
+    perfil.push('Sense: ' + tobEsc(prefNeg.map(t => m[t]).join(', ')));
   }
   if(tags.patologies && tags.patologies.length){
     const items = (TOB_QUEST_CHIPS.patologies || {}).items || [];
-    const lbls = tags.patologies.map(id => { const d = items.find(c => c.id === id); return d ? d.label : id; });
-    blocks.push(`<strong style="color:#dc6a6a">Patologies:</strong> ${tobEsc(lbls.join(', '))}`);
+    perfil.push('Patologies: ' + tobEsc(tags.patologies.map(id => { const d = items.find(c => c.id === id); return d ? d.label : id; }).join(', ')));
   }
-  if(tags.alergies && tags.alergies.length)  blocks.push(`<strong style="color:#dc6a6a">Al·lèrgies:</strong> ${tobEsc(tags.alergies.join(', '))}`);
-  if(tags.alimX && tags.alimX.length)        blocks.push(`<strong style="color:#dc6a6a">Aliments ✗:</strong> ${tobEsc(tags.alimX.join(', '))}`);
-  if(tags.alimOk && tags.alimOk.length)      blocks.push(`<strong style="color:var(--green)">Aliments ✓:</strong> ${tobEsc(tags.alimOk.join(', '))}`);
-  if(tags.sentenMal && tags.sentenMal.length) blocks.push(`<strong style="color:#dc6a6a">Senten malament:</strong> ${tobEsc(tags.sentenMal.join(', '))}`);
+  const prefPos = (tags.pref || []).filter(t => !['sense_gluten','sense_lactosa','sense_fruita_seca','sense_cuina'].includes(t));
+  if(prefPos.length) perfil.push('Preferències: ' + tobEsc(prefPos.join(', ')));
+  if(tags.custom && tags.custom.length) perfil.push('Etiquetes: ' + tobEsc(tags.custom.join(', ')));
+  if(perfil.length){
+    secs.push(`<div class="tob-mc-fitxa-sec"><span class="tob-mc-fitxa-h">🍽 Perfil</span>${perfil.map(p => '<div>' + p + '</div>').join('')}</div>`);
+  }
 
-  const el = document.getElementById('tobMcPerfilResumen');
-  if(blocks.length){
-    el.style.display = '';
-    el.innerHTML = blocks.join(' &nbsp; · &nbsp; ');
-  } else {
-    el.style.display = '';
-    el.innerHTML = '<span style="color:var(--mute2)">⚠ Este cliente no tiene cuestionario rellenado. Sin perfil no se puede filtrar bien las recetas — ve a la ficha y rellena al menos los aliments ✗/✓ y el perfil alimentari.</span>';
-  }
+  el.innerHTML = secs.length
+    ? secs.join('')
+    : '<span style="color:var(--mute2)">⚠ Aquest client encara no té el qüestionari omplert. Sense perfil no es poden filtrar bé les receptes — ves a la fitxa del client i omple com a mínim el recordatori, els aliments ✗/✓ i el perfil alimentari.</span>';
 }
 
 // ── Compatibilidad receta ↔ perfil del cliente ──────────────────
