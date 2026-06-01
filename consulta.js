@@ -10719,10 +10719,57 @@ function tobAiGetCfg(){
   raw.model = raw.models[prov] || '';
   return raw;
 }
-function tobAiSaveCfg(cfg){
-  try { localStorage.setItem(TOB_AI_CFG_KEY, JSON.stringify(cfg)); } catch(e){}
+// ─── Sync cross-device de la config d'IA (secció '__ia_config') ──────
+// La config d'IA (proveïdor, claus API, models, regles) es desa a
+// localStorage PERÒ també a la secció '__ia_config' del data.json, igual
+// que fa la IA de notificacions amb '__notif'. Així el token funciona des
+// de qualsevol ordinador i no només des del que el va configurar.
+//   · '__ia_config' és a NO_LOCAL_STORAGE_SECTIONS → pullAndApplyAll NO el
+//     bolca sol; el baixem explícitament amb tobAiSyncPull.
+const TOB_AI_SYNC_SECTION = '__ia_config';
+function tobAiSyncLoggedIn(){
+  return !!(window.GitHubSync && GitHubSync.isLoggedIn && GitHubSync.isLoggedIn());
 }
-function tobAiOpenConfig(){
+// Fusiona dues configs. El costat amb _ts més recent guanya als conflictes;
+// les claus i models s'unifiquen (mai es perd cap proveïdor configurat).
+function tobAiMergeCfg(local, remote){
+  local = (local && typeof local === 'object') ? local : {};
+  if(!remote || typeof remote !== 'object') return local;
+  const remoteNewer = (remote._ts || 0) >= (local._ts || 0);
+  const primary   = remoteNewer ? remote : local;
+  const secondary = remoteNewer ? local  : remote;
+  const out = Object.assign({}, secondary, primary);
+  out.keys   = Object.assign({}, secondary.keys   || {}, primary.keys   || {});
+  out.models = Object.assign({}, secondary.models || {}, primary.models || {});
+  out._ts = Math.max(local._ts || 0, remote._ts || 0);
+  return out;
+}
+// Baixa '__ia_config' del núvol i el fusiona dins localStorage perquè
+// tobAiGetCfg (síncron) ja el vegi. Es crida al boot i en obrir la config.
+async function tobAiSyncPull(){
+  if(!tobAiSyncLoggedIn()) return false;
+  try {
+    const remote = await GitHubSync.fetchSection(TOB_AI_SYNC_SECTION);
+    if(!remote || typeof remote !== 'object') return false;
+    const merged = tobAiMergeCfg(tobAiGetCfg(), remote);
+    localStorage.setItem(TOB_AI_CFG_KEY, JSON.stringify(merged));
+    return true;
+  } catch(e){ console.warn('[ia sync] pull:', e); return false; }
+}
+function tobAiSaveCfg(cfg){
+  cfg = cfg || {};
+  cfg._ts = Date.now();
+  try { localStorage.setItem(TOB_AI_CFG_KEY, JSON.stringify(cfg)); } catch(e){}
+  // Puja al núvol fusionant amb el remot (no trepitja claus d'altres
+  // proveïdors/dispositius). Fire-and-forget: la còpia local ja està feta.
+  try {
+    if(tobAiSyncLoggedIn()){
+      GitHubSync.updateSection(TOB_AI_SYNC_SECTION, (remote) => tobAiMergeCfg(remote, cfg)).catch(()=>{});
+    }
+  } catch(e){}
+}
+async function tobAiOpenConfig(){
+  await tobAiSyncPull();          // baixa la config d'altres dispositius primer
   const cfg = tobAiGetCfg();
   document.getElementById('tobAiProvider').value = cfg.provider || 'gemini';
   // tobAiProviderChange s'encarregarà d'omplir key/model des de cfg.keys/cfg.models
@@ -12150,6 +12197,7 @@ function tobBoot(){
       // Sincronización del catálogo en segundo plano (no bloquea el render).
       setTimeout(() => {
         if(typeof tobMenusSyncPull === 'function') tobMenusSyncPull();
+        if(typeof tobAiSyncPull === 'function') tobAiSyncPull();
       }, 1500);
     });
 }

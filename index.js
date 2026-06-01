@@ -82,6 +82,31 @@ async function goLoading(){
 
 async function reSync(){ await goLoading(); }
 
+// Sincronización manual desde el menú (sin pasar por la loadingScreen).
+// Baja data.json del remoto y lo aplica a localStorage → así, al entrar
+// desde otro ordenador, primero te traes lo último ANTES de tocar nada y
+// no machacas con datos viejos lo que guardaste en el otro PC.
+async function syncNow(btn){
+  if(!GitHubSync.isLoggedIn()){ return; }
+  const lastUpd = document.getElementById('lastUpd');
+  const restoreBtn = () => { if(btn){ btn.textContent = btn._orig; btn.disabled = false; } };
+  if(btn){ btn._orig = btn.textContent; btn.disabled = true; btn.textContent = '↻ Sincronizando…'; }
+  if(lastUpd) lastUpd.textContent = '↻ sincronizando…';
+  try {
+    const result = await GitHubSync.pullAndApplyAll();
+    if(result && result.lastUpdate){
+      localStorage.setItem('gh_last_remote_lastUpdate', result.lastUpdate);
+    }
+    computeKpis();
+    if(lastUpd) lastUpd.textContent = '▸ SYNC OK · ' + new Date().toLocaleTimeString('es-ES') + ' ◂';
+    if(btn){ btn.textContent = '✓ Sincronizado'; setTimeout(restoreBtn, 1600); }
+  } catch(e){
+    const is401 = e && (e.status === 401 || e.status === 403);
+    if(lastUpd) lastUpd.textContent = is401 ? '⚠ token inválido — vuelve a entrar' : '⚠ error de sync';
+    if(btn){ btn.textContent = '⚠ Error'; setTimeout(restoreBtn, 2400); }
+  }
+}
+
 function goMenu(){
   document.getElementById('menuRepo').textContent     = GitHubSync.getRepo() || '—';
   document.getElementById('menuRepoFull').textContent = GitHubSync.getRepo() || '—';
