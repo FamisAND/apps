@@ -573,11 +573,17 @@ function calcReturnPatrimonio(current,prev,p){
   
   if(prevPat<=0)return null;
   
-  // Aportaciones totales este período
+  // Aportaciones del período: SOLO las de activos que cuentan en el patrimonio
+  // (activos + fuera de la sección Ingresos), simétrico con calcPat y calcReturnAsset.
+  // Si no, una aportación anotada en un activo de ingresos (o ya inactivo) se restaría
+  // sin que su valor estuviera nunca en currPat/prevPat → rentabilidad infravalorada.
+  const ingSec=ingSection(p);
+  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
+  const patIds=new Set(entryActiveAssets(current,p).filter(a=>!ingIds.has(a.id)).map(a=>a.id));
   const contribs=current.contributions||{};
-  const totalContrib=Object.values(contribs).reduce((s,v)=>s+(parseFloat(v)||0),0);
-  
-  // Rentabilidad = (Pat actual - Pat anterior - Total aportaciones) / Pat anterior
+  const totalContrib=Object.keys(contribs).reduce((s,k)=>patIds.has(k)?s+(parseFloat(contribs[k])||0):s,0);
+
+  // Rentabilidad = (Pat actual - Pat anterior - Aportaciones al patrimonio) / Pat anterior
   const return_amount=currPat-prevPat-totalContrib;
   const return_pct=(return_amount/prevPat)*100;
   
