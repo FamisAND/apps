@@ -976,6 +976,8 @@ function save(){
 }
 
 function uid(){return Math.random().toString(36).slice(2,10);}
+// Escapa texto del usuario (nombres de cliente/equipo/servicio y nombres de archivo) antes de inyectarlo con innerHTML.
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function fmt(v){
   if(v==null||v===''||isNaN(Number(v)))return'—';
   const n=Number(v);
@@ -1414,7 +1416,7 @@ function updateExportBtn(){
   const btn=document.getElementById('btnAdminExport');
   if(!btn)return;
   if(_ftFileHandle){
-    btn.innerHTML=`💾 Guardar en ${_ftFileHandle.name}`;
+    btn.innerHTML=`💾 Guardar en ${esc(_ftFileHandle.name)}`;
     btn.style.color='var(--green)';
     btn.style.borderColor='rgba(34,197,94,.4)';
   } else {
@@ -1550,7 +1552,7 @@ function renderLoginScreen(){
     const col=p.color||'#F5C000';
     return`<div class="profile-card ${isAdmin?'admin-card':''}" onclick="selectProfile('${p.id}')">
       <div class="profile-av" style="background:${col}18;color:${col}">${initials}</div>
-      <div class="profile-name">${p.name}</div>
+      <div class="profile-name">${esc(p.name)}</div>
       <div class="profile-role">${roles}</div>
     </div>`;
   }).join('');
@@ -1600,7 +1602,7 @@ function enterApp(){
 function applyRoleNav(){
   const isAdmin=currentUser.role==='admin';
   // Update user badge
-  document.getElementById('currentUserBadge').innerHTML=`<span style="color:${currentUser.color}">${currentUser.name}</span>`;
+  document.getElementById('currentUserBadge').innerHTML=`<span style="color:${currentUser.color}">${esc(currentUser.name)}</span>`;
   // Show/hide nav items based on role
   const adminOnly=['nav-remesas','nav-masajes','nav-gastos','nav-documentos','nav-equipo','nav-clientes','nav-servicios','nav-stock','navGrpOperativo','navGrpConfig'];
   adminOnly.forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=isAdmin?'':'none';});
@@ -2188,8 +2190,8 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
       const sv=db.services.find(s=>s.id===e.serviceId);
       const tr=db.team.find(t=>t.id===e.trainerId);
       return`<tr>
-        <td>${sv?`<span class="badge b-yl">${sv.name}</span>`:'—'}</td>
-        <td>${tr?`<span style="color:${tr.color};font-weight:600">${tr.name}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+        <td>${sv?`<span class="badge b-yl">${esc(sv.name)}</span>`:'—'}</td>
+        <td>${tr?`<span style="color:${tr.color};font-weight:600">${esc(tr.name)}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
         <td class="mono" style="text-align:right;min-width:70px">${fmt(parseFloat(e.price))}</td>
         <td><button class="paid-btn badge ${e.paid==='pagado'?'b-gn':'b-rd'}" onclick="toggleEntryPaid('${e.id}','${type}')">${e.paid==='pagado'?'✓ Pagado':'⏳ Pdte'}</button></td>
         <td>${e.recurring?'<span class="rec-badge">⟳</span>':''}</td>
@@ -2297,7 +2299,7 @@ function renderPayTableGeneric(tbodyId,entries,key,members){
       ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>'
       : (calc.modo==='tramos' ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">TRAMOS</span>' : '');
     return`<tr>
-      <td><span style="color:${t.color};font-weight:700">${t.name}</span>${modoBadge}</td>
+      <td><span style="color:${t.color};font-weight:700">${esc(t.name)}</span>${modoBadge}</td>
       <td style="font-size:.7rem;color:var(--muted)">${roleLabels(t)}</td>
       <td class="mono">${tEnt.length}</td><td class="mono">${fmt(bill)}</td>
       <td class="mono">${fijoLbl}</td>
@@ -2628,7 +2630,7 @@ function renderMasPayTable(packs){
       ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>'
       : (calc.modo==='tramos' ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">TRAMOS</span>' : '');
     return`<tr>
-      <td><span style="color:${f.color};font-weight:700">${f.name}</span>${modoBadge}</td>
+      <td><span style="color:${f.color};font-weight:700">${esc(f.name)}</span>${modoBadge}</td>
       <td class="mono">${sessHechas}</td>
       <td class="mono">${fmt(billBySess)}</td>
       <td class="mono">${fijoLbl}</td>
@@ -3208,7 +3210,7 @@ function renderEquipo(){
     return`<div class="t-card">
       <div class="t-av" style="background:${t.color}18;color:${t.color}">${t.name.slice(0,2).toUpperCase()}</div>
       <div style="flex:1">
-        <div class="t-name">${t.name} ${roleBadges}</div>
+        <div class="t-name">${esc(t.name)} ${roleBadges}</div>
         <div class="t-meta">${parts.join(' + ')||'Sin condiciones'}</div>
         ${hoursInfo}
       </div>
@@ -3404,7 +3406,7 @@ function openFicha(id){
       const[y,m]=k.split('-');
       return`<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);">
         <div style="font-size:.78rem;font-weight:600;min-width:90px;">${MES[parseInt(m)-1]} ${y}</div>
-        <div class="file-chip" style="flex:1;">📄 ${f.name}</div>
+        <div class="file-chip" style="flex:1;">📄 ${esc(f.name)}</div>
         <a href="${f.data}" download="${f.name}" class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 8px;">⬇ Descargar</a>
         <button class="btn-danger" onclick="adminDeleteFile('${k}','${id}')">✕</button>
       </div>`;
@@ -3947,7 +3949,7 @@ function renderClients(){
   el.innerHTML=`<div class="card"><div class="tbl-wrap"><table>
     <thead><tr><th>Nombre</th><th>Ref. Bancaria</th><th>IBAN</th><th>Pago</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead>
     <tbody>${list.map(c=>`<tr>
-      <td style="font-weight:600;${!c.active?'opacity:.45':''}">${c.name}</td>
+      <td style="font-weight:600;${!c.active?'opacity:.45':''}">${esc(c.name)}</td>
       <td class="mono" style="font-size:.75rem;color:var(--yellow);font-weight:500">${c.bankRef||'—'}</td>
       <td class="mono" style="font-size:.68rem;color:var(--muted)">${c.iban?c.iban.slice(0,12)+'…':'—'}</td>
       <td><span class="badge b-gy">${pi[c.payMethod]||''} ${c.payMethod||'—'}</span></td>
@@ -4016,7 +4018,7 @@ function openClientFicha(id){
       <div class="ficha-sec-title">📎 Documentos adjuntos (contratos, etc.)</div>
       ${files.length?files.map((f,i)=>`
         <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
-          <div style="font-size:.78rem;flex:1;font-weight:600;">📄 ${f.name}</div>
+          <div style="font-size:.78rem;flex:1;font-weight:600;">📄 ${esc(f.name)}</div>
           <div style="font-size:.65rem;color:var(--muted)">${f.uploadedAt?.slice(0,10)||''}</div>
           <a href="${f.data}" download="${f.name}" class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 8px;">⬇</a>
           <button class="btn-icon" style="color:var(--red);border-color:#3a0d0d;" onclick="deleteClientFile('${id}',${i})">✕</button>
@@ -4448,7 +4450,7 @@ function renderMiPanel(){
     // Invoice file upload
     const storedFile=db.months[mk]?.workerFiles?.[memberId];
     const fileHtml=storedFile
-      ?`<div class="file-chip">📄 ${storedFile.name} <button onclick="removeWorkerFile('${mk}','${memberId}')" style="background:none;border:none;cursor:pointer;color:var(--red);margin-left:4px;font-size:.8rem">✕</button></div>`
+      ?`<div class="file-chip">📄 ${esc(storedFile.name)} <button onclick="removeWorkerFile('${mk}','${memberId}')" style="background:none;border:none;cursor:pointer;color:var(--red);margin-left:4px;font-size:.8rem">✕</button></div>`
       :`<label class="upload-zone" style="display:block">
           📎 Sube tu factura PDF de este mes
           <input type="file" accept=".pdf,.png,.jpg" style="display:none" onchange="uploadWorkerFile(event,'${mk}','${memberId}')">

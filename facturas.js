@@ -1154,6 +1154,17 @@ function deleteFactura(id){
   renderFacList();
 }
 
+// Devuelve el siguiente número de factura LIBRE para el perfil, avanzando el
+// contador si quedó rezagado respecto a las facturas ya existentes (evita
+// duplicados tras borrados, ediciones manuales o merges entre dispositivos).
+function nextFacNumero(p){
+  const prefix = p.cfg.prefix || "";
+  const used = new Set((p.facturas||[]).map(x => x.numero));
+  let n = p.cfg.next || 1;
+  while(used.has(prefix + String(n).padStart(4,"0"))) n++;
+  return prefix + String(n).padStart(4,"0");
+}
+
 function newFactura(){
   const p = prof();
   if(!p.emisor || !p.emisor.name){
@@ -1161,7 +1172,7 @@ function newFactura(){
       showTab("emisor"); return;
     }
   }
-  const num = (p.cfg.prefix||"") + String(p.cfg.next||1).padStart(4,"0");
+  const num = nextFacNumero(p);
   editingFactura = {
     id: uid(),
     numero: num,
@@ -1476,10 +1487,15 @@ function recalcTotales(){
     if(!sinIgi) igi += base * ((l.igi||0)/100);
   });
   if(sinIgi) igi = 0;
-  f.totales = { subtotal: subt, igi: igi, total: subt+igi };
+  // Redondeo a céntimos: evita arrastres de coma flotante en subtotal/IGI/total
+  // (un documento legal debe cuadrar al céntimo). Solo afecta a la factura en edición.
+  const _c2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+  subt = _c2(subt); igi = _c2(igi);
+  const tot = _c2(subt + igi);
+  f.totales = { subtotal: subt, igi: igi, total: tot };
   document.getElementById("ed_subt").textContent = fmt(subt);
   document.getElementById("ed_igi").textContent = fmt(igi);
-  document.getElementById("ed_tot").textContent = fmt(subt+igi);
+  document.getElementById("ed_tot").textContent = fmt(tot);
   // Ocultar fila IGI en el editor si "sin IGI"
   const igiRow = document.getElementById("ed_igi_row");
   if(igiRow) igiRow.style.display = sinIgi ? 'none' : '';
@@ -1600,7 +1616,14 @@ function saveFactura(){
   if(editingFacIsNew){
     p.facturas = p.facturas || [];
     p.facturas.push(f);
-    p.cfg.next = (p.cfg.next||1) + 1;
+    // Mantener el contador por delante del número realmente usado (robusto ante
+    // borrados/merges). Se quita el prefijo numérico para no leer "250007" como
+    // secuencia 250007 cuando el prefijo es "25".
+    const _pre = p.cfg.prefix || "";
+    let _tail = f.numero || "";
+    if(_pre && _tail.startsWith(_pre)) _tail = _tail.slice(_pre.length);
+    const _seq = parseInt(_tail, 10);
+    p.cfg.next = isNaN(_seq) ? (p.cfg.next||1) + 1 : Math.max((p.cfg.next||1), _seq + 1);
     editingFacIsNew = false;
   } else {
     const idx = p.facturas.findIndex(x=>x.id===f.id);

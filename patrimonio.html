@@ -584,6 +584,8 @@ function calcReturnPatrimonio(current,prev,p){
   return{pct:return_pct,amount:return_amount};
 }
 function fmt(v){if(v==null||v===""||isNaN(v))return "—";return new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR",minimumFractionDigits:0,maximumFractionDigits:0}).format(v);}
+// Escapa texto del usuario (nombres de perfil/categoría/activo/objetivo) antes de inyectarlo con innerHTML o en atributos.
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function fPct(v){return v==null?"—":(v>0?"+":"")+v.toFixed(2)+"%";}
 function fNum(v,dec=1){if(v==null||isNaN(v))return "—";return v.toFixed(dec);}
 
@@ -621,7 +623,7 @@ function renderProfiles(){
   const g=document.getElementById("profilesGrid");g.innerHTML="";
   profiles.forEach(p=>{
     const d=document.createElement("div");d.className="p-card";
-    d.innerHTML=`<div class="p-avatar" style="background:${p.color}22;border:2px solid ${p.color}44">${p.emoji}</div><div class="p-name">${p.name}</div><div class="p-hint">${p.pin?"PIN requerido":"Sin PIN"}</div>`;
+    d.innerHTML=`<div class="p-avatar" style="background:${p.color}22;border:2px solid ${p.color}44">${p.emoji}</div><div class="p-name">${esc(p.name)}</div><div class="p-hint">${p.pin?"PIN requerido":"Sin PIN"}</div>`;
     d.onclick=()=>selectProfile(p.id);g.appendChild(d);
   });
   const a=document.createElement("div");a.className="p-add";
@@ -801,7 +803,7 @@ function renderResumen(){
       const col=pct>=100?"#4ade80":pct>60?"#60a5fa":"#fb923c";
       const deadline=obj.deadline?` · Hasta ${obj.deadline.replace("-"," / ")}`:"";
       return `<div class="obj-card">
-        <div class="obj-header"><span class="obj-title">${obj.name}</span><span style="font-family:'DM Mono',monospace;font-size:.8rem;color:${col}">${pct.toFixed(0)}%</span></div>
+        <div class="obj-header"><span class="obj-title">${esc(obj.name)}</span><span style="font-family:'DM Mono',monospace;font-size:.8rem;color:${col}">${pct.toFixed(0)}%</span></div>
         <div class="obj-progress-track"><div class="obj-progress-bar" style="width:${pct}%;background:${col}"></div></div>
         <div class="obj-meta"><span>${fmt(cur)} / ${fmt(obj.target)}</span><span>${obj.type==="patrimonio"?"Patrimonio":"Ingresos"}${deadline}</span></div>
       </div>`;
@@ -1325,7 +1327,7 @@ function renderGastos(){
     .sort((a,b)=>b[1]-a[1])
     .map(([catId,total])=>{
       const c = catMap[catId] || catMap['sin_cat'];
-      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:${c.color}22;border:1px solid ${c.color}55;border-radius:12px;font-size:.7rem;color:${c.color};margin:2px">${c.name}: ${fmt(total)}</span>`;
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:${c.color}22;border:1px solid ${c.color}55;border-radius:12px;font-size:.7rem;color:${c.color};margin:2px">${esc(c.name)}: ${fmt(total)}</span>`;
     }).join('');
 
   summaryEl.innerHTML = `
@@ -1361,7 +1363,7 @@ function renderGastos(){
           const tipoColor = a.tipo==='comun'?'#a78bfa':'#60a5fa';
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;font-size:.72rem">
             <span style="color:${tipoColor}">●</span>
-            <span style="color:#e2e8f0">${a.etiqueta||a.nombre}</span>
+            <span style="color:#e2e8f0">${esc(a.etiqueta||a.nombre)}</span>
             <span style="color:#475569">${tipoLabel} · ${txCount} mov</span>
             <button onclick="editArchivo('${a.id}')" style="background:transparent;border:none;color:#475569;cursor:pointer;font-size:.85rem;padding:0 4px">⚙</button>
             <button onclick="deleteArchivo('${a.id}')" style="background:transparent;border:none;color:#475569;cursor:pointer;font-size:.85rem;padding:0 4px" title="Borrar archivo y sus transacciones">×</button>
@@ -2045,7 +2047,7 @@ function renderDashGastos(p){
         const c = catMap[cid] || catMap['sin_cat'];
         const pct = lastData.miParte>0 ? total/lastData.miParte*100 : 0;
         return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <div style="width:90px;font-size:.72rem;color:${c.color}">${c.name}</div>
+          <div style="width:90px;font-size:.72rem;color:${c.color}">${esc(c.name)}</div>
           <div style="flex:1;height:8px;background:#0a0e14;border-radius:4px;overflow:hidden">
             <div style="height:100%;width:${pct}%;background:${c.color}88"></div>
           </div>
@@ -2658,7 +2660,7 @@ function renderFormFields(prefill){
       const prevEntry=ents.length&&!prefill?ents[ents.length-1]:null;
       const prevVal=prevEntry?(prevEntry.assets||{})[a.id]||"":"";
       const cell=document.createElement("div");cell.id="fcell_"+a.id;
-      cell.innerHTML=`<div class="fld-lbl" style="color:${a.color}">${a.name}</div>
+      cell.innerHTML=`<div class="fld-lbl" style="color:${a.color}">${esc(a.name)}</div>
         <input class="inp" type="number" id="fi_${a.id}" placeholder="0" value="${oldVal}">`;
       cell.style.opacity=activeState[a.id]?"1":"0.35";
       grid.appendChild(cell);
@@ -2744,7 +2746,7 @@ function renderFormFields(prefill){
     sec.assets.forEach(a=>{
       const oldVal=prefill?(prefill.contributions||{})[a.id]||"":"";
       const cell=document.createElement("div");
-      cell.innerHTML=`<div class="fld-lbl" style="color:${a.color};font-size:.7rem;opacity:.7">${a.name}</div>
+      cell.innerHTML=`<div class="fld-lbl" style="color:${a.color};font-size:.7rem;opacity:.7">${esc(a.name)}</div>
         <input class="inp" type="number" id="fc_${a.id}" placeholder="0" value="${oldVal}" style="opacity:.7">
         <div style="font-size:.65rem;color:#334155;margin-top:2px;">(+ aportación / - retiro)</div>`;
       aportGrid.appendChild(cell);
@@ -2939,7 +2941,7 @@ function renderObjectives(){
     }
     const card=document.createElement("div");card.className="obj-card";card.style.marginBottom="10px";
     card.innerHTML=`<div class="obj-header">
-      <span class="obj-title">${obj.name} <span style="font-size:.68rem;color:#475569;font-weight:400">${getObjLabel(obj,p)}</span></span>
+      <span class="obj-title">${esc(obj.name)} <span style="font-size:.68rem;color:#475569;font-weight:400">${getObjLabel(obj,p)}</span></span>
       <div style="display:flex;gap:6px;align-items:center">
         <span style="font-family:'DM Mono',monospace;font-size:.82rem;color:${col};font-weight:700">${pct.toFixed(1)}%</span>
       </div>
@@ -3108,7 +3110,7 @@ function renderAjustes(){
   c.innerHTML=`<div class="sett-sec">
     <div class="sett-hdr">Perfil</div>
     <div class="grid2" style="margin-bottom:12px">
-      <div><div class="fld-lbl">Nombre</div><input class="inp" id="aj_name" value="${p.name}"></div>
+      <div><div class="fld-lbl">Nombre</div><input class="inp" id="aj_name" value="${esc(p.name)}"></div>
       <div><div class="fld-lbl">Participación empresa (%)</div><input class="inp" type="number" id="aj_emp_pct" value="${tmpEmp.participacion||49}"></div>
     </div>
     <div class="grid2" style="margin-bottom:12px">
@@ -3140,7 +3142,7 @@ function buildSectionsUI(){
     sec.assets.forEach((a,ai)=>{
       const row=document.createElement("div");row.className="asset-row";
       row.innerHTML=`<div class="color-dot" style="background:${a.color}"></div>
-        <input class="asset-inp" value="${a.name}" onchange="tmpSections[${si}].assets[${ai}].name=this.value">
+        <input class="asset-inp" value="${esc(a.name)}" onchange="tmpSections[${si}].assets[${ai}].name=this.value">
         <select class="color-sel" onchange="tmpSections[${si}].assets[${ai}].color=this.value">${ACOLS.map(cl=>`<option value="${cl}" ${a.color===cl?"selected":""} style="background:#0f1729">${cl}</option>`).join("")}</select>
         <button class="btn-del" onclick="tmpSections[${si}].assets.splice(${ai},1);buildSectionsUI()">✕</button>`;
       sd.appendChild(row);

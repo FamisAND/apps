@@ -971,6 +971,9 @@ DashboardAuth.gate({ section: 'options', title: 'Opciones' });
 <script>
 const TODAY = new Date().toISOString().split('T')[0];
 
+// Escapa texto libre del usuario antes de inyectarlo con innerHTML (notas, etc.).
+const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
 // ── CONFIG / THRESHOLDS ──────────────────────────────────────
 let CFG = {
   NP:  { ann:20, prob:75, ivr:35, psig:12 },
@@ -2283,7 +2286,7 @@ function renderHist(){
           <td>${fmtCash(e.pNeto)}</td>
           <td>${fmtCash(e.totalNeto)}</td>
           <td>${fmtRoi(e.profitOp)}</td>
-          <td class="h-note" title="${(e.nota||'').replace(/"/g,'&quot;')}">${e.nota?'· '+e.nota:'—'}</td>
+          <td class="h-note" title="${esc(e.nota||'')}">${e.nota?'· '+esc(e.nota):'—'}</td>
           <td><button class="h-act-btn" onclick="event.stopPropagation();openEntryModal(${e.id})">✎</button>
               <button class="h-act-btn del" onclick="event.stopPropagation();deleteEntry(${e.id})">✕</button></td>
         </tr>`;
@@ -2325,7 +2328,7 @@ function renderHist(){
       <td>${fmtCash(e.pNeto)}</td>
       <td>${fmtCash(e.totalNeto)}</td>
       <td>${fmtRoi(e.profitOp)}</td>
-      <td class="h-note" title="${(e.nota||'').replace(/"/g,'&quot;')}">${e.nota?'· '+e.nota:'—'}</td>
+      <td class="h-note" title="${esc(e.nota||'')}">${e.nota?'· '+esc(e.nota):'—'}</td>
       <td>
         <button class="h-act-btn" onclick="openEntryModal(${e.id})">✎</button>
         <button class="h-act-btn del" onclick="deleteEntry(${e.id})">✕</button>
@@ -4176,7 +4179,7 @@ function buildActCard(a, idx, today){
     </div>
     `}
 
-    ${a.nota ? `<div style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${a.nota}</div>` : ''}
+    ${a.nota ? `<div style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${esc(a.nota)}</div>` : ''}
 
     <!-- Action buttons -->
     <div class="act-btns">

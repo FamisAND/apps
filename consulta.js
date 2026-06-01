@@ -771,7 +771,12 @@ function tobSetCliFiltro(v){
   tobRenderClientes();
 }
 const _tobNormBuscar = s => (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
-function tobSetCliBuscar(v){ tobCliBuscar = _tobNormBuscar(v); tobRenderClientes(); }
+let _tobBuscarT = null;
+function tobSetCliBuscar(v){
+  tobCliBuscar = _tobNormBuscar(v);            // estado inmediato
+  clearTimeout(_tobBuscarT);
+  _tobBuscarT = setTimeout(() => { _tobBuscarT = null; tobRenderClientes(); }, 200); // render diferido
+}
 function tobRenderClientes(){
   const tbody = document.getElementById('tobClientesBody');
   const empty = document.getElementById('tobClientesEmpty');
@@ -1541,6 +1546,14 @@ function tobSetSerieKg(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId
 function tobSetSerieReps(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'reps', val, 'series'); }
 function tobSetLineaKg(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'kg', val, 'lineas'); }
 function tobSetLineaReps(ejId, entId, microNum, idx, val){ tobSetEjVal(ejId, entId, microNum, idx, 'reps', val, 'lineas'); }
+// Re-render de gráficos diferido: al teclear kg/reps NO reconstruimos Chart.js en
+// cada pulsación (era costoso y parpadeaba). El modelo y el guardado siguen siendo
+// inmediatos (sin riesgo de pérdida de datos); solo el dibujo espera ~350ms.
+let _tobChartsT = null;
+function tobRenderChartsSoon(){
+  clearTimeout(_tobChartsT);
+  _tobChartsT = setTimeout(() => { _tobChartsT = null; tobRenderCharts(); }, 350);
+}
 function tobSetEjVal(ejId, entId, microNum, idx, field, val, arrName){
   const s = tobGetSesion(microNum, entId); if(!s) return;
   if(!s.ejs[ejId]) s.ejs[ejId] = {};
@@ -1549,7 +1562,7 @@ function tobSetEjVal(ejId, entId, microNum, idx, field, val, arrName){
   const v = val === '' ? null : parseFloat(val);
   s.ejs[ejId][arrName][idx][field] = isNaN(v) ? null : v;
   tobSave();
-  tobRenderCharts();
+  tobRenderChartsSoon();
 }
 
 // ═══ CHARTS ═══
