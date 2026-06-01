@@ -1798,6 +1798,21 @@ async function tobGeneratePdf(){
 function tobHandlePdfDrop(ev){ const f=ev.dataTransfer.files[0]; if(f) tobReadPdfFile(f); }
 function tobHandlePdfFile(ev){ const f=ev.target.files[0]; if(f) tobReadPdfFile(f); }
 
+// Normalitza qualsevol data escrita pel client a ISO aaaa-mm-dd (model intern).
+// Accepta: ISO (aaaa-mm-dd), dd/mm/aaaa, dd-mm-aaaa, dd.mm.aaaa, any de 2 dígits i aaaa/mm/dd.
+// Si no reconeix el format, retorna el valor tal qual (no destrueix dades).
+function tobNormalizeFecha(v){
+  if(!v) return v;
+  v = String(v).trim();
+  let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);                     // ISO
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);            // dd/mm/aaaa (i variants)
+  if(m){ let y=m[3]; if(y.length===2) y='20'+y; return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`; }
+  m = v.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})$/);                  // aaaa/mm/dd
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  return v;
+}
+
 async function tobReadPdfFile(file){
   const a = tobAsig(); if(!a){ tobToast('Abre una rutina antes', 'red'); return; }
   const it = tobIt(); if(!it){ tobToast('Sin iteración activa', 'red'); return; }
@@ -1815,19 +1830,30 @@ async function tobReadPdfFile(file){
       try { val = f.getText ? f.getText() : ''; } catch(e){}
       if(!val) return;
 
-      // fecha_<microNum>_<entId>
-      let parts = name.match(/^fecha_(\d+)_(\w+)$/);
+      // fecha: accepta tots dos ordres — fecha_<micro>_<ent> (tobGeneratePdf) i
+      // fecha_<ent>_<micro> (PDF editable del client). El micro són sempre dígits;
+      // l'entId sempre és una lletra de bloc (A, B, MX…), així que no hi ha ambigüitat.
+      let parts = name.match(/^fecha_(\w+)_(\w+)$/);
       if(parts){
-        const [, microNum, entId] = parts;
-        const s = tobGetSesionIt(it, parseInt(microNum), entId);
-        s.fecha = val; m++; return;
+        const aNum = /^\d+$/.test(parts[1]), bNum = /^\d+$/.test(parts[2]);
+        if(aNum !== bNum){
+          const microNum = aNum ? parts[1] : parts[2];
+          const entId    = aNum ? parts[2] : parts[1];
+          const s = tobGetSesionIt(it, parseInt(microNum), entId);
+          s.fecha = tobNormalizeFecha(val); m++; return;
+        }
       }
-      // aer_<microNum>_<entId>_<field>
-      parts = name.match(/^aer_(\d+)_(\w+)_(\w+)$/);
+      // aer: mateix criteri d'ordre flexible (micro=dígits, ent=lletra); field és l'últim token.
+      parts = name.match(/^aer_(\w+)_(\w+)_(\w+)$/);
       if(parts){
-        const [, microNum, entId, field] = parts;
-        const s = tobGetSesionIt(it, parseInt(microNum), entId);
-        s.aerobica[field] = val; m++; return;
+        const aNum = /^\d+$/.test(parts[1]), bNum = /^\d+$/.test(parts[2]);
+        if(aNum !== bNum){
+          const microNum = aNum ? parts[1] : parts[2];
+          const entId    = aNum ? parts[2] : parts[1];
+          const field    = parts[3];
+          const s = tobGetSesionIt(it, parseInt(microNum), entId);
+          s.aerobica[field] = val; m++; return;
+        }
       }
       // ej_<ejId>_<microNum>_<entId>_<series|lineas>_<idx>_<kg|reps>
       parts = name.match(/^ej_(.+?)_(\d+)_(\w+?)_(series|lineas)_(\d+)_(kg|reps)$/);
@@ -4809,6 +4835,8 @@ async function tobBuildPdfRutina(cli, a, pl, it, preview){
 
     // Fila Fecha (form field editable)
     page.drawText(tobT('rut.col.fecha', L), { x: 30, y, size: 9, font: fontB, color: GRAY_DK });
+    // Pista de format perquè el client escrigui la data de forma consistent
+    page.drawText('(dd/mm/aaaa)', { x: 30, y: y-9, size: 6, font: fontB, color: GRAY_DK });
     microHeaders.forEach((mn, i) => {
       const cellX = startX + i*colW;
       const ses = it?.sesiones[mn]?.[en.id];

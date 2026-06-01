@@ -427,12 +427,18 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
       <select class="inp" id="cond_modo" onchange="_condModoChange()">
         <option value="fijoMasPct">Fijo + % sobre facturación</option>
         <option value="hibrido">Híbrido: 100% hasta umbral, después %</option>
+        <option value="tramos">Por tramos (% marginal, tipo IRPF)</option>
       </select>
       <div style="font-size:.7rem;color:var(--muted);margin-top:4px;line-height:1.4;" id="cond_modo_help"></div>
     </div>
     <div class="g2">
       <div class="fld"><label id="cond_fijo_lbl">Fijo (€/mes)</label><input class="inp" type="number" id="cond_fijo" placeholder="0"></div>
-      <div class="fld"><label>% facturación</label><input class="inp" type="number" id="cond_pct" placeholder="0"></div>
+      <div class="fld" id="cond_pct_fld"><label>% facturación</label><input class="inp" type="number" id="cond_pct" placeholder="0"></div>
+    </div>
+    <div class="fld hidden" id="cond_tramos_box">
+      <label>Tramos por facturación (% marginal)</label>
+      <div id="cond_tramos_rows"></div>
+      <button type="button" class="btn btn-ghost" style="margin-top:4px;font-size:.74rem;padding:5px 12px;" onclick="_condAddTramo()">+ Añadir tramo</button>
     </div>
     <div class="fld"><label>Vigente desde</label><input class="inp" type="date" id="cond_date"></div>
     <div class="modal-err" id="condErr"></div>
@@ -2290,13 +2296,18 @@ function renderPayTableGeneric(tbodyId,entries,key,members){
     const fijoLbl = calc.modo === 'hibrido'
       ? (cond.fijo ? `${fmt(cond.fijo)} umbral → ${fmt(calc.fijoComponent)}` : '—')
       : (cond.fijo ? fmt(cond.fijo) : '—');
-    const pctLbl = cond.pct
-      ? (calc.modo === 'hibrido'
-          ? `${cond.pct}% × ${fmt(Math.max(0, bill-(cond.fijo||0)))} → ${fmt(calc.pctAmt)}`
-          : `${cond.pct}% → ${fmt(calc.pctAmt)}`)
-      : '—';
+    const pctLbl = calc.modo === 'tramos'
+      ? `${_ftTramosShort(cond.tramos)} → ${fmt(calc.pctAmt)}`
+      : (cond.pct
+          ? (calc.modo === 'hibrido'
+              ? `${cond.pct}% × ${fmt(Math.max(0, bill-(cond.fijo||0)))} → ${fmt(calc.pctAmt)}`
+              : `${cond.pct}% → ${fmt(calc.pctAmt)}`)
+          : '—');
+    const modoBadge = calc.modo==='hibrido'
+      ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>'
+      : (calc.modo==='tramos' ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">TRAMOS</span>' : '');
     return`<tr>
-      <td><span style="color:${t.color};font-weight:700">${t.name}</span>${calc.modo==='hibrido'?' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>':''}</td>
+      <td><span style="color:${t.color};font-weight:700">${t.name}</span>${modoBadge}</td>
       <td style="font-size:.7rem;color:var(--muted)">${roleLabels(t)}</td>
       <td class="mono">${tEnt.length}</td><td class="mono">${fmt(bill)}</td>
       <td class="mono">${fijoLbl}</td>
@@ -2616,13 +2627,18 @@ function renderMasPayTable(packs){
     const fijoLbl = calc.modo === 'hibrido'
       ? (cond.fijo ? `${fmt(cond.fijo)} umbral → ${fmt(calc.fijoComponent)}` : '—')
       : (cond.fijo ? fmt(cond.fijo) : '—');
-    const pctLbl = cond.pct
-      ? (calc.modo === 'hibrido'
-          ? `${cond.pct}% × ${fmt(Math.max(0, billBySess-(cond.fijo||0)))} → ${fmt(calc.pctAmt)}`
-          : `${cond.pct}% → ${fmt(calc.pctAmt)}`)
-      : '—';
+    const pctLbl = calc.modo === 'tramos'
+      ? `${_ftTramosShort(cond.tramos)} → ${fmt(calc.pctAmt)}`
+      : (cond.pct
+          ? (calc.modo === 'hibrido'
+              ? `${cond.pct}% × ${fmt(Math.max(0, billBySess-(cond.fijo||0)))} → ${fmt(calc.pctAmt)}`
+              : `${cond.pct}% → ${fmt(calc.pctAmt)}`)
+          : '—');
+    const modoBadge = calc.modo==='hibrido'
+      ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>'
+      : (calc.modo==='tramos' ? ' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">TRAMOS</span>' : '');
     return`<tr>
-      <td><span style="color:${f.color};font-weight:700">${f.name}</span>${calc.modo==='hibrido'?' <span style="font-size:.6rem;color:var(--acc);font-family:DM Mono,monospace">HÍBRID</span>':''}</td>
+      <td><span style="color:${f.color};font-weight:700">${f.name}</span>${modoBadge}</td>
       <td class="mono">${sessHechas}</td>
       <td class="mono">${fmt(billBySess)}</td>
       <td class="mono">${fijoLbl}</td>
@@ -3184,7 +3200,7 @@ function renderEquipo(){
   const curKey=monthKey(nowD.getFullYear(),nowD.getMonth()+1);
   el.innerHTML=db.team.map(t=>{
     const cond=getCondAt(t,curKey);
-    const parts=[];if(cond.fijo)parts.push(`${fmt(cond.fijo)}${cond.modo==='hibrido'?' umbral':'/mes'}`);if(cond.pct)parts.push(`${cond.pct}%`);
+    const parts=[];if(cond.fijo)parts.push(`${fmt(cond.fijo)}${cond.modo==='hibrido'?' umbral':'/mes'}`);if(cond.modo==='tramos')parts.push(_ftTramosShort(cond.tramos));else if(cond.pct)parts.push(`${cond.pct}%`);
     const roles=getRoles(t);
     const roleBadges=roles.map(r=>{const rl=ALL_ROLES.find(x=>x.v===r);const cls={entrenador:'b-yl',fisio:'b-pr',nutricionista:'b-gn',otro:'b-gy'}[r]||'b-gy';return`<span class="badge ${cls}" style="font-size:.56rem">${rl?.l||r}</span>`;}).join(' ');
     // Calcular horas reales del mes actual
@@ -3250,7 +3266,13 @@ function saveMember(){
     const t=db.team.find(x=>x.id===editMemberId);
     t.name=name;t.color=color;t.active=active;t.roles=roles;t.desiredHours=desiredHours;t.showInDashboard=showInDashboard;
     const last=t.conditions?.slice(-1)[0];
-    if(!last||last.fijo!==fijo||last.pct!==pct){if(!t.conditions)t.conditions=[];t.conditions.push({date:today,fijo,pct});}
+    if(!last||last.fijo!==fijo||last.pct!==pct){
+      if(!t.conditions)t.conditions=[];
+      const nc={date:today,fijo,pct};
+      // Preservem el mode avançat (tramos/hibrido) i els trams: el modal bàsic no els gestiona
+      if(last&&last.modo&&last.modo!=='fijoMasPct'){nc.modo=last.modo;if(last.tramos)nc.tramos=last.tramos;}
+      t.conditions.push(nc);
+    }
   } else {
     db.team.push({id:uid(),name,roles,color,active,desiredHours,showInDashboard,createdAt:today,conditions:[{date:today,fijo,pct}]});
   }
@@ -3409,9 +3431,9 @@ function openFicha(id){
     </div>`:''}
     <div class="ficha-sec">
       <div class="ficha-sec-title">Condiciones actuales</div>
-      ${history[0]?`<div class="cond-item"><div class="cond-date">Desde ${history[0].date}</div><div class="cond-val">${[history[0].fijo?`${fmt(history[0].fijo)}/mes`:'',history[0].pct?`${history[0].pct}% facturación`:''].filter(Boolean).join(' + ')||'Sin retribución'}</div></div>`:'Sin condiciones'}
+      ${history[0]?`<div class="cond-item"><div class="cond-date">Desde ${history[0].date}</div><div class="cond-val">${_ftCondValStr(history[0], true)}</div></div>`:'Sin condiciones'}
     </div>
-    ${history.length>1?`<div class="ficha-sec"><div class="ficha-sec-title">Historial condiciones</div>${history.slice(1).map(c=>`<div class="cond-item"><div class="cond-date">Desde ${c.date}</div><div class="cond-val" style="color:var(--muted)">${[c.fijo?`${fmt(c.fijo)}/mes`:'',c.pct?`${c.pct}%`:''].filter(Boolean).join(' + ')||'—'}</div></div>`).join('')}</div>`:''}
+    ${history.length>1?`<div class="ficha-sec"><div class="ficha-sec-title">Historial condiciones</div>${history.slice(1).map(c=>`<div class="cond-item"><div class="cond-date">Desde ${c.date}</div><div class="cond-val" style="color:var(--muted)">${_ftCondValStr(c, false)}</div></div>`).join('')}</div>`:''}
     ${payRows.length?`<div class="ficha-sec"><div class="ficha-sec-title">Pagos (últimos 12 meses)</div>
       <table><thead><tr><th>Mes</th><th>Clientes</th><th>Facturación</th><th>A pagar</th></tr></thead>
       <tbody>${payRows.map(r=>`<tr><td style="font-weight:600">${MES[parseInt(r.m)-1].slice(0,3)} ${r.y}</td><td class="mono">${r.n}</td><td class="mono">${fmt(r.bill)}</td><td class="mono yl">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>
@@ -3782,6 +3804,7 @@ function openCondModal(){
   document.getElementById('cond_pct').value=cond.pct||'';
   document.getElementById('cond_date').value=new Date().toISOString().slice(0,10);
   document.getElementById('condErr').textContent='';
+  _condRenderTramos(cond.tramos);
   _condModoChange();
   document.getElementById('condModal').classList.remove('hidden');
 }
@@ -3790,13 +3813,51 @@ function _condModoChange(){
   const modo=document.getElementById('cond_modo').value;
   const lbl=document.getElementById('cond_fijo_lbl');
   const help=document.getElementById('cond_modo_help');
+  const pctFld=document.getElementById('cond_pct_fld');
+  const tramosBox=document.getElementById('cond_tramos_box');
+  // Per defecte: % clàssic visible, editor de trams ocult
+  if(pctFld) pctFld.classList.remove('hidden');
+  if(tramosBox) tramosBox.classList.add('hidden');
   if(modo==='hibrido'){
     if(lbl) lbl.textContent='Umbral (€) — facturación al 100%';
     if(help) help.textContent='Ej: umbral 1000€, %=30. Si factura 5000€ → cobra 1000€ (los primeros, al 100%) + 4000€ × 30% = 2200€ total.';
+  } else if(modo==='tramos'){
+    if(lbl) lbl.textContent='Fijo (€/mes) — opcional, se suma encima';
+    if(pctFld) pctFld.classList.add('hidden');
+    if(tramosBox) tramosBox.classList.remove('hidden');
+    if(!document.querySelector('#cond_tramos_rows .cond-tramo-row')) _condRenderTramos(null);
+    if(help) help.textContent='Cada % se aplica solo a la parte de facturación dentro de ese tramo (marginal, tipo IRPF). Ej: 50% hasta 1000€ y 30% el resto → si factura 5000€: 1000×50% + 4000×30% = 500 + 1200 = 1700€. Deja "hasta" vacío en el último tramo (= resto).';
   } else {
     if(lbl) lbl.textContent='Fijo (€/mes)';
     if(help) help.textContent='Fijo se suma siempre. % se aplica a toda la facturación. Ej: fijo 500€, %=20, factura 3000€ → 500 + 600 = 1100€.';
   }
+}
+// ─── Editor de trams (mode 'tramos') ───────────────────────────────
+function _condAddTramo(hasta, pct){
+  const rows=document.getElementById('cond_tramos_rows');if(!rows)return;
+  const row=document.createElement('div');
+  row.className='cond-tramo-row';
+  row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+  row.innerHTML=
+    '<span style="font-size:.7rem;color:var(--muted);white-space:nowrap;">hasta</span>'+
+    '<input class="inp ct-hasta" type="number" placeholder="€ (vacío = resto)" value="'+(hasta!=null?hasta:'')+'" style="flex:1;min-width:0;">'+
+    '<input class="inp ct-pct" type="number" placeholder="%" value="'+(pct!=null?pct:'')+'" style="width:64px;">'+
+    '<span style="font-size:.7rem;color:var(--muted);">%</span>'+
+    '<button type="button" class="btn btn-ghost" style="padding:3px 8px;" onclick="this.closest(\'.cond-tramo-row\').remove()">✕</button>';
+  rows.appendChild(row);
+}
+function _condRenderTramos(tramos){
+  const rows=document.getElementById('cond_tramos_rows');if(!rows)return;
+  rows.innerHTML='';
+  const list=(tramos&&tramos.length)?tramos:[{hasta:1000,pct:''},{hasta:'',pct:''}];
+  list.forEach(t=>_condAddTramo(t.hasta,t.pct));
+}
+function _condCollectTramos(){
+  return [...document.querySelectorAll('#cond_tramos_rows .cond-tramo-row')].map(r=>{
+    const h=r.querySelector('.ct-hasta').value.trim();
+    const p=r.querySelector('.ct-pct').value.trim();
+    return { hasta: h===''?null:(parseFloat(h)||0), pct: parseFloat(p)||0 };
+  }).filter(t=>t.pct>0 || t.hasta!=null);
 }
 function saveCondition(){
   const modo=document.getElementById('cond_modo').value||'fijoMasPct';
@@ -3806,16 +3867,24 @@ function saveCondition(){
   if(!date){document.getElementById('condErr').textContent='Introduce una fecha';return;}
   const t=db.team.find(x=>x.id===condMemberId);if(!t)return;
   if(!t.conditions)t.conditions=[];
-  t.conditions.push({date,fijo,pct,modo});
+  const cond={date,fijo,pct,modo};
+  if(modo==='tramos'){
+    const tramos=_condCollectTramos();
+    if(!tramos.length){document.getElementById('condErr').textContent='Añade al menos un tramo con %';return;}
+    cond.tramos=tramos;
+  }
+  t.conditions.push(cond);
   t.conditions.sort((a,b)=>a.date<b.date?-1:1);
   save();closeModal('condModal');openFicha(condMemberId);toast('✓ Condiciones actualizadas');
 }
 
 // ─── Helper centralitzat de càlcul de retribució ──────────────────────
-// Suporta dos modes:
+// Suporta tres modes:
 //   · 'fijoMasPct' (default): total = fijo + bill·pct/100 + extras
 //   · 'hibrido':              total = min(bill, fijo) + max(0, bill-fijo)·pct/100 + extras
-// (al mode híbrid, 'fijo' actua com a umbral fins on cobra el 100%)
+//                             (al mode híbrid, 'fijo' actua com a umbral fins on cobra el 100%)
+//   · 'tramos':               trams marginals (com l'IRPF) definits a cond.tramos=[{hasta,pct}];
+//                             cada % s'aplica només a la part de bill dins del tram; fijo se suma a sobre.
 function _ftCalcCondicion(cond, bill){
   bill = +bill || 0;
   const fijo = +cond.fijo || 0;
@@ -3828,8 +3897,42 @@ function _ftCalcCondicion(cond, bill){
     const pctAmt = excedente * pct / 100;
     return { modo:'hibrido', fijoComponent: al100, pctAmt, extras, total: al100 + pctAmt + extras };
   }
+  if(modo === 'tramos' && Array.isArray(cond.tramos) && cond.tramos.length){
+    // Trams marginals (com l'IRPF): cada % s'aplica només a la part de facturació
+    // que cau dins d'aquell tram. El 'fijo' (si n'hi ha) se suma sempre a sobre.
+    const tramos = cond.tramos
+      .map(t => ({ hasta: (t.hasta==='' || t.hasta==null) ? Infinity : (+t.hasta || 0), pct: +t.pct || 0 }))
+      .sort((a,b) => a.hasta - b.hasta);
+    let prev = 0, pctAmt = 0;
+    const tramosBreakdown = [];
+    for(const tr of tramos){
+      const base = Math.max(0, Math.min(bill, tr.hasta) - prev);
+      const amt = base * tr.pct / 100;
+      if(base > 0) tramosBreakdown.push({ desde: prev, hasta: tr.hasta, pct: tr.pct, base, amt });
+      pctAmt += amt;
+      prev = tr.hasta;
+      if(bill <= tr.hasta) break;
+    }
+    return { modo:'tramos', fijoComponent: fijo, pctAmt, extras, tramosBreakdown, total: fijo + pctAmt + extras };
+  }
   const pctAmt = bill * pct / 100;
   return { modo:'fijoMasPct', fijoComponent: fijo, pctAmt, extras, total: fijo + pctAmt + extras };
+}
+// Resum compacte dels trams per a etiquetes: "50%·≤1000 30%·resto"
+function _ftTramosShort(tramos){
+  if(!Array.isArray(tramos)||!tramos.length)return 'tramos';
+  return tramos.map(t=>{
+    const lim=(t.hasta==null||t.hasta==='')?'resto':'≤'+(+t.hasta||0);
+    return `${+t.pct||0}%·${lim}`;
+  }).join(' ');
+}
+// Text de retribució d'una condició per a la fitxa (full=etiquetes llargues)
+function _ftCondValStr(c, full){
+  const parts=[];
+  if(c.fijo) parts.push(`${fmt(c.fijo)}/mes`);
+  if(c.modo==='tramos') parts.push('Tramos '+_ftTramosShort(c.tramos));
+  else if(c.pct) parts.push(full?`${c.pct}% facturación`:`${c.pct}%`);
+  return parts.join(' + ')||(full?'Sin retribución':'—');
 }
 
 // ══════════════════════════
@@ -4510,6 +4613,8 @@ function saveMonthlyExtra(monthKey,teamId,value,note){
   } else {
     // Crear nueva
     const newCond={date:monthKey+'-01',fijo:baseCond.fijo||0,pct:baseCond.pct||0,extras,extraNote:note||''};
+    // Preservem el mode de càlcul (tramos/hibrido) i els trams en afegir un extra mensual
+    if(baseCond.modo&&baseCond.modo!=='fijoMasPct'){newCond.modo=baseCond.modo;if(baseCond.tramos)newCond.tramos=baseCond.tramos;}
     t.conditions.push(newCond);
   }
   
