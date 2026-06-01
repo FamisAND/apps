@@ -658,7 +658,7 @@ function showTab(tab){
   
   document.querySelectorAll(".tab-content").forEach(t=>t.classList.add("hidden"));
   document.getElementById("tab-"+tab).classList.remove("hidden");
-  const tabs=["dashboard","historial","form","gastos","objetivos","ia","ajustes"];
+  const tabs=["dashboard","historial","form","gastos","objetivos","ajustes"];
   document.querySelectorAll(".tab-btn").forEach((b,i)=>b.classList.toggle("active",tabs[i]===tab));
   if(tab==="dashboard")renderDashboard();
   if(tab==="historial"){renderHistorial();renderAnnual();renderAssetYearComparison();}
@@ -744,6 +744,7 @@ function dismissAlert(profileId, alertId){
 // ══════════════════════════════
 function renderResumen(){
   const p=prof();if(!p)return;
+  if(!document.getElementById("resumenKpis"))return; // tarjeta "resumen" retirada de la UI: evita null-deref (p.ej. al importar el perfil abierto, que daba falso "Archivo no válido")
   const ents=completeEntries(p);
 
   // Alerts — handled by renderDashboard, skip here
@@ -2462,6 +2463,7 @@ function renderHistorial(){
 function renderAnnual(){
   const p=prof();if(!p)return;
   const ents=completeEntries(p);const content=document.getElementById("annualContent");
+  if(!content)return; // tarjeta "anual" retirada de la UI: evita null-deref al ver Historial / borrar mes
   if(ents.length<6){content.innerHTML=`<div style="color:#334155;font-size:.82rem;padding:8px 0">Aparecerá cuando tengas más datos (mínimo 6 meses).</div>`;return;}
   const years=[...new Set(ents.map(e=>e.year))].sort();
   const rows=years.map(yr=>{
@@ -3124,7 +3126,7 @@ function renderAjustes(){
   </div>`;
   const sw=document.createElement("div");sw.id="secWrap";c.appendChild(sw);buildSectionsUI();
   const footer=document.createElement("div");
-  footer.innerHTML=`<div class="btn-row" style="margin-top:4px"><button class="btn-primary" onclick="saveAjustes()">Guardar ajustes</button><button class="btn-ghost" onclick="showTab('resumen')">Cancelar</button></div>
+  footer.innerHTML=`<div class="btn-row" style="margin-top:4px"><button class="btn-primary" onclick="saveAjustes()">Guardar ajustes</button><button class="btn-ghost" onclick="showTab('dashboard')">Cancelar</button></div>
   <div class="danger-zone"><div class="danger-title">Zona de peligro</div><button class="btn-danger" onclick="deleteProfile()">Eliminar perfil y todos sus datos</button></div>`;
   c.appendChild(footer);
 }

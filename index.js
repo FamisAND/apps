@@ -122,6 +122,7 @@ function computeKpis(){
   computeOptKpi();
   computeFtKpi();
   computeFacKpi();
+  computeToKpi();
 }
 
 const MO3 = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
@@ -385,6 +386,18 @@ function computeFacKpi(){
     document.getElementById('kpiFacTotal').textContent = totalFacs;
     setUpdFromAppPrefix('kpiFacUpd', 'fac');
   } catch(e){ console.warn('KPI facturas:', e); }
+}
+
+function computeToKpi(){
+  try{
+    const raw = localStorage.getItem('tob_online_v2');
+    if(!raw) return;
+    const db = JSON.parse(raw);
+    const nClientes = Array.isArray(db.clientes) ? db.clientes.length : 0;
+    const el = document.getElementById('kpiToClientes');
+    if(el) el.textContent = nClientes;
+    setUpdFromAppPrefix('kpiToUpd', 'to');
+  } catch(e){ console.warn('KPI consulta:', e); }
 }
 
 function askLogout(){

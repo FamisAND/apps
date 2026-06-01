@@ -203,7 +203,7 @@ function enterApp(id){
   // y NO coincide con el año actual, ofrecemos rotar.
   const yy = String(new Date().getFullYear()).slice(-2);
   if(p.cfg && /^\d{2}$/.test(p.cfg.prefix||"") && p.cfg.prefix !== yy){
-    if(confirm(`Estamos en ${20+''}${yy}. El prefijo actual es "${p.cfg.prefix}".\n\n¿Cambiar prefijo a "${yy}" y reiniciar contador a 1?\n\n(Las facturas anteriores no se tocan, solo cambia la numeración para las próximas.)`)){
+    if(confirm(`Estamos en ${new Date().getFullYear()}. El prefijo actual es "${p.cfg.prefix}".\n\n¿Cambiar prefijo a "${yy}" y reiniciar contador a 1?\n\n(Las facturas anteriores no se tocan, solo cambia la numeración para las próximas.)`)){
       p.cfg.prefix = yy;
       p.cfg.next = 1;
       save();
@@ -2040,9 +2040,24 @@ function buildPrintHTML(){
   return tpl.build(p, f, textos);
 }
 
+// Reúne el CSS propio de la factura (.fac-print, tablas, totales) para la ventana
+// de impresión. OJO: NO usar document.querySelector("style") — el primer <style>
+// del documento es el que inyecta dashboard-auth (la pantalla de PIN), no el de
+// facturas, así que la factura impresa salía sin estilos de tabla. Leemos las
+// reglas de facturas.css directamente del CSSOM (mismo origen, sin carga async).
+function _printStyles(){
+  for(const sheet of document.styleSheets){
+    if(!(sheet.href || "").includes("facturas.css")) continue;
+    try{ return Array.from(sheet.cssRules).map(r => r.cssText).join("\n"); }
+    catch(e){ /* hoja no accesible */ }
+    break;
+  }
+  return "";
+}
+
 function printFactura(){
   const html = buildPrintHTML();
-  const styles = document.querySelector("style").textContent;
+  const styles = _printStyles();
   const win = window.open("", "_blank", "width=800,height=900");
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura ${editingFactura.numero}</title>
     <style>${styles}</style></head>

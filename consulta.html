@@ -1343,6 +1343,18 @@ GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 // Gate de PIN — igual que el resto de dashboards. Tras pasarlo, se activa
 // el auto-push y la app arranca normal (tobLoad corre por su auto-init).
 DashboardAuth.gate({ section: 'training_online', title: 'Consulta' });
+
+// Trackeador de última modificación local (para el KPI de frescura en el menú)
+(function trackLastModified(){
+  const TRACKED = ['tob_online_v2'];
+  const _orig = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(key, value){
+    _orig.call(this, key, value);
+    if(this === window.localStorage && TRACKED.indexOf(key) >= 0){
+      _orig.call(this, 'lm_to', String(Date.now()));
+    }
+  };
+})();
 </script>
 <script src="consulta.js"></script>
 </body>

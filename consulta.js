@@ -3541,17 +3541,17 @@ function tobRenderFichaCharts(cli){
   }
 
   // ─── Mini line charts ─────
-  chartsGrid.innerHTML = data.ejNames.map(name => `
+  chartsGrid.innerHTML = data.ejNames.map((name, i) => `
     <div class="tob-chart-card">
       <div class="hdr">${tobEsc(name)}</div>
-      <div class="body"><canvas id="tobFichaChart_${tobSlug(name)}"></canvas></div>
+      <div class="body"><canvas id="tobFichaChart_${i}"></canvas></div>
     </div>
   `).join('');
 
   if(window.ChartDataLabels && Chart.register){ try { Chart.register(ChartDataLabels); } catch(e){} }
 
-  data.ejNames.forEach(name => {
-    const canvas = document.getElementById('tobFichaChart_' + tobSlug(name));
+  data.ejNames.forEach((name, i) => {
+    const canvas = document.getElementById('tobFichaChart_' + i);
     if(!canvas) return;
     const points = (data.ejHistory[name]||[]).slice().sort((a,b) => (a.fecha||'').localeCompare(b.fecha||''));
     if(!points.length){
@@ -6203,7 +6203,7 @@ function tobHbAutoFill(){
   const last = meds.length ? meds[meds.length - 1] : null;
   const peso    = last && last.pes != null ? +last.pes : (cli.pes || null);
   const altura  = last && last.estatura != null ? +last.estatura : (cli.estatura || null);
-  const edat    = _tobHbCalcEdat(cli.dataNaixement) || cli.edat || null;
+  const edat    = _tobHbCalcEdat(cli.nacimiento) || cli.edad || null;
   const sexe    = cli.sexo === 'M' ? 'M' : 'H';
   const setVal  = (id, v) => { const el = document.getElementById(id); if(el && v != null) el.value = v; };
   setVal('qHbPeso',   peso);

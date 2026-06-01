@@ -5075,7 +5075,7 @@ function csvOrderPnL(order){
 
 function matchClosures(myCloses, csvCloses, month){
   // Para cada operación tuya cerrada en el mes, intentar encontrar una orden en el CSV
-  // que cuadre por: ticker + fecha cierre (±2 días).
+  // que cuadre por: ticker + fecha cierre (±TOL_DAYS días, ver constante abajo).
   // Una orden CSV solo se puede emparejar UNA vez (para evitar dobles).
   //
   // CLAVE: el CSV solo refleja el dinero movido al CERRAR (no el crédito de
@@ -5300,7 +5300,7 @@ function renderTtVerifyResult(month, result, cashRecon){
     if(caballo) notes = '⏮ abierta ' + (r.my.apertura||'').slice(0,7) + ' · ';
     if(r.status === 'ok' && r.csvOrder) notes += 'Order '+r.csvOrder.orderId+' ('+r.csvOrder.kind+')';
     else if(r.status === 'mismatch') notes += 'Order '+r.csvOrder.orderId+' ('+r.csvOrder.kind+')';
-    else if(r.status === 'not_found') notes += 'No hay orden en CSV con mismo ticker±2 días';
+    else if(r.status === 'not_found') notes += 'No hay orden en CSV con mismo ticker ±7 días';
 
     html += `
       <tr style="border-bottom:1px solid #0f1d2e;color:#c9d1d9">
@@ -7895,7 +7895,7 @@ function ncRenderVerdict(r, thr){
     <div class="nc-extra">
       <div class="nc-extra-item">
         <div style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:1px;text-transform:uppercase;color:#3a5468;margin-bottom:3px">Theta/día</div>
-        <div style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#3fb68b">+$$${r.thetaDay.toFixed(0)}</div>
+        <div style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#3fb68b">+$${r.thetaDay.toFixed(0)}</div>
       </div>
       <div class="nc-extra-item">
         <div style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:1px;text-transform:uppercase;color:#3a5468;margin-bottom:3px">~50% TP</div>
@@ -7903,7 +7903,7 @@ function ncRenderVerdict(r, thr){
       </div>
       <div class="nc-extra-item">
         <div style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:1px;text-transform:uppercase;color:#3a5468;margin-bottom:3px">Prima neta</div>
-        <div style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#3fb68b">+$$${r.pn.toFixed(0)}</div>
+        <div style="font-family:'Courier New',monospace;font-size:13px;font-weight:700;color:#3fb68b">+$${r.pn.toFixed(0)}</div>
       </div>
     </div>`;
 }

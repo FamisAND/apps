@@ -104,8 +104,8 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
         <label class="btn btn-ghost btn-sm" style="font-size:.7rem;cursor:pointer;">
           ⬆ <span data-i18n="importar">Importar datos</span>
           <input type="file" accept=".json" style="display:none" onchange="importBackup(event)">
-        </button>
-        
+        </label>
+
         <button class="lang-toggle" onclick="toggleLang()" id="langBtnLogin">CA / ES</button>
       </div>
     </div>
@@ -951,10 +951,7 @@ function forceLoadServices(){
     }
   });
   save();
-  const msg=document.getElementById('backupMsg');
-  msg.style.color='var(--green)';
-  msg.textContent=`✓ ${added} servicios añadidos (${db.services.length} total)`;
-  setTimeout(()=>msg.textContent='',5000);
+  toast(`✓ ${added} servicios añadidos (${db.services.length} total)`);
 }
 function forceLoadClients(){
   if(!confirm(`Esto cargará los 99 clientes predefinidos. Si ya tienes clientes creados, se añadirán sin borrar los existentes. ¿Continuar?`))return;
@@ -967,10 +964,7 @@ function forceLoadClients(){
     }
   });
   save();
-  const msg=document.getElementById('backupMsg');
-  msg.style.color='var(--green)';
-  msg.textContent=`✓ ${added} clientes añadidos (${db.clients.length} total)`;
-  setTimeout(()=>msg.textContent='',5000);
+  toast(`✓ ${added} clientes añadidos (${db.clients.length} total)`);
 }
 // ═══ Auto-backup local desactivado: todo se sincroniza con GitHub ═══
 
@@ -1480,7 +1474,6 @@ async function exportBackup(){
 function importBackup(event){
   const file=event.target.files[0];
   if(!file)return;
-  const msg=document.getElementById('backupMsg');
   const reader=new FileReader();
   reader.onload=e=>{
     try{
@@ -1526,12 +1519,9 @@ function importBackup(event){
 
       save();
       renderLoginScreen();
-      msg.style.color='var(--green)';
-      msg.textContent=`✓ Importat correctament. ${clientCount} clients, ${Object.keys(db.months).length} mesos totals.`;
-      setTimeout(()=>msg.textContent='',6000);
+      toast(`✓ Importat correctament. ${clientCount} clients, ${Object.keys(db.months).length} mesos totals.`);
     }catch(err){
-      msg.style.color='var(--red)';
-      msg.textContent=`⚠ Error en importar: ${err.message}`;
+      toast(`⚠ Error en importar: ${err.message}`,'red');
     }
     event.target.value='';
   };
@@ -2211,7 +2201,7 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
     }).join('');
     const totalRow=`<tr style="border-top:1px solid var(--border2)">
       <td colspan="2" style="padding:5px 9px;">
-        ${unpaidIds.length?`<button class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 9px;" onclick="markAllPaid(${JSON.stringify(unpaidIds)})">✓ Pagar todo</button>`:'<span style="font-size:.7rem;color:var(--green)">✓ Todo pagado</span>'}
+        ${unpaidIds.length?`<button class="btn btn-ghost btn-sm" style="font-size:.65rem;padding:2px 9px;" onclick="markAllPaid(${JSON.stringify(unpaidIds).replace(/"/g,'&quot;')})">✓ Pagar todo</button>`:'<span style="font-size:.7rem;color:var(--green)">✓ Todo pagado</span>'}
       </td>
       <td class="mono yl" style="text-align:right;font-weight:700;padding:5px 9px;">${fmt(tot)}</td>
       <td colspan="3"></td>

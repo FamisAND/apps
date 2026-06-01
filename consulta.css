@@ -686,7 +686,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-clasif-flag.dis{background:rgba(217,64,64,.15);color:#d94040;text-decoration:line-through;}
 .tob-clasif-row{
   display:flex;flex-direction:column;gap:5px;padding:9px 4px;
-  border-bottom:1px solid var(--line);
+  border-bottom:1px solid var(--border);
 }
 .tob-clasif-nm{font-size:.84rem;font-weight:700;color:var(--text);}
 .tob-clasif-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
