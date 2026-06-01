@@ -4501,20 +4501,7 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
   }
 }
 
-// ═══ PDF RESUMEN — solo la última rutina (para entregar resultados) ═══
-async function tobGeneratePdfUltimaRutina(){
-  if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
-  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
-  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
-  const asigs = [...(cli.asignaciones||[])].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
-  const a = asigs[asigs.length-1];
-  if(!a){ tobToast('Este cliente no tiene rutinas', 'red'); return; }
-  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
-  const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-  tobToast('⏳ Generando resumen de la última rutina...', '');
-  await tobBuildPdfResumenRutina(cli, a, pl).catch(e => { console.error(e); tobToast('Error: ' + e.message, 'red'); });
-}
-
+// ═══ PDF RESUMEN — la rutina abierta (para entregar resultados) ═══
 async function tobGeneratePdfResumenActual(){
   const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
