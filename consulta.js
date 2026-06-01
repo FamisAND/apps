@@ -285,7 +285,12 @@ const TOB_EJ_ALIASES = {
   'Remo o Seal Row': 'REMO',
   'DOMINADAS O LAT MACHINE': 'DOMINADAS',
   'DOMINADAS o LAT MACHINE': 'DOMINADAS',
-  'Dominadas o Lat Machine': 'DOMINADAS'
+  'Dominadas o Lat Machine': 'DOMINADAS',
+  // BOX SQUAT eliminado: ahora es SQUAT (plantillas + rutinas de clientes existentes).
+  'BOX SQUAT': 'SQUAT',
+  'Box Squat': 'SQUAT',
+  'CALF + BOX SQUAT': 'CALF + SQUAT',
+  'BOX SQUAT (2" pausa)': 'SQUAT (2" pausa)'
 };
 
 // Campos de medición (composición corporal — antropometría tipo ISAK,
@@ -554,7 +559,7 @@ function tobLoad(){
     for(let mn=1; mn<=tobNumMicroOf(p); mn++){
       planMax[mn] = { series: 1, repsTarget: [1], pausa: "5'00''" };
     }
-    const maxNames = ['BOX SQUAT', 'PRESS BANCA', 'PESO MUERTO', 'PRESS MILITAR', 'REMO', 'DOMINADAS'];
+    const maxNames = ['SQUAT', 'PRESS BANCA', 'PESO MUERTO', 'PRESS MILITAR', 'REMO', 'DOMINADAS'];
     const ejMax = maxNames.map((n, i) => ({
       id: tobUid('ej'), orden: i, nombre: n,
       subtitle: 'Intento máximo (1RM)',
@@ -627,6 +632,14 @@ function tobLoad(){
   const renameEj = (ej) => {
     const canonical = TOB_EJ_ALIASES[ej.nombre];
     if(canonical && canonical !== ej.nombre){ ej.nombre = canonical; backfilled = true; }
+    // También normaliza los nombres de las líneas de los circuitos.
+    if(Array.isArray(ej.circuitoLineas)){
+      ej.circuitoLineas = ej.circuitoLineas.map(l => {
+        const c = TOB_EJ_ALIASES[l];
+        if(c && c !== l){ backfilled = true; return c; }
+        return l;
+      });
+    }
   };
   tobDB.plantillas.forEach(p =>
     (p.entrenos||[]).forEach(en =>
@@ -1986,7 +1999,7 @@ function tobImport(ev){
 //     "fechaInicio": "2026-04-27",
 //     "notas": "...",
 //     "sesiones": {
-//       "1": { "A": { fecha, ejs:{ "BOX SQUAT":{series:[{kg,reps}]},
+//       "1": { "A": { fecha, ejs:{ "SQUAT":{series:[{kg,reps}]},
 //                                  "CURL + HIPEREXT + CALF":{lineas:[{kg,reps}]} } },
 //              "B": {...} }, ...
 //     }
@@ -2571,7 +2584,7 @@ const TOB_BIIO_DATA = (() => {
       numMicro: 6,
       entrenos: [
         { letra:'A', nombre:'Entreno A · Simil Full Body 1', ejercicios:[
-          { nombre:'BOX SQUAT', subtitle:'1" Pausa en Box', tipo:'normal', planByMicro: rea_main },
+          { nombre:'SQUAT', subtitle:'1" Pausa abajo', tipo:'normal', planByMicro: rea_main },
           { nombre:'PRESS BANCA', subtitle:'1" Pausa al Pecho', tipo:'normal', planByMicro: rea_main },
           { nombre:'REMO', subtitle:'Espalda Recta · o Seal Row', tipo:'normal', planByMicro: rea_main },
           { nombre:'CURL + HIPEREXT + CALF', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
@@ -2601,7 +2614,7 @@ const TOB_BIIO_DATA = (() => {
           { nombre:'PRESS BANCA', subtitle:'1" Pausa al Pecho', tipo:'normal', planByMicro: pf_main },
           { nombre:'PRESS INCLINADO 45º', subtitle:'Brazos en Plano Sagital', tipo:'normal', planByMicro: pf_support },
           { nombre:'PRESS TRICEPS o FONDOS', subtitle:'Codos cerrados', tipo:'normal', planByMicro: pf_main },
-          { nombre:'BOX SQUAT', subtitle:'Controlar Butt Wink', tipo:'normal', planByMicro: pf_box_squat },
+          { nombre:'SQUAT', subtitle:'Controlar Butt Wink', tipo:'normal', planByMicro: pf_box_squat },
           { nombre:'HIPEREXT + CALF EN PRENSA', subtitle:'[JUMP SET]', tipo:'circuito',
             circuitoLineas:['HIPEREXTENSION 45º','CALF en PRENSA'], planByMicro: pf_jump_hip }
         ]},
@@ -2672,8 +2685,8 @@ const TOB_BIIO_DATA = (() => {
         { letra:'C', nombre:'Entreno C · Hombros-Tríceps + Squat técnica', ejercicios:[
           { nombre:'PRESS MILITAR SENTADO', subtitle:'Arrancadas - No rebote', tipo:'normal', planByMicro: f2_main },
           { nombre:'PRESS AGARRE ESTRECHO', subtitle:'1" Pausa al pecho · o FONDOS TRICEPS', tipo:'normal', planByMicro: f2_estrecho },
-          { nombre:'CALF + BOX SQUAT', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
-            circuitoLineas:['CALF en PRENSA','BOX SQUAT (2" pausa)'], planByMicro: f2_calf_box }
+          { nombre:'CALF + SQUAT', subtitle:'Alternados [JUMP SET]', tipo:'circuito',
+            circuitoLineas:['CALF en PRENSA','SQUAT (2" pausa)'], planByMicro: f2_calf_box }
         ]},
         { letra:'MX', nombre:'Maximales · 2 sesiones aparte de la rutina', ejercicios:[
           { nombre:'SQUAT', subtitle:'Maximal (1ª sesión)', tipo:'normal', planByMicro: f2_max },
@@ -3002,7 +3015,7 @@ function tobSeedJean(){
       fecha: fechas[mn-1],
       aerobica: aerT ? { tipo:'Correr', tiempo:String(aerT[mn-1]), intensidad:'' } : { tipo:'', tiempo:'', intensidad:'' },
       ejs: {
-        [ids['A:BOX SQUAT']]:                  { series: data.boxSquat[mn-1] },
+        [ids['A:SQUAT']]:                      { series: data.boxSquat[mn-1] },
         [ids['A:PRESS BANCA']]:                { series: data.pressBanca[mn-1] },
         [ids['A:REMO']]:                       { series: data.remo[mn-1] },
         [ids['A:CURL + HIPEREXT + CALF']]:     { lineas: data.circ[mn-1] }
@@ -3062,13 +3075,13 @@ function tobSeedJean(){
 function tobFakeSeedRemaining(cli){
   // Base de kg por nombre de ejercicio (aproximaciones realistas Hombre intermedio-avanzado)
   const BASE = {
-    'BOX SQUAT': 105, 'PRESS BANCA': 75, 'REMO': 75, 'REMO o SEAL ROW': 75,
+    'SQUAT': 105, 'PRESS BANCA': 75, 'REMO': 75, 'REMO o SEAL ROW': 75,
     'PESO MUERTO': 135, 'PRESS MILITAR': 50, 'DOMINADAS': 12, 'DOMINADAS o LAT MACHINE': 12,
     'CURL + HIPEREXT + CALF': 32, 'PRENSA + CRUNCH + FONDOS': 145, 'PRENSA 45º + CRUNCH + FONDOS': 145
   };
   // Incremento por microciclo (kg)
   const DELTA = {
-    'BOX SQUAT': 5, 'PRESS BANCA': 2.5, 'REMO': 2.5, 'REMO o SEAL ROW': 2.5,
+    'SQUAT': 5, 'PRESS BANCA': 2.5, 'REMO': 2.5, 'REMO o SEAL ROW': 2.5,
     'PESO MUERTO': 5, 'PRESS MILITAR': 2.5, 'DOMINADAS': 1, 'DOMINADAS o LAT MACHINE': 1,
     'CURL + HIPEREXT + CALF': 1, 'PRENSA + CRUNCH + FONDOS': 5, 'PRENSA 45º + CRUNCH + FONDOS': 5
   };
