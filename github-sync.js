@@ -685,7 +685,9 @@ async function bootstrapAutoSync(){
   if(alreadySynced){
     _removeOverlay();
     const badge = _findBadge();
-    if(badge && !badge.textContent){
+    if(badge){
+      // Marcar como sincronizado SIEMPRE, aunque el HTML inicial del botón
+      // ya traiga texto placeholder tipo "⟳ sync".
       badge.textContent = '✓ sincronizado';
       badge.dataset.kind = 'ok';
       badge.style.color = '#4ade80';

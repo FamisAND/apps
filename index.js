@@ -1844,6 +1844,15 @@ function _showNotifMsg(text, color){
   el.textContent = text;
 }
 
+// ── Badge global de sync (consistencia con los dashboards) ──
+// El badge bottom-right pulsa rojo hasta que se sincroniza, luego se queda
+// verde. Click → manualResync (flush si hay push pendiente, pull y reload).
+GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
+(function wireGhBadge(){
+  const b = document.getElementById('ghSyncBadge');
+  if(b) b.addEventListener('click', GitHubSync.manualResync);
+})();
+
 (function init(){
   if(!GitHubSync.isLoggedIn()){
     show('setupScreen');
