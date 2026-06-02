@@ -654,6 +654,13 @@ function tobLoad(){
     if(!c.mediciones){ c.mediciones = []; backfilled = true; }
   });
 
+  // Migración: agrupar asignaciones repetidas (misma plantilla) en UNA con
+  // varias iteraciones. Idempotente y no destructiva (remapea por nombre de
+  // ejercicio; deja sin fusionar lo que no casa).
+  tobDB.clientes.forEach(c => {
+    if(tobGroupClienteAsignaciones(c)) backfilled = true;
+  });
+
   if(backfilled) tobSave(true);
 
   // Migrar de v1 si existía (estructura distinta)
@@ -1069,8 +1076,28 @@ function tobOpenAsignarModal(cli){
   ok.classList.remove('danger');
   ok.onclick = function(){
     const plId = document.getElementById('tobAsigNewPlant').value;
+    // Si el cliente YA tiene una asignación con esta plantilla, una rutina
+    // "repetida" es una nueva ITERACIÓN de la misma asignación (no otra
+    // asignación suelta). Así el timeline muestra cada vez por separado pero
+    // todo vive bajo una única rutina con iteración 1, 2, 3…
+    const existente = (cli.asignaciones||[]).find(a => a.plantillaId === plId);
+    if(existente){
+      if(!existente.iteraciones) existente.iteraciones = [];
+      const num = existente.iteraciones.length
+        ? Math.max(...existente.iteraciones.map(i => i.numero || 0)) + 1 : 1;
+      const it = { id: tobUid('it'), numero: num, fechaInicio: new Date().toISOString().slice(0,10), sesiones: {} };
+      existente.iteraciones.push(it);
+      existente.estado = 'en_curso'; // vuelve a estar activa: la está entrenando otra vez
+      tobSave();
+      tobCloseConfirm();
+      tobOpenAsignacion(cli.id, existente.id, it.id);
+      const pl = tobDB.plantillas.find(p => p.id === plId);
+      tobToast(`✓ Iteración ${num} de ${tobRutinaShortName(pl)}`, 'green');
+      return;
+    }
     const a = tobCreateAsignacion(plId);
     if(!a){ tobToast('Plantilla no encontrada', 'red'); return; }
+    if(a.iteraciones && a.iteraciones[0]) a.iteraciones[0].fechaInicio = a.fechaInicio;
     cli.asignaciones.push(a);
     tobSave();
     tobCloseConfirm();
@@ -1256,7 +1283,7 @@ function tobAsig(){
   return cli?.asignaciones.find(a => a.id === tobCurrentAsig.asigId);
 }
 
-function tobOpenAsignacion(cliId, asigId){
+function tobOpenAsignacion(cliId, asigId, itId){
   tobCurrentAsig = { clienteId: cliId, asigId };
   const cli = tobDB.clientes.find(c => c.id === cliId);
   const asig = cli?.asignaciones.find(a => a.id === asigId);
@@ -1267,7 +1294,10 @@ function tobOpenAsignacion(cliId, asigId){
   if(!asig.iteraciones || !asig.iteraciones.length){
     asig.iteraciones = [{ id: tobUid('it'), numero: 1, sesiones: {} }];
   }
-  tobCurrentItId = asig.iteraciones[asig.iteraciones.length-1].id;
+  // Posicionar en la iteración pedida (p.ej. al hacer click en el timeline),
+  // o en la última por defecto.
+  const wantedIt = itId && asig.iteraciones.find(i => i.id === itId);
+  tobCurrentItId = wantedIt ? wantedIt.id : asig.iteraciones[asig.iteraciones.length-1].id;
   tobCurrentEntrenoId = asig.rutina?.entrenos?.[0]?.id || 'A';
 
   document.getElementById('tobTabAsig').style.display = '';
@@ -1336,7 +1366,7 @@ function tobSetIt(id){ tobCurrentItId = id; tobRenderItTabs(); tobRenderEntreno(
 function tobAddIteracion(){
   const a = tobAsig(); if(!a) return;
   const num = Math.max(...a.iteraciones.map(i => i.numero)) + 1;
-  const it = { id: tobUid('it'), numero: num, sesiones: {} };
+  const it = { id: tobUid('it'), numero: num, fechaInicio: new Date().toISOString().slice(0,10), sesiones: {} };
   a.iteraciones.push(it);
   tobCurrentItId = it.id;
   tobSave();
@@ -3417,13 +3447,26 @@ function tobRenderTimeline(cli){
     cont.innerHTML = '<div style="color:var(--mute2);padding:20px;text-align:center;">Sin rutinas asignadas. Usa el botón + Nuevo cliente y elige plantilla.</div>';
     return;
   }
-  // Ordenar por fecha de inicio ascendente
-  const sorted = [...cli.asignaciones].sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
-  cont.innerHTML = sorted.map(a => {
+  // Una fila por ITERACIÓN: cada vez que el cliente hizo la rutina, con sus
+  // fechas y PRs. Como una plantilla repetida vive bajo UNA asignación con
+  // varias iteraciones, el timeline sigue mostrando cada vez por separado,
+  // pero al hacer click abre la asignación única posicionada en esa iteración.
+  const rows = [];
+  (cli.asignaciones||[]).forEach(a => {
     const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
-    const stats = tobCalcAsigStats(a);
-    const fechaFin = stats.ultimaFecha || a.fechaInicio || '';
+    const nIter = (a.iteraciones||[]).length;
+    (a.iteraciones||[]).forEach(it => {
+      // Stats de UNA iteración reutilizando tobCalcAsigStats con un asig efímero.
+      const stats = tobCalcAsigStats({ rutina: a.rutina, iteraciones: [it] });
+      const ini = tobItStartDate(it, a);
+      rows.push({ a, it, pl, nIter, stats, ini, fin: stats.ultimaFecha || ini || '' });
+    });
+  });
+  // Ordenar cronológicamente por fecha de inicio de cada iteración
+  rows.sort((x,y) => (x.ini||'').localeCompare(y.ini||''));
+  cont.innerHTML = rows.map(({a, it, pl, nIter, stats, ini, fin}) => {
     const nombreShort = tobRutinaShortName(pl);
+    const itTag = nIter > 1 ? ` · it.${it.numero}` : '';
     const topPrs = Object.entries(stats.maxByEj).slice(0, 3);
     const prBoxes = topPrs.length
       ? topPrs.map(([n, kg]) => {
@@ -3434,14 +3477,14 @@ function tobRenderTimeline(cli){
           </div>`;
         }).join('')
       : `<div style="color:var(--mute2);font-size:.72rem;font-style:italic;align-self:center;">Sin datos registrados</div>`;
-    return `<div class="tob-tl-item ${a.estado||''}" onclick="tobOpenAsignacion('${cli.id}','${a.id}')">
+    return `<div class="tob-tl-item ${a.estado||''}" onclick="tobOpenAsignacion('${cli.id}','${a.id}','${it.id}')">
       <div class="tl-left">
         <div class="tl-hdr">
-          <span class="tl-fechas">${tobEsc(a.fechaInicio||'?')} → ${tobEsc(fechaFin)}</span>
-          <span class="tl-name">${tobEsc(nombreShort)}</span>
+          <span class="tl-fechas">${tobEsc(ini||'?')} → ${tobEsc(fin)}</span>
+          <span class="tl-name">${tobEsc(nombreShort)}${itTag}</span>
           <span class="tob-badge ${a.estado||'en_curso'}">${a.estado||'en curso'}</span>
         </div>
-        <div class="tl-meta">${pl ? tobEsc(pl.macrociclo||'') + ' · ' + tobEsc(pl.categoria||'') : ''}  ·  ${(a.iteraciones||[]).length} iteración${(a.iteraciones||[]).length===1?'':'es'}</div>
+        <div class="tl-meta">${pl ? tobEsc(pl.macrociclo||'') + ' · ' + tobEsc(pl.categoria||'') : ''}${nIter>1 ? '  ·  iteración '+it.numero+' de '+nIter : ''}</div>
         <div class="tl-kpi">
           <span><strong>${stats.sesiones}</strong>sesiones</span>
         </div>
@@ -3482,6 +3525,143 @@ function tobCalcAsigStats(a){
   const sorted = {};
   Object.entries(maxByEj).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>sorted[k]=v);
   return { tonelaje: Math.round(tonelaje), sesiones, ultimaFecha, maxByEj: sorted };
+}
+
+// Fecha de inicio de una iteración: su fechaInicio explícita, si no la primera
+// fecha de sesión registrada, y como último fallback la fechaInicio de la asignación.
+function tobItStartDate(it, a){
+  if(it && it.fechaInicio) return it.fechaInicio;
+  let min = '';
+  Object.values(it?.sesiones||{}).forEach(microSes => {
+    Object.values(microSes||{}).forEach(s => {
+      if(s && s.fecha && (!min || s.fecha < min)) min = s.fecha;
+    });
+  });
+  return min || (a && a.fechaInicio) || '';
+}
+
+// ─── Migración: agrupar asignaciones repetidas en iteraciones ───────────────
+// Modelo canónico: 1 asignación por plantilla, con N iteraciones (cada vez que
+// el cliente ha hecho esa rutina). Reúne las asignaciones repetidas de un
+// cliente en una sola. Idempotente (si ya está agrupado, no hace nada) y no
+// destructiva. Devuelve true si modificó algo.
+function tobGroupClienteAsignaciones(cli){
+  const asigs = Array.isArray(cli.asignaciones) ? cli.asignaciones : [];
+  if(asigs.length < 2) return false;
+
+  // Agrupar por plantillaId conservando el orden de primera aparición.
+  const groups = new Map();
+  const order = [];
+  asigs.forEach(a => {
+    const k = a.plantillaId;
+    if(!groups.has(k)){ groups.set(k, []); order.push(k); }
+    groups.get(k).push(a);
+  });
+  if(!order.some(k => groups.get(k).length > 1)) return false; // nada repetido
+
+  let changed = false;
+  const result = [];
+  order.forEach(k => {
+    const group = groups.get(k);
+    if(group.length === 1){ result.push(group[0]); return; }
+
+    // Ordenar ocurrencias por fecha asc (it.1 = la primera vez que la hizo).
+    group.sort((a,b) => (a.fechaInicio||'').localeCompare(b.fechaInicio||''));
+    // Rutina de referencia = la ocurrencia más reciente (sus IDs de ejercicio
+    // son los más cercanos a la plantilla actual). Se clona para no mutar.
+    const ref = group[group.length-1];
+    const refRutina = JSON.parse(JSON.stringify(ref.rutina || { entrenos: [], numMicro: TOB_NUM_MICRO }));
+    // numMicro de la fusión = el máximo del grupo (que ninguna sesión se quede sin columna).
+    refRutina.numMicro = Math.max.apply(null, group.map(a => tobNumMicroOf(a.rutina)).concat(tobNumMicroOf(refRutina)));
+
+    const refIdx = tobEjIndex(refRutina);
+    const mergedIts = [];
+    let abort = false;
+    group.forEach(a => {
+      const srcIdx = tobEjIndex(a.rutina);
+      (a.iteraciones||[]).forEach(it => {
+        const remap = tobRemapIteracion(it, refIdx, srcIdx);
+        if(remap === null){ abort = true; return; }
+        if(!remap.fechaInicio) remap.fechaInicio = a.fechaInicio || '';
+        mergedIts.push(remap);
+      });
+    });
+
+    if(abort || !mergedIts.length){
+      // No se puede fusionar con seguridad → dejar las asignaciones tal cual.
+      console.warn('[tob] Grupo no fusionado (ejercicios no casan):', cli.nombre, k);
+      group.forEach(a => result.push(a));
+      return;
+    }
+
+    mergedIts.sort((x,y) => tobItStartDate(x).localeCompare(tobItStartDate(y)));
+    mergedIts.forEach((it,i) => it.numero = i+1);
+
+    result.push({
+      id: ref.id,
+      plantillaId: k,
+      fechaInicio: group[0].fechaInicio || ref.fechaInicio || '',
+      estado: group.some(a => a.estado === 'en_curso') ? 'en_curso' : ref.estado,
+      notas: group.map(a => (a.notas||'').trim()).filter(Boolean).join('\n'),
+      rutina: refRutina,
+      iteraciones: mergedIts
+    });
+    changed = true;
+  });
+
+  if(changed) cli.asignaciones = result;
+  return changed;
+}
+
+// Índice de ejercicios de una rutina, por entreno: mapas para remapear sesiones.
+function tobEjIndex(rutina){
+  const idx = {};
+  (rutina?.entrenos||[]).forEach(en => {
+    const byId = new Map(), byKey = new Map(), byName = new Map();
+    (en.ejercicios||[]).forEach(ej => {
+      byId.set(ej.id, ej);
+      byKey.set(ej.nombre + '@@' + ej.orden, ej.id);
+      if(!byName.has(ej.nombre)) byName.set(ej.nombre, ej.id);
+    });
+    idx[en.id] = { byId, byKey, byName };
+  });
+  return idx;
+}
+
+// Remapea las sesiones de una iteración para que sus claves de ejercicio apunten
+// a los IDs de la rutina de referencia: por id directo si ya coincide; si no,
+// por nombre+posición dentro del mismo entreno; si no, por nombre. Devuelve un
+// CLON con las sesiones remapeadas, o null si algún dato no tiene equivalente.
+function tobRemapIteracion(it, refIdx, srcIdx){
+  const clone = JSON.parse(JSON.stringify(it || {}));
+  const sesiones = clone.sesiones || {};
+  for(const mn of Object.keys(sesiones)){
+    const micro = sesiones[mn] || {};
+    for(const entId of Object.keys(micro)){
+      const ses = micro[entId];
+      if(!ses || !ses.ejs) continue;
+      const keys = Object.keys(ses.ejs);
+      if(!keys.length) continue;
+      const refEnt = refIdx[entId];
+      const srcEnt = srcIdx[entId];
+      if(!refEnt) return null; // la referencia no tiene este entreno
+      const newEjs = {};
+      for(const ejId of keys){
+        let target = null;
+        if(refEnt.byId.has(ejId)) target = ejId;          // ya coincide por id
+        else {
+          const srcEj = srcEnt && srcEnt.byId.get(ejId);  // ¿qué ejercicio era?
+          if(!srcEj) return null;
+          target = refEnt.byKey.get(srcEj.nombre + '@@' + srcEj.orden)
+                || refEnt.byName.get(srcEj.nombre) || null;
+        }
+        if(!target || newEjs[target]) return null;         // sin equivalente o colisión
+        newEjs[target] = ses.ejs[ejId];
+      }
+      ses.ejs = newEjs;
+    }
+  }
+  return clone;
 }
 
 // Construye datos consolidados para ficha: PR por ejercicio y tabla rutina×ejercicio
