@@ -466,6 +466,16 @@ function enableAutoPush(){ _enabled = true; }
 
 function setStatusElement(el){ _statusEl = el; }
 
+// Timer del modo "compacto": tras 3s en verde estable el badge se encoge a
+// un punto pequeño para no estorbar. Hover lo expande, cualquier cambio de
+// estado (work/error) lo expande también de inmediato.
+let _compactTimer = null;
+const COMPACT_DELAY = 3000;
+function _canHover(){
+  try { return window.matchMedia && window.matchMedia('(hover: hover)').matches; }
+  catch(_e){ return true; }
+}
+
 function showStatus(msg, kind){
   if(_statusEl){
     _statusEl.textContent = msg;
@@ -475,6 +485,21 @@ function showStatus(msg, kind){
     // data-kind permite que el CSS (design-system.css) aplique glow:
     //   ok → verde estable; work → amarillo pulsante; error/pending → rojo pulsante
     _statusEl.dataset.kind = kind || '';
+
+    // Cualquier cambio de estado cancela el timer y expande.
+    if(_compactTimer){ clearTimeout(_compactTimer); _compactTimer = null; }
+    _statusEl.classList.remove('gh-compact');
+    // Solo encoge si entra en "ok" Y el dispositivo soporta hover (PC/laptop).
+    // En táctiles, sin hover no podrías reexpandir sin disparar el click de
+    // resync, así que dejamos el badge a tamaño completo.
+    if(kind === 'ok' && _canHover()){
+      _compactTimer = setTimeout(() => {
+        if(_statusEl && _statusEl.dataset.kind === 'ok'){
+          _statusEl.classList.add('gh-compact');
+        }
+        _compactTimer = null;
+      }, COMPACT_DELAY);
+    }
   }
   if(window.console) console.log('[GitHubSync] '+msg);
 }
@@ -693,16 +718,12 @@ async function bootstrapAutoSync(){
   try { alreadySynced = !!sessionStorage.getItem('__gh_synced_session'); } catch(_e){}
   if(alreadySynced){
     _removeOverlay();
-    const badge = _findBadge();
-    if(badge){
-      // Recuperar timestamp del sync original (lo deja pullAndApplyAll) para
-      // que el badge muestre hora real, no solo "sincronizado" a secas.
-      let ts = '';
-      try { ts = sessionStorage.getItem('__gh_synced_at') || ''; } catch(_e){}
-      badge.textContent = ts ? ('✓ sincronizado ' + ts) : '✓ sincronizado';
-      badge.dataset.kind = 'ok';
-      badge.style.color = '#4ade80';
-    }
+    // Recuperar timestamp del sync original (lo deja pullAndApplyAll) para
+    // que el badge muestre hora real, no solo "sincronizado" a secas.
+    let ts = '';
+    try { ts = sessionStorage.getItem('__gh_synced_at') || ''; } catch(_e){}
+    // Usar showStatus para que dispare el timer del modo compacto.
+    showStatus(ts ? ('✓ sincronizado ' + ts) : '✓ sincronizado', 'ok');
     return;
   }
 

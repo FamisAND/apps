@@ -635,3 +635,38 @@ body.theme-opt .red{ color: var(--ds-bad) !important; }
   }
 }
 
+/* ───── Modo compacto: tras 3 s en verde estable se encoge a un punto
+        verde con glow, para no estorbar contenido. Hover lo expande. ─── */
+#ghSyncBadge{
+  transition: box-shadow .35s ease, border-color .35s ease, color .35s ease,
+              width .25s ease, height .25s ease, padding .25s ease,
+              border-radius .25s ease, font-size .2s ease;
+}
+#ghSyncBadge.gh-compact{
+  width: 14px !important;
+  height: 14px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border-width: 2px !important;
+  font-size: 0 !important;
+  color: transparent !important;
+  text-indent: -9999px !important;
+  background: #4ade80 !important;
+  overflow: hidden;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.55),
+              0 0 16px rgba(74, 222, 128, 0.25) !important;
+}
+#ghSyncBadge.gh-compact:hover{
+  /* Recupera tamaño y estilo de badge completo */
+  width: auto !important;
+  height: auto !important;
+  padding: 5px 10px !important;
+  border-radius: 6px !important;
+  border-width: 1px !important;
+  font-size: 11px !important;
+  color: #4ade80 !important;
+  text-indent: 0 !important;
+  background: #0a1120 !important;
+  border-color: rgba(74, 222, 128, 0.65) !important;
+}
+
