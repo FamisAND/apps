@@ -582,6 +582,10 @@ body.theme-opt .red{ color: var(--ds-bad) !important; }
   cursor: pointer;
   user-select: none;
   transition: box-shadow .35s ease, border-color .35s ease, color .35s ease;
+  /* dashboard-auth.js oculta el body con visibility:hidden durante el gate
+     del PIN (para no filtrar contenido del dashboard). El badge debe ser
+     visible incluso DURANTE el gate, así que sobreescribimos la herencia. */
+  visibility: visible !important;
 }
 #ghSyncBadge:hover{
   filter: brightness(1.15);
