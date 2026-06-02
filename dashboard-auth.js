@@ -83,6 +83,14 @@ function buildGateUI(opts){
   injectCSS();
   // Ocultamos el body para que no se vea nada del dashboard hasta que entre
   document.body.style.visibility = 'hidden';
+  // Mantener visibles los controles de "chrome" del dashboard (badge de
+  // sync, botón de volver al inicio, botón de cambiar PIN). Aplicamos
+  // visibility:visible inline para que gane SIEMPRE, sin depender del
+  // cascade de design-system.css (que podría no haber cargado todavía).
+  ['ghSyncBadge','ghHomeBtn','ghChangePinBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.style.visibility = 'visible';
+  });
 
   const gate = document.createElement('div');
   gate.id = 'dashAuthGate';

@@ -332,8 +332,12 @@ async function pullAndApplyAll(){
       });
     });
 
-    try { sessionStorage.setItem('__gh_synced_session', '1'); } catch(_e){}
-    showStatus('✓ sincronizado '+new Date().toLocaleTimeString('es-ES'), 'ok');
+    const syncedAt = new Date().toLocaleTimeString('es-ES');
+    try {
+      sessionStorage.setItem('__gh_synced_session', '1');
+      sessionStorage.setItem('__gh_synced_at', syncedAt);
+    } catch(_e){}
+    showStatus('✓ sincronizado '+syncedAt, 'ok');
     return { fresh: false, lastUpdate: remote.content.lastUpdate, security: remote.content.__security || null };
   } catch(err){
     showStatus('⚠ error sync: '+(err.message||''), 'error');
@@ -686,9 +690,11 @@ async function bootstrapAutoSync(){
     _removeOverlay();
     const badge = _findBadge();
     if(badge){
-      // Marcar como sincronizado SIEMPRE, aunque el HTML inicial del botón
-      // ya traiga texto placeholder tipo "⟳ sync".
-      badge.textContent = '✓ sincronizado';
+      // Recuperar timestamp del sync original (lo deja pullAndApplyAll) para
+      // que el badge muestre hora real, no solo "sincronizado" a secas.
+      let ts = '';
+      try { ts = sessionStorage.getItem('__gh_synced_at') || ''; } catch(_e){}
+      badge.textContent = ts ? ('✓ sincronizado ' + ts) : '✓ sincronizado';
       badge.dataset.kind = 'ok';
       badge.style.color = '#4ade80';
     }
