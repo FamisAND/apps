@@ -641,7 +641,12 @@ function _ensureOverlay(){
     'z-index:100000','display:flex','flex-direction:column',
     'align-items:center','justify-content:center','gap:14px',
     'color:#94a3b8','font-family:DM Mono,monospace','font-size:13px',
-    'text-align:center','padding:20px'
+    'text-align:center','padding:20px',
+    // CRÍTICO: dashboard-auth.js hace body.visibility='hidden' cuando
+    // monta el gate del PIN. Sin esto, el overlay heredaría hidden y
+    // sería invisible mientras el pull está en curso — el usuario vería
+    // el PIN antes de tiempo. Forzamos visible.
+    'visibility:visible'
   ].join(';');
   ov.innerHTML = '<div style="font-size:34px;animation:ghSpin 1.4s linear infinite">⟳</div>'+
                  '<div id="ghAutoSyncMsg">Sincronizando con GitHub…</div>';
