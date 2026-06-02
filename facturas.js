@@ -1,3 +1,6 @@
+GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
+document.getElementById('ghSyncBadge').addEventListener('click', GitHubSync.manualResync);
+GitHubSync.bootstrapAutoSync();
 GitHubSync.attach({
   section: 'facturas',
   keys: ['fac_v1']

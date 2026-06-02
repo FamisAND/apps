@@ -44,16 +44,20 @@
 <!-- ── GITHUB SYNC + AUTH GATE ─────────────────────────────────── -->
 <a href="index.html" id="ghHomeBtn" style="position:fixed;top:8px;left:8px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 11px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;text-decoration:none;opacity:.85;">← inicio</a>
 <button id="ghChangePinBtn" onclick="DashboardAuth.changePin('training','Full Training')" style="position:fixed;top:8px;left:88px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 11px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;cursor:pointer;opacity:.85;">🔑 PIN</button>
-<div id="ghSyncBadge" style="position:fixed;bottom:10px;right:10px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;pointer-events:none;opacity:.85;"></div>
+<button id="ghSyncBadge" type="button" title="Clica para resincronizar con GitHub" style="position:fixed;bottom:10px;right:10px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;opacity:.85;">⟳ sync</button>
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
 <script src="dashboard-auth.js"></script>
 <script>
+GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
+document.getElementById('ghSyncBadge').addEventListener('click', GitHubSync.manualResync);
+// Auto-pull al entrar (si no se ha sincronizado en esta sesión). Bloquea
+// con un overlay hasta acabar y recarga para que el render arranque fresco.
+GitHubSync.bootstrapAutoSync();
 GitHubSync.attach({
   section: 'training',
   keys: ['ft_v4','ft_theme','ft_lang']
 });
-GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 DashboardAuth.gate({ section: 'training', title: 'Full Training' });
 
 // Trackeador de última modificación local

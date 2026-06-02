@@ -296,33 +296,49 @@ function _cleanupLegacyOversize(){
 _cleanupLegacyOversize();
 
 // Descarga data.json y vuelca cada sección/clave en localStorage.
+// Avisa via showStatus para que el badge (con glow CSS) refleje el estado real.
+// Al acabar OK marca la sesión como sincronizada (sessionStorage), de modo que
+// si el usuario navega entre dashboards de la misma pestaña no se vuelve a
+// re-sincronizar innecesariamente.
 async function pullAndApplyAll(){
-  const remote = await pullRaw();
-  setCachedSha(remote.sha || '');
-  if(!remote.content) return { fresh: true };
+  showStatus('⟳ sincronizando…', 'work');
+  try {
+    const remote = await pullRaw();
+    setCachedSha(remote.sha || '');
+    if(!remote.content){
+      try { sessionStorage.setItem('__gh_synced_session', '1'); } catch(_e){}
+      showStatus('✓ sin datos remotos', 'ok');
+      return { fresh: true };
+    }
 
-  Object.keys(remote.content).forEach(section => {
-    if(section === 'version' || section === 'lastUpdate') return;
-    if(section.startsWith('__')) return;                      // privades / config
-    if(NO_LOCAL_STORAGE_SECTIONS.has(section)) return;        // gestionades en altres stores
-    const sec = remote.content[section];
-    if(!sec || typeof sec !== 'object') return;
-    Object.keys(sec).forEach(key => {
-      const val = sec[key];
-      const str = (typeof val === 'string') ? val : JSON.stringify(val);
-      try {
-        _origSetItem.call(localStorage, key, str);
-      } catch(e){
-        // Si una key concreta peta per quota, no aborti tot el bolcat — només
-        // logueja i continua amb la resta. Així la app pot arrencar encara
-        // que algun blob excepcional sigui gegantí.
-        console.warn('[GitHubSync] No s\'ha pogut guardar "' + key + '" a localStorage ('
-          + (str ? str.length : 0) + ' bytes): ' + e.message);
-      }
+    Object.keys(remote.content).forEach(section => {
+      if(section === 'version' || section === 'lastUpdate') return;
+      if(section.startsWith('__')) return;                      // privades / config
+      if(NO_LOCAL_STORAGE_SECTIONS.has(section)) return;        // gestionades en altres stores
+      const sec = remote.content[section];
+      if(!sec || typeof sec !== 'object') return;
+      Object.keys(sec).forEach(key => {
+        const val = sec[key];
+        const str = (typeof val === 'string') ? val : JSON.stringify(val);
+        try {
+          _origSetItem.call(localStorage, key, str);
+        } catch(e){
+          // Si una key concreta peta per quota, no aborti tot el bolcat — només
+          // logueja i continua amb la resta. Així la app pot arrencar encara
+          // que algun blob excepcional sigui gegantí.
+          console.warn('[GitHubSync] No s\'ha pogut guardar "' + key + '" a localStorage ('
+            + (str ? str.length : 0) + ' bytes): ' + e.message);
+        }
+      });
     });
-  });
 
-  return { fresh: false, lastUpdate: remote.content.lastUpdate, security: remote.content.__security || null };
+    try { sessionStorage.setItem('__gh_synced_session', '1'); } catch(_e){}
+    showStatus('✓ sincronizado '+new Date().toLocaleTimeString('es-ES'), 'ok');
+    return { fresh: false, lastUpdate: remote.content.lastUpdate, security: remote.content.__security || null };
+  } catch(err){
+    showStatus('⚠ error sync: '+(err.message||''), 'error');
+    throw err;
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -452,8 +468,19 @@ function showStatus(msg, kind){
     _statusEl.style.color = kind === 'error' ? '#f87171'
                           : kind === 'ok'    ? '#4ade80'
                           : kind === 'work'  ? '#fbbf24' : '';
+    // data-kind permite que el CSS (design-system.css) aplique glow:
+    //   ok → verde estable; work → amarillo pulsante; error/pending → rojo pulsante
+    _statusEl.dataset.kind = kind || '';
   }
   if(window.console) console.log('[GitHubSync] '+msg);
+}
+
+// El badge global que cualquier dashboard puede registrar via setStatusElement.
+// Como showStatus solo escribe en _statusEl si está fijado, podemos también
+// dejar que pullAndApplyAll busque el badge por id sin requerir que el caller
+// llame setStatusElement antes (útil para el bootstrap).
+function _findBadge(){
+  return document.getElementById('ghSyncBadge');
 }
 
 function schedulePush(){
@@ -579,6 +606,144 @@ async function doPush(){
 function flush(){ clearTimeout(_pushTimer); return doPush(); }
 
 // ────────────────────────────────────────────────────────────────────
+// BOOTSTRAP + RESYNC MANUAL (botón en cada dashboard)
+// ────────────────────────────────────────────────────────────────────
+//
+// Objetivo: evitar que el usuario entre directo a un dashboard (bookmark,
+// F5, link compartido) con localStorage VIEJO y que la primera edición
+// machaque el remoto. Solución de dos partes:
+//
+//   1) bootstrapAutoSync(): si el usuario no ha sincronizado en esta
+//      pestaña/sesión, descarga data.json fresco y recarga la página
+//      para que el render arranque con datos actuales. Bloquea visual-
+//      mente la app con un overlay durante la descarga.
+//
+//   2) manualResync(): botón clicable (el propio badge ghSyncBadge) que
+//      fuerza una re-sincronización en cualquier momento.
+//
+// La sesión se marca con sessionStorage.__gh_synced_session = '1' al final
+// de pullAndApplyAll(), de modo que navegar entre dashboards de la misma
+// pestaña no vuelve a sincronizar.
+
+function _ensureOverlay(){
+  let ov = document.getElementById('ghAutoSyncOverlay');
+  if(ov) return ov;
+  ov = document.createElement('div');
+  ov.id = 'ghAutoSyncOverlay';
+  ov.style.cssText = [
+    'position:fixed','inset:0','background:rgba(13,13,13,0.96)',
+    // 100000 = por encima del gate de PIN (dashboard-auth.js usa 99999),
+    // así durante el pull no se ve nada parpadear por debajo.
+    'z-index:100000','display:flex','flex-direction:column',
+    'align-items:center','justify-content:center','gap:14px',
+    'color:#94a3b8','font-family:DM Mono,monospace','font-size:13px',
+    'text-align:center','padding:20px'
+  ].join(';');
+  ov.innerHTML = '<div style="font-size:34px;animation:ghSpin 1.4s linear infinite">⟳</div>'+
+                 '<div id="ghAutoSyncMsg">Sincronizando con GitHub…</div>';
+  if(!document.getElementById('ghSpinKf')){
+    const s = document.createElement('style');
+    s.id = 'ghSpinKf';
+    s.textContent = '@keyframes ghSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(ov);
+  return ov;
+}
+
+function _removeOverlay(){
+  const ov = document.getElementById('ghAutoSyncOverlay');
+  if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
+}
+
+function _showOverlayError(msg){
+  const ov = _ensureOverlay();
+  const m = ov.querySelector('#ghAutoSyncMsg');
+  if(m){
+    m.innerHTML = '<div style="color:#fbbf24;max-width:480px;line-height:1.5">⚠ '+msg+'</div>'+
+      '<div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'+
+      '<button id="ghRetryBtn" style="background:#1e3a5f;color:#cfe1ff;border:1px solid #2d4d75;padding:7px 16px;border-radius:5px;font-family:inherit;font-size:12px;cursor:pointer">Reintentar</button>'+
+      '<button id="ghSkipBtn" style="background:transparent;color:#94a3b8;border:1px solid #1e3a5f;padding:7px 16px;border-radius:5px;font-family:inherit;font-size:12px;cursor:pointer">Continuar con datos viejos</button>'+
+      '</div>';
+    const r = ov.querySelector('#ghRetryBtn');
+    const s = ov.querySelector('#ghSkipBtn');
+    if(r) r.onclick = () => {
+      try { sessionStorage.removeItem('__gh_synced_session'); } catch(_e){}
+      location.reload();
+    };
+    if(s) s.onclick = () => { _removeOverlay(); };
+  }
+  const spin = ov.firstChild;
+  if(spin) spin.style.animation = 'none';
+}
+
+async function bootstrapAutoSync(){
+  if(!isLoggedIn()){ _removeOverlay(); return; }
+
+  let alreadySynced = false;
+  try { alreadySynced = !!sessionStorage.getItem('__gh_synced_session'); } catch(_e){}
+  if(alreadySynced){
+    _removeOverlay();
+    const badge = _findBadge();
+    if(badge && !badge.textContent){
+      badge.textContent = '✓ sincronizado';
+      badge.dataset.kind = 'ok';
+      badge.style.color = '#4ade80';
+    }
+    return;
+  }
+
+  _ensureOverlay();
+  try {
+    await pullAndApplyAll();
+    location.reload();
+  } catch(err){
+    _showOverlayError(err && err.message ? err.message : 'No pude sincronizar');
+  }
+}
+
+async function manualResync(){
+  const badge = _findBadge();
+  if(badge){
+    badge.textContent = '⟳ sincronizando…';
+    badge.dataset.kind = 'work';
+    badge.style.color = '#fbbf24';
+  }
+  try {
+    // Si hay cambios locales pendientes (autopush con timer activo o push
+    // en vuelo), súbelos PRIMERO. Sin esto, pullAndApplyAll bajaría el
+    // remoto y machacaría la edición que todavía no había subido.
+    if(_pushTimer || _pushInFlight){
+      if(badge) badge.textContent = '⟳ subiendo cambios pendientes…';
+      try { await flush(); }
+      catch(flushErr){
+        // Si la subida falla, NO seguimos: pullear ahora perdería los cambios.
+        throw new Error('No pude subir cambios pendientes: '+(flushErr.message||''));
+      }
+    }
+    try { sessionStorage.removeItem('__gh_synced_session'); } catch(_e){}
+    if(badge) badge.textContent = '⟳ descargando datos…';
+    await pullAndApplyAll();
+    // Hook opcional para dashboards que necesiten resync extra
+    // (consulta lo usa para el catálogo de menús en IndexedDB).
+    try {
+      if(typeof window.ghOnManualResync === 'function'){
+        await window.ghOnManualResync();
+      }
+    } catch(hookErr){
+      console.warn('[GitHubSync] ghOnManualResync hook falló:', hookErr);
+    }
+    location.reload();
+  } catch(err){
+    if(badge){
+      badge.textContent = '⚠ '+(err.message || 'error').slice(0, 60);
+      badge.dataset.kind = 'error';
+      badge.style.color = '#f87171';
+    }
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // API PÚBLICA
 // ────────────────────────────────────────────────────────────────────
 
@@ -589,6 +754,7 @@ window.GitHubSync = {
   updateSection, fetchSection,
   getRepo, getBranch,
   hasToken: () => !!getToken(),
+  bootstrapAutoSync, manualResync,
 };
 
 })();

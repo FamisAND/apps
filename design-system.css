@@ -567,3 +567,67 @@ body.theme-opt .neg,
 body.theme-opt .pnl-neg,
 body.theme-opt .red{ color: var(--ds-bad) !important; }
 
+/* ════════════════════════════════════════════════════════════════════
+   GitHub Sync badge — botón con glow según estado
+   ────────────────────────────────────────────────────────────────────
+   github-sync.js fija data-kind en #ghSyncBadge:
+     "ok"      → sincronizado (verde estable)
+     "work"    → sincronizando o cambios pendientes (amarillo pulsante)
+     "error"   → fallo (rojo pulsante)
+     ""/none   → estado inicial (rojo pulsante "sin sincronizar")
+   El badge es ahora <button>: cursor:pointer + pointer-events:auto.
+   ════════════════════════════════════════════════════════════════════ */
+#ghSyncBadge{
+  pointer-events: auto !important;
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow .35s ease, border-color .35s ease, color .35s ease;
+}
+#ghSyncBadge:hover{
+  filter: brightness(1.15);
+}
+
+/* Verde estable = sync confirmado */
+#ghSyncBadge[data-kind="ok"]{
+  border-color: rgba(74, 222, 128, 0.65) !important;
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.35),
+              0 0 22px rgba(74, 222, 128, 0.18);
+}
+
+/* Amarillo pulsante = trabajo en curso (pull, push, cambios pendientes) */
+#ghSyncBadge[data-kind="work"]{
+  border-color: rgba(251, 191, 36, 0.65) !important;
+  animation: ghSyncPulseWork 1.5s ease-in-out infinite;
+}
+
+/* Rojo pulsante = error o sin sincronizar todavía */
+#ghSyncBadge[data-kind="error"],
+#ghSyncBadge:not([data-kind]),
+#ghSyncBadge[data-kind=""]{
+  border-color: rgba(248, 113, 113, 0.6) !important;
+  animation: ghSyncPulseError 1.8s ease-in-out infinite;
+}
+
+@keyframes ghSyncPulseWork{
+  0%, 100% { box-shadow: 0 0 8px rgba(251, 191, 36, 0.30),
+                         0 0 18px rgba(251, 191, 36, 0.12); }
+  50%      { box-shadow: 0 0 16px rgba(251, 191, 36, 0.70),
+                         0 0 30px rgba(251, 191, 36, 0.30); }
+}
+@keyframes ghSyncPulseError{
+  0%, 100% { box-shadow: 0 0 8px rgba(248, 113, 113, 0.30),
+                         0 0 18px rgba(248, 113, 113, 0.12); }
+  50%      { box-shadow: 0 0 16px rgba(248, 113, 113, 0.65),
+                         0 0 30px rgba(248, 113, 113, 0.28); }
+}
+
+/* Respeta usuarios con `prefers-reduced-motion` */
+@media (prefers-reduced-motion: reduce){
+  #ghSyncBadge[data-kind="work"],
+  #ghSyncBadge[data-kind="error"],
+  #ghSyncBadge:not([data-kind]),
+  #ghSyncBadge[data-kind=""]{
+    animation: none;
+  }
+}
+

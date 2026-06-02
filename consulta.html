@@ -1305,8 +1305,8 @@
 
 <div class="tob-toast" id="tobToast"></div>
 
-<!-- Sync badge (estado de sincronización con GitHub) -->
-<div id="ghSyncBadge" style="position:fixed;bottom:10px;right:10px;background:#0e0d0a;border:1px solid var(--border2);color:var(--mute);padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;pointer-events:none;opacity:.85;"></div>
+<!-- Sync badge: botón clicable que muestra el estado y permite resync manual -->
+<button id="ghSyncBadge" type="button" title="Clica para resincronizar con GitHub" style="position:fixed;bottom:10px;right:10px;background:#0e0d0a;border:1px solid var(--border2);color:var(--mute);padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;opacity:.85;">⟳ sync</button>
 
 <!-- Paste-import modal: pega JSON con mediciones / asignaciones de un cliente -->
 <div id="tobPasteImportBg" class="tob-modal-bg">
@@ -1335,11 +1335,24 @@
 // el PIN está hasheado con ese nombre y los datos en GitHub viven bajo
 // esa clave. Renombrarlo aquí invalidaría tot l'històric. La UI mostra
 // "Consulta" però la sección interna queda igual per continuïtat.
+GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
+document.getElementById('ghSyncBadge').addEventListener('click', GitHubSync.manualResync);
+// Hook: el manualResync también vuelca el catálogo de menús (IndexedDB).
+// pullAndApplyAll ya trae la sección training_online → tob_online_v2 (clientes,
+// asignaciones, mediciones). El catálogo (tob_menus_catalog) vive aparte.
+window.ghOnManualResync = async function(){
+  if(typeof tobMenusSyncPull === 'function'){
+    try { await tobMenusSyncPull({ manual: true }); } catch(e){ console.warn('[resync] menus:', e); }
+  }
+  if(typeof tobAiSyncPull === 'function'){
+    try { await tobAiSyncPull(); } catch(e){ console.warn('[resync] ai:', e); }
+  }
+};
+GitHubSync.bootstrapAutoSync();
 GitHubSync.attach({
   section: 'training_online',
   keys: ['tob_online_v2']
 });
-GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 // Gate de PIN — igual que el resto de dashboards. Tras pasarlo, se activa
 // el auto-push y la app arranca normal (tobLoad corre por su auto-init).
 DashboardAuth.gate({ section: 'training_online', title: 'Consulta' });
