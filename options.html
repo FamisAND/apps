@@ -601,9 +601,9 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px">
       <div class="cfg-field"><label>Fecha cierre</label><input type="date" id="acm_cierre"/></div>
       <div class="cfg-field">
-        <label>Precio de cierre ($/contrato)</label>
+        <label id="acm_pcierre_label">Precio de cierre ($/contrato)</label>
         <input type="number" id="acm_pcierre" placeholder="0.00" step="0.001"/>
-        <div style="font-size:9px;color:#3a5468;margin-top:3px;font-family:'Courier New',monospace">recompra al cerrar (lo que pagas)</div>
+        <div id="acm_pcierre_hint" style="font-size:9px;color:#3a5468;margin-top:3px;font-family:'Courier New',monospace">recompra al cerrar (lo que pagas)</div>
       </div>
       <div class="cfg-field">
         <label>Comisión de cierre ($)</label>
@@ -5544,26 +5544,51 @@ function openActCloseModal(idx){
   document.getElementById('acm_tp').value = '';
   document.getElementById('acm_nota').value = '';
 
-  // Rellenar info de apertura (read-only) — muestra el crédito de entrada
-  // que el usuario ya introdujo, así no tiene que ir a buscarlo o calcular
-  const pc_share = (a.pCredito||0) * 100;  // de escala "/100" a $/share
-  const pd_share = Math.abs(a.pDebito||0) * 100;
+  // Detectar dirección — débito vs crédito — para etiquetar y calcular bien.
+  // _entryIsLong = true significa débito (pagaste al abrir, cobras al cerrar).
+  const isLong = _entryIsLong(a);
+
+  // Magnitudes en $/share (escala usada en el modal de cierre).
+  // Math.abs hace robusta la conversión frente a signos negativos que el
+  // usuario haya podido introducir al abrir un débito como -0.78, etc.
+  const pc_share = Math.abs((a.pCredito||0) * 100);
+  const pd_share = Math.abs((a.pDebito||0) * 100);
   const ctr = a.contracts||1;
-  const creditoEntradaPorContrato = pc_share - pd_share;  // $/contrato
-  const creditoEntradaTotal = creditoEntradaPorContrato * 100 * ctr;  // $ totales
+  // Magnitud neta de la prima de entrada (cobrada si crédito · pagada si débito)
+  const primaEntradaMag = pc_share + pd_share;  // se suman porque ambas son outflow/inflow del mismo signo
+  // No: para crédito, pc es ingreso y pd es egreso (resta). Para débito, pc
+  // es egreso (negativo en input) y pd es egreso adicional (suma). Usamos
+  // magnitud neta = |pc| - |pd| solo para crédito; para débito = |pc| + |pd|
+  // (cost basis total).
+  const primaEntradaNetaMag = isLong ? (pc_share + pd_share) : Math.max(0, pc_share - pd_share);
+  const primaEntradaTotal   = primaEntradaNetaMag * 100 * ctr;
   const comiOpen = +(a.comi||0);
 
+  // Etiqueta y color según dirección.
+  const lblEntrada = isLong ? 'Débito entrada'   : 'Crédito entrada';
+  const colEntrada = isLong ? '#f04545'          : '#3fb68b';
+  // Signo: para débito mostramos magnitud (es lo que pagaste). Para crédito
+  // también es positivo (lo que cobraste).
   const openInfo = document.getElementById('acm_open_summary');
   if(openInfo){
     openInfo.innerHTML = `
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 14px;line-height:1.6">
         <span style="color:#3a5468">Activo:</span><span style="color:#9aa9ba"><strong>${a.activo||'—'}</strong> · ${a.strat||'—'} · ${ctr} contrato${ctr>1?'s':''}</span>
         <span style="color:#3a5468">Apertura:</span><span style="color:#9aa9ba">${a.apertura||'—'}</span>
-        <span style="color:#3a5468">Crédito entrada:</span><span style="color:#3fb68b">$${creditoEntradaPorContrato.toFixed(2)}/contrato · <strong>$${creditoEntradaTotal.toFixed(2)} total</strong></span>
+        <span style="color:#3a5468">${lblEntrada}:</span><span style="color:${colEntrada}">$${primaEntradaNetaMag.toFixed(2)}/contrato · <strong>$${primaEntradaTotal.toFixed(2)} total</strong></span>
         <span style="color:#3a5468">Comi apertura:</span><span style="color:#9aa9ba">$${comiOpen.toFixed(2)} <span style="color:#3a5468">(introducida al abrir)</span></span>
       </div>
     `;
   }
+  // Etiqueta + hint del campo de cierre según dirección.
+  const lblCierre = document.getElementById('acm_pcierre_label');
+  if(lblCierre) lblCierre.textContent = isLong
+    ? 'Precio venta cierre ($/contrato)'
+    : 'Precio de cierre ($/contrato)';
+  const hintCierre = document.getElementById('acm_pcierre_hint');
+  if(hintCierre) hintCierre.textContent = isLong
+    ? 'venta al cerrar (lo que recibes)'
+    : 'recompra al cerrar (lo que pagas)';
 
   // Auto-calc preview
   updateCloseCalc();
@@ -5578,26 +5603,44 @@ function openActCloseModal(idx){
 function updateCloseCalc(){
   const a = _actCloseIdx!=null ? ACTIVAS[_actCloseIdx] : null;
   if(!a) return;
-  // pCredito está en escala /100 (ej: 0.0123 = $1.23/share)
-  // El campo acm_pcierre se introduce en $/share (ej: 1.26)
-  // Convertimos pCredito a $/share para que cuadre con pcierre
-  const pc_share = (a.pCredito||0) * 100;
-  const pd_share = Math.abs(a.pDebito||0) * 100;
-  const pcl_share = +document.getElementById('acm_pcierre').value||0;  // ya en $/share
+  // Dirección — débito vs crédito. Cambia las fórmulas de P&L y TP.
+  const isLong = _entryIsLong(a);
+
+  // pCredito está en escala /100 (ej: 0.0123 = $1.23/share). Math.abs lo
+  // hace robusto a signos negativos que el usuario haya introducido al
+  // abrir un débito (-0.78). La dirección la decide isLong, no el signo.
+  const pc_share  = Math.abs((a.pCredito||0) * 100);
+  const pd_share  = Math.abs((a.pDebito||0)  * 100);
+  const pcl_share = Math.abs(+document.getElementById('acm_pcierre').value||0);
   // Comisión: la apertura viene de la posición activa (a.comi),
   // el usuario introduce la de cierre, y la total es la suma.
   const comiOpen  = +(a.comi||0);
   const comiClose = +document.getElementById('acm_comi_close').value||0;
   const comi      = comiOpen + comiClose;  // total para el cálculo del P&L
   const ctr  = a.contracts||1;
-  // P&L bruto en $: (pc - pd - pcl) × 100 shares × contratos
-  const pnetoBruto = (pc_share - pd_share - pcl_share) * 100 * ctr;
+  // ── P&L direction-aware ──
+  // Débito/long: pagaste prima al abrir, recibes prima al cerrar.
+  //   pnetoBruto = (cierre - apertura) × 100 × ctr
+  //   apertura = pc + pd  (cost basis total, ambos son outflow)
+  // Crédito/short: cobraste prima al abrir, pagas prima al cerrar.
+  //   pnetoBruto = (apertura - cierre) × 100 × ctr
+  //   apertura = pc - pd  (cobrado neto, pd es coste adicional si lo hay)
+  const primaApertura = isLong ? (pc_share + pd_share) : (pc_share - pd_share);
+  const pnetoBruto = isLong
+    ? (pcl_share - primaApertura) * 100 * ctr
+    : (primaApertura - pcl_share) * 100 * ctr;
   const totalneto  = pnetoBruto - comi;
-  // Para guardar en histórico mantenemos escala "prima" (/100)
-  // pneto = (pc - pd - pcl) en escala /100 (igual que totalNetoOvr antiguo)
-  const pneto    = (pc_share - pd_share - pcl_share) * ctr;  // en escala "prima"
-  const totalNetoEscalaPrima = totalneto / 100;  // para que coincida con escala histórico
-  const tp       = (pc_share-pd_share)>0 ? Math.min(100,Math.max(-100,(pc_share-pd_share-pcl_share)/(pc_share-pd_share)*100)) : 0;
+  // pneto en escala "prima" (/100) para guardar en histórico
+  const pneto = isLong
+    ? (pcl_share - primaApertura) * ctr
+    : (primaApertura - pcl_share) * ctr;
+  const totalNetoEscalaPrima = totalneto / 100;
+  // TP% — % de la prima capturada (short) o gain over cost (long)
+  const tp = primaApertura > 0
+    ? Math.min(100, Math.max(-100, (isLong
+        ? (pcl_share - primaApertura) / primaApertura
+        : (primaApertura - pcl_share) / primaApertura) * 100))
+    : 0;
 
   // Mostrar el desglose de comisión (apertura, cierre, total) debajo del campo
   const calcEl = document.getElementById('acm_comi_total_calc');
@@ -5611,12 +5654,14 @@ function updateCloseCalc(){
     const col  = totalneto>=0 ? '#3fb68b' : '#f04545';
     const sign = totalneto>=0 ? '+' : '';
     prev.style.color = col;
-    // Mostrar desglose: (entrada - cierre) × 100 × ctr − comi
-    const cred = pc_share - pd_share;
+    // Mostrar desglose direction-aware
+    const desglose = isLong
+      ? `($${pcl_share.toFixed(2)} cierre − $${primaApertura.toFixed(2)} entrada) × 100 × ${ctr} − $${comi.toFixed(2)} comi total`
+      : `($${primaApertura.toFixed(2)} entrada − $${pcl_share.toFixed(2)} cierre) × 100 × ${ctr} − $${comi.toFixed(2)} comi total`;
     prev.innerHTML = `
       <div style="font-size:18px">${sign}$${totalneto.toFixed(2)}</div>
       <div style="font-size:9px;color:#5a7a9a;font-weight:400;margin-top:4px;line-height:1.5">
-        ($${cred.toFixed(2)} entrada − $${pcl_share.toFixed(2)} cierre) × 100 × ${ctr} − $${comi.toFixed(2)} comi total<br>
+        ${desglose}<br>
         TP: ${tp.toFixed(1)}%
       </div>`;
   }
@@ -5629,27 +5674,39 @@ function closeActCloseModal(){ document.getElementById('actCloseModal').classLis
 function confirmClosePosition(){
   if(_actCloseIdx==null) return;
   const a = ACTIVAS[_actCloseIdx];
-  // pCredito en escala /100, pcierre en $/share (lo que el usuario mete en el campo)
-  const pc_share = (a.pCredito||0) * 100;
-  const pd_share = Math.abs(a.pDebito||0) * 100;
-  const pcl_share = +document.getElementById('acm_pcierre').value||0;  // $/share
-  // pCierre en escala /100 para guardar en histórico (mismo formato que pCredito)
-  const pcl_storage = pcl_share / 100;
+  // Dirección — mismas reglas que updateCloseCalc.
+  const isLong = _entryIsLong(a);
+  // Magnitudes en $/share. Math.abs robusto al signo del input.
+  const pc_share  = Math.abs((a.pCredito||0) * 100);
+  const pd_share  = Math.abs((a.pDebito||0)  * 100);
+  const pcl_share = Math.abs(+document.getElementById('acm_pcierre').value||0);
+  // pCierre en escala /100 para guardar en histórico (mismo formato que pCredito).
+  // Conservamos el signo que entró por compatibilidad con datos viejos.
+  const pcl_storage = (+document.getElementById('acm_pcierre').value||0) / 100;
   // Comisiones: apertura ya estaba en a.comi, cierre la introduce el usuario.
-  // Total = suma. Para legacy se sigue guardando 'comi' (la suma) y para
-  // el sistema nuevo se guardan también comiOpen/comiClose por separado.
   const comiOpen  = +(a.comi||0);
   const comiClose = +document.getElementById('acm_comi_close').value||1.24;
   const comi      = comiOpen + comiClose;
   const ctr   = a.contracts||1;
   const cierre= document.getElementById('acm_cierre').value;
-  // pneto y totalneto en escala "prima" (/100) para que cuadre con resto del histórico
-  const _pnetoFallback = (pc_share - pd_share - pcl_share) * ctr;  // escala "prima"
+  // pneto y totalneto fallback direction-aware (en caso de que los hidden
+  // estén vacíos por algún motivo). Mismo cálculo que updateCloseCalc.
+  const primaApertura = isLong ? (pc_share + pd_share) : (pc_share - pd_share);
+  const _pnetoFallback = isLong
+    ? (pcl_share - primaApertura) * ctr
+    : (primaApertura - pcl_share) * ctr;
   const pneto    = +document.getElementById('acm_pneto').value  || _pnetoFallback;
-  const totalNetoFallback = (pc_share - pd_share - pcl_share)*100*ctr - comi;  // $ reales
-  const totalNetoEscalaPrima = totalNetoFallback / 100;  // escala "prima"
+  const _totalBruto = isLong
+    ? (pcl_share - primaApertura) * 100 * ctr
+    : (primaApertura - pcl_share) * 100 * ctr;
+  const totalNetoEscalaPrima = (_totalBruto - comi) / 100;
   const totalneto = +document.getElementById('acm_totalneto').value || totalNetoEscalaPrima;
-  const tp       = +document.getElementById('acm_tp').value     || ((pc_share-pd_share)>0?Math.min(100,Math.max(-100,(pc_share-pd_share-pcl_share)/(pc_share-pd_share)*100)):0);
+  const _tpFallback = primaApertura > 0
+    ? Math.min(100, Math.max(-100, (isLong
+        ? (pcl_share - primaApertura) / primaApertura
+        : (primaApertura - pcl_share) / primaApertura) * 100))
+    : 0;
+  const tp       = +document.getElementById('acm_tp').value     || _tpFallback;
   const notaClose= document.getElementById('acm_nota').value;
 
   // Build HIST entry
