@@ -266,6 +266,12 @@
           <input type="text" id="gc_newStrat" placeholder="Nombre"
             style="background:#070b10;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:4px 6px;border-radius:3px;outline:none;flex:1;min-width:80px"
             onkeydown="if(event.key==='Enter') gcAddStrat()"/>
+          <select id="gc_newDir" title="Tipo: crédito (cobras prima) / débito (pagas prima) / neutral (acciones)"
+            style="background:#070b10;border:1px solid #3fb68b44;color:#3fb68b;font-family:'Courier New',monospace;font-size:8px;padding:4px 4px;border-radius:3px;outline:none;flex-shrink:0;width:78px;font-weight:700">
+            <option value="credit" selected>CRÉDITO</option>
+            <option value="debit">DÉBITO</option>
+            <option value="neutral">NEUTRAL</option>
+          </select>
           <input type="text" id="gc_newLegs" placeholder="Patas para roll (ej: Put spread, Call spread)"
             title="Opcional. Lista de patas separadas por coma para el selector de roll. Ej: Put spread, Call spread"
             style="background:#070b10;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:4px 6px;border-radius:3px;outline:none;flex:2;min-width:120px"
@@ -6687,10 +6693,18 @@ function gcBuildStratTable(){
   const all    = getAllStrats();
   const custom = new Set((CFG.customStrats||[]).map(s=>s.code));
 
+  // Grid: código | nombre | tipo (credit/debit/neutral) | patas roll | ✕
+  // El TIPO es lo que hace que el cálculo de P&L use la fórmula correcta:
+  //   credit  → P&L = (apertura - cierre) × 100  (cobras prima, ganas si decae)
+  //   debit   → P&L = (cierre - apertura) × 100  (pagas prima, ganas si sube)
+  //   neutral → ACC: ni una ni la otra (acciones)
+  const GRID_COLS = '64px 1fr 88px 1fr 32px';
+
   // Header row
-  let html = `<div style="display:grid;grid-template-columns:64px 1fr 1fr 32px;gap:6px;padding:4px 10px">
+  let html = `<div style="display:grid;grid-template-columns:${GRID_COLS};gap:6px;padding:4px 10px">
     <span style="font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:.5px">Código</span>
     <span style="font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:.5px">Nombre</span>
+    <span style="font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:.5px" title="Crédito = cobras prima neta · Débito = pagas prima neta · Neutral = acciones">Tipo</span>
     <span style="font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:.5px" title="Patas para el selector de roll. Separadas por coma.">Patas roll</span>
     <span></span>
   </div>`;
@@ -6713,6 +6727,19 @@ function gcBuildStratTable(){
            style="background:none;border:1px solid #f0454533;color:#f04545;border-radius:3px;cursor:pointer;font-size:10px;padding:2px 6px;font-family:'Courier New',monospace;line-height:1">✕</button>`
       : `<span></span>`;
 
+    // Direction selector — vale tanto para built-in como para custom.
+    // Cualquier cambio se persiste en CFG.stratDirections[code] (override
+    // que gana sobre el meta del built-in y sobre customStrats[i].direction).
+    const dir = s.direction || 'credit';
+    const dirCol = dir === 'debit' ? '#f04545' : dir === 'credit' ? '#3fb68b' : '#8b8b9a';
+    const dirField = `<select data-code="${s.code}" onchange="gcUpdateDirection(this)"
+        title="Tipo de posición: crédito (cobras prima) / débito (pagas prima) / neutral (acciones)"
+        style="background:#070b10;border:1px solid ${dirCol}44;color:${dirCol};font-family:'Courier New',monospace;font-size:8px;padding:3px 4px;border-radius:3px;outline:none;width:100%;box-sizing:border-box;font-weight:700">
+        <option value="credit"  ${dir==='credit' ?'selected':''}>CRÉDITO</option>
+        <option value="debit"   ${dir==='debit'  ?'selected':''}>DÉBITO</option>
+        <option value="neutral" ${dir==='neutral'?'selected':''}>NEUTRAL</option>
+      </select>`;
+
     // Legs for this strat
     const _custObj = (CFG.customStrats||[]).find(c=>c.code===s.code);
     const _legs = _custObj?.legs || [];
@@ -6724,21 +6751,38 @@ function gcBuildStratTable(){
            title="Patas para el selector de roll. Separadas por coma."
            style="background:#070b10;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:4px 6px;border-radius:3px;outline:none;width:100%;box-sizing:border-box"/>`
       : `<span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;padding:4px 6px">${
-           ({'IC':'PCS / CCS','JL':'Put / CCS','BWB':'Ala inf / Ala sup','PMCC':'LEAP / Call corto','DPS':'Put largo / Put corto','112':'Ratio / Put corto'})[s.code] || '—'
+           ({'IC':'PCS / CCS','JL':'Put / CCS','BWB':'Ala inf / Ala sup','PMCC':'LEAP / Call corto','DPS':'Put largo / Put corto','PDS':'Put largo / Put corto','CDS':'Call largo / Call corto','112':'Ratio / Put corto'})[s.code] || '—'
          }</span>`;
 
-    return `<div style="display:grid;grid-template-columns:64px 1fr 1fr 32px;gap:6px;align-items:center;padding:4px 10px;background:${rowBg};border-radius:3px;border:1px solid #1a2530">
+    return `<div style="display:grid;grid-template-columns:${GRID_COLS};gap:6px;align-items:center;padding:4px 10px;background:${rowBg};border-radius:3px;border:1px solid #1a2530">
       ${codeField}
       <input type="text" value="${s.label.replace(/"/g,'&quot;')}"
         data-code="${s.code}"
         onchange="gcRenameStrat(this)"
         style="background:#070b10;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:4px 6px;border-radius:3px;outline:none;width:100%;box-sizing:border-box"/>
+      ${dirField}
       ${legsField}
       ${delBtn}
     </div>`;
   }).join('');
 
   wrap.innerHTML = html;
+}
+
+// Cambio de tipo (credit/debit/neutral) desde la tabla. Se persiste como
+// override en CFG.stratDirections (gana sobre el meta de built-in y sobre
+// customStrats[i].direction). La persistencia a localStorage la hace
+// saveGlobalCfg cuando el user pulsa "Guardar configuración".
+function gcUpdateDirection(sel){
+  const code = sel.getAttribute('data-code');
+  const val  = sel.value;
+  if(!code || !(val === 'credit' || val === 'debit' || val === 'neutral')) return;
+  if(!CFG.stratDirections) CFG.stratDirections = {};
+  CFG.stratDirections[code] = val;
+  // Feedback visual: recolorear el select según el nuevo tipo
+  const col = val === 'debit' ? '#f04545' : val === 'credit' ? '#3fb68b' : '#8b8b9a';
+  sel.style.color = col;
+  sel.style.borderColor = col + '44';
 }
 function gcRenameStrat(input){
   const code  = input.getAttribute('data-code');
@@ -7595,11 +7639,17 @@ function gcAddStrat(){
   if(!CFG.customStrats) CFG.customStrats = [];
   const rawLegs = (document.getElementById('gc_newLegs')?.value||'').trim();
   const legs = rawLegs ? rawLegs.split(',').map(l=>l.trim()).filter(Boolean) : [];
-  CFG.customStrats.push({ code, label, tp: 50, legs });
+  // Dirección elegida en el selector (default credit).
+  const dirSel = document.getElementById('gc_newDir')?.value;
+  const direction = (dirSel === 'debit' || dirSel === 'neutral') ? dirSel : 'credit';
+  CFG.customStrats.push({ code, label, tp: 50, legs, direction });
+  // Reset inputs y selector
   const legsInp = document.getElementById('gc_newLegs');
   if(legsInp) legsInp.value = '';
   if(codeInp) codeInp.value = '';
   if(nameInp) nameInp.value = '';
+  const dirInp = document.getElementById('gc_newDir');
+  if(dirInp) dirInp.value = 'credit';
   gcBuildStratTable();
   _gcBuildCustomList();
   _gcBuildTpGrid();
