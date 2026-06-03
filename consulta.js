@@ -10549,12 +10549,12 @@ async function tobMenuPdf(cliId, menuId){
           anyRecepta = true;
         });
         dayBody += `<div class="mp-meal-section">
-          <div class="mp-meal-title">${esc(c.label)}</div>
+          <div class="mp-meal-title mp-keep-next">${esc(c.label)}</div>
           ${mealBody}
         </div>`;
       });
       if(dayBody){
-        weekBody += `<div class="mp-day-banner mp-blk">
+        weekBody += `<div class="mp-day-banner mp-blk mp-keep-next">
           <span class="mp-day-name">${DIAS[d]}</span>
           <span class="mp-day-totals">${dayApats} àpats · ${Math.round(dayKcal)} kcal · ${Math.round(dayProt)} g proteïna</span>
         </div>${dayBody}`;
@@ -10758,18 +10758,47 @@ async function tobMenuPdf(cliId, menuId){
     //   · `mp-page-break` → FORÇA salt de pàgina abans (encara que càpiga).
     //     Així cada setmana, compra i recetari obre pàgina pròpia.
     //   · `mp-blk` sense page-break → talla només si no cap.
+    //   · `mp-keep-next` → si el SEGÜENT bloc no cap a la pàgina, el header
+    //     baixa amb ell (evita "títol orfe a baix de la pàgina i contingut a
+    //     la següent"). Aplicat a banner de dia i títol d'àpat.
     const docTop = docEl.getBoundingClientRect().top;
     const docH = docEl.scrollHeight;
     const cuts = [0];
     let pageStart = 0;
-    holder.querySelectorAll('.mp-blk, .mp-page-break').forEach(blk => {
+    const blocks = [...holder.querySelectorAll('.mp-blk, .mp-page-break, .mp-keep-next')];
+    blocks.forEach((blk, idx) => {
       const rc = blk.getBoundingClientRect();
       const top = rc.top - docTop;
       const bot = rc.bottom - docTop;
-      const force = blk.classList.contains('mp-page-break');
+      const force    = blk.classList.contains('mp-page-break');
+      const keepNext = blk.classList.contains('mp-keep-next');
+
       if(force && top > pageStart + 4){
         cuts.push(top); pageStart = top;
-      } else if(!force && bot - pageStart > PAGE_CSS_H && top > pageStart + 4){
+        return;
+      }
+      if(force) return;
+
+      if(keepNext){
+        // Buscar el primer bloc següent que NO sigui també keep-next, per
+        // saber on acaba el contingut que ha d'anar amb el header.
+        let nextBot = bot;
+        for(let j = idx + 1; j < blocks.length; j++){
+          if(!blocks[j].classList.contains('mp-keep-next')){
+            nextBot = blocks[j].getBoundingClientRect().bottom - docTop;
+            break;
+          }
+        }
+        // Si la combinació header + següent bloc supera la pàgina, tallar
+        // ABANS del header (es mou avall sencer).
+        if(nextBot - pageStart > PAGE_CSS_H && top > pageStart + 4){
+          cuts.push(top); pageStart = top;
+        }
+        return;
+      }
+
+      // Bloc normal: trencar si el seu bottom no cap.
+      if(bot - pageStart > PAGE_CSS_H && top > pageStart + 4){
         cuts.push(top); pageStart = top;
       }
     });
