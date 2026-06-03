@@ -290,8 +290,33 @@ const TOB_EJ_ALIASES = {
   'BOX SQUAT': 'SQUAT',
   'Box Squat': 'SQUAT',
   'CALF + BOX SQUAT': 'CALF + SQUAT',
-  'BOX SQUAT (2" pausa)': 'SQUAT (2" pausa)'
+  'BOX SQUAT (2" pausa)': 'SQUAT (2" pausa)',
+  // CURL con BARRA: la plantilla 'Fuerza 2 Maximales' lo tenía con CON
+  // mayúsculas, lo que generaba DOS gráficas distintas en el PDF y en la
+  // ficha. Se unifica al canónico 'CURL con BARRA'.
+  'CURL CON BARRA': 'CURL con BARRA'
 };
+
+// Whitelist de ejercicios que generan GRÁFICA por ejercicio (PDF histórico
+// + ficha del cliente). El resto se sigue registrando, simplemente no
+// pinta gráfica — ahorra ruido y centra el control de progresión en los
+// movimientos clave que importan al usuario.
+//
+// Match EXACTO contra ej.nombre (canónico tras TOB_EJ_ALIASES). Variantes
+// con paréntesis ('SQUAT (2" pausa)') o sufijos ('DOMINADAS SUPINAS')
+// quedan FUERA a propósito — el usuario quiere solo los 7 básicos.
+const TOB_GRAFICAS_EJ_WHITELIST = new Set([
+  'SQUAT',
+  'PRESS BANCA',
+  'PESO MUERTO',
+  'PRESS MILITAR',
+  'DOMINADAS',
+  'CURL con BARRA',
+  'PRESS MILITAR SENTADO'
+]);
+function _tobEjEnGrafica(ej){
+  return ej && ej.tipo !== 'circuito' && TOB_GRAFICAS_EJ_WHITELIST.has(ej.nombre);
+}
 
 // Campos de medición (composición corporal — antropometría tipo ISAK,
 // formato del informe Full Training). [key interna, {ca, es, en}].
@@ -2699,7 +2724,7 @@ const TOB_BIIO_DATA = (() => {
           { nombre:'PRESS BANCA', subtitle:'1" Pausa - Subida Explosiva', tipo:'normal', planByMicro: f1_main },
           { nombre:'REMO', subtitle:'Espalda neutra - Explosivo · o Seal Row', tipo:'normal', planByMicro: f1_main },
           { nombre:'CRUNCH + HIPEREXT + CURL', subtitle:'Triserie [JUMP SET]', tipo:'circuito',
-            circuitoLineas:['CRUNCH INVERSO','HIPEREXTENSION o LEG CURL','CURL CON BARRA'], planByMicro: f1_triserie }
+            circuitoLineas:['CRUNCH INVERSO','HIPEREXTENSION o LEG CURL','CURL con BARRA'], planByMicro: f1_triserie }
         ]},
         { letra:'B', nombre:'Entreno B · Posterior', ejercicios:[
           { nombre:'PESO MUERTO', subtitle:'Arrancadas - No rebote', tipo:'normal', planByMicro: f1_main },
@@ -2737,7 +2762,7 @@ const TOB_BIIO_DATA = (() => {
           { nombre:'PRESS AGARRE ESTRECHO', subtitle:'Maximal (1ª sesión)', tipo:'normal', planByMicro: f2_max },
           { nombre:'PESO MUERTO', subtitle:'Maximal (2ª sesión)', tipo:'normal', planByMicro: f2_max },
           { nombre:'REMO BARRA INVERTIDO', subtitle:'Maximal (2ª sesión) · o JALONES INVERTIDOS', tipo:'normal', planByMicro: f2_max },
-          { nombre:'CURL CON BARRA', subtitle:'Maximal (2ª sesión)', tipo:'normal', planByMicro: f2_max }
+          { nombre:'CURL con BARRA', subtitle:'Maximal (2ª sesión)', tipo:'normal', planByMicro: f2_max }
         ]}
       ]
     },
@@ -3666,12 +3691,15 @@ function tobRemapIteracion(it, refIdx, srcIdx){
 
 // Construye datos consolidados para ficha: PR por ejercicio y tabla rutina×ejercicio
 function tobBuildFichaData(cli){
-  // Recolectar todos los ejercicios principales únicos
+  // Recolectar todos los ejercicios principales únicos.
+  // Solo entran los del whitelist (los 7 movimientos clave). El resto se
+  // sigue registrando en el localStorage del cliente, pero no aparece en
+  // la ficha — la idea es centrar el control de progresión.
   const ejNames = new Set();
   (cli.asignaciones||[]).forEach(a => {
     (a.rutina?.entrenos||[]).forEach(en => {
       (en.ejercicios||[]).forEach(ej => {
-        if(ej.tipo !== 'circuito') ejNames.add(ej.nombre);
+        if(_tobEjEnGrafica(ej)) ejNames.add(ej.nombre);
       });
     });
   });
@@ -5659,9 +5687,12 @@ async function tobBuildPdfHistorico(cli){
     });
 
     // ─── PROGRESIÓN POR EJERCICIO · VOLUMEN (toda la trayectoria del cliente) ──
+    // Mismo whitelist que la ficha: solo los 7 movimientos clave generan
+    // gráfica en el PDF. El resto del trabajo del cliente sigue ahí dentro
+    // de cada sesión, pero no satura el histórico con accesorios.
     const ejNamesSet = new Set();
     (cli.asignaciones||[]).forEach(a => (a.rutina?.entrenos||[]).forEach(en =>
-      (en.ejercicios||[]).forEach(ej => { if(ej.tipo !== 'circuito') ejNamesSet.add(ej.nombre); })));
+      (en.ejercicios||[]).forEach(ej => { if(_tobEjEnGrafica(ej)) ejNamesSet.add(ej.nombre); })));
     const volChartItems = [];
     [...ejNamesSet].forEach(name => {
       const cfg = tobBuildEjChartConfigByName(cli, name);
