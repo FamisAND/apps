@@ -556,7 +556,7 @@
       <div class="cfg-field"><label>Apertura</label><input type="date" id="am_apertura"/></div>
       <div class="cfg-field"><label>Expiración</label><input type="date" id="am_exp"/></div>
       <div class="cfg-field"><label>Max Risk ($)</label><input type="number" id="am_maxrisk" placeholder="5000" step="50" oninput="this.dataset.autocalc='0'" title="Se calcula automáticamente desde las patas (strikes + prima). Edítalo para fijarlo manualmente."/></div>
-      <div class="cfg-field"><label>Prima neta cobrada ($/contrato)</label><input type="number" id="am_pcred" placeholder="2.50" step="0.01"/></div>
+      <div class="cfg-field"><label id="am_pcred_label">Prima neta cobrada ($/contrato)</label><input type="number" id="am_pcred" placeholder="2.50" step="0.01" title="Magnitud de la prima neta. Para crédito = lo que cobras al abrir. Para débito = lo que pagas al abrir. El sistema usa Math.abs así que da igual el signo."/></div>
       <input type="hidden" id="am_pdeb" value="0"/>
       <input type="hidden" id="am_strike" value=""/>
       <div class="cfg-field"><label title="Delta neto de la posición. Para spreads: delta vendido − delta comprado. Para IC: suma de ambos spreads.">Delta neto</label><input type="number" id="am_delta" placeholder="ej: -0.08" step="0.01" title="Delta vendido − delta comprado. Para IC suma ambos spreads."/></div>
@@ -1825,24 +1825,34 @@ function computeEntry(e){
   const maxRisk = e.maxRisk || null;
   // Sign-aware: long legs (LP/LC) invierten la fórmula P&L porque pagaste
   // al abrir (pCredito en realidad es coste) y recibes al cerrar (pCierre
-  // en realidad es ingreso). Detectado vía flag, legClose o nota.
+  // en realidad es ingreso). Detectado vía entryDirection o flags legacy.
   const isLong = _entryIsLong(e);
+  // ── Math.abs para robustez frente al signo del input ──
+  // Los usuarios a veces introducen la prima neta de un débito como negativo
+  // (-0.78 para un PDS que les costó $0.78). El sistema necesita la MAGNITUD
+  // del flujo de caja al abrir y al cerrar; la dirección (cobrado vs pagado)
+  // la decide entryDirection / isLong, no el signo de las primas.
+  const _absCredito = e.pCredito != null ? Math.abs(e.pCredito) : null;
+  const _absCierre  = e.pCierre  != null ? Math.abs(e.pCierre)  : null;
   // TP% — use override from spreadsheet if available
   // Short: % de la prima capturada = (credit - close_cost) / credit
   // Long:  ratio sobre el coste de apertura = (close_price - cost) / cost
-  const _tp_raw = (e.pCredito && e.pCredito!=0 && e.pCierre!=null)
-    ? (isLong ? ((e.pCierre - e.pCredito) / e.pCredito * 100)
-              : ((e.pCredito - e.pCierre) / e.pCredito * 100))
+  const _tp_raw = (_absCredito && _absCredito!==0 && _absCierre!=null)
+    ? (isLong ? ((_absCierre - _absCredito) / _absCredito * 100)
+              : ((_absCredito - _absCierre) / _absCredito * 100))
     : null;
   const tp = e.tpOvr != null ? Math.min(100, Math.max(-100, e.tpOvr)) : (_tp_raw != null ? Math.min(100, Math.max(-100, _tp_raw)) : null);
   // P. Neto — use pre-computed override from spreadsheet if available
-  // pDebito is always treated as an outflow (subtracted), regardless of sign stored
+  // pDebito is always treated as an outflow (subtracted), regardless of sign stored.
+  // pCredito y pCierre se normalizan con Math.abs (ver bloque _absCredito arriba)
+  // para que sea irrelevante si el user los ha guardado con + o −. La fórmula
+  // ya conoce la dirección via isLong.
   const _deb = e.pDebito != null ? Math.abs(e.pDebito) : 0;
   // pNeto: price in $/share → ×100 = $/contract (comi is flat total $)
-  // Short: (pCredito - pDebito - pCierre); Long: (pCierre - pCredito - pDebito)
-  const _pNetoPerCtr = e.pCredito!=null
-    ? (isLong ? ((e.pCierre||0) - e.pCredito - _deb)
-              : (e.pCredito - _deb - (e.pCierre||0))) * 100
+  // Short: (|pCredito| - |pDebito| - |pCierre|); Long: (|pCierre| - |pCredito| - |pDebito|)
+  const _pNetoPerCtr = _absCredito!=null
+    ? (isLong ? ((_absCierre||0) - _absCredito - _deb)
+              : (_absCredito - _deb - (_absCierre||0))) * 100
     : null;
   const pNeto = e.pNetoOvr != null ? e.pNetoOvr : _pNetoPerCtr;
   // totalNeto: en "escala prima" ($/100). Los overrides también están en esta escala.
@@ -5419,6 +5429,18 @@ function toggleActModalFields(){
       el.closest('.cfg-field').style.display = isAcc ? 'none' : '';
     }
   });
+  // Label dinámico de la prima neta según direction del strat:
+  //   credit  → "cobrada" (cobras prima al abrir)
+  //   debit   → "pagada"  (pagas prima al abrir)
+  //   neutral → "neta"    (no aplica realmente, pero no rompe)
+  const pcredLabel = document.getElementById('am_pcred_label');
+  if(pcredLabel && !isAcc){
+    const dir = (typeof _stratDirectionOf === 'function') ? _stratDirectionOf(strat) : null;
+    const txt = dir === 'debit'  ? 'Prima neta pagada ($/contrato)'
+              : dir === 'credit' ? 'Prima neta cobrada ($/contrato)'
+              : 'Prima neta ($/contrato)';
+    pcredLabel.textContent = txt;
+  }
   // El campo precioCompra solo se muestra para ACC
   const pcEl = document.getElementById('am_precioCompra_field');
   if(pcEl) pcEl.style.display = isAcc ? '' : 'none';
