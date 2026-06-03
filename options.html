@@ -3347,17 +3347,30 @@ function getDashData(){
       }
       // Caso opciones (resto)
       if(a.priceCurrent==null || !a.pCredito) return;
-      // pCredito está en /100, priceCurrent en $/share. Convertir todo a $/share.
-      const pc_share=(a.pCredito||0)*100, pd_share=Math.abs(a.pDebito||0)*100, cur=(a.priceCurrent||0);
+      // Direction-aware (v168+): si la activa tiene entryDirection={debit,credit},
+      // usar Math.abs + fórmula long/short correcta. Si no, fórmula legacy signed.
+      const _useAbs1 = a.entryDirection === 'debit' || a.entryDirection === 'credit';
+      const _isLong1 = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
+      const pc_share = _useAbs1 ? Math.abs((a.pCredito||0) * 100) : ((a.pCredito||0)*100);
+      const pd_share = Math.abs(a.pDebito||0)*100;
+      const cur      = _useAbs1 ? Math.abs(a.priceCurrent||0) : (a.priceCurrent||0);
       const ctr = a.contracts||1;
-      // P&L bruto en $: (pc_share - pd_share - cur) × 100 × ctr − comi
-      const pnlReal = (pc_share - pd_share - cur) * 100 * ctr - (a.comi||0);
+      // P&L bruto en $: signed legacy o direction-aware según _useAbs1
+      let pnlReal, tp2;
+      if(_useAbs1){
+        const _primaAp = _isLong1 ? (pc_share + pd_share) : (pc_share - pd_share);
+        const _diff    = _isLong1 ? (cur - _primaAp) : (_primaAp - cur);
+        pnlReal = _diff * 100 * ctr - (a.comi||0);
+        tp2 = _primaAp > 0 ? Math.min(100, Math.max(-100, _diff / _primaAp * 100)) : null;
+      } else {
+        pnlReal = (pc_share - pd_share - cur) * 100 * ctr - (a.comi||0);
+        tp2 = (pc_share - pd_share)>0 ? Math.min(100, Math.max(-100, (pc_share - pd_share - cur)/(pc_share - pd_share)*100)) : null;
+      }
       // pneto debe ir en escala "prima" (igual que totalNetoOvr en histórico):
       // como renderDash multiplica por 100, dividimos pnlReal por 100 para que cuadre
       const pneto = pnlReal / 100;
       const mr    = a.maxRisk||0;
       const profitOp2 = mr>0 ? (pnlReal / mr * 100 * 100) : null; // *100 para que renderDash lo divida bien
-      const tp2 = (pc_share - pd_share)>0 ? Math.min(100,Math.max(-100,(pc_share - pd_share - cur)/(pc_share - pd_share)*100)) : null;
       const synth = {
         idOp:a.idOp, activo:a.activo, strat:a.strat, stratGroup:a.strat||'NP',
         contracts:ctr, apertura:a.apertura, cierre:today2+'-28',
@@ -4026,20 +4039,39 @@ function renderActivas(){
           return (op.priceCurrent - op.precioCompra) * (op.contracts||1);
         }
         if(op.priceCurrent==null || !op.pCredito) return 0;
-        const pc_share = (op.pCredito||0) * 100;
+        // Direction-aware (v168+)
+        const _useAbs = op.entryDirection === 'debit' || op.entryDirection === 'credit';
+        const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(op) : false;
+        const pc_share = _useAbs ? Math.abs((op.pCredito||0)*100) : ((op.pCredito||0)*100);
         const pd_share = Math.abs(op.pDebito||0) * 100;
-        return ((pc_share - pd_share - (op.priceCurrent||0))*100*(op.contracts||1)) - (op.comi||0);
+        const cur      = _useAbs ? Math.abs(op.priceCurrent||0) : (op.priceCurrent||0);
+        if(_useAbs){
+          const _primaAp = _isLong ? (pc_share + pd_share) : (pc_share - pd_share);
+          const _diff    = _isLong ? (cur - _primaAp) : (_primaAp - cur);
+          return _diff * 100 * (op.contracts||1) - (op.comi||0);
+        }
+        return ((pc_share - pd_share - cur)*100*(op.contracts||1)) - (op.comi||0);
       };
       return pnlOf(ay) - pnlOf(ax);
     }
     if(sortBy==='tp'){
       const calcTp = (op) => {
         if(op.priceCurrent==null) return 0;
-        const pc_share = (op.pCredito||0) * 100;
+        // Direction-aware (v168+)
+        const _useAbs = op.entryDirection === 'debit' || op.entryDirection === 'credit';
+        const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(op) : false;
+        const pc_share = _useAbs ? Math.abs((op.pCredito||0)*100) : ((op.pCredito||0)*100);
         const pd_share = Math.abs(op.pDebito||0) * 100;
+        const cur      = _useAbs ? Math.abs(op.priceCurrent||0) : (op.priceCurrent||0);
+        if(_useAbs){
+          const _primaAp = _isLong ? (pc_share + pd_share) : (pc_share - pd_share);
+          if(_primaAp <= 0) return 0;
+          const _diff = _isLong ? (cur - _primaAp) : (_primaAp - cur);
+          return Math.min(100, Math.max(-100, _diff / _primaAp * 100));
+        }
         const credit = pc_share - pd_share;
         if(credit <= 0) return 0;
-        return Math.min(100, Math.max(-100, (credit - op.priceCurrent)/credit * 100));
+        return Math.min(100, Math.max(-100, (credit - cur)/credit * 100));
       };
       return calcTp(ay) - calcTp(ax);
     }
@@ -4209,9 +4241,17 @@ function buildActCard(a, idx, today){
   const closedLegs = HIST.filter(h=>String(h.idOp)===String(a.idOp) && h.activo===a.activo)
     .map(computeEntry);
   const closedSumDolares = closedLegs.reduce((s,h)=>s+(h.totalNeto!=null?h.totalNeto:0),0) * 100;
-  // Combined % across entire ID (open + closed legs)
+  // Combined % across entire ID (open + closed legs) — direction-aware (v168+)
+  // El denominador es el "capital base" de la operativa. Para débitos legacy
+  // con pCredito negativo, la fórmula original sumaba en negativo y
+  // distorsionaba el %. Aplicamos Math.abs cuando entryDirection es
+  // explícita; legacy mantiene signed para no romper datos pre-existentes.
   const _openCredit   = (pc > 0) ? pc * 100 * (a.contracts||1) : 0;
-  const _closedCredit = closedLegs.reduce((s,h)=> s + ((h.pCredito||0)*100*(h.contracts||1)), 0);
+  const _closedCredit = closedLegs.reduce((s,h) => {
+    const _useAbs = h.entryDirection === 'debit' || h.entryDirection === 'credit';
+    const _pc = _useAbs ? Math.abs((h.pCredito||0)) : (h.pCredito||0);
+    return s + (_pc * 100 * (h.contracts||1));
+  }, 0);
   const _totalCredit  = _openCredit + _closedCredit;
   // Combined P&L = closed realized ($ reales) + open estimated ($ reales)
   const _combinedPnl  = (pnlEst!=null) ? (closedSumDolares + pnlEst) : null;
@@ -5171,10 +5211,19 @@ function computeCashRecon(month){
       let pnl;
       if(e.totalNetoOvr != null){
         pnl = e.totalNetoOvr * 100;
-      } else if(esLong(e)){
-        pnl = ((e.pCierre||0) - (e.pCredito||0) - (e.pDebito||0)) * 10000 * ctrOf(e) - (e.comi||0);
       } else {
-        pnl = ((e.pCredito||0) - (e.pDebito||0) - (e.pCierre||0)) * 10000 * ctrOf(e) - (e.comi||0);
+        // Fallback direction-aware (v168+). Si entryDirection es explícita,
+        // usamos Math.abs para que el signo del input no rompa el cálculo.
+        // Si no, fórmula legacy signed (preserva semántica histórica).
+        const _useAbs = e.entryDirection === 'debit' || e.entryDirection === 'credit';
+        const _pc  = _useAbs ? Math.abs(e.pCredito||0) : (e.pCredito||0);
+        const _pcl = _useAbs ? Math.abs(e.pCierre||0)  : (e.pCierre||0);
+        const _pd  = Math.abs(e.pDebito||0);
+        if(esLong(e)){
+          pnl = (_pcl - _pc - _pd) * 10000 * ctrOf(e) - (e.comi||0);
+        } else {
+          pnl = (_pc - _pd - _pcl) * 10000 * ctrOf(e) - (e.comi||0);
+        }
       }
       const cash = (pnl - cashApertura(e));   // = cash neto del tramo de cierre
       cierresCash += cash;
@@ -5262,15 +5311,26 @@ function matchClosures(myCloses, csvCloses, month){
     let myPnL;
     if(my.totalNetoOvr != null){
       myPnL = my.totalNetoOvr * 100;
-    } else if(myIsLong){
-      myPnL = ((my.pCierre||0) - (my.pCredito||0) - (my.pDebito||0)) * 10000 * ctr - (my.comi||0);
     } else {
-      myPnL = ((my.pCredito||0) - (my.pDebito||0) - (my.pCierre||0)) * 10000 * ctr - (my.comi||0);
+      // Direction-aware (v168+) — mismo patrón que el bloque de cierres.
+      const _useAbs = my.entryDirection === 'debit' || my.entryDirection === 'credit';
+      const _pc  = _useAbs ? Math.abs(my.pCredito||0) : (my.pCredito||0);
+      const _pcl = _useAbs ? Math.abs(my.pCierre||0)  : (my.pCierre||0);
+      const _pd  = Math.abs(my.pDebito||0);
+      if(myIsLong){
+        myPnL = (_pcl - _pc - _pd) * 10000 * ctr - (my.comi||0);
+      } else {
+        myPnL = (_pc - _pd - _pcl) * 10000 * ctr - (my.comi||0);
+      }
     }
 
     // Cash del cierre = P&L total − cash de apertura. Es lo que el CSV ve.
     // En patas LONG el cash de apertura es un débito (negativo).
-    const baseApert = ((my.pCredito||0) - (my.pDebito||0)) * 10000 * ctr;
+    // Math.abs solo si entryDirection es explícita (legacy mantiene signed).
+    const _useAbsApert = my.entryDirection === 'debit' || my.entryDirection === 'credit';
+    const _pcApert = _useAbsApert ? Math.abs(my.pCredito||0) : (my.pCredito||0);
+    const _pdApert = _useAbsApert ? Math.abs(my.pDebito||0)  : (my.pDebito||0);
+    const baseApert = (_pcApert - _pdApert) * 10000 * ctr;
     const creditoApertura = myIsLong ? -baseApert : baseApert;
     const myCierreCash = myPnL - creditoApertura;
     // ¿La apertura cae en el mes analizado? Si NO, es una op "a caballo".
