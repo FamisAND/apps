@@ -5699,7 +5699,9 @@ function confirmClosePosition(){
   const _totalBruto = isLong
     ? (pcl_share - primaApertura) * 100 * ctr
     : (primaApertura - pcl_share) * 100 * ctr;
-  const totalNetoEscalaPrima = (_totalBruto - comi) / 100;
+  // totalNetoFallback en $ reales (lo usa profitOpOvr más abajo).
+  const totalNetoFallback   = _totalBruto - comi;
+  const totalNetoEscalaPrima = totalNetoFallback / 100;
   const totalneto = +document.getElementById('acm_totalneto').value || totalNetoEscalaPrima;
   const _tpFallback = primaApertura > 0
     ? Math.min(100, Math.max(-100, (isLong
