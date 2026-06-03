@@ -6090,6 +6090,7 @@ const TOB_QUEST_CHIPS = {
     { id:'acid_uric',       label:'Àcid úric / gota',        neg:true },
     { id:'anemia',          label:'Anèmia',                  neg:true },
     { id:'sii',             label:'Còlon irritable (SII)',   neg:true },
+    { id:'sibo',            label:'SIBO',                    neg:true },
     { id:'mii',             label:'Crohn / colitis',         neg:true },
     { id:'reflux',          label:'Reflux / acidesa',        neg:true },
     { id:'digestius',       label:'Digestió pesada / gasos', neg:true },
@@ -11383,6 +11384,10 @@ function tobMcPerfilTexto(cli){
   if(intol.includes('lactosa')) adapt.push('LACTOSA (usa receptes amb lactis normalment — el client comprarà versió SENSE LACTOSA)');
   if(intol.includes('fructosa')) adapt.push('FRUCTOSA (limita fruites amb molt sucre fructos, prioritza les baixes)');
   if(intol.includes('histamina')) adapt.push('HISTAMINA (limita peix blau curat, formatges curats, embutits, vi)');
+  // SIBO: és una patologia, però el guideline per a la IA és del mateix tipus
+  // que les intoleràncies (limitar grups d'aliments). Sergio ho gestiona com
+  // restricció dietètica activa, no només etiqueta.
+  if((t.patologies||[]).includes('sibo')) adapt.push('SIBO (dieta BAIXA en FODMAPs: limita ceba, all, llegums, lactosa, blat, fruites altes en fructosa/sorbitol — préssec, poma, pera, mango, mel. Prioritza arròs, civada, patata, carns/peix, ous, formatges curats, fruits secs en quantitats petites, verdures FODMAP baix com pastanaga, carbassó, espinacs)');
   if(adapt.length){
     L.push('ADAPTAR (NO excloure) — el client té intolerància però el menú els porta amb versions aptes:');
     adapt.forEach(a => L.push('  · ' + a));

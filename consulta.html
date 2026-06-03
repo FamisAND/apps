@@ -887,10 +887,6 @@
             </div>
           </div>
           <div class="tob-quest-calc" id="qKcalBase"></div>
-          <div class="tob-quest-chip-block">
-            <label class="tob-lbl">Àpats que fa al dia <span class="tob-quest-h-sub">(marca els que fa — el recordatori i els menús s'hi adapten)</span></label>
-            <div class="tob-quest-chips" id="qChipsApats"></div>
-          </div>
 
           <!-- ── Pistes per a la IA al muntar el menú ── -->
           <div class="tob-quest-chip-block">
@@ -949,6 +945,16 @@
             <label class="tob-lbl">Aliments que li senten malament</label>
             <div class="tob-quest-chips" id="qChipsSentenMal"></div>
             <input class="tob-input" id="qSentenMalNew" placeholder="ex: ceba crua, llegums..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('sentenMal',event)">
+          </div>
+        </div>
+
+        <!-- ÀPATS QUE FA AL DIA — mogut a tocar del Recordatori perquè
+             els chips d'aquí (esmorzar/dinar/...) condicionen QUINS apats
+             apareixen al Recordatori nutricional de sota. UX més coherent. -->
+        <div class="tob-quest-section">
+          <div class="tob-quest-chip-block">
+            <label class="tob-lbl">Àpats que fa al dia <span class="tob-quest-h-sub">(marca els que fa — el recordatori i els menús s'hi adapten)</span></label>
+            <div class="tob-quest-chips" id="qChipsApats"></div>
           </div>
         </div>
 
