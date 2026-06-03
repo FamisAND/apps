@@ -1786,10 +1786,24 @@ function deleteLightboxImg(){}
 // ══════════════════════════════════════════════════════════════════
 // COMPUTED FIELDS
 // Helper compartido: ¿esta entrada es un cierre parcial de pata LONG?
-// Mira el flag explícito, luego legClose, luego un patrón en la nota.
-// Si devuelve true, las fórmulas de P&L se invierten (long: pagaste al
-// abrir, recibes al cerrar → pnl = pCierre - pCredito).
+// Determina si una entrada usa la fórmula "long/debit" o "short/credit"
+// para el cálculo de P&L.
+//
+// PRIORIDAD:
+//  1) entryDirection explícito (nuevo schema): 'debit' → long fórmula.
+//     'credit' → short fórmula. 'neutral' → no aplica (cae al heurístico
+//     para datos compatibles).
+//  2) Heurística legacy: flag isLong, legClose=LP/LC, regex en nota.
+//
+// Las posiciones nuevas siempre traen entryDirection (heredado del strat).
+// Las viejas se migran en activasLoad() para inferirlo del strat, así que
+// el heurístico solo se aplica si por algún motivo la migración no pudo
+// resolver la dirección (strat custom sin direction definido, p. ej.).
 function _entryIsLong(e){
+  // Nuevo: dirección explícita
+  if(e.entryDirection === 'debit')  return true;
+  if(e.entryDirection === 'credit') return false;
+  // Heurística legacy (datos sin migrar o dirección 'neutral')
   if(e.isLong === true) return true;
   if(e.legClose === 'LP' || e.legClose === 'LC') return true;
   if(e.nota && /PATA CERRADA[^)]*Long (Put|Call)/i.test(e.nota)) return true;
@@ -3848,8 +3862,31 @@ function activasLoad(){
         _migrated++;
       }
     });
+    // ── Migración entryDirection ──
+    // Posiciones antiguas no tienen entryDirection. Se infiere del strat:
+    // si la estrategia tiene direction configurada (built-in meta o CFG),
+    // se hereda. Si el legacy isLong/legClose dice "long" pero el strat es
+    // credit, se respeta el legacy (pata cerrada concreta). Si no hay nada,
+    // se deja sin marcar y _entryIsLong cae al heurístico viejo.
+    let _migDir = 0;
+    ACTIVAS.forEach(a => {
+      if(a.entryDirection) return;  // ya migrado / nuevo
+      // Heurística legacy fuerte: si tiene isLong/legClose/nota long, marcar debit
+      const legacyLong = (a.isLong === true)
+        || a.legClose === 'LP' || a.legClose === 'LC'
+        || (a.nota && /PATA CERRADA[^)]*Long (Put|Call)/i.test(a.nota));
+      if(legacyLong){ a.entryDirection = 'debit'; _migDir++; return; }
+      // Si no, heredar del strat
+      const dir = (typeof _stratDirectionOf === 'function') ? _stratDirectionOf(a.strat) : null;
+      if(dir){ a.entryDirection = dir; _migDir++; }
+    });
     if(_migrated > 0){
       console.log('[migración ACC] migradas '+_migrated+' acciones (priceCurrent → precioCompra)');
+    }
+    if(_migDir > 0){
+      console.log('[migración direction] '+_migDir+' posiciones recibieron entryDirection inferido del strat');
+    }
+    if(_migrated > 0 || _migDir > 0){
       try{ localStorage.setItem('ot_activas', JSON.stringify(ACTIVAS)); }catch(e){}
     }
   }catch(e){}
@@ -5409,8 +5446,13 @@ function updateAccMaxRisk(){
 function saveActPosition(){
   const strat = document.getElementById('am_strat').value;
   const isAcc = strat === 'ACC';
+  // entryDirection: heredado del strat configurado. Esto es lo que hace que
+  // el cálculo de P&L use la fórmula correcta para débito vs crédito sin
+  // necesidad de inferir desde flags legacy (isLong, legClose, regex en nota).
+  const _stratDir = _stratDirectionOf(strat);
   const a = {
     strat:    strat,
+    entryDirection: _stratDir || (isAcc ? 'neutral' : 'credit'),
     activo:   document.getElementById('am_activo').value.toUpperCase().trim(),
     idOp:     document.getElementById('am_idop').value,
     contracts:+document.getElementById('am_contracts').value||1,
@@ -6103,10 +6145,49 @@ function loadJSON(event){
 // ══════════════════════════════════════════════════════════════════
 
 // Built-in strategies: [code, label, defaultIsOtro, defaultTp]
-const BUILTIN_STRATS = [['NP','Naked Put',false,50],['PCS','Put Credit Spread',false,50],['CC','Covered Call',false,80],['PMCC','Poor Man Covered Call',false,80],['ACC','Acciones',false,100],['CCS','Call Credit Spread',true,60],['DPS','Diagonal Put Spread',true,50],['BWB','Broken Wing Butterfly',true,50],['JL','Jade Lizard',true,50],['IC','Iron Condor',true,50],['0DTE','0DTE',true,50],['112','112',true,50]];
+const BUILTIN_STRATS = [['NP','Naked Put',false,50],['PCS','Put Credit Spread',false,50],['CC','Covered Call',false,80],['PMCC','Poor Man Covered Call',false,80],['ACC','Acciones',false,100],['CCS','Call Credit Spread',true,60],['DPS','Diagonal Put Spread',true,50],['PDS','Put Debit Spread',true,50],['CDS','Call Debit Spread',true,50],['BWB','Broken Wing Butterfly',true,50],['JL','Jade Lizard',true,50],['IC','Iron Condor',true,50],['0DTE','0DTE',true,50],['112','112',true,50]];
 
-// CFG.customStrats: [ {code, label, isOtro, tp} ]  (user-defined)
+// Direction meta para los built-in:
+//   'credit'  = cobras prima neta al abrir (NP/PCS/CC/CCS/IC/JL/BWB/112).
+//               P&L: (apertura - cierre) × 100 — gana si decae prima.
+//   'debit'   = pagas prima neta al abrir (PDS/CDS/DPS/PMCC).
+//               P&L: (cierre - apertura) × 100 — gana si la prima sube.
+//   'neutral' = ACC (acciones): no aplica concepto de prima.
+//
+// Se puede sobreescribir per-estrategia desde la pantalla Config con
+// CFG.stratDirections[code]. Para estrategias custom se guarda en
+// CFG.customStrats[i].direction.
+const BUILTIN_STRAT_META = {
+  NP:    { direction: 'credit' },
+  PCS:   { direction: 'credit' },
+  CC:    { direction: 'credit' },
+  PMCC:  { direction: 'debit'  },
+  ACC:   { direction: 'neutral' },
+  CCS:   { direction: 'credit' },
+  DPS:   { direction: 'debit'  },
+  PDS:   { direction: 'debit'  },
+  CDS:   { direction: 'debit'  },
+  BWB:   { direction: 'credit' },
+  JL:    { direction: 'credit' },
+  IC:    { direction: 'credit' },
+  '0DTE':{ direction: 'credit' },
+  '112': { direction: 'credit' }
+};
+
+// Devuelve la dirección configurada para un strat code.
+// Prioridad: override en CFG > campo en custom strat > meta del built-in > null.
+function _stratDirectionOf(code){
+  if(!code) return null;
+  if(CFG.stratDirections && CFG.stratDirections[code]) return CFG.stratDirections[code];
+  const custom = (CFG.customStrats || []).find(s => s.code === code);
+  if(custom && custom.direction) return custom.direction;
+  const meta = BUILTIN_STRAT_META[code];
+  return (meta && meta.direction) || null;
+}
+
+// CFG.customStrats: [ {code, label, isOtro, tp, direction} ]  (user-defined)
 // CFG.stratOtroSet: Set of codes treated as OTRO in dashboard (persisted as array)
+// CFG.stratDirections: { [code]: 'credit'|'debit'|'neutral' }  (overrides per strat)
 
 function getAllStrats(){
   // Returns all strats: builtin merged with custom overrides
@@ -6118,12 +6199,14 @@ function getAllStrats(){
     code, label,
     isOtro: otroSet.has(code),
     tp: tp[code] ?? defTp,
+    direction: _stratDirectionOf(code) || 'credit',
     builtin: true
   }));
   const cust = custom.map(s=>({
     code: s.code, label: s.label,
     isOtro: otroSet.has(s.code),
     tp: tp[s.code] ?? s.tp ?? 50,
+    direction: _stratDirectionOf(s.code) || s.direction || 'credit',
     builtin: false
   }));
   return [...builtin, ...cust];
@@ -6133,14 +6216,30 @@ function openActCfg(){
   const all = getAllStrats();
   const tp = CFG.tpTargets || {};
 
-  // Build TP grid
+  // Build TP grid (+ direction selector por strat)
+  // direction es CRÍTICO para que el cálculo de P/L use la fórmula correcta:
+  //   credit  → P&L = (apertura - cierre) × 100 (cobras prima, ganas si decae)
+  //   debit   → P&L = (cierre - apertura) × 100 (pagas prima, ganas si sube)
+  //   neutral → ACC (acciones): no aplica
   const grid = document.getElementById('actCfgTpGrid');
   if(grid){
-    grid.innerHTML = all.map(s=>`
-      <div class="cfg-field">
-        <label style="color:${s.isOtro?'#8b8b9a':'#5a7a9a'}">${s.code}</label>
-        <input type="number" id="acfg_tp_${s.code}" value="${s.tp}" step="5" min="0" max="100"/>
-      </div>`).join('');
+    grid.innerHTML = all.map(s=>{
+      const dir = s.direction || 'credit';
+      const dirCol = dir === 'debit' ? '#f04545' : dir === 'credit' ? '#3fb68b' : '#8b8b9a';
+      return `
+      <div class="cfg-field" style="display:flex;flex-direction:column;gap:3px">
+        <label style="color:${s.isOtro?'#8b8b9a':'#5a7a9a'};display:flex;justify-content:space-between;align-items:center">
+          <span>${s.code}</span>
+          <span style="font-size:7px;color:${dirCol};letter-spacing:1px">${dir.toUpperCase()}</span>
+        </label>
+        <input type="number" id="acfg_tp_${s.code}" value="${s.tp}" step="5" min="0" max="100" title="TP % (Take Profit objetivo)"/>
+        <select id="acfg_dir_${s.code}" title="Tipo: débito (pagas prima neta) / crédito (cobras prima neta) / neutral (acciones)" style="background:#0a0e14;border:1px solid #1e2d3d;color:${dirCol};font-family:'Courier New',monospace;font-size:8px;padding:3px 4px;border-radius:3px;outline:none">
+          <option value="credit"  ${dir==='credit'?'selected':''}>CRÉDITO</option>
+          <option value="debit"   ${dir==='debit'?'selected':''}>DÉBITO</option>
+          <option value="neutral" ${dir==='neutral'?'selected':''}>NEUTRAL</option>
+        </select>
+      </div>`;
+    }).join('');
   }
 
   // Build strat list
@@ -6201,12 +6300,16 @@ function saveActCfg(){
   const all = getAllStrats();
   // Read TP values from inputs
   const newTp = {};
+  const newDir = {};
   all.forEach(s=>{
     const v = +document.getElementById('acfg_tp_'+s.code)?.value;
     if(!isNaN(v)) newTp[s.code] = v;
+    const d = document.getElementById('acfg_dir_'+s.code)?.value;
+    if(d === 'credit' || d === 'debit' || d === 'neutral') newDir[s.code] = d;
   });
   // stratOtroSet now managed in Estrategias tab — preserve current value
-  CFG.tpTargets   = newTp;
+  CFG.tpTargets       = newTp;
+  CFG.stratDirections = newDir;
   // CFG.stratOtroSet unchanged (managed in Estrategias tab)
   CFG.cashAvail   = +document.getElementById('acfg_cash')?.value||0;
   // Save riskStrats
@@ -6692,13 +6795,18 @@ function openStratCustomModal(){
   if(!code){ toast('Nombre inválido', 'red'); return; }
   const all = getAllStrats();
   if(all.find(s=>s.code===code)){ toast('La estrategia "'+code+'" ya existe.', 'red'); return; }
+  // Preguntar dirección: por defecto crédito, pero ofrecer cambiarlo desde el prompt.
+  // Cualquier respuesta distinta de "d"/"n" se trata como crédito.
+  const dirIn = (prompt('Tipo (c=crédito, d=débito, n=neutral):', 'c') || 'c').trim().toLowerCase();
+  const direction = dirIn.startsWith('d') ? 'debit' : dirIn.startsWith('n') ? 'neutral' : 'credit';
   if(!CFG.customStrats) CFG.customStrats = [];
-  CFG.customStrats.push({ code, label: name.trim(), tp: 50 });
+  CFG.customStrats.push({ code, label: name.trim(), tp: 50, direction });
   // New strats are independent by default (not in OTRO)
   try{ localStorage.setItem('ot_cfg', JSON.stringify(CFG)); }catch(e){}
   renderStratOtroConfig();
   populateStratSelect();
   refreshStratSelects();
+  toast('Estrategia "'+code+'" creada como '+direction.toUpperCase()+'. Puedes cambiar el tipo en Config.', 'green');
 }
 
 function populateStratSelect(){
