@@ -10471,41 +10471,102 @@ async function tobMenuPdf(cliId, menuId){
     compraHtml += '</div>';
   }
 
-  // ── Receptari ── (cada recepta es un bloc paginable per separat)
-  // Els "plats solts" (origen ingredient) NO són receptes: no van al receptari.
-  const recetari = Object.keys(usos).map(id => recsById[id]).filter(Boolean)
-    .filter(r => r.origen !== 'ingrediente')
-    .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'}));
-  const recetariHtml = recetari.length
-    ? '<h2 class="mp-blk mp-page-break mp-recetari-h">Receptari</h2>' + recetari.map(r => {
-      const foto = fotoMap[r.id];
-      const mr = macRac(r);
-      const racR = r.raciones || 1;
-      const aj = ajMap[r.id];
-      const ajActivo = tobMcAjusteActivo(aj);
-      const ings = (r.ingredientes||[]).map(it => {
-        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-        const nom = ing ? ing.nombre : (it._nombreFallback || '—');
-        const g = tobMcEffGramos(it, aj) / racR;   // per ració (1 persona), amb ajustos del menú
-        return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
-      }).join('');
-      const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
-                  : String(r.instrucciones||'').split('\n').filter(Boolean);
-      const ajBadge = ajActivo
-        ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
-        : '';
-      return `<div class="mp-recepta mp-blk">
+  // ── Receptari ── ordenat per Setmana → Dia → Àpat (opció A: repetir
+  // la recepta cada vegada que apareix al menú; quan és repetició posem
+  // un badge "↻ es repeteix de [dia]" perquè el client sàpiga que ja
+  // l'ha vist. Plats solts (origen=ingredient) NO van al receptari.
+  // Funció auxiliar per construir la card d'una recepta. isRepeat indica
+  // si és la segona+ aparició (mostra badge enlloc del bloc complet).
+  const _renderReceptaCard = (r, isRepeat, repeatOf) => {
+    const foto = fotoMap[r.id];
+    const mr = macRac(r);
+    const racR = r.raciones || 1;
+    const aj = ajMap[r.id];
+    const ajActivo = tobMcAjusteActivo(aj);
+    const ings = (r.ingredientes||[]).map(it => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      const nom = ing ? ing.nombre : (it._nombreFallback || '—');
+      const g = tobMcEffGramos(it, aj) / racR;
+      return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
+    }).join('');
+    const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
+                : String(r.instrucciones||'').split('\n').filter(Boolean);
+    const ajBadge = ajActivo
+      ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
+      : '';
+    if(isRepeat){
+      // Versió compacta: només cap + badge indicant on s'ha vist abans.
+      // No re-imprimim ingredients/preparació per estalviar paper.
+      return `<div class="mp-recepta mp-blk mp-recepta-repeat">
         <div class="mp-recepta-head">
-          ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
+          ${foto ? `<div class="mp-recepta-foto mp-recepta-foto-sm" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-foto-sm mp-recepta-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
           <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
           <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
-          ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}
+          <div class="mp-recepta-repeat-badge">↻ Recepta detallada a <b>${esc(repeatOf)}</b></div>
           ${ajBadge}</div>
         </div>
-        ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
-          <div><h4>Preparació</h4><ol>${pasos.map(p=>`<li>${esc(p.replace(/^[-·•*\d.\s]+/,''))}</li>`).join('')||'<li>—</li>'}</ol></div></div>` : ''}
       </div>`;
-    }).join('')
+    }
+    return `<div class="mp-recepta mp-blk">
+      <div class="mp-recepta-head">
+        ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
+        <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
+        <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
+        ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}
+        ${ajBadge}</div>
+      </div>
+      ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
+        <div><h4>Preparació</h4><ol>${pasos.map(p=>`<li>${esc(p.replace(/^[-·•*\d.\s]+/,''))}</li>`).join('')||'<li>—</li>'}</ol></div></div>` : ''}
+    </div>`;
+  };
+
+  // Track primera aparició per ID → "Dilluns · Esmorzar" per al badge de repetició.
+  const firstSeen = new Map();
+  let recetariBody = '';
+  let anyRecepta = false;
+  for(let s = 0; s < semanas; s++){
+    let weekBody = '';
+    for(let d = 0; d < 7; d++){
+      // Per cada dia, recollir totes les receptes ordenades pel ordre de
+      // l'àpat (esmorzar abans que dinar, etc.). Calcular totals.
+      let dayBody = '';
+      let dayKcal = 0, dayProt = 0, dayApats = 0;
+      comidas.forEach(c => {
+        const ids = ((m.data[s]||{})[d]||{})[c.id] || [];
+        // Només receptes (no plats solts d'ingredient).
+        const recetasMeal = ids.map(id => recsById[id]).filter(r => r && r.origen !== 'ingrediente');
+        if(!recetasMeal.length) return;
+        let mealBody = '';
+        recetasMeal.forEach(r => {
+          const mr = macRac(r);
+          dayKcal += mr.kcal; dayProt += mr.prot; dayApats++;
+          const repeatOf = firstSeen.get(r.id);
+          const isRepeat = !!repeatOf;
+          if(!isRepeat){
+            firstSeen.set(r.id, DIAS[d] + ' · ' + c.label);
+          }
+          mealBody += _renderReceptaCard(r, isRepeat, repeatOf);
+          anyRecepta = true;
+        });
+        dayBody += `<div class="mp-meal-section">
+          <div class="mp-meal-title">${esc(c.label)}</div>
+          ${mealBody}
+        </div>`;
+      });
+      if(dayBody){
+        weekBody += `<div class="mp-day-banner mp-blk">
+          <span class="mp-day-name">${DIAS[d]}</span>
+          <span class="mp-day-totals">${dayApats} àpats · ${Math.round(dayKcal)} kcal · ${Math.round(dayProt)} g proteïna</span>
+        </div>${dayBody}`;
+      }
+    }
+    if(weekBody){
+      // Encapçalament de setmana només si hi ha més d'una setmana (sinó és redundant).
+      recetariBody += (semanas > 1 ? `<h3 class="mp-week-h mp-blk mp-page-break">Setmana ${s+1}</h3>` : '') + weekBody;
+    }
+  }
+  const recetariHtml = anyRecepta
+    ? '<h2 class="mp-blk mp-page-break mp-recetari-h">Receptari</h2>' + recetariBody
     : '';
 
   // ── Notes / recomanacions ──────────────────────────────────────
@@ -10593,6 +10654,19 @@ async function tobMenuPdf(cliId, menuId){
     .mp-recepta-cols{display:flex;gap:30px;}
     .mp-recepta-cols>div{flex:1;}
     .mp-recepta-cols ul,.mp-recepta-cols ol{margin-left:18px;font-size:11px;line-height:1.6;color:#404040;}
+
+    /* ── Receptari ordenat per dia/àpat (estructura opció A) ── */
+    .mp-week-h{font-size:18px;color:#0f0f0f;margin:24px 60px 12px;padding:8px 16px;background:#f5a721;font-weight:800;text-transform:uppercase;letter-spacing:.04em;}
+    .mp-day-banner{margin:24px 60px 14px;padding:12px 18px;background:linear-gradient(90deg,#f5a721 0%,#f5a721 6px,#f7f7f7 6px,#f7f7f7 100%);display:flex;align-items:baseline;justify-content:space-between;}
+    .mp-day-name{font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#0f0f0f;}
+    .mp-day-totals{font-size:11px;color:#8c8c8c;font-weight:500;letter-spacing:.02em;}
+    .mp-meal-section{margin:8px 60px 18px;}
+    .mp-meal-title{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#f5a721;font-weight:800;padding:6px 0 6px 14px;border-left:4px solid #f5a721;margin-bottom:10px;}
+    /* Recepta repetida: card compacta sense ingredients/preparació */
+    .mp-recepta-repeat{padding:10px 14px;background:#fafafa;}
+    .mp-recepta-foto-sm{width:70px !important;height:52px !important;}
+    .mp-recepta-repeat-badge{font-size:10px;color:#8c8c8c;margin-top:6px;font-style:italic;letter-spacing:.02em;}
+    .mp-recepta-repeat-badge b{color:#f5a721;font-style:normal;font-weight:700;}
 
     /* ── Notes / recomanacions ── */
     .mp-notas{font-size:11.5px;line-height:1.8;color:#404040;background:#f7f7f7;border-left:5px solid #f5a721;padding:16px 20px;}
