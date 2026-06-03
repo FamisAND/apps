@@ -2598,6 +2598,46 @@ function saveEntry(){
   const _hfLegs = (typeof legsRead === 'function') ? legsRead('hf_legs_container') : null;
   if(_hfLegs) entry.legs = _hfLegs;
 
+  // ── PRESERVAR entryDirection del entry original ──
+  // _hEditEntry guarda el entry tal cual estaba antes de abrir el form.
+  // El form NO expone direction como input, así que si no la copiamos aquí,
+  // se pierde al guardar y _entryIsLong cae al heurístico (que para datos
+  // sin legClose/isLong devuelve false → trata como short → P&L invertido
+  // para débitos como PDS). Si el entry venía sin direction (legacy), la
+  // inferimos del strat usando _stratDirectionOf.
+  if(_hEditEntry && _hEditEntry.entryDirection){
+    entry.entryDirection = _hEditEntry.entryDirection;
+  } else if(typeof _stratDirectionOf === 'function'){
+    const _inferred = _stratDirectionOf(entry.strat);
+    if(_inferred) entry.entryDirection = _inferred;
+  }
+
+  // ── RECALCULAR Ovr direction-aware ──
+  // Sin esto, los Ovr legacy (calculados con la fórmula short antigua)
+  // sobreviven al edit y se muestran mal. Recalculamos con la misma lógica
+  // que el modal de cierre, usando Math.abs para ser robustos al signo del
+  // input (PDS con pCredito=-0.78 funciona igual que +0.78).
+  if(!entry.isPartialClose){
+    const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(entry) : false;
+    const pc_abs  = Math.abs((entry.pCredito || 0) * 100);   // $/share
+    const pd_abs  = Math.abs((entry.pDebito  || 0) * 100);   // $/share
+    const pcl_abs = entry.pCierre != null ? Math.abs(entry.pCierre * 100) : null;
+    const _ctr    = entry.contracts || 1;
+    const _comiT  = (entry.comiOpen || 0) + (entry.comiClose || 0);
+    if(pcl_abs != null){
+      const primaApertura = _isLong ? (pc_abs + pd_abs) : (pc_abs - pd_abs);
+      const diffPerShare  = _isLong ? (pcl_abs - primaApertura) : (primaApertura - pcl_abs);
+      const totalNetoUSD  = diffPerShare * 100 * _ctr - _comiT;        // $ reales
+      entry.pNetoOvr     = parseFloat(diffPerShare.toFixed(4));         // $/share (la display ×100)
+      entry.totalNetoOvr = parseFloat((totalNetoUSD / 100).toFixed(4)); // $/share-scale (la display ×100)
+      const tpRaw = primaApertura > 0 ? diffPerShare / primaApertura : 0;
+      entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
+      if(entry.maxRisk){
+        entry.profitOpOvr = parseFloat((totalNetoUSD / (entry.maxRisk * _ctr) * 100).toFixed(2));
+      }
+    }
+  }
+
   // ── Preservar metadatos de cierre parcial al editar ──────────────────
   // Cuando el usuario edita una entrada creada por confirmCloseLeg, queremos
   // mantener los flags isPartialClose/isLong/legClose/parentStrat/parentIdOp
@@ -3982,10 +4022,15 @@ function renderActivas(){
     // Caso opciones: pCredito guardado en /100 ($/share = pCredito × 100)
     if(a.priceCurrent==null||!a.pCredito) return s;
     const ctr=a.contracts||1;
-    const pc_share = (a.pCredito||0) * 100;  // → $/share
-    const pd_share = Math.abs(a.pDebito||0) * 100;
-    // P&L bruto en $: (pc_share - pd_share - priceCurrent) × 100 × ctr − comi
-    return s + ((pc_share - pd_share - (a.priceCurrent||0)) * 100 * ctr) - (a.comi||0);
+    // Direction-aware: para débitos la fórmula se invierte (pagaste al abrir,
+    // recibes al cerrar). Math.abs robusto al signo del input del usuario.
+    const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
+    const pc_share  = Math.abs((a.pCredito||0) * 100);
+    const pd_share  = Math.abs((a.pDebito||0) * 100);
+    const pCur_abs  = Math.abs(a.priceCurrent||0);
+    const primaApertura = _isLong ? (pc_share + pd_share) : (pc_share - pd_share);
+    const diffPerShare  = _isLong ? (pCur_abs - primaApertura) : (primaApertura - pCur_abs);
+    return s + (diffPerShare * 100 * ctr) - (a.comi||0);
   },0);
   const cash = CFG.cashAvail||0;
   const coverage = cash>0 ? (totalRiskAssign/cash*100) : null;
@@ -4040,18 +4085,23 @@ function buildActCard(a, idx, today){
     else{dtePillStyle='border-color:#3fb68b44;color:#3fb68b';}
   }
 
-  // P&L estimado
-  // pCredito está guardado en escala "/100" (ej: 0.0123 = $1.23/share)
-  // priceCurrent está en $/share (ej: 1.26)
-  // Para operar consistente: convertir pCredito a $/share multiplicando por 100
-  const pc   = (a.pCredito||0) * 100;  // ahora en $/share
+  // P&L estimado — direction-aware (débitos vs créditos)
+  // pCredito guardado en /100; priceCurrent en $/share. Convertimos pCredito
+  // a $/share con ×100. Math.abs blinda contra signo del input (PDS con
+  // pCredito=-0.78 funciona igual que +0.78). isLong invierte la fórmula:
+  //   débito/long:  pnl = (pCur - apertura) × 100 × ctr − comi
+  //   crédito/short: pnl = (apertura - pCur) × 100 × ctr − comi
+  const _aIsLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
+  const pc   = Math.abs((a.pCredito||0) * 100);
   const pd   = Math.abs(a.pDebito||0) * 100;
-  const pCur = a.priceCurrent;  // ya en $/share
+  const pCur = a.priceCurrent;  // $/share (lo entra el usuario)
   let pnlEst=null, tpPct=null, pnlClass='act-v', pnlStr='—';
   if(pCur!=null && pc){
-    // Ambos en $/share, P&L bruto = (pc - pCur) × 100 shares × contratos
-    pnlEst = (pc - pd - pCur) * 100 * (a.contracts||1);
-    tpPct  = (pc-pd)>0 ? Math.min(100,Math.max(-100,(pc - pd - pCur)/(pc-pd)*100)) : null;
+    const _pCurAbs = Math.abs(pCur);
+    const _primaAp = _aIsLong ? (pc + pd) : (pc - pd);
+    const _diff    = _aIsLong ? (_pCurAbs - _primaAp) : (_primaAp - _pCurAbs);
+    pnlEst = _diff * 100 * (a.contracts||1);
+    tpPct  = _primaAp > 0 ? Math.min(100, Math.max(-100, _diff / _primaAp * 100)) : null;
     pnlClass = 'act-v '+(pnlEst>=0?'green':'red');
     pnlStr  = `${pnlEst>=0?'+':''}$${pnlEst.toFixed(0)}`;
   }
@@ -4184,7 +4234,7 @@ function buildActCard(a, idx, today){
         return `<div class="act-kv"><span class="act-k">Dist. strike</span><span class="act-v ${dc}">${dist>=0?'+':''}${dist.toFixed(1)}%</span></div>`;
       })():''}
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
-      <div class="act-kv"><span class="act-k">Prima neta</span><span class="act-v">${a.pCredito!=null?(a.pCredito*100).toFixed(2):'—'}</span></div>
+      <div class="act-kv"><span class="act-k">Prima neta</span><span class="act-v">${a.pCredito!=null?(Math.abs(a.pCredito*100)).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
       <div class="act-kv"><span class="act-k">IV</span><span class="act-v">${a.iv!=null?a.iv+'%':'—'}</span></div>
