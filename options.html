@@ -5672,8 +5672,23 @@ function updateCloseCalc(){
 }
 function closeActCloseModal(){ document.getElementById('actCloseModal').classList.remove('on'); }
 function confirmClosePosition(){
-  if(_actCloseIdx==null) return;
+  try { return _confirmClosePositionImpl(); }
+  catch(err){
+    // Cualquier excepción aquí dejaba el botón "muerto" (la modal se queda
+    // abierta sin feedback). Ahora la capturamos: el toast te dice qué
+    // pasó y queda registrada en consola con stack trace.
+    console.error('[confirmClosePosition] FALLO:', err);
+    if(typeof toast === 'function'){
+      toast('⚠ Error al cerrar: '+(err && err.message ? err.message : err), 'red');
+    } else {
+      alert('Error al cerrar: '+(err && err.message ? err.message : err));
+    }
+  }
+}
+function _confirmClosePositionImpl(){
+  if(_actCloseIdx==null){ console.warn('[confirmClosePosition] _actCloseIdx es null'); return; }
   const a = ACTIVAS[_actCloseIdx];
+  if(!a){ throw new Error('No encuentro la posición activa (índice '+_actCloseIdx+')'); }
   // Dirección — mismas reglas que updateCloseCalc.
   const isLong = _entryIsLong(a);
   // Magnitudes en $/share. Math.abs robusto al signo del input.
