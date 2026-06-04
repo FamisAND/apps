@@ -10860,6 +10860,29 @@ const TOB_AI_DEFAULTS = {
 const TOB_AI_MENU_RULES_DEFAULT =
 `Ets el dietista de Sergio. Munta el menú com ho faria ell. Filosofia: flexible, centrat en el client, dia a dia.
 
+═══ ⛔ REGLA #0 — RECORDATORI DEL CLIENT, INNEGOCIABLE (supera totes les altres) ═══
+El RECORDATORI 24h del client (a "Estructura habitual dels àpats" del PERFIL)
+indica EXACTAMENT què menja a cada àpat. Si un àpat hi té qualsevol cosa
+marcada, POSA NOMÉS això. Cap excepció, encara que l'àpat sembli incomplet
+o curt de kcal/proteïna.
+
+Aplica a TOTS els àpats per igual:
+  · ESMORZAR: si diu "Cafè amb llet, Torrades / pa" → POSA cafè amb llet
+    + torrades amb pa. PROHIBIT afegir batuts, iogurts, fruita.
+  · MIG MATÍ: si diu "Cafè amb llet" → POSA NOMÉS cafè amb llet. PROHIBIT
+    afegir tostades, fruita, batuts ni res "per completar".
+  · BERENAR: si diu "Fruita, Fruits secs" → POSA fruita + fruits secs.
+    PROHIBIT afegir iogurts, batuts, sandvitxos.
+  · SOPAR: si diu "Plat únic" → 1 sol plat principal (sense acompanyament
+    obligat). Si diu "Porta postre" → afegeix postre al final.
+
+Si l'àpat del recordatori està BUIT (sense res marcat), llavors sí pots
+improvisar lliurement amb el catàleg.
+
+⛔ Si necessites més kcal o proteïna del dia, AJUSTA QUANTITATS del DINAR i
+SOPAR (puja factor, puja ingredient proteic, puja acompanyament). MAI
+modifiquis ni afegeixis res a un àpat amb recordatori explícit.
+
 ═══ OBJECTIUS NUMÈRICS ═══
 Cada dia ha d'acostar-se a: {kcal} kcal i {prot} g de proteïna.
 - Tolerància: ±200 kcal i ±20 g prot puntuals si la MITJANA SETMANAL compensa. La mitjana setmanal és el que importa, no l'exactitud diària.
@@ -10903,12 +10926,17 @@ Si emetis un valor "lleig" (137 g de pollo), redondea al múltiple net més prò
 - 4 TIPUS típics de esmorzar al menú, repetibles però MAI dies consecutius.
 
 ═══ MIG MATÍ / BERENAR ═══
-- NOMÉS apareixen si el client els marca explícitament a la seva estructura habitual.
+- ⛔ REGLA #1 (INNEGOCIABLE, igual que esmorzar): si el client té RECORDATORI per
+  a mig matí o berenar, MANA el recordatori. Posa NOMÉS el que el client ha
+  marcat. Si diu "Cafè amb llet", l'àpat és NOMÉS cafè amb llet — PROHIBIT
+  afegir tostades, iogurts, fruita, batuts ni res que el client no hagi marcat,
+  encara que sembli "incomplet" o curt de kcal. El client mig-matina així i punt.
+- NOMÉS apareixen com a àpats si el client els marca explícitament.
 - USA INGREDIENTS SIMPLES (∙) tal com indica el recordatori del client. Si diu
   "Iogurt + Fruits secs", posa exactament aquests dos ingredients simples del
   catàleg. NO posis batuts ni smoothies que continguin iogurt — el client vol
   el iogurt sencer i els fruits secs separats.
-- Combinacions típiques (si el client no especifica):
+- Combinacions típiques (NOMÉS si el client NO ha especificat el recordatori):
    · Fruita (∙) + Fruits secs (∙) — opció lleugera
    · Iogurt natural (∙) + Fruita (∙) — afegeix prot si fa falta
    · Iogurt proteic (∙) + Fruits secs (∙) — més prot
@@ -11535,7 +11563,10 @@ function tobMcPerfilTexto(cli){
     .filter(a => Array.isArray(rec[a.id]) && rec[a.id].length)
     .map(a => '  · ' + a.label + ': ' + rec[a.id].join(', '));
   if(recLines.length){
-    L.push('Estructura habitual dels àpats (respecta-la al muntar el menú):');
+    L.push('⛔ ESTRUCTURA HABITUAL DELS ÀPATS — INNEGOCIABLE (vegeu REGLA #0):');
+    L.push('Per a cada àpat llistat, POSA NOMÉS els ingredients indicats. PROHIBIT');
+    L.push('afegir res que el client no hagi marcat. Si l\'àpat no surt aquí (recordatori');
+    L.push('buit), llavors sí pots improvisar.');
     recLines.forEach(line => L.push(line));
   }
   // ── Pistes per a la IA: àpat principal · quan té gana · variació · entrenament ──
