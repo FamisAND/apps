@@ -1150,29 +1150,46 @@ function buildFacturas(ctx, data, notif) {
 function collectUrgent(ctx, data, notif) {
   const out = [];
 
+  // Helper: una sección está "activa" si su flag enabled no es false Y no ha
+  // sido excluida del section_order (cuando section_order está definido). Las
+  // funciones build<Section> ya respetan estas dos puertas; el bloque URGENTE
+  // también debe hacerlo para que apagar una sección apague TODO su contenido,
+  // incluso los avisos cross-cutting de aquí.
+  const isSecActive = (secId) => {
+    const sec = (notif.sections || {})[secId] || {};
+    if (sec.enabled === false) return false;
+    const order = Array.isArray(notif.section_order) ? notif.section_order : null;
+    if (order && !order.includes(secId)) return false;
+    return true;
+  };
+
   // Facturas vencidas (computado: pendiente + >30d), honra perfil seleccionado
+  // y el toggle de la sección.
   try {
-    const allProfiles = parseMaybe(data?.facturas?.fac_v1);
-    if (Array.isArray(allProfiles)) {
+    if (isSecActive('facturas')) {
       const facSec = (notif.sections || {}).facturas || {};
-      const wantedId = facSec.profile_id && facSec.profile_id !== 'all' ? facSec.profile_id : null;
-      const profiles = wantedId ? allProfiles.filter(p => p.id === wantedId) : allProfiles;
-      const venc = [];
-      profiles.forEach(p => (p.facturas||[]).forEach(f => {
-        if (getEstadoFactura(f) === 'vencida') {
-          const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
-          venc.push({ cli: f.clienteName || f.cliente?.name || '?', total: t });
+      const allProfiles = parseMaybe(data?.facturas?.fac_v1);
+      if (Array.isArray(allProfiles)) {
+        const wantedId = facSec.profile_id && facSec.profile_id !== 'all' ? facSec.profile_id : null;
+        const profiles = wantedId ? allProfiles.filter(p => p.id === wantedId) : allProfiles;
+        const venc = [];
+        profiles.forEach(p => (p.facturas||[]).forEach(f => {
+          if (getEstadoFactura(f) === 'vencida') {
+            const t = parseFloat(f.totales?.total) || parseFloat(f.total) || 0;
+            venc.push({ cli: f.clienteName || f.cliente?.name || '?', total: t });
+          }
+        }));
+        if (venc.length) {
+          const tot = venc.reduce((s,x) => s + x.total, 0);
+          out.push(`🔴 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${fmt(tot)}`);
         }
-      }));
-      if (venc.length) {
-        const tot = venc.reduce((s,x) => s + x.total, 0);
-        out.push(`🔴 ${venc.length} factura${venc.length===1?'':'s'} VENCIDA${venc.length===1?'':'S'} · €${fmt(tot)}`);
       }
     }
   } catch (e) { console.error('urgent facturas:', e.message); }
 
-  // Opciones expirando ≤1d
+  // Opciones expirando ≤1d — solo si la sección options está activa
   try {
+    if (isSecActive('options')) {
     const arr = parseMaybe(data?.options?.ot_activas);
     if (Array.isArray(arr)) {
       const inminentes = arr.filter(a => {
@@ -1186,10 +1203,12 @@ function collectUrgent(ctx, data, notif) {
         out.push(`📈 ${inminentes.length} opci${inminentes.length===1?'ón':'ones'} expira${inminentes.length===1?'':'n'} ≤1d: ${escape(tickers)}${more}`);
       }
     }
+    } // /isSecActive options
   } catch (e) { console.error('urgent options:', e.message); }
 
-  // Impagos FT con antigüedad ≥3 meses, SOLO en meses cerrados (mk <= ftMonthKey)
+  // Impagos FT con antigüedad ≥3 meses + stock agotado — solo si training activo
   try {
+    if (isSecActive('training')) {
     const ft = parseMaybe(data?.training?.ft_v4);
     if (ft) {
       const cliMap = {}; (ft.clients||[]).forEach(c => cliMap[c.id] = c.name);
@@ -1221,6 +1240,7 @@ function collectUrgent(ctx, data, notif) {
         out.push(`📦 ${agotados.length} producto${agotados.length===1?'':'s'} AGOTADO${agotados.length===1?'':'S'}: ${escape(names)}${more}`);
       }
     }
+    } // /isSecActive training
   } catch (e) { console.error('urgent ft:', e.message); }
 
   return out;
