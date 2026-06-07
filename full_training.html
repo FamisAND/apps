@@ -1014,6 +1014,40 @@ function getCondAt(member,key){
   return app.length?app[app.length-1]:{fijo:0,pct:0};
 }
 
+// ── Punto Muerto / Break-Even por mes ──
+// CF = gastos totales (sin dividendos) − sueldos variables (parte % de comisión)
+// Margen = 1 − (sueldos variables / facturación)
+// BE = CF / Margen
+function calcBreakEvenForKey(k){
+  const md=db.months[k]||{};
+  const entries=md.entries||[];
+  const gastos=(md.gastos||[]).filter(g=>g.cat!=='dividendos');
+  const fact=entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+  const gasTot=gastos.reduce((s,g)=>s+(parseFloat(g.amount)||0),0);
+  let varCost=0;
+  (db.team||[]).forEach(t=>{
+    const tEnt=entries.filter(e=>e.trainerId===t.id);
+    const bill=tEnt.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+    const cond=getCondForMonth(t,k);
+    varCost+=bill*(cond.pct||0)/100;
+  });
+  const CF=gasTot-varCost;
+  const margin=fact>0?(1-varCost/fact):0;
+  const BE=margin>0?CF/margin:0;
+  return{BE,fact,CF,varCost,margin,gasTot};
+}
+function calcBreakEvenForKeys(keys){
+  let totalFact=0,totalVarCost=0,totalGasTot=0;
+  keys.forEach(k=>{
+    const r=calcBreakEvenForKey(k);
+    totalFact+=r.fact;totalVarCost+=r.varCost;totalGasTot+=r.gasTot;
+  });
+  const CF=totalGasTot-totalVarCost;
+  const margin=totalFact>0?(1-totalVarCost/totalFact):0;
+  const BE=margin>0?CF/margin:0;
+  return{BE,fact:totalFact,CF,varCost:totalVarCost,margin,gasTot:totalGasTot};
+}
+
 // Get service price at a given monthKey (price history)
 function getPriceAt(service,key){
   const hist=[...(service.priceHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
@@ -1889,8 +1923,8 @@ function renderDashboard(){
   }
 
   let labels;
-  let factData, gasData, benData, marginData, ticketData;
-  
+  let factData, gasData, benData, marginData, ticketData, beData;
+
   if(dashViewMode==='annual'){
     // Agrupar por año
     const yearMap={};
@@ -1924,6 +1958,8 @@ function renderDashboard(){
       });
       return totalEntries>0?(totalFact/totalEntries):0;
     });
+
+    beData=years.map(year=>calcBreakEvenForKeys(yearMap[year]).BE);
   } else {
     // Vista mensual
     labels=last12.map(k=>{const[y,m]=k.split('-');return MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2);});
@@ -1932,6 +1968,7 @@ function renderDashboard(){
     benData=factData.map((f,i)=>f-gasData[i]);
     marginData=benData.map((b,i)=>factData[i]>0?((factData[i]-gasData[i])/factData[i])*100:0);
     ticketData=last12.map(k=>{const entries=db.months[k].entries||[];return entries.length>0?(entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0)/entries.length):0;});
+    beData=last12.map(k=>calcBreakEvenForKey(k).BE);
   }
   
   // Media móvil solo en vista mensual - cubre todo el período visible
@@ -1976,6 +2013,7 @@ function renderDashboard(){
   document.getElementById('dashCharts').innerHTML=`
     <div class="card"><div class="card-title">Facturación <span style="color:var(--yellow)">▬</span> vs Gastos <span style="color:var(--red)">▬</span></div><div style="height:180px;"><canvas id="cFG"></canvas></div></div>
     <div class="card"><div class="card-title">Beneficio mensual</div><div style="height:180px;"><canvas id="cBen"></canvas></div></div>
+    <div class="card" style="grid-column:1/-1"><div class="card-title">Facturación <span style="color:var(--yellow)">▬</span> vs Punto Muerto <span style="color:var(--red)">▬ ▬</span> <span style="color:var(--muted);font-weight:400;font-size:.7rem;margin-left:6px">(zona verde = beneficio, zona roja = pérdidas)</span></div><div style="height:200px;"><canvas id="cBE"></canvas></div></div>
     <div class="card"><div class="card-title">Margen mes a mes (%)</div><div style="height:180px;"><canvas id="cMargin"></canvas></div></div>
     <div class="card"><div class="card-title">Ticket medio mensual</div><div style="height:180px;"><canvas id="cTicket"></canvas></div></div>
     <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span>Ocupación Gym</span><button class="btn btn-sm btn-ghost" onclick="openGymConfig()" style="font-size:0.7rem;padding:2px 6px;">⚙️</button></div><div style="height:180px;"><canvas id="cGymOcup"></canvas></div></div>
@@ -1999,6 +2037,21 @@ function renderDashboard(){
      segment:{borderColor:ctx=>ctx.p1.parsed.y<0?'#e03535':'#22c55e'}},
     {label:'Media Benef',data:benAvg,borderColor:'#22c55e',borderDash:[5,5],backgroundColor:'transparent',tension:.3,fill:false,pointRadius:0,borderWidth:2}
   ]},options:CHART_DEFAULTS});
+
+  // Chart 2-bis: Facturación vs Punto Muerto (Break-Even)
+  const beFillColors=factData.map((f,i)=>(f>=(beData[i]||0))?'rgba(34,197,94,.10)':'rgba(224,53,53,.10)');
+  _dashCharts.be=new Chart(document.getElementById('cBE'),{type:'line',data:{labels,datasets:[
+    {label:'Facturación',data:factData,borderColor:'#F5C000',backgroundColor:beFillColors,tension:.3,fill:true,pointRadius:3,borderWidth:2,
+     segment:{backgroundColor:ctx=>{const i=ctx.p1.dataIndex;return factData[i]>=(beData[i]||0)?'rgba(34,197,94,.10)':'rgba(224,53,53,.10)';}}},
+    {label:'Punto Muerto',data:beData,borderColor:'#e03535',borderDash:[6,4],backgroundColor:'transparent',tension:.3,fill:false,pointRadius:2,borderWidth:2}
+  ]},options:{...CHART_DEFAULTS,plugins:{...CHART_DEFAULTS.plugins,legend:{display:true,labels:{color:'#888',boxWidth:10,font:{size:10}}},tooltip:{mode:'index',intersect:false,callbacks:{afterBody:(items)=>{
+    if(!items.length)return'';
+    const i=items[0].dataIndex;
+    const f=factData[i]||0, be=beData[i]||0, diff=f-be;
+    const seg=be>0?((diff/be)*100):0;
+    const txt=diff>=0?`✓ Beneficio sobre umbral: ${fmt(diff)} (${seg.toFixed(1)}%)`:`✗ Por debajo del umbral: ${fmt(Math.abs(diff))} (${seg.toFixed(1)}%)`;
+    return['', txt];
+  }}}}}});
 
   // Chart 3: Services stacked
   const svcColors=Object.keys(catByMonth).map(c=>CAT_COL[c]||'#888');
