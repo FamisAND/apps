@@ -1014,6 +1014,53 @@ function getCondAt(member,key){
   return app.length?app[app.length-1]:{fijo:0,pct:0};
 }
 
+// ── Punto Muerto / Break-Even por mes ──
+function calcBreakEvenForKey(k){
+  const md=db.months[k]||{};
+  const entries=md.entries||[];
+  const gastos=(md.gastos||[]).filter(g=>g.cat!=='dividendos');
+  const fact=entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+  const gasTot=gastos.reduce((s,g)=>s+(parseFloat(g.amount)||0),0);
+  let varCost=0;
+  (db.team||[]).forEach(t=>{
+    const tEnt=entries.filter(e=>e.trainerId===t.id);
+    const bill=tEnt.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+    const cond=getCondForMonth(t,k);
+    varCost+=bill*(cond.pct||0)/100;
+  });
+  const CF=gasTot-varCost;
+  const margin=fact>0?(1-varCost/fact):0;
+  const BE=margin>0?CF/margin:0;
+  return{BE,fact,CF,varCost,margin,gasTot};
+}
+function calcBreakEvenForKeys(keys){
+  let totalFact=0,totalVarCost=0,totalGasTot=0;
+  keys.forEach(k=>{
+    const r=calcBreakEvenForKey(k);
+    totalFact+=r.fact;totalVarCost+=r.varCost;totalGasTot+=r.gasTot;
+  });
+  const CF=totalGasTot-totalVarCost;
+  const margin=totalFact>0?(1-totalVarCost/totalFact):0;
+  const BE=margin>0?CF/margin:0;
+  return{BE,fact:totalFact,CF,varCost:totalVarCost,margin,gasTot:totalGasTot};
+}
+// Cuántas personas se reparten los CF (configurable con ⚙️)
+function getBeNTrainers(){
+  return (db.config && db.config.beNTrainers) || 4;
+}
+function openBEConfig(){
+  const cur=getBeNTrainers();
+  const n=prompt('¿Entre cuántas personas se reparten los costes fijos del gym?\n\nEjemplo: si sois Sergio + Cristina + Arnau + Xavi, pon 4.\nIncluye a todos los que generan facturación y comparten estructura.',cur);
+  if(n===null)return;
+  const parsed=parseInt(n);
+  if(!parsed||parsed<1){toast('⚠️ Número inválido');return;}
+  db.config=db.config||{};
+  db.config.beNTrainers=parsed;
+  save();
+  renderDashboard();
+  toast('⚙️ Reparto actualizado: '+parsed+' personas');
+}
+
 // Get service price at a given monthKey (price history)
 function getPriceAt(service,key){
   const hist=[...(service.priceHistory||[])].sort((a,b)=>a.date<b.date?-1:1);
@@ -1889,7 +1936,7 @@ function renderDashboard(){
   }
 
   let labels;
-  let factData, gasData, benData, marginData, ticketData;
+  let factData, gasData, benData, marginData, ticketData, beData, mgnSegData;
 
   if(dashViewMode==='annual'){
     // Agrupar por año
@@ -1924,6 +1971,9 @@ function renderDashboard(){
       });
       return totalEntries>0?(totalFact/totalEntries):0;
     });
+
+    beData=years.map(year=>calcBreakEvenForKeys(yearMap[year]).BE);
+    mgnSegData=factData.map((f,i)=>f>0?((f-beData[i])/f)*100:0);
   } else {
     // Vista mensual
     labels=last12.map(k=>{const[y,m]=k.split('-');return MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2);});
@@ -1932,6 +1982,8 @@ function renderDashboard(){
     benData=factData.map((f,i)=>f-gasData[i]);
     marginData=benData.map((b,i)=>factData[i]>0?((factData[i]-gasData[i])/factData[i])*100:0);
     ticketData=last12.map(k=>{const entries=db.months[k].entries||[];return entries.length>0?(entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0)/entries.length):0;});
+    beData=last12.map(k=>calcBreakEvenForKey(k).BE);
+    mgnSegData=factData.map((f,i)=>f>0?((f-beData[i])/f)*100:0);
   }
   
   // Media móvil solo en vista mensual - cubre todo el período visible
@@ -1979,7 +2031,9 @@ function renderDashboard(){
     <div class="card"><div class="card-title">Margen mes a mes (%)</div><div style="height:180px;"><canvas id="cMargin"></canvas></div></div>
     <div class="card"><div class="card-title">Ticket medio mensual</div><div style="height:180px;"><canvas id="cTicket"></canvas></div></div>
     <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span>Ocupación Gym</span><button class="btn btn-sm btn-ghost" onclick="openGymConfig()" style="font-size:0.7rem;padding:2px 6px;">⚙️</button></div><div style="height:180px;"><canvas id="cGymOcup"></canvas></div></div>
-    <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Ocupación trainer (mes a mes)</span><select id="dashTrainerSelect" onchange="renderTrainerOcupChart()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:.7rem;max-width:140px;"></select></div><div style="height:180px;"><canvas id="cTrainerOcup"></canvas></div></div>
+    <div class="card"><div class="card-title">Margen de seguridad (%)</div><div style="height:180px;"><canvas id="cMgnSeg"></canvas></div></div>
+    <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Análisis por trainer <span style="font-weight:400;color:var(--muted);font-size:.7rem">— ocupación + contribución al margen</span></span><select id="dashTrainerSelect" onchange="renderTrainerOcupChart()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:.7rem;max-width:140px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;"><div><div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Ocupación</div><div style="height:180px;"><canvas id="cTrainerOcup"></canvas></div></div><div><div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Contribución al margen</div><div style="height:180px;"><canvas id="cTrainerContrib"></canvas></div></div></div></div>
+    <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Punto Muerto por trainer <span style="font-weight:400;color:var(--muted);font-size:.7rem" id="bePersonalSubtitle">— ¿quién cubre su parte de los CF?</span></span><button class="btn btn-sm btn-ghost" onclick="openBEConfig()" style="font-size:0.7rem;padding:2px 6px;" title="Configurar entre cuántas personas se reparten los costes fijos">⚙️</button></div><div style="height:200px;"><canvas id="cBEPersonal"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Facturación por tipo de servicio (mes a mes)</div><div style="height:200px;"><canvas id="cSvc"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Desglose de gastos por categoría (mes a mes)</div><div style="height:200px;"><canvas id="cGas"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Evolución deuda <span style="color:var(--red)">▬</span> vs Caja+Inversiones <span style="color:var(--green)">▬</span></div><div style="height:160px;"><canvas id="cDeuda"></canvas></div></div>
@@ -2069,6 +2123,12 @@ function renderDashboard(){
     _dashTrainerMonths=last12;
     renderTrainerOcupChart();
   }
+
+  // Margen de seguridad mes a mes (% por encima del Punto Muerto)
+  renderMgnSegChart(labels,factData,beData);
+
+  // Punto Muerto individual por trainer (último mes con datos)
+  renderBEPersonalChart();
 }
 
 // Render del chart de ocupación por trainer mes a mes
@@ -2080,11 +2140,14 @@ function renderTrainerOcupChart(){
   const trainerId=sel?.value;
   const trainer=db.team.find(t=>t.id===trainerId);
   const mks=_dashTrainerMonths||[];
-  
+
   if(_dashCharts.trainerOcup){_dashCharts.trainerOcup.destroy();_dashCharts.trainerOcup=null;}
-  
+  if(_dashCharts.trainerContrib){_dashCharts.trainerContrib.destroy();_dashCharts.trainerContrib=null;}
+
   if(!trainer || !mks.length){
     el.parentElement.querySelector('div[style*="height:180px"]').innerHTML='<div style="height:180px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;text-align:center;padding:10px;">Sin trainers visibles.<br>Activa "Mostrar en dashboard" en la ficha del trabajador.</div>';
+    const contribEl=document.getElementById('cTrainerContrib');
+    if(contribEl)contribEl.parentElement.innerHTML='<div style="height:180px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">—</div>';
     return;
   }
   
@@ -2125,6 +2188,147 @@ function renderTrainerOcupChart(){
         x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10}}},
         y:{position:'left',beginAtZero:true,title:{display:true,text:'Horas/sem',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'},ticks:{callback:v=>v+'h',font:{size:10}}},
         y1:{position:'right',beginAtZero:true,max:Math.max(120,...validOcc),display:desired>0,title:{display:true,text:'%',font:{size:10}},grid:{drawOnChartArea:false},ticks:{callback:v=>v+'%',font:{size:10}}}
+      }
+    }
+  });
+
+  // ── Gráfico de Contribución al margen (mismo selector) ──
+  const contribEl=document.getElementById('cTrainerContrib');
+  if(contribEl){
+    const billData=[],commData=[],marginData=[];
+    mks.forEach(k=>{
+      const ents=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
+      const bill=ents.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+      const cond=getCondForMonth(trainer,k);
+      const pctAmt=bill*(cond.pct||0)/100;
+      const comm=(cond.fijo||0)+pctAmt+(cond.extras||0);
+      billData.push(bill);
+      commData.push(comm);
+      marginData.push(bill-comm);
+    });
+    _dashCharts.trainerContrib=new Chart(contribEl,{
+      type:'bar',
+      data:{labels,datasets:[
+        {label:'Cobra '+trainer.name,data:commData,backgroundColor:'rgba(224,53,53,.80)',borderColor:'#e03535',borderWidth:1,stack:'s'},
+        {label:'Margen al negocio',data:marginData,backgroundColor:'rgba(34,197,94,.80)',borderColor:'#22c55e',borderWidth:1,stack:'s'}
+      ]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:true,position:'top',labels:{font:{size:10},boxWidth:10}},
+          tooltip:{callbacks:{footer:(items)=>{
+            const i=items[0].dataIndex;
+            const b=billData[i],m=marginData[i];
+            const p=b>0?(m/b*100).toFixed(1):'0';
+            return `Facturación total: ${fmt(b)} · Margen ${p}%`;
+          }}}
+        },
+        scales:{
+          x:{stacked:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10}}},
+          y:{stacked:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},callback:v=>'€'+v.toLocaleString('es-ES')}}
+        }
+      }
+    });
+  }
+}
+
+// ── Margen de seguridad mes a mes ──
+function renderMgnSegChart(labels,factData,beData){
+  const el=document.getElementById('cMgnSeg');
+  if(!el)return;
+  if(_dashCharts.mgnSeg){_dashCharts.mgnSeg.destroy();_dashCharts.mgnSeg=null;}
+  const mgnSeg=factData.map((f,i)=>f>0?((f-(beData[i]||0))/f)*100:0);
+  const colorFor=v=>{if(v<10)return['rgba(224,53,53,.80)','#e03535'];if(v<20)return['rgba(251,146,60,.80)','#fb923c'];return['rgba(34,197,94,.80)','#22c55e'];};
+  const colors=mgnSeg.map(v=>colorFor(v)[0]);
+  const borders=mgnSeg.map(v=>colorFor(v)[1]);
+  _dashCharts.mgnSeg=new Chart(el,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Margen seguridad (%)',data:mgnSeg,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{
+        afterBody:(items)=>{
+          const i=items[0].dataIndex;
+          const f=factData[i]||0,be=beData[i]||0;
+          return `Fact: ${fmt(f)} · BE: ${fmt(be)} · Colchón: ${fmt(f-be)}`;
+        }
+      }}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777'}},
+        y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777',callback:v=>v.toFixed(0)+'%'}}
+      }
+    }
+  });
+}
+
+// ── Punto Muerto individual por trainer (último mes con datos) ──
+function renderBEPersonalChart(){
+  const el=document.getElementById('cBEPersonal');
+  if(!el)return;
+  if(_dashCharts.bePersonal){_dashCharts.bePersonal.destroy();_dashCharts.bePersonal=null;}
+  const mks=Object.keys(db.months).sort().filter(k=>(db.months[k].entries||[]).length>0);
+  const lastKey=mks.length?mks[mks.length-1]:null;
+  if(!lastKey){
+    el.parentElement.querySelector('div[style*="height:200px"]').innerHTML='<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">Sin datos</div>';
+    return;
+  }
+  const r=calcBreakEvenForKey(lastKey);
+  const N=getBeNTrainers();
+  const cfPerTrainer=N>0?r.CF/N:0;
+  const sub=document.getElementById('bePersonalSubtitle');
+  if(sub){
+    const[y,m]=lastKey.split('-');
+    const mesLabel=MES[parseInt(m)-1]+' '+y;
+    sub.textContent=`— ${mesLabel} · CF ${fmt(r.CF)} ÷ ${N} = ${fmt(cfPerTrainer)} por persona`;
+  }
+  const labels=[],factVals=[],beVals=[],colors=[],borders=[];
+  (db.team||[]).filter(t=>t.active).forEach(t=>{
+    const tEnt=(db.months[lastKey].entries||[]).filter(e=>e.trainerId===t.id);
+    const bill=tEnt.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+    if(bill===0)return;
+    const cond=getCondForMonth(t,lastKey);
+    const pctDec=(cond.pct||0)/100;
+    let beIndiv;
+    if(pctDec>0){
+      beIndiv=cfPerTrainer/(1-pctDec);
+    }else{
+      const fijo=(cond.fijo||0)+(cond.extras||0);
+      beIndiv=cfPerTrainer+fijo;
+    }
+    labels.push(t.name);
+    factVals.push(bill);
+    beVals.push(beIndiv);
+    const ok=bill>=beIndiv;
+    colors.push(ok?'rgba(34,197,94,.75)':'rgba(224,53,53,.75)');
+    borders.push(ok?'#22c55e':'#e03535');
+  });
+  if(!labels.length){
+    el.parentElement.querySelector('div[style*="height:200px"]').innerHTML='<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">Sin facturación por trainer</div>';
+    return;
+  }
+  _dashCharts.bePersonal=new Chart(el,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'Facturación real',data:factVals,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:3,order:2},
+      {label:'BE individual',data:beVals,type:'line',borderColor:'#e03535',backgroundColor:'rgba(224,53,53,.05)',borderDash:[6,4],borderWidth:2,pointRadius:5,pointBackgroundColor:'#e03535',order:1,fill:false}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true,position:'top',labels:{font:{size:10},boxWidth:10}},
+        tooltip:{mode:'index',intersect:false,callbacks:{
+          afterBody:(items)=>{
+            if(!items.length)return'';
+            const i=items[0].dataIndex;
+            const f=factVals[i],be=beVals[i],diff=f-be;
+            return diff>=0?`✓ Sobra ${fmt(diff)} al mes`:`✗ Faltan ${fmt(Math.abs(diff))} al mes`;
+          }
+        }}
+      },
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777'}},
+        y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777',callback:v=>'€'+v.toLocaleString('es-ES')}}
       }
     }
   });
