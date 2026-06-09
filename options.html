@@ -1795,7 +1795,29 @@ function histLoad(){
     if(_cleaned > 0){
       console.log('[migración v166] '+_cleaned+' entries con direction=neutral limpiadas (legacy ACC pCredito-negativo restaurado)');
     }
-    if(_migrated > 0 || _cleaned > 0){
+    // ── v176 migración: rellenar maxRisk desde legs cuando falte ──
+    // Para entries con detalle de patas guardado (legs) y sin maxRisk,
+    // derivamos el riesgo per-contrato usando strikes + prima neta + mult.
+    // Sólo toca entries SIN maxRisk previo (null, 0 o undefined) — nunca
+    // pisa valores que el usuario ya había puesto a mano.
+    let _mrFilled = 0;
+    if(typeof _calcRiskPerContractFromLegs === 'function'){
+      HIST.forEach(e => {
+        const hasMR = e.maxRisk != null && e.maxRisk > 0;
+        if(hasMR) return;
+        if(!Array.isArray(e.legs) || !e.legs.length) return;
+        const m = e.mult || 100;
+        const r = _calcRiskPerContractFromLegs(e.legs, m);
+        if(r != null && r > 0){
+          e.maxRisk = parseFloat(r.toFixed(2));
+          _mrFilled++;
+        }
+      });
+    }
+    if(_mrFilled > 0){
+      console.log('[migración v176] maxRisk auto-rellenado en '+_mrFilled+' operaciones desde el detalle de patas');
+    }
+    if(_migrated > 0 || _cleaned > 0 || _mrFilled > 0){
       try{ localStorage.setItem('ot_hist', JSON.stringify(HIST)); }catch(e){}
     }
   }catch(e){}
@@ -4709,18 +4731,104 @@ function legsRecalcTotals(containerId){
   }
   if(hasComi)  setIf(map.comi,  totComi, 2);
   // ── Auto-calc Max Risk a partir de strikes ──
-  // Solo aplica al modal de "Nueva posición activa" (am_*), no al historial form (hf_*).
-  if(containerId === 'am_legs_container'){
+  // Aplica a ambos modales: am_* (nueva posición activa) y hf_* (histórico).
+  if(containerId === 'am_legs_container' || containerId === 'hf_legs_container'){
     _autoMaxRiskFromLegs(containerId);
   }
 }
 
-// Calcula el max risk a partir de strikes y tipos de pata.
-// · NP (1 short put): strike × 100 × contracts
-// · Credit spread (short + long mismo lado): width × 100 × contracts
-// · Iron Condor (2 spreads): max(width_put, width_call) × 100 × contracts
-// · Mixed (BWB/JL/etc.): aproximación = mayor riesgo de las patas short netas
-//   (no perfecto, pero da un punto de partida razonable que el usuario puede ajustar)
+// Calcula el max risk POR CONTRATO a partir de un array de patas y un
+// multiplicador ($/pt). Función PURA — no lee DOM, no escribe en ningún lado.
+//
+// Reglas (sign-aware con la prima neta):
+//   netPrima > 0  → posición a CRÉDITO  (cobras al abrir)
+//   netPrima < 0  → posición a DÉBITO   (pagas al abrir)
+//
+//   · Credit Spread: max riesgo = (ancho − crédito) × mult
+//   · Debit Spread:  max riesgo = débito × mult                (= |netPrima|·mult)
+//   · Iron Condor / Iron Fly: usa el mayor de los dos anchos
+//   · Naked Put:  (strike − prima) × mult
+//   · Naked Call: (strike − prima) × mult   (aproximación; riesgo real es ∞)
+//   · MIXTAS (JL = short put + call spread, etc.): devuelve el MAYOR riesgo
+//     entre el lado naked y el lado spread — aproximación para BWB/112/JL
+//     que el usuario puede ajustar.
+//
+// Devuelve null si los datos son insuficientes.
+function _calcRiskPerContractFromLegs(legArr, mult){
+  if(!Array.isArray(legArr) || !legArr.length) return null;
+  const _m = (Number.isFinite(mult) && mult > 0) ? mult : 100;
+  const legs = legArr.map(l => ({
+    kind: l.kind || '',
+    strike: parseFloat(l.strike),
+    prima: Number.isFinite(parseFloat(l.prima)) ? parseFloat(l.prima) : 0,
+    isShort: l.isShort != null ? l.isShort : (l.kind||'').startsWith('short_'),
+    isPut: l.isPut != null ? l.isPut : (l.kind||'').endsWith('_put'),
+  })).filter(l => l.kind && Number.isFinite(l.strike) && l.strike > 0);
+  if(!legs.length) return null;
+
+  const puts  = legs.filter(l=>l.isPut);
+  const calls = legs.filter(l=>!l.isPut);
+  const putShort  = puts.filter(l=>l.isShort);
+  const putLong   = puts.filter(l=>!l.isShort);
+  const callShort = calls.filter(l=>l.isShort);
+  const callLong  = calls.filter(l=>!l.isShort);
+
+  // Prima neta sign-aware: short cobra (+), long paga (-).
+  const netPrima = legs.reduce((s,l)=>s + (l.isShort ? l.prima : -l.prima), 0);
+
+  // Anchos de spread (sólo si hay short+long en el mismo lado)
+  const widthPut  = (putShort.length && putLong.length)
+    ? Math.abs(Math.max(...putShort.map(l=>l.strike)) - Math.max(...putLong.map(l=>l.strike)))
+    : null;
+  const widthCall = (callShort.length && callLong.length)
+    ? Math.abs(Math.min(...callLong.map(l=>l.strike)) - Math.min(...callShort.map(l=>l.strike)))
+    : null;
+
+  // Helper: riesgo del lado spread, sign-aware
+  const _spreadRisk = (width) => {
+    if(width == null) return 0;
+    if(netPrima >= 0){
+      // Crédito: max riesgo = (ancho − crédito) × mult
+      return Math.max(0, width * _m - netPrima * _m);
+    } else {
+      // Débito: max riesgo = débito pagado × mult
+      return Math.abs(netPrima) * _m;
+    }
+  };
+
+  // Helper: riesgo del lado naked (short sin long enfrente)
+  const _nakedRisk = (shortLegs) => {
+    if(!shortLegs.length) return 0;
+    const strikeMax = Math.max(...shortLegs.map(l=>l.strike));
+    return Math.max(0, strikeMax * _m - netPrima * _m);
+  };
+
+  const isPutNaked  = putShort.length && !putLong.length;
+  const isCallNaked = callShort.length && !callLong.length;
+
+  // Iron Condor / Iron Fly — los dos lados son spreads completos
+  if(widthPut != null && widthCall != null){
+    return Math.max(_spreadRisk(widthPut), _spreadRisk(widthCall));
+  }
+  // MIXTA: un lado naked + el otro spread (JL clásico, 112, etc.)
+  if((isPutNaked && widthCall != null) || (isCallNaked && widthPut != null)){
+    const nakedR  = isPutNaked  ? _nakedRisk(putShort)  : _nakedRisk(callShort);
+    const spreadR = _spreadRisk(widthPut != null ? widthPut : widthCall);
+    return Math.max(nakedR, spreadR);
+  }
+  // Spread puro de un lado
+  if(widthPut  != null) return _spreadRisk(widthPut);
+  if(widthCall != null) return _spreadRisk(widthCall);
+  // Naked puro
+  if(isPutNaked)  return _nakedRisk(putShort);
+  if(isCallNaked) return _nakedRisk(callShort);
+
+  return null;
+}
+
+// Wrapper que lee del DOM, calcula y escribe en el campo Max Risk del modal.
+// Soporta los dos contenedores (am_* y hf_*). Para am_* usa mult=100 (equity);
+// para hf_* lee mult del campo hf_mult del propio modal.
 function _autoMaxRiskFromLegs(containerId){
   const container = document.getElementById(containerId);
   if(!container) return;
@@ -4729,62 +4837,38 @@ function _autoMaxRiskFromLegs(containerId){
   const legs = [];
   rows.forEach(row => {
     const kind = row.querySelector('[data-f="kind"]')?.value || '';
-    const strikeVal = row.querySelector('[data-f="strike"]')?.value;
-    const strike = parseFloat(strikeVal);
-    const primaVal = row.querySelector('[data-f="prima"]')?.value;
-    const prima = parseFloat(primaVal);
+    const strike = parseFloat(row.querySelector('[data-f="strike"]')?.value);
+    const prima = parseFloat(row.querySelector('[data-f="prima"]')?.value);
     if(!kind || !Number.isFinite(strike) || strike<=0) return;
-    legs.push({ kind, strike, isShort: kind.startsWith('short_'), isPut: kind.endsWith('_put'), prima: Number.isFinite(prima)?prima:0 });
+    legs.push({ kind, strike, prima: Number.isFinite(prima)?prima:0 });
   });
   if(!legs.length) return;
-  // Separar puts y calls
-  const puts  = legs.filter(l=>l.isPut);
-  const calls = legs.filter(l=>!l.isPut);
-  const putShort  = puts.filter(l=>l.isShort);
-  const putLong   = puts.filter(l=>!l.isShort);
-  const callShort = calls.filter(l=>l.isShort);
-  const callLong  = calls.filter(l=>!l.isShort);
 
-  let riskPerContract = null;
-  // Helper: width = short - long (cuando hay ambos)
-  const widthPut  = (putShort.length && putLong.length)
-    ? Math.abs(Math.max(...putShort.map(l=>l.strike)) - Math.max(...putLong.map(l=>l.strike)))
-    : null;
-  const widthCall = (callShort.length && callLong.length)
-    ? Math.abs(Math.min(...callLong.map(l=>l.strike)) - Math.min(...callShort.map(l=>l.strike)))
-    : null;
-
-  if(widthPut!=null && widthCall!=null){
-    // Iron Condor / Iron Fly — riesgo = max de los dos spreads
-    riskPerContract = Math.max(widthPut, widthCall) * 100;
-  } else if(widthPut!=null){
-    // Put credit/debit spread
-    riskPerContract = widthPut * 100;
-  } else if(widthCall!=null){
-    // Call credit/debit spread
-    riskPerContract = widthCall * 100;
-  } else if(putShort.length && !putLong.length){
-    // Naked put(s) — riesgo = strike × 100 (asume el strike más alto si hay varias)
-    riskPerContract = Math.max(...putShort.map(l=>l.strike)) * 100;
-  } else if(callShort.length && !callLong.length){
-    // Naked call — riesgo "infinito" no es útil; mostramos strike × 100 como aproximación
-    riskPerContract = Math.max(...callShort.map(l=>l.strike)) * 100;
+  // Resolver mult y elementos según el contenedor
+  let mult, ctrId, mrId;
+  if(containerId === 'am_legs_container'){
+    mult = 100; // am modal no maneja futuros — equity scale fijo
+    ctrId = 'am_contracts';
+    mrId  = 'am_maxrisk';
+  } else if(containerId === 'hf_legs_container'){
+    const mEl = document.getElementById('hf_mult');
+    mult = Math.max(1, parseFloat(mEl?.value)||100);
+    ctrId = 'hf_contracts';
+    mrId  = 'hf_maxRisk';
+  } else {
+    return;
   }
-
+  const riskPerContract = _calcRiskPerContractFromLegs(legs, mult);
   if(riskPerContract == null || riskPerContract <= 0) return;
-  // Restar la prima neta cobrada (en credit spreads el riesgo neto = width − prima)
-  const netPrima = legs.reduce((s,l)=>s + (l.isShort? l.prima : -l.prima), 0);
-  // netPrima en $/share → ×100 para llevarlo a $/contrato
-  riskPerContract = Math.max(0, riskPerContract - netPrima * 100);
-
-  const ctr = parseFloat(document.getElementById('am_contracts')?.value)||1;
+  const ctr = parseFloat(document.getElementById(ctrId)?.value)||1;
   const total = riskPerContract * ctr;
-  const mrEl = document.getElementById('am_maxrisk');
-  // Solo auto-fill si el usuario no ha escrito un valor manual (o si difiere mucho del calculado)
+  const mrEl = document.getElementById(mrId);
   if(mrEl && (!mrEl.value || mrEl.dataset.autocalc==='1')){
     mrEl.value = total.toFixed(0);
     mrEl.dataset.autocalc = '1';
     mrEl.title = 'Calculado automáticamente desde las patas. Edítalo si quieres fijar otro.';
+    // Redisparar hfCompute para refrescar Profit Op % en el modal del histórico
+    if(containerId === 'hf_legs_container' && typeof hfCompute === 'function') hfCompute();
   }
 }
 
