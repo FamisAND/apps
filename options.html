@@ -1883,11 +1883,14 @@ function computeEntry(e){
   // para que sea irrelevante si el user los ha guardado con + o −. La fórmula
   // ya conoce la dirección via isLong.
   const _deb = e.pDebito != null ? Math.abs(e.pDebito) : 0;
-  // pNeto: price in $/share → ×100 = $/contract (comi is flat total $)
+  // pNeto: price in pts → ×mult = $/contract  (comi is flat total $)
+  // mult: 100 equity/SPX (default backward-compat), 50 /ES, 5 /MES, 20 /NQ, 2 /MNQ.
+  // Para entries legacy sin e.mult → 100 (comportamiento anterior preservado).
+  const _mul = e.mult || 100;
   // Short: (|pCredito| - |pDebito| - |pCierre|); Long: (|pCierre| - |pCredito| - |pDebito|)
   const _pNetoPerCtr = _absCredito!=null
     ? (isLong ? ((_absCierre||0) - _absCredito - _deb)
-              : (_absCredito - _deb - (_absCierre||0))) * 100
+              : (_absCredito - _deb - (_absCierre||0))) * _mul
     : null;
   const pNeto = e.pNetoOvr != null ? e.pNetoOvr : _pNetoPerCtr;
   // totalNeto: en "escala prima" ($/100). Los overrides también están en esta escala.
@@ -2476,18 +2479,28 @@ function openEntryModal(id=null){
     <div class="h-modal-title">${title}</div>
     <div class="h-form-grid">
       <div class="hfr"><label>ID operativa</label><input type="text" id="hf_idOp" placeholder="AAPL-2503-001" value="${e.idOp||''}"/></div>
-      <div class="hfr"><label>Activo</label><input type="text" id="hf_activo" placeholder="AAPL" value="${e.activo||''}" oninput="this.value=this.value.toUpperCase()"/></div>
+      <div class="hfr"><label>Activo</label><input type="text" id="hf_activo" placeholder="AAPL" value="${e.activo||''}" oninput="this.value=this.value.toUpperCase();hfOnActivoChange()"/></div>
       <div class="hfr"><label>Operativa</label>
-        <select id="hf_strat">
+        <select id="hf_strat" onchange="hfOnStratChange()">
           ${getAllStrats().map(s=>`<option value="${s.code}" ${(e.strat||'NP')===s.code?'selected':''}>${s.label}</option>`).join('')}
         </select>
       </div>
       <div class="hfr"><label>Contratos</label><input type="number" id="hf_contracts" min="1" value="${e.contracts||1}"/></div>
 
+      <div class="hfr"><label>Tipo <span style="color:#3a5468;font-size:7px">crédito = cobras prima · débito = pagas prima</span></label>
+        <select id="hf_tipo" onchange="hfCompute()">
+          <option value="credito" ${(e.entryDirection||'credit')==='credit'?'selected':''}>Crédito</option>
+          <option value="debito" ${e.entryDirection==='debit'?'selected':''}>Débito</option>
+        </select>
+      </div>
+      <div class="hfr"><label>Multiplicador ($/pt) <span style="color:#3a5468;font-size:7px">/ES=50 · /MES=5 · /NQ=20 · /MNQ=2 · acc/SPX=100</span></label><input type="number" id="hf_mult" step="1" min="1" placeholder="100" value="${e.mult||''}" oninput="hfCompute()"/></div>
+      <div class="hfr"></div>
+      <div class="hfr"></div>
+
       <div class="hfr"><label>Apertura</label><input type="date" id="hf_apertura" value="${e.apertura||TODAY}"/></div>
       <div class="hfr"><label>EXP</label><input type="date" id="hf_exp" value="${e.exp||''}"/></div>
       <div class="hfr"><label>Cierre</label><input type="date" id="hf_cierre" value="${e.cierre||''}"/></div>
-      <div class="hfr"><label>Max Risk $/contrato <span style="color:#3a5468;font-size:7px">NP: strike×100 | Spread: width×100</span></label><input type="number" id="hf_maxRisk" step="0.5" placeholder="ej: 5000" value="${e.maxRisk||''}"/></div>
+      <div class="hfr"><label>Max Risk $/contrato <span style="color:#3a5468;font-size:7px" id="hf_maxRisk_hint">crédito: (width−prima)×mult · débito: prima×mult</span></label><input type="number" id="hf_maxRisk" step="0.5" placeholder="ej: 5000" value="${e.maxRisk||''}"/></div>
 
       <div class="h-form-sep"></div>
 
@@ -2529,6 +2542,16 @@ function openEntryModal(id=null){
       <button class="h-modal-save" onclick="saveEntry()">Guardar</button>
     </div>`;
 
+  // Reset trackers de auto-detección entre aperturas de modal — sin esto,
+  // un valor "último sugerido" del modal anterior haría que overwriteamos
+  // valores del usuario en el nuevo.
+  _hfLastSuggestedMult = null;
+  _hfLastSuggestedTipo = null;
+  // Si el entry NO tiene mult/entryDirection (legacy), autorellenar desde
+  // activo y estrategia. Si los tiene, hfOnActivoChange/hfOnStratChange
+  // respetan los valores existentes (sólo cambian si el campo estaba vacío).
+  hfOnActivoChange();
+  hfOnStratChange();
   hfCompute();
   document.getElementById('hOverlay').classList.add('on');
   // .oninput = (no addEventListener) para no acumular listeners cada vez que
@@ -2546,9 +2569,60 @@ function openEntryModal(id=null){
   if(hfLegsSec) hfLegsSec.open = !!(e.legs && e.legs.length);
 }
 
+// Sugerir multiplicador desde el activo (futuros vs equity).
+// /ES, /RTY → 50; /MES → 5; /NQ → 20; /MNQ → 2; resto → 100.
+function _multForActivo(activo){
+  const a = (activo||'').toUpperCase().trim();
+  if(!a) return 100;
+  if(a==='/ES'  || a.startsWith('/ES_'))  return 50;
+  if(a==='/RTY' || a.startsWith('/RTY_')) return 50;
+  if(a==='/MES' || a.startsWith('/MES_')) return 5;
+  if(a==='/NQ'  || a.startsWith('/NQ_'))  return 20;
+  if(a==='/MNQ' || a.startsWith('/MNQ_')) return 2;
+  return 100; // equity, SPX, ETF, etc.
+}
+
+// Cuando cambia el ACTIVO: si el campo mult está vacío o coincidía con el
+// auto-sugerido del activo anterior, lo actualizamos. Si el usuario lo había
+// tocado a mano (no coincide con ningún auto), respetamos su valor.
+let _hfLastSuggestedMult = null;
+function hfOnActivoChange(){
+  const activoEl = document.getElementById('hf_activo');
+  const multEl   = document.getElementById('hf_mult');
+  if(!activoEl || !multEl) return;
+  const suggested = _multForActivo(activoEl.value);
+  const cur = multEl.value;
+  // Auto-rellenar si está vacío o si el valor actual era el último auto
+  if(cur==='' || (_hfLastSuggestedMult!=null && parseFloat(cur)===_hfLastSuggestedMult)){
+    multEl.value = suggested;
+  }
+  _hfLastSuggestedMult = suggested;
+  hfCompute();
+}
+
+// Cuando cambia la OPERATIVA, autodefault del tipo según la dirección
+// configurada para esa estrategia. Si el usuario ya lo había puesto a algo
+// no-default, lo respetamos (sólo cambiamos si el tipo coincide con el
+// default anterior).
+let _hfLastSuggestedTipo = null;
+function hfOnStratChange(){
+  const stratEl = document.getElementById('hf_strat');
+  const tipoEl  = document.getElementById('hf_tipo');
+  if(!stratEl || !tipoEl) return;
+  const dir = _stratDirectionOf(stratEl.value);
+  const suggested = dir==='debit' ? 'debito' : (dir==='credit' ? 'credito' : null);
+  if(suggested && (tipoEl.value==='' || tipoEl.value===_hfLastSuggestedTipo)){
+    tipoEl.value = suggested;
+  }
+  _hfLastSuggestedTipo = suggested;
+  hfCompute();
+}
+
 function hfCompute(){
-  // Inputs pc/pcl en $/share (como los muestra Tastytrade, ej: 2.89 = $2.89 por share)
-  // 1 contrato = 100 shares, por tanto $/contrato = $/share × 100
+  // Inputs pc/pcl en PUNTOS (= $/share para equity, = puntos para futuros).
+  // El multiplicador del activo (mult, $/pt) convierte a $/contrato.
+  //   equity options:  mult = 100 → 2.89 pts × 100 = $289/contrato
+  //   /ES futures:     mult = 50  → 2.60 pts × 50  = $130/contrato
   const pc  = parseFloat(document.getElementById('hf_pCredito')?.value)||0;
   const pd  = 0;
   const pcl = document.getElementById('hf_pCierre')?.value;
@@ -2560,23 +2634,33 @@ function hfCompute(){
   const comi = comiOpen + comiClose; // total
   const contracts = parseInt(document.getElementById('hf_contracts')?.value)||1;
   const maxRisk = parseFloat(document.getElementById('hf_maxRisk')?.value)||0;
+  // Multiplicador del activo (fallback 100 = equity)
+  const mult = Math.max(1, parseFloat(document.getElementById('hf_mult')?.value)||100);
+  // Tipo de operación: 'credito' (cobras al abrir) o 'debito' (pagas al abrir)
+  const tipo = document.getElementById('hf_tipo')?.value || 'credito';
 
-  // Sign-aware: si la entrada que se edita es un cierre parcial de una pata
-  // LONG (LP/LC), el P&L se invierte porque pagaste al abrir y recibes al
-  // cerrar. Para SHORTS (lo normal) la fórmula clásica (pc - pCierre) sirve.
-  // _entryIsLong mira flag, legClose o nota — cubre entries legacy.
-  const isLong = !!(_hEditEntry && _entryIsLong(_hEditEntry));
+  // Determinación de isLong:
+  //   1) Si es un cierre parcial de pata LP/LC → siempre LONG (preserva flujo).
+  //   2) Si no, manda el selector Tipo: debito → LONG, credito → SHORT.
+  const isPartial = !!(_hEditEntry && _entryIsLong(_hEditEntry));
+  const isLong = isPartial || (tipo === 'debito');
 
-  const tp_raw = (pc && pCierre != null)
-    ? (isLong ? ((pCierre - pc)/pc*100) : ((pc - pCierre)/pc*100))
+  // Trabajamos con |pc|/|pcl| para que el signo introducido sea irrelevante
+  // — el tipo manda la fórmula. Esto coincide con la lógica de computeEntry
+  // cuando entryDirection es explícito.
+  const _pc  = Math.abs(pc);
+  const _pcl = pCierre!=null ? Math.abs(pCierre) : null;
+
+  const tp_raw = (_pc && _pcl != null)
+    ? (isLong ? ((_pcl - _pc)/_pc*100) : ((_pc - _pcl)/_pc*100))
     : null;
   const tp = tp_raw!=null ? Math.min(100, Math.max(-100, tp_raw)) : null;
-  // pNeto: $/share neto (sin comi, sin multiplicar por 100)
-  const pNeto = pc
-    ? (isLong ? ((pCierre||0) - pc - pd) : (pc - pd - (pCierre||0)))
+  // pNeto: puntos netos del spread (antes de comi y multiplicador)
+  const pNeto = _pc
+    ? (isLong ? ((_pcl||0) - _pc - pd) : (_pc - pd - (_pcl||0)))
     : null;
-  // Total neto en $ reales: pNeto $/share × 100 shares × contratos − comi total
-  const totalNeto = pNeto!=null ? (pNeto * 100 * contracts - comi) : null;
+  // Total neto en $ reales: pts × mult × contratos − comi total
+  const totalNeto = pNeto!=null ? (pNeto * mult * contracts - comi) : null;
   // ROI real
   const capital = maxRisk * contracts;
   const profitOp = (totalNeto!=null && capital>0) ? (totalNeto / capital * 100) : null;
@@ -2588,9 +2672,27 @@ function hfCompute(){
   };
 
   if(document.getElementById('hfc_tp')) document.getElementById('hfc_tp').innerHTML = fmtN(tp,1,'%');
-  if(document.getElementById('hfc_pNeto')) document.getElementById('hfc_pNeto').innerHTML = fmtN(pNeto,2,' $');
+  if(document.getElementById('hfc_pNeto')) document.getElementById('hfc_pNeto').innerHTML = fmtN(pNeto,2,' pts');
   if(document.getElementById('hfc_totalNeto')) document.getElementById('hfc_totalNeto').innerHTML = fmtN(totalNeto,2,' $');
-  if(document.getElementById('hfc_profitOp')) document.getElementById('hfc_profitOp').innerHTML = fmtN(profitOp,2,'%');
+  // Sanity warning: si el ROI sale > 1000 % o < -1000 % casi siempre es por
+  // confundir unidades ($/contrato cuando esperaba pts, multiplicador mal).
+  let profitHtml = fmtN(profitOp,2,'%');
+  if(profitOp!=null && Math.abs(profitOp) > 1000){
+    profitHtml += ` <span style="color:#e69138;font-size:9px;font-weight:700" title="ROI fuera de rango razonable — revisa unidades, multiplicador o Max Risk">⚠</span>`;
+  }
+  if(document.getElementById('hfc_profitOp')) document.getElementById('hfc_profitOp').innerHTML = profitHtml;
+
+  // Hint para Max Risk: muestra el valor auto-calculado debajo del label
+  const hintEl = document.getElementById('hf_maxRisk_hint');
+  if(hintEl && _pc){
+    if(tipo === 'debito'){
+      const sug = _pc * mult;
+      hintEl.textContent = `débito: ${_pc.toFixed(2)} × ${mult} = ${sug.toFixed(2)} $/contrato`;
+    } else {
+      // crédito: necesitaríamos width; mostramos sólo la fórmula
+      hintEl.textContent = `crédito: (width−${_pc.toFixed(2)}) × ${mult}`;
+    }
+  }
 }
 
 function closeEntryModal(){
@@ -2606,6 +2708,26 @@ function saveEntry(){
   const comiClose = _comiCloseRaw !== '' ? parseFloat(_comiCloseRaw) : null;
   // comi total = suma (para retro-compatibilidad: el resto del código usa `comi`)
   const comiTot = (comiOpen != null || comiClose != null) ? ((comiOpen||0) + (comiClose||0)) : null;
+
+  // Tipo (crédito/débito) y multiplicador: leídos del modal.
+  // OJO con strats 'neutral' (ej. ACC): si el entry original NO tenía
+  // entryDirection, NO lo seteamos al guardar. Esto preserva el sistema
+  // legacy donde Sergio codificaba pérdidas de ACC con pCredito negativo y
+  // la fórmula signed daba el resultado correcto. Forzar 'credit' aquí
+  // metería Math.abs en computeEntry y mostraría las pérdidas como
+  // ganancias falsas.
+  const _stratSel = document.getElementById('hf_strat')?.value;
+  const _stratDir = (typeof _stratDirectionOf==='function') ? _stratDirectionOf(_stratSel) : null;
+  const _tipoRaw = document.getElementById('hf_tipo')?.value || 'credito';
+  const _entryDir = _tipoRaw === 'debito' ? 'debit' : 'credit';
+  const _multRaw = parseFloat(document.getElementById('hf_mult')?.value);
+  const _mult = (Number.isFinite(_multRaw) && _multRaw > 0) ? _multRaw : 100;
+  // ¿Persistimos entryDirection?
+  //   - sí, si el entry ya lo tenía (cualquier valor, incluso neutral)
+  //   - sí, si la estrategia tiene dirección no-neutral (todo menos ACC)
+  //   - no, si es legacy ACC sin dirección previa → preserva fórmula signed
+  const _persistDir = (_hEditEntry && _hEditEntry.entryDirection)
+                       || (_stratDir && _stratDir !== 'neutral');
 
   const entry = {
     id: hEditId!=null ? hEditId : Date.now(),
@@ -2626,53 +2748,66 @@ function saveEntry(){
     comi: comiTot,           // legacy field, sigue siendo la suma (compatible con todo el código existente)
     comiOpen: comiOpen,      // nuevo: comisión apertura
     comiClose: comiClose,    // nuevo: comisión cierre
+    mult: _mult,             // nuevo: multiplicador $/pt del activo (100 equity, 50 /ES, etc.)
     nota: document.getElementById('hf_nota').value.trim(),
   };
+  // entryDirection condicional (ver _persistDir arriba)
+  if(_persistDir){
+    // Si el original tenía 'neutral' lo respetamos; en otro caso lo derivamos del form.
+    entry.entryDirection = (_hEditEntry && _hEditEntry.entryDirection === 'neutral')
+      ? 'neutral'
+      : _entryDir;
+  }
   entry.stratGroup = entry.strat || 'NP';
   // Patas (opcional)
   const _hfLegs = (typeof legsRead === 'function') ? legsRead('hf_legs_container') : null;
   if(_hfLegs) entry.legs = _hfLegs;
 
-  // ── PRESERVAR entryDirection del entry original ──
-  // Solo si _hEditEntry ya la tenía. NO inferimos del strat para entries
-  // legacy — eso machacaría el comportamiento histórico (Sergio había
-  // codificado pérdidas de ACC con pCredito negativo, y la fórmula short
-  // antigua daba sign correcto; añadir 'neutral' rompía la cuenta).
-  if(_hEditEntry && _hEditEntry.entryDirection){
-    entry.entryDirection = _hEditEntry.entryDirection;
-  }
-
-  // ── RECOMPUTE de Ovr direction-aware SOLO para débito/crédito ──
-  // Si entryDirection es 'debit' o 'credit', recalculamos con Math.abs y
-  // fórmula que respeta long/short. Esto garantiza que un PDS con
-  // pCredito=-0.78 o +0.78 dé el mismo resultado.
-  // Si entryDirection NO está o es 'neutral' (legacy ACC, etc.), BORRAMOS
-  // los Ovr stale para forzar a computeEntry a usar la fórmula signed
-  // tradicional en runtime. Esto restaura las entries IBIT ACC / PYPL ACC
-  // que mi v165 había contaminado con Ovr recomputados con Math.abs.
+  // ── RECOMPUTE de Ovr direction-aware ──
+  // El selector Tipo manda. La fórmula:
+  //   débito:  diff_pts = cierre − apertura  (gano si cierro más alto)
+  //   crédito: diff_pts = apertura − cierre  (gano si cierro más bajo)
+  // Multiplicador: entry.mult ($/pt) ya viene del form.
+  //
+  // Para entries de cierre parcial NO recalculamos aquí — el bloque de
+  // abajo mantiene su propia lógica sign-aware basada en legClose/isLong.
+  // OJO: entry.isPartialClose se setea más abajo desde _hEditEntry, así que
+  // aquí miramos _hEditEntry directamente para saber si es un cierre parcial.
+  // Para entries SIN entryDirection (legacy neutral/ACC) tampoco — borramos
+  // Ovr stale y dejamos que computeEntry calcule en runtime con la fórmula
+  // signed tradicional.
   const _dirIsExplicit = entry.entryDirection === 'debit' || entry.entryDirection === 'credit';
-  if(!entry.isPartialClose){
-    if(_dirIsExplicit){
-      const _isLong = entry.entryDirection === 'debit';
-      const pc_abs  = Math.abs((entry.pCredito || 0) * 100);   // $/share
-      const pd_abs  = Math.abs((entry.pDebito  || 0) * 100);   // $/share
-      const pcl_abs = entry.pCierre != null ? Math.abs(entry.pCierre * 100) : null;
-      const _ctr    = entry.contracts || 1;
-      const _comiT  = (entry.comiOpen || 0) + (entry.comiClose || 0);
-      if(pcl_abs != null){
-        const primaApertura = _isLong ? (pc_abs + pd_abs) : (pc_abs - pd_abs);
-        const diffPerShare  = _isLong ? (pcl_abs - primaApertura) : (primaApertura - pcl_abs);
-        const totalNetoUSD  = diffPerShare * 100 * _ctr - _comiT;
-        entry.pNetoOvr     = parseFloat(diffPerShare.toFixed(4));
-        entry.totalNetoOvr = parseFloat((totalNetoUSD / 100).toFixed(4));
-        const tpRaw = primaApertura > 0 ? diffPerShare / primaApertura : 0;
-        entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
-        if(entry.maxRisk){
-          entry.profitOpOvr = parseFloat((totalNetoUSD / (entry.maxRisk * _ctr) * 100).toFixed(2));
-        }
+  const _isPartialEdit = !!(_hEditEntry && _hEditEntry.isPartialClose);
+  if(!_isPartialEdit && !_dirIsExplicit){
+    delete entry.pNetoOvr;
+    delete entry.totalNetoOvr;
+    delete entry.tpOvr;
+    delete entry.profitOpOvr;
+  }
+  if(!_isPartialEdit && _dirIsExplicit){
+    const _isLong = entry.entryDirection === 'debit';
+    const pc_abs  = Math.abs((entry.pCredito || 0) * 100);   // pts (decodificado de la escala /100 de storage)
+    const pd_abs  = Math.abs((entry.pDebito  || 0) * 100);   // pts
+    const pcl_abs = entry.pCierre != null ? Math.abs(entry.pCierre * 100) : null;
+    const _ctr    = entry.contracts || 1;
+    const _mul    = entry.mult || 100;
+    const _comiT  = (entry.comiOpen || 0) + (entry.comiClose || 0);
+    if(pc_abs && pcl_abs != null){
+      const primaApertura = _isLong ? (pc_abs + pd_abs) : (pc_abs - pd_abs);
+      const diffPerPt     = _isLong ? (pcl_abs - primaApertura) : (primaApertura - pcl_abs);
+      const totalNetoUSD  = diffPerPt * _mul * _ctr - _comiT;
+      entry.pNetoOvr     = parseFloat(diffPerPt.toFixed(4));
+      // totalNetoOvr se almacena en "escala prima" (/100) — el resto del
+      // código multiplica × 100 al renderizar.
+      entry.totalNetoOvr = parseFloat((totalNetoUSD / 100).toFixed(4));
+      const tpRaw = primaApertura > 0 ? diffPerPt / primaApertura : 0;
+      entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
+      if(entry.maxRisk){
+        entry.profitOpOvr = parseFloat((totalNetoUSD / (entry.maxRisk * _ctr) * 100).toFixed(2));
       }
     } else {
-      // Legacy: borrar Ovr stale para que computeEntry calcule en runtime.
+      // Sin pCredito o pCierre completos → no podemos sobreescribir; dejamos
+      // que computeEntry los derive en runtime con la fórmula signed.
       delete entry.pNetoOvr;
       delete entry.totalNetoOvr;
       delete entry.tpOvr;
@@ -2701,20 +2836,20 @@ function saveEntry(){
     // OJO con la escala: entry.pCredito/pCierre se guardan en escala /100
     // (legacy: si el usuario tecleó 0.16 en hf_pCredito, se guarda 0.0016).
     // Para hacer cuentas hay que llevar a $/share multiplicando × 100.
-    const pc_share  = (entry.pCredito || 0) * 100;   // → $/share (ej: 0.16)
-    const pcl_share = (entry.pCierre  || 0) * 100;   // → $/share (ej: 0.38)
+    const pc_pts  = (entry.pCredito || 0) * 100;   // decodifica de escala /100 a pts
+    const pcl_pts = (entry.pCierre  || 0) * 100;   // pts
     const ctr   = entry.contracts || 1;
+    const _mul  = entry.mult || 100;               // mult propagado del padre o default 100
     const comiT = (entry.comiOpen || 0) + (entry.comiClose || 0);  // $ totales
     // Short: cobraste pc, pagas pcl → pnl = (pc - pcl)
     // Long:  pagaste pc, recibes pcl → pnl = (pcl - pc)
-    const diffPerShare = entry.isLong ? (pcl_share - pc_share) : (pc_share - pcl_share);  // $/share
-    const totalNeto    = diffPerShare * 100 * ctr - comiT;  // $ totales
+    const diffPerPt = entry.isLong ? (pcl_pts - pc_pts) : (pc_pts - pcl_pts);  // pts netos
+    const totalNeto = diffPerPt * _mul * ctr - comiT;  // $ totales
     // Overrides en escala "prima" (/100) — el resto del código del histórico
-    // los multiplica por 100 al mostrar (renderHist) o los compara contra
-    // pCredito en esa escala.
-    entry.pNetoOvr     = parseFloat(diffPerShare.toFixed(4));         // $/share
-    entry.totalNetoOvr = parseFloat((totalNeto / 100).toFixed(4));    // $/share-scale
-    const tpRaw = pc_share > 0 ? diffPerShare / pc_share : 0;
+    // los multiplica por 100 al mostrar (renderHist).
+    entry.pNetoOvr     = parseFloat(diffPerPt.toFixed(4));            // pts
+    entry.totalNetoOvr = parseFloat((totalNeto / 100).toFixed(4));    // /100-scale
+    const tpRaw = pc_pts > 0 ? diffPerPt / pc_pts : 0;
     entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
     if(entry.maxRisk){
       entry.profitOpOvr = parseFloat((totalNeto / (entry.maxRisk * ctr) * 100).toFixed(2));
