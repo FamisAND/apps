@@ -2487,13 +2487,13 @@ function openEntryModal(id=null){
       </div>
       <div class="hfr"><label>Contratos</label><input type="number" id="hf_contracts" min="1" value="${e.contracts||1}"/></div>
 
-      <div class="hfr"><label>Tipo <span style="color:#3a5468;font-size:7px">crédito = cobras prima · débito = pagas prima</span></label>
+      <div class="hfr"><label>Tipo</label>
         <select id="hf_tipo" onchange="hfCompute()">
           <option value="credito" ${(e.entryDirection||'credit')==='credit'?'selected':''}>Crédito</option>
           <option value="debito" ${e.entryDirection==='debit'?'selected':''}>Débito</option>
         </select>
       </div>
-      <div class="hfr"><label>Multiplicador ($/pt) <span style="color:#3a5468;font-size:7px">/ES=50 · /MES=5 · /NQ=20 · /MNQ=2 · acc/SPX=100</span></label><input type="number" id="hf_mult" step="1" min="1" placeholder="100" value="${e.mult||''}" oninput="hfCompute()"/></div>
+      <div class="hfr"><label>Multiplicador ($/pt)</label><input type="number" id="hf_mult" step="1" min="1" placeholder="100" value="${e.mult||''}" oninput="hfCompute()"/></div>
       <div class="hfr"></div>
       <div class="hfr"></div>
 
@@ -2570,15 +2570,19 @@ function openEntryModal(id=null){
 }
 
 // Sugerir multiplicador desde el activo (futuros vs equity).
-// /ES, /RTY → 50; /MES → 5; /NQ → 20; /MNQ → 2; resto → 100.
+// Acepta tanto el ticker con barra (/ES) como sin barra (ES) — el usuario
+// muchas veces tipea sin la barra.
+//   /ES, /RTY → 50    /MES → 5    /NQ → 20    /MNQ → 2    resto → 100
 function _multForActivo(activo){
-  const a = (activo||'').toUpperCase().trim();
-  if(!a) return 100;
-  if(a==='/ES'  || a.startsWith('/ES_'))  return 50;
-  if(a==='/RTY' || a.startsWith('/RTY_')) return 50;
-  if(a==='/MES' || a.startsWith('/MES_')) return 5;
-  if(a==='/NQ'  || a.startsWith('/NQ_'))  return 20;
-  if(a==='/MNQ' || a.startsWith('/MNQ_')) return 2;
+  const raw = (activo||'').toUpperCase().trim();
+  if(!raw) return 100;
+  // Normaliza: quita la barra inicial si la tiene
+  const a = raw.startsWith('/') ? raw.slice(1) : raw;
+  if(a==='ES'  || a.startsWith('ES_'))  return 50;
+  if(a==='RTY' || a.startsWith('RTY_')) return 50;
+  if(a==='MES' || a.startsWith('MES_')) return 5;
+  if(a==='NQ'  || a.startsWith('NQ_'))  return 20;
+  if(a==='MNQ' || a.startsWith('MNQ_')) return 2;
   return 100; // equity, SPX, ETF, etc.
 }
 
