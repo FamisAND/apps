@@ -2033,7 +2033,7 @@ function renderDashboard(){
     <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span>Ocupación Gym</span><button class="btn btn-sm btn-ghost" onclick="openGymConfig()" style="font-size:0.7rem;padding:2px 6px;">⚙️</button></div><div style="height:180px;"><canvas id="cGymOcup"></canvas></div></div>
     <div class="card"><div class="card-title">Margen de seguridad (%)</div><div style="height:180px;"><canvas id="cMgnSeg"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Análisis por trainer <span style="font-weight:400;color:var(--muted);font-size:.7rem">— ocupación + contribución al margen</span></span><select id="dashTrainerSelect" onchange="renderTrainerOcupChart()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:.7rem;max-width:140px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;"><div><div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Ocupación</div><div style="height:180px;"><canvas id="cTrainerOcup"></canvas></div></div><div><div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Contribución al margen</div><div style="height:180px;"><canvas id="cTrainerContrib"></canvas></div></div></div></div>
-    <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Punto Muerto por trainer <span style="font-weight:400;color:var(--muted);font-size:.7rem" id="bePersonalSubtitle">— ¿quién cubre su parte de los CF?</span></span><button class="btn btn-sm btn-ghost" onclick="openBEConfig()" style="font-size:0.7rem;padding:2px 6px;" title="Configurar entre cuántas personas se reparten los costes fijos">⚙️</button></div><div style="height:200px;"><canvas id="cBEPersonal"></canvas></div></div>
+    <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Punto Muerto del trainer seleccionado <span style="font-weight:400;color:var(--muted);font-size:.7rem" id="bePersonalSubtitle">— elige un trainer en la ruleta de arriba</span></span><button class="btn btn-sm btn-ghost" onclick="openBEConfig()" style="font-size:0.7rem;padding:2px 6px;" title="Configurar entre cuántas personas se reparten los gastos">⚙️</button></div><div style="height:220px;"><canvas id="cBEPersonal"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Facturación por tipo de servicio (mes a mes)</div><div style="height:200px;"><canvas id="cSvc"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Desglose de gastos por categoría (mes a mes)</div><div style="height:200px;"><canvas id="cGas"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Evolución deuda <span style="color:var(--red)">▬</span> vs Caja+Inversiones <span style="color:var(--green)">▬</span></div><div style="height:160px;"><canvas id="cDeuda"></canvas></div></div>
@@ -2231,6 +2231,9 @@ function renderTrainerOcupChart(){
       }
     });
   }
+
+  // Repintar también el "Punto Muerto del trainer" — comparte selector
+  renderBEPersonalChart();
 }
 
 // ── Margen de seguridad mes a mes ──
@@ -2262,67 +2265,70 @@ function renderMgnSegChart(labels,factData,beData){
   });
 }
 
-// ── Punto Muerto individual por trainer (último mes con datos) ──
+// ── Punto Muerto del trainer seleccionado (mes a mes) ──
+// Usa el selector de "Análisis por trainer" (dashTrainerSelect).
+// Compara la facturación de ese trainer cada mes vs su cuota de gastos:
+//   cuota = (gastos totales del mes sin dividendos) / N personas (configurable con ⚙️)
 function renderBEPersonalChart(){
   const el=document.getElementById('cBEPersonal');
   if(!el)return;
   if(_dashCharts.bePersonal){_dashCharts.bePersonal.destroy();_dashCharts.bePersonal=null;}
-  const mks=Object.keys(db.months).sort().filter(k=>(db.months[k].entries||[]).length>0);
-  const lastKey=mks.length?mks[mks.length-1]:null;
-  if(!lastKey){
-    el.parentElement.querySelector('div[style*="height:200px"]').innerHTML='<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">Sin datos</div>';
+
+  const sel=document.getElementById('dashTrainerSelect');
+  const trainerId=sel?.value;
+  const trainer=db.team.find(t=>t.id===trainerId);
+  const mks=_dashTrainerMonths||[];
+  const N=getBeNTrainers();
+  const sub=document.getElementById('bePersonalSubtitle');
+
+  if(!trainer || !mks.length){
+    if(sub)sub.textContent='— elige un trainer en la ruleta de arriba';
+    el.parentElement.querySelector('div[style*="height:220px"]').innerHTML='<div style="height:220px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">—</div>';
     return;
   }
-  const r=calcBreakEvenForKey(lastKey);
-  const N=getBeNTrainers();
-  const cfPerTrainer=N>0?r.CF/N:0;
-  const sub=document.getElementById('bePersonalSubtitle');
-  if(sub){
-    const[y,m]=lastKey.split('-');
-    const mesLabel=MES[parseInt(m)-1]+' '+y;
-    sub.textContent=`— ${mesLabel} · CF ${fmt(r.CF)} ÷ ${N} = ${fmt(cfPerTrainer)} por persona`;
-  }
-  const labels=[],factVals=[],beVals=[],colors=[],borders=[];
-  (db.team||[]).filter(t=>t.active).forEach(t=>{
-    const tEnt=(db.months[lastKey].entries||[]).filter(e=>e.trainerId===t.id);
-    const bill=tEnt.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
-    if(bill===0)return;
-    const cond=getCondForMonth(t,lastKey);
-    const pctDec=(cond.pct||0)/100;
-    let beIndiv;
-    if(pctDec>0){
-      beIndiv=cfPerTrainer/(1-pctDec);
-    }else{
-      const fijo=(cond.fijo||0)+(cond.extras||0);
-      beIndiv=cfPerTrainer+fijo;
-    }
-    labels.push(t.name);
-    factVals.push(bill);
-    beVals.push(beIndiv);
-    const ok=bill>=beIndiv;
+
+  const labels=[],factVals=[],cuotaVals=[],gasVals=[],colors=[],borders=[];
+  mks.forEach(k=>{
+    const[y,m]=k.split('-');
+    labels.push(MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2));
+    const ents=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
+    const bill=ents.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+    const gasTot=(db.months[k]?.gastos||[]).filter(g=>g.cat!=='dividendos').reduce((s,g)=>s+(parseFloat(g.amount)||0),0);
+    const cuota=N>0?gasTot/N:0;
+    factVals.push(Math.round(bill*100)/100);
+    cuotaVals.push(Math.round(cuota*100)/100);
+    gasVals.push(gasTot);
+    const ok=bill>=cuota;
     colors.push(ok?'rgba(34,197,94,.75)':'rgba(224,53,53,.75)');
     borders.push(ok?'#22c55e':'#e03535');
   });
-  if(!labels.length){
-    el.parentElement.querySelector('div[style*="height:200px"]').innerHTML='<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">Sin facturación por trainer</div>';
-    return;
+
+  // Subtítulo con promedio del periodo visible para que se vea de un vistazo
+  if(sub){
+    const gasAvg=gasVals.length?gasVals.reduce((a,b)=>a+b,0)/gasVals.length:0;
+    const cuotaAvg=N>0?gasAvg/N:0;
+    sub.textContent=`— ${trainer.name} · gastos del mes ÷ ${N} personas ≈ ${fmt(cuotaAvg)}/mes`;
   }
+
   _dashCharts.bePersonal=new Chart(el,{
     type:'bar',
     data:{labels,datasets:[
-      {label:'Facturación real',data:factVals,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:3,order:2},
-      {label:'BE individual',data:beVals,type:'line',borderColor:'#e03535',backgroundColor:'rgba(224,53,53,.05)',borderDash:[6,4],borderWidth:2,pointRadius:5,pointBackgroundColor:'#e03535',order:1,fill:false}
+      {label:'Facturación '+trainer.name,data:factVals,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:3,order:2},
+      {label:`Su parte de gastos (÷ ${N})`,data:cuotaVals,type:'line',borderColor:'#e03535',backgroundColor:'rgba(224,53,53,.05)',borderDash:[6,4],borderWidth:2,pointRadius:4,pointBackgroundColor:'#e03535',tension:.2,order:1,fill:false}
     ]},
     options:{
       responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:true,position:'top',labels:{font:{size:10},boxWidth:10}},
         tooltip:{mode:'index',intersect:false,callbacks:{
           afterBody:(items)=>{
             if(!items.length)return'';
             const i=items[0].dataIndex;
-            const f=factVals[i],be=beVals[i],diff=f-be;
-            return diff>=0?`✓ Sobra ${fmt(diff)} al mes`:`✗ Faltan ${fmt(Math.abs(diff))} al mes`;
+            const f=factVals[i],c=cuotaVals[i],g=gasVals[i],diff=f-c;
+            const linea1=`Gastos del mes: ${fmt(g)} ÷ ${N} = ${fmt(c)}`;
+            const linea2=diff>=0?`✓ Cubre con ${fmt(diff)} de margen`:`✗ Faltan ${fmt(Math.abs(diff))}`;
+            return [linea1, linea2];
           }
         }}
       },
