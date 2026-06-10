@@ -2628,21 +2628,11 @@ function openEntryModal(id=null){
   if(hfLegsSec) hfLegsSec.open = !!(e.legs && e.legs.length);
 }
 
-// Sugerir multiplicador desde el activo (futuros vs equity).
-// Acepta tanto el ticker con barra (/ES) como sin barra (ES) — el usuario
-// muchas veces tipea sin la barra.
-//   /ES, /RTY → 50    /MES → 5    /NQ → 20    /MNQ → 2    resto → 100
+// Multiplicador del activo: sempre 100 (equity-style).
+// Abans suggeria 50 per /ES, 5 per /MES, etc., però només operes equity
+// així que no cal donar opcions a triar — sempre 100.
 function _multForActivo(activo){
-  const raw = (activo||'').toUpperCase().trim();
-  if(!raw) return 100;
-  // Normaliza: quita la barra inicial si la tiene
-  const a = raw.startsWith('/') ? raw.slice(1) : raw;
-  if(a==='ES'  || a.startsWith('ES_'))  return 50;
-  if(a==='RTY' || a.startsWith('RTY_')) return 50;
-  if(a==='MES' || a.startsWith('MES_')) return 5;
-  if(a==='NQ'  || a.startsWith('NQ_'))  return 20;
-  if(a==='MNQ' || a.startsWith('MNQ_')) return 2;
-  return 100; // equity, SPX, ETF, etc.
+  return 100;
 }
 
 // Cuando cambia el ACTIVO: si el campo mult está vacío o coincidía con el
