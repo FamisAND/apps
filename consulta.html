@@ -610,23 +610,40 @@
 
 <!-- ════════ MODAL AJUSTAR QUANTITATS ════════ -->
 <div class="tob-modal-bg" id="tobMcAjusteBg">
-  <div class="tob-modal" style="max-width:560px;max-height:90vh;display:flex;flex-direction:column;">
-    <h3 style="margin:0 0 2px;">⚖ Ajustar quantitats</h3>
+  <div class="tob-modal" style="max-width:600px;max-height:90vh;display:flex;flex-direction:column;">
+    <h3 style="margin:0 0 2px;">⚖ Personalitzar recepta per a aquest menú</h3>
     <div id="tobMcAjusteNom" style="font-size:.92rem;font-weight:700;color:var(--acc);margin-bottom:8px;"></div>
     <p style="font-size:.74rem;color:var(--mute);margin-bottom:10px;line-height:1.5;">
-      Ajusta la quantitat d'aquest plat per a aquest client. El canvi s'aplica a tot el menú (graella, totals, recetari i llista de la compra). Les quantitats es mostren per 1 ració.
+      Els canvis només afecten <b>aquest menú</b>, no la recepta del catàleg. Pots renombrar, escalar quantitats, eliminar ingredients o afegir-ne de nous. Quantitats per 1 ració.
     </p>
     <div style="overflow-y:auto;flex:1;">
+      <!-- Nombre custom -->
+      <label style="font-size:.74rem;color:var(--mute);">Nom per a aquest menú (opcional, deixa buit per fer servir el del catàleg)</label>
+      <input type="text" class="tob-input" id="tobMcAjusteNombre" placeholder="ex: Crema de carbassó amb alfàbrega" style="margin:4px 0 14px;">
+
+      <!-- Factor global -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
         <label style="font-size:.78rem;color:var(--mute);min-width:120px;">Escalar tot el plat</label>
         <input type="range" id="tobMcAjusteFactor" min="0.5" max="1.8" step="0.05" value="1"
                style="flex:1;accent-color:var(--acc);" oninput="tobMcAjustePreview()">
         <span id="tobMcAjusteFactorVal" style="font-family:'DM Mono',monospace;font-size:.82rem;font-weight:700;color:var(--acc);min-width:46px;text-align:right;">×1.00</span>
       </div>
-      <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;">O fixa grams d'ingredients concrets (deixa buit = automàtic):</div>
+
+      <!-- Ingredients existents -->
+      <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;">Ingredients del catàleg (canvia grams o 🗑 elimina):</div>
       <div id="tobMcAjusteIngs" style="margin-bottom:12px;"></div>
+
+      <!-- Ingredients extra -->
+      <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;display:flex;justify-content:space-between;align-items:center;">
+        <span>Ingredients afegits només per a aquest menú:</span>
+        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteAddExtra()">+ Afegir ingredient</button>
+      </div>
+      <div id="tobMcAjusteExtras" style="margin-bottom:12px;"></div>
+      <datalist id="tobMcAjusteIngList"></datalist>
+
+      <!-- Motiu -->
       <label style="font-size:.74rem;color:var(--mute);">Motiu del canvi (opcional)</label>
-      <input type="text" class="tob-input" id="tobMcAjusteMotiu" placeholder="ex: pujar proteïna per quadrar l'objectiu" style="margin:4px 0 12px;">
+      <input type="text" class="tob-input" id="tobMcAjusteMotiu" placeholder="ex: SIBO — sense ceba ni all" style="margin:4px 0 12px;">
       <div id="tobMcAjustePreview" style="font-size:.78rem;color:var(--text);background:var(--surface2,#1a1a1a);border-radius:6px;padding:9px 12px;"></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">

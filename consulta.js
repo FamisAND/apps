@@ -8996,6 +8996,8 @@ function tobMcClampFactor(f){
 function tobMcEffGramos(it, aj){
   const base = +it.gramos || 0;
   if(!aj) return base;
+  // Eliminat explícitament → 0 g
+  if(Array.isArray(aj.ingRemoved) && aj.ingRemoved.includes(it.ingId)) return 0;
   if(aj.ing && aj.ing[it.ingId] != null){
     const v = +aj.ing[it.ingId];
     if(isFinite(v) && v >= 0) return base > 0 ? Math.min(v, base * TOB_MC_ING_CAP) : v;
@@ -9007,7 +9009,18 @@ function tobMcAjusteActivo(aj){
   if(!aj) return false;
   if(aj.factor && Math.abs(aj.factor - 1) > 0.001) return true;
   if(aj.ing && Object.keys(aj.ing).length) return true;
+  if(Array.isArray(aj.ingRemoved) && aj.ingRemoved.length) return true;
+  if(Array.isArray(aj.ingExtras) && aj.ingExtras.length) return true;
+  if(aj.nombreOverride && String(aj.nombreOverride).trim()) return true;
   return false;
+}
+// Nombre efectiu d'una recepta dins del menú (honra nombreOverride per-menú).
+function tobMcRecNombre(r, aj){
+  if(!r) return '—';
+  if(aj && aj.nombreOverride && String(aj.nombreOverride).trim()){
+    return String(aj.nombreOverride).trim();
+  }
+  return r.nombre || '—';
 }
 // Macros d'una recepta dins del menú, honrant el seu ajust.
 // ajustesMap opcional (el PDF no usa tobMcState).
@@ -9015,16 +9028,34 @@ function tobMcMacros(r, ajustesMap){
   const map = ajustesMap || (tobMcState && tobMcState.ajustes) || {};
   const aj = map[r.id];
   if(!tobMcAjusteActivo(aj)) return tobRecMacros(r);
-  const hasIng = aj.ing && Object.keys(aj.ing).length;
-  if(hasIng && Array.isArray(r.ingredientes) && r.ingredientes.length){
+  // Camí ing-level: si hi ha overrides de gramos, ingRemoved o ingExtras,
+  // recalculem ingredient a ingredient (no es pot escalar amb factor sol).
+  const hasIng       = aj.ing && Object.keys(aj.ing).length;
+  const hasRemoved   = Array.isArray(aj.ingRemoved) && aj.ingRemoved.length;
+  const hasExtras    = Array.isArray(aj.ingExtras) && aj.ingExtras.length;
+  const useIngLevel  = (hasIng || hasRemoved || hasExtras) && Array.isArray(r.ingredientes) && r.ingredientes.length;
+  if(useIngLevel){
     let kcal=0, hc=0, prot=0, gras=0, fib=0;
     r.ingredientes.forEach(it => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
       if(!ing) return;
       const f = tobMcEffGramos(it, aj) / 100;
+      if(f === 0) return; // eliminat
       kcal += (+ing.kcal||0)*f; hc += (+ing.hc||0)*f; prot += (+ing.proteina||0)*f;
       gras += (+ing.grasa||0)*f; fib += (+ing.fibra||0)*f;
     });
+    // Sumar ingredients afegits (ingExtras)
+    if(hasExtras){
+      aj.ingExtras.forEach(ex => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
+        if(!ing) return;
+        const g = +ex.gramos || 0;
+        if(g <= 0) return;
+        const f = g / 100;
+        kcal += (+ing.kcal||0)*f; hc += (+ing.hc||0)*f; prot += (+ing.proteina||0)*f;
+        gras += (+ing.grasa||0)*f; fib += (+ing.fibra||0)*f;
+      });
+    }
     return { kcal, hc, proteina:prot, grasa:gras, fibra:fib };
   }
   const b = tobRecMacros(r), f = aj.factor || 1;
@@ -9044,6 +9075,9 @@ function tobMcPruneAjustes(){
 }
 function tobMcAjusteResumen(aj){
   const parts = [];
+  if(aj.nombreOverride && String(aj.nombreOverride).trim()){
+    parts.push('renombrada → ' + String(aj.nombreOverride).trim());
+  }
   if(aj.factor && Math.abs(aj.factor - 1) > 0.001){
     parts.push('ració ×' + (+aj.factor).toFixed(2).replace(/0+$/,'').replace(/\.$/,''));
   }
@@ -9051,6 +9085,18 @@ function tobMcAjusteResumen(aj){
     Object.keys(aj.ing).forEach(ingId => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ingId);
       parts.push((ing ? ing.nombre : 'ingredient') + ' ' + Math.round(aj.ing[ingId]) + ' g');
+    });
+  }
+  if(Array.isArray(aj.ingRemoved) && aj.ingRemoved.length){
+    aj.ingRemoved.forEach(id => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === id);
+      parts.push('sense ' + (ing ? ing.nombre : 'ingredient'));
+    });
+  }
+  if(Array.isArray(aj.ingExtras) && aj.ingExtras.length){
+    aj.ingExtras.forEach(ex => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
+      parts.push('+ ' + (ing ? ing.nombre : 'ingredient') + ' ' + Math.round(ex.gramos||0) + ' g');
     });
   }
   return parts.join(' · ');
@@ -9068,7 +9114,7 @@ function tobMcRenderAjustes(){
   const rows = ids.map(id => {
     const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
     const a = aj[id];
-    const nom = r ? r.nombre : '(recepta eliminada)';
+    const nom = r ? tobMcRecNombre(r, a) : '(recepta eliminada)';
     const rac = (r && r.raciones) || 1;
     let macTxt = '';
     if(r){
@@ -9326,40 +9372,155 @@ function tobMcOpenAjuste(recId){
   if(!r){ tobToast('Recepta no trobada', 'red'); return; }
   _tobMcAjusteId = recId;
   if(!tobMcState.ajustes) tobMcState.ajustes = {};
-  const aj = tobMcState.ajustes[recId] || { factor:1, ing:{} };
+  const aj = tobMcState.ajustes[recId] || { factor:1, ing:{}, ingRemoved:[], ingExtras:[] };
   const rac = r.raciones || 1;
   document.getElementById('tobMcAjusteNom').textContent = r.nombre || '—';
   document.getElementById('tobMcAjusteFactor').value = aj.factor || 1;
   document.getElementById('tobMcAjusteMotiu').value = aj.motiu || '';
+  document.getElementById('tobMcAjusteNombre').value = aj.nombreOverride || '';
+  document.getElementById('tobMcAjusteNombre').placeholder = r.nombre || '';
+
+  // Datalist d'ingredients del catàleg (per autocompletar extras)
+  const dl = document.getElementById('tobMcAjusteIngList');
+  if(dl){
+    dl.innerHTML = (tobMenusDB.ingredientes||[])
+      .slice()
+      .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}))
+      .map(i => `<option value="${tobEsc(i.nombre)}"></option>`).join('');
+  }
+
+  // Ingredients del catàleg amb fila d'eliminar
   const ingBody = document.getElementById('tobMcAjusteIngs');
   const ings = r.ingredientes || [];
+  const removed = Array.isArray(aj.ingRemoved) ? new Set(aj.ingRemoved) : new Set();
   if(ings.length){
     ingBody.innerHTML = ings.map(it => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
       const nom = ing ? ing.nombre : (it._nombreFallback || '—');
       const baseG = +it.gramos || 0;
+      const isRem = removed.has(it.ingId);
       const cur = (aj.ing && aj.ing[it.ingId] != null) ? Math.round(aj.ing[it.ingId]/rac) : '';
-      return `<div class="tob-mc-aj-ing">
+      return `<div class="tob-mc-aj-ing" data-row-ingid="${it.ingId}" style="${isRem?'opacity:.4;text-decoration:line-through;':''}">
         <span class="aj-ing-nm">${tobEsc(nom)}</span>
         <span class="aj-ing-base">base ${Math.round(baseG/rac)} g</span>
         <input type="number" class="tob-input" data-ingid="${it.ingId}" data-base="${baseG}"
-               placeholder="${Math.round(baseG/rac)}" value="${cur}" min="0" style="width:78px;"
+               placeholder="${Math.round(baseG/rac)}" value="${cur}" min="0" style="width:78px;${isRem?'pointer-events:none;':''}"
                oninput="tobMcAjustePreview()">
+        <button class="tob-action ghost" style="padding:3px 8px;font-size:.75rem;" title="${isRem?'Restaurar':'Eliminar de la recepta'}" onclick="tobMcAjusteToggleRemove('${it.ingId}')">${isRem?'↺':'🗑'}</button>
       </div>`;
     }).join('');
   } else {
-    ingBody.innerHTML = '<div style="color:var(--mute2);font-size:.72rem;padding:6px 2px;">Aquesta recepta no té desglossament d\'ingredients — només es pot escalar amb el factor.</div>';
+    ingBody.innerHTML = '<div style="color:var(--mute2);font-size:.72rem;padding:6px 2px;">Aquesta recepta no té desglossament d\'ingredients — només es pot escalar amb el factor o afegir ingredients nous.</div>';
   }
+
+  // Ingredients extra
+  _tobMcAjusteRenderExtras(Array.isArray(aj.ingExtras) ? aj.ingExtras.slice() : [], rac);
+
   tobMcAjustePreview();
   document.getElementById('tobMcAjusteBg').classList.add('on');
 }
+
+// Render de la llista d'ingredients extra (es repinta a cada add/remove)
+function _tobMcAjusteRenderExtras(arr, rac){
+  const body = document.getElementById('tobMcAjusteExtras');
+  if(!body) return;
+  if(!arr.length){
+    body.innerHTML = '<div style="color:var(--mute2);font-size:.7rem;padding:4px 2px;">— Cap ingredient afegit —</div>';
+    return;
+  }
+  body.innerHTML = arr.map((ex, ix) => {
+    const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
+    const nom = ing ? ing.nombre : (ex._nombreFallback || '—');
+    const gPerRac = Math.round((+ex.gramos || 0) / (rac||1));
+    return `<div class="tob-mc-aj-ing" data-extra-ix="${ix}" data-extra-ingid="${ex.ingId}">
+      <span class="aj-ing-nm" style="color:var(--acc);">＋ ${tobEsc(nom)}</span>
+      <span class="aj-ing-base">extra</span>
+      <input type="number" class="tob-input" data-extra-grams="${ix}"
+             value="${gPerRac}" min="0" style="width:78px;" oninput="tobMcAjustePreview()">
+      <button class="tob-action ghost" style="padding:3px 8px;font-size:.75rem;" title="Treure" onclick="tobMcAjusteRemoveExtra(${ix})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// Toggle eliminar/restaurar un ingredient del catàleg
+function tobMcAjusteToggleRemove(ingId){
+  const row = document.querySelector(`#tobMcAjusteIngs [data-row-ingid="${ingId}"]`);
+  if(!row) return;
+  const isRem = row.style.textDecoration.includes('line-through');
+  if(isRem){
+    row.style.opacity = '';
+    row.style.textDecoration = '';
+    const btn = row.querySelector('button'); if(btn){ btn.textContent='🗑'; btn.title='Eliminar de la recepta'; }
+    const inp = row.querySelector('input'); if(inp) inp.style.pointerEvents = '';
+  } else {
+    row.style.opacity = '.4';
+    row.style.textDecoration = 'line-through';
+    const btn = row.querySelector('button'); if(btn){ btn.textContent='↺'; btn.title='Restaurar'; }
+    const inp = row.querySelector('input'); if(inp) inp.style.pointerEvents = 'none';
+  }
+  tobMcAjustePreview();
+}
+
+// Afegir un ingredient extra (prompt autocompletat amb datalist)
+function tobMcAjusteAddExtra(){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
+  if(!r) return;
+  const rac = r.raciones || 1;
+  const arr = tobMcAjusteReadExtrasFromDOM(rac);
+  // Diàleg lleuger amb 2 prompts (nom + grams). Nom es busca al catàleg.
+  const nomRaw = prompt('Nom de l\'ingredient (ha d\'existir al catàleg):');
+  if(!nomRaw) return;
+  const nom = String(nomRaw).trim().toLowerCase();
+  const ing = (tobMenusDB.ingredientes||[]).find(i => (i.nombre||'').toLowerCase() === nom);
+  if(!ing){ tobToast('Ingredient no trobat al catàleg', 'red'); return; }
+  if(arr.some(e => e.ingId === ing.id) || (r.ingredientes||[]).some(it => it.ingId === ing.id)){
+    tobToast('Ja existeix en aquesta recepta', 'orange'); return;
+  }
+  const gRaw = prompt(`Grams per ració de "${ing.nombre}":`, '30');
+  const g = parseFloat(gRaw);
+  if(!isFinite(g) || g <= 0){ tobToast('Grams invàlids', 'red'); return; }
+  arr.push({ ingId: ing.id, gramos: Math.round(g * rac) });
+  _tobMcAjusteRenderExtras(arr, rac);
+  tobMcAjustePreview();
+}
+
+function tobMcAjusteRemoveExtra(ix){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
+  if(!r) return;
+  const rac = r.raciones || 1;
+  const arr = tobMcAjusteReadExtrasFromDOM(rac);
+  arr.splice(ix, 1);
+  _tobMcAjusteRenderExtras(arr, rac);
+  tobMcAjustePreview();
+}
+
+// Llegeix els extras actuals des dels inputs visibles
+function tobMcAjusteReadExtrasFromDOM(rac){
+  const out = [];
+  document.querySelectorAll('#tobMcAjusteExtras [data-extra-ix]').forEach(row => {
+    const ingId = row.dataset.extraIngid;
+    const inp = row.querySelector('input[data-extra-grams]');
+    const v = inp ? parseFloat(inp.value) : 0;
+    if(ingId && isFinite(v) && v > 0){
+      out.push({ ingId, gramos: Math.round(v * (rac||1)) });
+    }
+  });
+  return out;
+}
+
 function tobMcAjusteLeerModal(){
   const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
   if(!r) return null;
   const rac = r.raciones || 1;
   const factor = tobMcClampFactor(document.getElementById('tobMcAjusteFactor').value);
   const ing = {};
-  document.querySelectorAll('#tobMcAjusteIngs input[data-ingid]').forEach(inp => {
+  const ingRemoved = [];
+  document.querySelectorAll('#tobMcAjusteIngs [data-row-ingid]').forEach(row => {
+    const ingId = row.dataset.rowIngid;
+    const isRem = row.style.textDecoration.includes('line-through');
+    if(isRem){ ingRemoved.push(ingId); return; }
+    const inp = row.querySelector('input[data-ingid]');
+    if(!inp) return;
     const v = parseFloat(inp.value);
     if(isFinite(v) && v > 0){
       const base = +inp.dataset.base || 0;
@@ -9368,7 +9529,9 @@ function tobMcAjusteLeerModal(){
       ing[inp.dataset.ingid] = Math.round(g);
     }
   });
-  return { r, rac, aj: { factor, ing } };
+  const ingExtras = tobMcAjusteReadExtrasFromDOM(rac);
+  const nombreOverride = (document.getElementById('tobMcAjusteNombre').value || '').trim();
+  return { r, rac, aj: { factor, ing, ingRemoved, ingExtras, nombreOverride } };
 }
 function tobMcAjustePreview(){
   const data = tobMcAjusteLeerModal();
@@ -9384,7 +9547,18 @@ function tobMcAjustePreview(){
 }
 function tobMcResetAjuste(){
   document.getElementById('tobMcAjusteFactor').value = 1;
+  document.getElementById('tobMcAjusteNombre').value = '';
   document.querySelectorAll('#tobMcAjusteIngs input[data-ingid]').forEach(inp => inp.value = '');
+  // Restaurar files eliminades
+  document.querySelectorAll('#tobMcAjusteIngs [data-row-ingid]').forEach(row => {
+    row.style.opacity = '';
+    row.style.textDecoration = '';
+    const btn = row.querySelector('button'); if(btn){ btn.textContent='🗑'; btn.title='Eliminar de la recepta'; }
+    const inp = row.querySelector('input'); if(inp) inp.style.pointerEvents = '';
+  });
+  // Buidar extras
+  const extrasBody = document.getElementById('tobMcAjusteExtras');
+  if(extrasBody) extrasBody.innerHTML = '<div style="color:var(--mute2);font-size:.7rem;padding:4px 2px;">— Cap ingredient afegit —</div>';
   document.getElementById('tobMcAjusteMotiu').value = '';
   tobMcAjustePreview();
 }
@@ -9784,13 +9958,14 @@ function tobMcRenderGrid(){
         const savedAtMs = tobMcState._savedAt ? Date.parse(tobMcState._savedAt) : 0;
         const stale = savedAtMs && r._editTs && r._editTs > savedAtMs;
         const staleBadge = stale ? `<span class="mc-it-stale" title="La recepta s'ha modificat després de desar el menú">⚠</span>` : '';
-        return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(r.nombre)} · ${kcalPer} kcal · ${protPer}g prot — clica per ajustar quantitats">
+        const nomEff = tobMcRecNombre(r, aj);
+        return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(nomEff)} · ${kcalPer} kcal · ${protPer}g prot — clica per personalitzar">
           <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
           <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
           ${staleBadge}
-          <div class="mc-it-foto placeholder icono" data-foto-rec="${recId}">${tobFoodEmoji(r.nombre)}</div>
+          <div class="mc-it-foto placeholder icono" data-foto-rec="${recId}">${tobFoodEmoji(nomEff)}</div>
           <div class="mc-it-body">
-            <div class="mc-it-nm">${ajBadge}${tobEsc(r.nombre || '—')}</div>
+            <div class="mc-it-nm">${ajBadge}${tobEsc(nomEff)}</div>
             <div class="mc-it-mac">${kcalPer} kcal · ${protPer}g prot</div>
           </div>
         </div>`;
@@ -10440,18 +10615,37 @@ async function tobMenuPdf(cliId, menuId){
   const compra = {};
   Object.keys(usos).forEach(id => {
     const r = recsById[id];
-    if(!r || !Array.isArray(r.ingredientes)) return;
+    if(!r) return;
     const rac = r.raciones || 1;
     const aj = ajMap[id];
-    r.ingredientes.forEach(it => {
-      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-      const nom = ing ? ing.nombre : (it._nombreFallback || null);
-      if(!nom) return;
-      const g = tobMcEffGramos(it, aj) / rac * usos[id];
-      const k = nom.toLowerCase();
-      if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
-      compra[k].g += g;
-    });
+    const removedSet = (aj && Array.isArray(aj.ingRemoved)) ? new Set(aj.ingRemoved) : new Set();
+    // Ingredients del catàleg (excloent eliminats)
+    if(Array.isArray(r.ingredientes)){
+      r.ingredientes.forEach(it => {
+        if(removedSet.has(it.ingId)) return;
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+        const nom = ing ? ing.nombre : (it._nombreFallback || null);
+        if(!nom) return;
+        const g = tobMcEffGramos(it, aj) / rac * usos[id];
+        if(g <= 0) return;
+        const k = nom.toLowerCase();
+        if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
+        compra[k].g += g;
+      });
+    }
+    // Ingredients afegits només per a aquest menú
+    if(aj && Array.isArray(aj.ingExtras)){
+      aj.ingExtras.forEach(ex => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
+        const nom = ing ? ing.nombre : (ex._nombreFallback || null);
+        if(!nom) return;
+        const g = (+ex.gramos||0) / rac * usos[id];
+        if(g <= 0) return;
+        const k = nom.toLowerCase();
+        if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
+        compra[k].g += g;
+      });
+    }
   });
   const TOB_SECCIONS = ['Verdures i hortalisses','Fruita','Carn i aviram','Peix i marisc',
     'Ous, làctics i derivats','Cereals, pa i pasta','Llegums i fruits secs',
@@ -10483,12 +10677,23 @@ async function tobMenuPdf(cliId, menuId){
     const racR = r.raciones || 1;
     const aj = ajMap[r.id];
     const ajActivo = tobMcAjusteActivo(aj);
-    const ings = (r.ingredientes||[]).map(it => {
+    const nomEff = tobMcRecNombre(r, aj);
+    // Ingredients del catàleg (excloent eliminats, amb gramos efectius)
+    const removedSet = (aj && Array.isArray(aj.ingRemoved)) ? new Set(aj.ingRemoved) : new Set();
+    const baseIngs = (r.ingredientes||[]).filter(it => !removedSet.has(it.ingId)).map(it => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
       const nom = ing ? ing.nombre : (it._nombreFallback || '—');
       const g = tobMcEffGramos(it, aj) / racR;
       return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
-    }).join('');
+    });
+    // Ingredients afegits només per a aquest menú
+    const extraIngs = (aj && Array.isArray(aj.ingExtras) ? aj.ingExtras : []).map(ex => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
+      const nom = ing ? ing.nombre : (ex._nombreFallback || '—');
+      const g = (+ex.gramos||0) / racR;
+      return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
+    });
+    const ings = [...baseIngs, ...extraIngs].join('');
     const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
                 : String(r.instrucciones||'').split('\n').filter(Boolean);
     const ajBadge = ajActivo
@@ -10499,8 +10704,8 @@ async function tobMenuPdf(cliId, menuId){
       // No re-imprimim ingredients/preparació per estalviar paper.
       return `<div class="mp-recepta mp-blk mp-recepta-repeat">
         <div class="mp-recepta-head">
-          ${foto ? `<div class="mp-recepta-foto mp-recepta-foto-sm" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-foto-sm mp-recepta-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
-          <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
+          ${foto ? `<div class="mp-recepta-foto mp-recepta-foto-sm" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-foto-sm mp-recepta-nofoto">${tobFoodEmoji(nomEff)}</div>`}
+          <div><div class="mp-recepta-nm">${esc(nomEff)}</div>
           <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
           <div class="mp-recepta-repeat-badge">↻ Recepta detallada a <b>${esc(repeatOf)}</b></div>
           ${ajBadge}</div>
@@ -10509,8 +10714,8 @@ async function tobMenuPdf(cliId, menuId){
     }
     return `<div class="mp-recepta mp-blk">
       <div class="mp-recepta-head">
-        ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
-        <div><div class="mp-recepta-nm">${esc(r.nombre||'—')}</div>
+        ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-nofoto">${tobFoodEmoji(nomEff)}</div>`}
+        <div><div class="mp-recepta-nm">${esc(nomEff)}</div>
         <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
         ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}
         ${ajBadge}</div>
