@@ -10590,9 +10590,11 @@ async function tobMenuPdf(cliId, menuId){
           // Plats solts (origen ingredient) → miniatura petita: és només un emoji,
           // no té sentit una foto gran com a les receptes de veritat.
           const fcls = r.origen === 'ingrediente' ? 'mp-foto mp-foto-ing' : 'mp-foto';
+          // Nom efectiu: respecta nombreOverride per-menú si està definit
+          const nomEff = tobMcRecNombre(r, ajMap[id]);
           return `<div class="mp-plato">
-            ${foto ? `<div class="${fcls}" style="background-image:url('${esc(foto)}')"></div>` : `<div class="${fcls} mp-nofoto">${tobFoodEmoji(r.nombre)}</div>`}
-            <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(r.nombre||'—')}</div>
+            ${foto ? `<div class="${fcls}" style="background-image:url('${esc(foto)}')"></div>` : `<div class="${fcls} mp-nofoto">${tobFoodEmoji(nomEff)}</div>`}
+            <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(nomEff)}</div>
             <div class="mp-plato-kcal">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot</div></div>
           </div>`;
         }).join('');
