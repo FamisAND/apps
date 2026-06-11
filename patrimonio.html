@@ -410,6 +410,29 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
   </div>
 </div>
 
+<!-- MODAL ARXIVAR CARTERES SENSE ÚS -->
+<div id="autoArchiveModal" class="modal-bg hidden">
+  <div class="modal" style="max-width:560px;max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-title" style="display:flex;align-items:center;gap:8px;">
+      <span>📦 Archivar carteras sin uso</span>
+    </div>
+    <div class="modal-sub" id="autoArchiveSub" style="line-height:1.5;margin-bottom:14px;"></div>
+    <div id="autoArchiveBody" style="overflow-y:auto;flex:1;border:1px solid #1e2d4a;border-radius:6px;padding:6px;background:#0b1220;"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:.74rem;color:#94a3b8;cursor:pointer;">
+        <input type="checkbox" id="autoArchivePeriod6" onchange="patAutoArchiveRefresh()">
+        Detectar con 6 meses (en lugar de 3)
+      </label>
+      <div style="flex:1;"></div>
+      <span id="autoArchiveCount" style="font-size:.74rem;color:#60a5fa;font-weight:600;"></span>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button class="btn-ghost" onclick="document.getElementById('autoArchiveModal').classList.add('hidden')">Cancelar</button>
+      <button class="btn-primary" id="autoArchiveApply" onclick="patAutoArchiveApply()">📦 Archivar seleccionadas</button>
+    </div>
+  </div>
+</div>
+
 <!-- CREATE PROFILE MODAL -->
 <div id="createModal" class="modal-bg hidden">
   <div class="modal wide">
@@ -3175,11 +3198,11 @@ function buildSectionsUI(){
   const wrap=document.getElementById("secWrap");if(!wrap)return;
   // Compta arxivades per al toggle de visualització
   const totalArxiv=tmpSections.reduce((s,sec)=>s+sec.assets.filter(a=>a.archived).length,0);
-  const showArxiv=window._patShowArchived||false;
+  const showArxiv=localStorage.getItem('patShowArchived')==='1';
   wrap.innerHTML=`<div class="sett-hdr" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <span style="flex:1">Secciones y activos</span>
-    <button class="btn-sm" onclick="patAutoArchive()" title="Detecta carteras sin valores en los últimos 6 meses y propone archivarlas" style="font-size:.7rem;padding:4px 9px;background:#1a2942;border-color:#2e3e57;color:#94a3b8">📦 Archivar carteras sin uso</button>
-    ${totalArxiv?`<button class="btn-sm" onclick="window._patShowArchived=!window._patShowArchived;buildSectionsUI()" style="font-size:.7rem;padding:4px 9px;background:${showArxiv?'#2e3e57':'#0f1729'};border-color:#2e3e57;color:#94a3b8">${showArxiv?'🙈 Ocultar archivadas':'👁 Ver archivadas'} (${totalArxiv})</button>`:''}
+    <button class="btn-sm" onclick="patAutoArchive()" title="Detecta carteras sin valores en los últimos 3 meses y propone archivarlas" style="font-size:.7rem;padding:4px 9px;background:#1a2942;border-color:#2e3e57;color:#94a3b8">📦 Archivar carteras sin uso</button>
+    ${totalArxiv?`<button class="btn-sm" onclick="patToggleShowArchived()" style="font-size:.7rem;padding:4px 9px;background:${showArxiv?'#2e3e57':'#0f1729'};border-color:#2e3e57;color:#94a3b8">${showArxiv?'🙈 Ocultar archivadas':'👁 Ver archivadas'} (${totalArxiv})</button>`:''}
   </div>`;
   tmpSections.forEach((sec,si)=>{
     const sd=document.createElement("div");sd.className="sett-sec";
@@ -3216,32 +3239,98 @@ function buildSectionsUI(){
   wrap.appendChild(as);
 }
 
-// ── Smart archive: detecta carteres sense valors en els últims 6 mesos ──
+// Toggle persistent (localStorage) — sobreviu refrescos
+function patToggleShowArchived(){
+  const cur=localStorage.getItem('patShowArchived')==='1';
+  localStorage.setItem('patShowArchived',cur?'0':'1');
+  buildSectionsUI();
+}
+
+// ── Smart archive: modal amb checkboxes per arxivar carteres sense ús ──
 function patAutoArchive(){
   const p=prof();if(!p)return;
-  // Usem tmpSections (els canvis pendents) per detectar — així funciona dins d'Ajustes obert
-  const ents=(p.entries||[]).slice(-6);
+  // Reset checkbox de període al default (3 mesos)
+  document.getElementById('autoArchivePeriod6').checked=false;
+  patAutoArchiveRefresh();
+  document.getElementById('autoArchiveModal').classList.remove('hidden');
+}
+// Detecta candidats segons període seleccionat i pinta la llista al modal
+function patAutoArchiveRefresh(){
+  const p=prof();if(!p)return;
+  const months=document.getElementById('autoArchivePeriod6').checked?6:3;
+  const ents=(p.entries||[]).slice(-months);
   const ingSec=ingSection(p);
   const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
+  // Detecta candidats sobre tmpSections (canvis pendents) o sobre p.sections
+  const sections=tmpSections&&tmpSections.length?tmpSections:p.sections;
   const candidats=[];
-  tmpSections.forEach((sec,si)=>{
+  sections.forEach((sec,si)=>{
     sec.assets.forEach((a,ai)=>{
       if(ingIds.has(a.id))return;
       if(a.archived)return;
       const hasValue=ents.some(e=>{const v=parseFloat((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
-      if(!hasValue) candidats.push({si,ai,name:a.name,section:sec.title});
+      if(!hasValue){
+        // Última data amb valor (per mostrar context)
+        let lastWithValue=null;
+        (p.entries||[]).slice().reverse().some(e=>{
+          const v=parseFloat((e.assets||{})[a.id]);
+          if(!isNaN(v)&&v>0){lastWithValue={year:e.year,month:e.month,value:v};return true;}
+          return false;
+        });
+        candidats.push({si,ai,assetId:a.id,name:a.name,section:sec.title,color:a.color,lastWithValue});
+      }
     });
   });
+  const sub=document.getElementById('autoArchiveSub');
+  const body=document.getElementById('autoArchiveBody');
+  const applyBtn=document.getElementById('autoArchiveApply');
+  const countEl=document.getElementById('autoArchiveCount');
   if(!candidats.length){
-    toast('✓ Cap cartera sense ús detectada (últims 6 mesos)','green');
+    sub.innerHTML='<span style="color:#86efac">✓ Cap cartera sense ús detectada en els últims '+months+' mesos.</span>';
+    body.innerHTML='<div style="padding:24px 10px;text-align:center;color:#475569;font-size:.78rem;">No hi ha res a arxivar.</div>';
+    applyBtn.disabled=true;applyBtn.style.opacity='.4';
+    countEl.textContent='';
     return;
   }
-  const lines=candidats.map(c=>`  · ${c.name} (${c.section})`).join('\n');
-  const msg=`S'arxivaran aquestes ${candidats.length} carteres (sense valors >0 als últims 6 mesos):\n\n${lines}\n\nDeixaran d'aparèixer a Historial i al Formulari de nous mesos, però seguiran a les gràfiques per mantenir l'històric. Pots desarxivar-les en qualsevol moment.\n\nContinuar?`;
-  if(!confirm(msg))return;
-  candidats.forEach(c=>{tmpSections[c.si].assets[c.ai].archived=true;});
+  applyBtn.disabled=false;applyBtn.style.opacity='1';
+  sub.innerHTML='Aquestes carteres no tenen cap valor >0 als últims <b>'+months+' mesos</b>. Desmarca les que vulguis conservar. Les seleccionades deixaran d\'aparèixer a Historial i al Formulari, però seguiran als gràfics per preservar l\'històric.';
+  body.innerHTML=candidats.map((c,i)=>{
+    const lastTxt=c.lastWithValue
+      ?`Últim valor: ${MO[c.lastWithValue.month]} ${c.lastWithValue.year} (${fmt(c.lastWithValue.value)})`
+      :`<span style="color:#fb923c">Mai ha tingut valor</span>`;
+    return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:5px;cursor:pointer;border-bottom:1px solid #0f1729;" onmouseover="this.style.background='#0f1729'" onmouseout="this.style.background='transparent'">
+      <input type="checkbox" class="auto-arch-cb" data-ix="${i}" checked style="cursor:pointer;width:16px;height:16px;accent-color:#60a5fa;flex-shrink:0;" onchange="patAutoArchiveUpdateCount()">
+      <div style="width:10px;height:10px;border-radius:50%;background:${c.color};flex-shrink:0;"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:.85rem;color:#e2e8f0;font-weight:600;">${esc(c.name)}</div>
+        <div style="font-size:.68rem;color:#64748b;margin-top:2px;">${esc(c.section)} · ${lastTxt}</div>
+      </div>
+    </label>`;
+  }).join('');
+  // Guarda per al patAutoArchiveApply
+  window._patArchiveCandidats=candidats;
+  patAutoArchiveUpdateCount();
+}
+function patAutoArchiveUpdateCount(){
+  const cbs=document.querySelectorAll('.auto-arch-cb');
+  const checked=Array.from(cbs).filter(cb=>cb.checked).length;
+  const tot=cbs.length;
+  document.getElementById('autoArchiveCount').textContent=`${checked}/${tot} seleccionades`;
+}
+function patAutoArchiveApply(){
+  const cands=window._patArchiveCandidats||[];
+  const checked=Array.from(document.querySelectorAll('.auto-arch-cb')).filter(cb=>cb.checked).map(cb=>parseInt(cb.dataset.ix));
+  if(!checked.length){toast('Cap cartera seleccionada','red');return;}
+  checked.forEach(ix=>{
+    const c=cands[ix];if(!c)return;
+    if(tmpSections[c.si]&&tmpSections[c.si].assets[c.ai]){
+      tmpSections[c.si].assets[c.ai].archived=true;
+    }
+  });
+  document.getElementById('autoArchiveModal').classList.add('hidden');
   buildSectionsUI();
-  toast(`📦 ${candidats.length} carteres marcades per arxivar — recorda guardar`,'green');
+  toast(`📦 ${checked.length} ${checked.length===1?'cartera marcada':'carteres marcades'} per arxivar — recorda guardar`,'green');
+  window._patArchiveCandidats=null;
 }
 
 function saveAjustes(){

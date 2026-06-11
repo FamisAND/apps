@@ -212,7 +212,20 @@ function computePatKpi(){
       });
       return t;
     };
-    const last = ents[ents.length-1];
+    // Bug-fix: usar només entrades "completes" (amb almenys un actiu d'inversió/banc
+    // amb valor > 0, ignorant ingressos). Si tens moviments registrats per al mes
+    // en curs però encara no has posat el saldo de cap broker, aquell mes no compta
+    // i continuem mostrant el patrimoni del darrer mes tancat.
+    const ingSec = (p.sections||[]).find(s => s.id === 's_ingresos' || s.type === 'ingresos' || /ingreso/i.test(s.title||''));
+    const ingIds = new Set(ingSec ? (ingSec.assets||[]).map(a=>a.id) : []);
+    const isComplete = e => Object.entries(e.assets || {}).some(([id, v]) => {
+      if(ingIds.has(id)) return false;
+      const n = parseFloat(v);
+      return !isNaN(n) && n > 0;
+    });
+    const completeEnts = ents.filter(isComplete);
+    if(!completeEnts.length) return;   // no hi ha cap mes tancat encara
+    const last = completeEnts[completeEnts.length-1];
     const currentPat = calcEnt(last);
 
     // Buscar primer objetivo de tipo "patrimonio" (o el primero de la lista si no hay del tipo)
@@ -1348,7 +1361,15 @@ function _previewPatrimonio(ctx, data, sec){
     const profiles = _pmaybe(data?.patrimonio?.pat_v5);
     if(!Array.isArray(profiles) || !profiles.length) return [];
     const p = profiles[0];
-    const ents = [...(p.entries||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
+    const entsAll = [...(p.entries||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
+    if(!entsAll.length) return [];
+    // Filtrar a "completes": mes en curs amb només moviments però sense NAV de cap broker NO compta
+    const ingSec = (p.sections||[]).find(s => s.id === 's_ingresos' || s.type === 'ingresos' || /ingreso/i.test(s.title||''));
+    const ingIds = new Set(ingSec ? (ingSec.assets||[]).map(a=>a.id) : []);
+    const ents = entsAll.filter(e => Object.entries(e.assets||{}).some(([id,v]) => {
+      if(ingIds.has(id)) return false;
+      const n = parseFloat(v); return !isNaN(n) && n > 0;
+    }));
     if(!ents.length) return [];
     const last = ents[ents.length-1];
     const prev = ents.length >= 2 ? ents[ents.length-2] : null;
