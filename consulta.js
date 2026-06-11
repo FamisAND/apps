@@ -9577,6 +9577,54 @@ function tobMcAjusteLoadPasosBase(){
   tobToast('✓ Passos carregats — edita\'ls', 'green');
 }
 
+// ── Tachat per paraules: embolica les mencions als ingredients eliminats en <s> ──
+// Retorna HTML escapat amb <s> per cada match. Word-boundary aware.
+function tobMcWordStrike(text, removedNames, opts){
+  opts = opts || {};
+  const sStyle = opts.color || '#e03535';
+  if(!removedNames || !removedNames.length || !text) return tobEsc(String(text||''));
+  const textOriginal = String(text);
+  const textLower = textOriginal.toLowerCase();
+  const ranges = [];
+  const isWordChar = c => /[a-zà-úA-ZÀ-Ú0-9ñçíóáéúü]/.test(c);
+  removedNames.forEach(name => {
+    if(!name || name.length < 3) return;
+    const needle = String(name).toLowerCase();
+    let pos = 0;
+    while((pos = textLower.indexOf(needle, pos)) !== -1){
+      const before = pos === 0 ? ' ' : textLower[pos-1];
+      const after  = (pos + needle.length) >= textLower.length ? ' ' : textLower[pos+needle.length];
+      // Match només si no es solapa amb una altra paraula (word-boundary)
+      if(!isWordChar(before) && !isWordChar(after)){
+        ranges.push({ start: pos, end: pos + needle.length });
+      }
+      pos += needle.length;
+    }
+  });
+  if(!ranges.length) return tobEsc(textOriginal);
+  // Ordenar i fusionar rangos solapants
+  ranges.sort((a,b) => a.start - b.start);
+  const merged = [ranges[0]];
+  for(let i = 1; i < ranges.length; i++){
+    const last = merged[merged.length-1];
+    if(ranges[i].start <= last.end){
+      last.end = Math.max(last.end, ranges[i].end);
+    } else {
+      merged.push(ranges[i]);
+    }
+  }
+  // Construir resultat amb <s> embolicant les mencions
+  let html = '';
+  let p = 0;
+  merged.forEach(r => {
+    html += tobEsc(textOriginal.substring(p, r.start));
+    html += `<s style="color:${sStyle};">` + tobEsc(textOriginal.substring(r.start, r.end)) + '</s>';
+    p = r.end;
+  });
+  html += tobEsc(textOriginal.substring(p));
+  return html;
+}
+
 // ── Preview interactiu de passos (estat manual per índex) ─────
 let _tobMcAjustePasosState = {};  // { [index]: true|false } — override manual del tachat
 function _tobMcGetCurrentRemovedNames(){
@@ -9608,21 +9656,151 @@ function _tobMcAjusteRenderPasosPreview(){
   const removed = _tobMcGetCurrentRemovedNames();
   const _norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   box.innerHTML = pasosRaw.map((p, i) => {
-    const norm = _norm(p);
+    const pTxt = String(p).replace(/^[-·•*\d.\s]+/,'');
+    const norm = _norm(pTxt);
     const autoStrike = !!removed.find(rn => rn.length > 3 && norm.includes(rn));
     const manual = _tobMcAjustePasosState[i];  // undefined | true | false
     const struck = (manual !== undefined) ? manual : autoStrike;
     const label = struck ? '✂️' : '✓';
     const lblTitle = struck ? 'Click per mantenir el pas' : 'Click per marcar com tachat';
-    const txtStyle = struck ? 'opacity:.45;text-decoration:line-through;' : '';
     const isManual = manual !== undefined;
+    // Si tota la frase és tachada → strikethrough total. Si no, tachat per paraules.
+    const txtHtml = struck
+      ? `<s style="opacity:.5;color:var(--mute);">${tobEsc(pTxt)}</s>`
+      : tobMcWordStrike(pTxt, removed);
     return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 4px;border-bottom:1px solid var(--border);font-size:.74rem;line-height:1.4;">
       <button class="tob-action ghost" style="padding:2px 6px;font-size:.72rem;min-width:32px;flex-shrink:0;${isManual?'border-color:var(--acc);color:var(--acc);':''}"
               title="${lblTitle}${isManual?' · sobreescrit manualment':''}" onclick="tobMcAjustePasoToggle(${i})">${label}</button>
-      <div style="flex:1;${txtStyle}">${tobEsc(String(p).replace(/^[-·•*\d.\s]+/,''))}</div>
+      <div style="flex:1;">${txtHtml}</div>
     </div>`;
   }).join('');
 }
+// ── Modal: revisar tots els passos del menú d'un cop ──────────
+function tobMcOpenReviewPasos(){
+  if(!tobMcState){ tobToast('Cap menú obert', 'red'); return; }
+  tobMcReviewRender();
+  document.getElementById('tobMcReviewPasosBg').classList.add('on');
+}
+function tobMcReviewRender(){
+  const body = document.getElementById('tobMcReviewBody');
+  if(!body || !tobMcState) return;
+  const ajustes = tobMcState.ajustes || {};
+  // Receptes en el menú amb ingredients eliminats
+  const recIds = new Set();
+  Object.values(tobMcState.data || {}).forEach(sem =>
+    Object.values(sem || {}).forEach(dia =>
+      Object.values(dia || {}).forEach(arr =>
+        (arr || []).forEach(id => recIds.add(id)))));
+  const targets = [];
+  recIds.forEach(recId => {
+    const aj = ajustes[recId];
+    if(!aj || !Array.isArray(aj.ingRemoved) || !aj.ingRemoved.length) return;
+    const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+    if(!r || !Array.isArray(r.instrucciones) || !r.instrucciones.length) return;
+    targets.push({ recId, r, aj });
+  });
+  document.getElementById('tobMcReviewCount').textContent =
+    targets.length ? (targets.length + ' receptes · ' +
+      targets.reduce((s,t) => s + t.r.instrucciones.length, 0) + ' passos') : '';
+  if(!targets.length){
+    body.innerHTML = '<div style="color:var(--mute);font-size:.78rem;text-align:center;padding:30px 10px;">No hi ha cap recepta amb ingredients eliminats per revisar. Quan elimines ingredients d\'una recepta des del seu modal, els passos afectats apareixeran aquí.</div>';
+    return;
+  }
+  body.innerHTML = targets.map(t => {
+    const removedNames = [];
+    t.aj.ingRemoved.forEach(rid => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === rid);
+      if(ing && ing.nombre){
+        removedNames.push(String(ing.nombre).toLowerCase());
+        const b = String(ing.nombre).toLowerCase();
+        if(!b.endsWith('s')) removedNames.push(b + 's');
+      }
+    });
+    const pasosState = t.aj.pasosState || {};
+    const pasosHtml = t.r.instrucciones.map((p, i) => {
+      const cleanTxt = String(p).replace(/^[-·•*\d.\s]+/,'');
+      const manual = pasosState[i];
+      const forceStruck = manual === true;
+      const forceVisible = manual === false;
+      const isManual = manual !== undefined;
+      let txtHtml;
+      let btnLabel, btnTitle;
+      if(forceStruck){
+        txtHtml = '<s style="opacity:.45;color:var(--mute);">' + tobEsc(cleanTxt) + '</s>';
+        btnLabel = '✂️'; btnTitle = 'Click per fer visible';
+      } else if(forceVisible){
+        txtHtml = tobEsc(cleanTxt);
+        btnLabel = '✓'; btnTitle = 'Click per tachar tota la frase';
+      } else {
+        // Auto: word-level strike
+        txtHtml = tobMcWordStrike(cleanTxt, removedNames);
+        const hasStrike = txtHtml.includes('<s ');
+        btnLabel = hasStrike ? '~' : '✓';
+        btnTitle = hasStrike ? 'Auto · click per forçar tota la frase tachada o visible' : 'No conté ingredient eliminat — click per tachar manualment';
+      }
+      return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 4px;border-bottom:1px solid var(--border);font-size:.74rem;line-height:1.4;">
+        <button class="tob-action ghost" style="padding:2px 6px;font-size:.72rem;min-width:34px;flex-shrink:0;${isManual?'border-color:var(--acc);color:var(--acc);':''}"
+                title="${btnTitle}${isManual?' · manual':''}" onclick="tobMcReviewPasoCycle('${t.recId}',${i})">${btnLabel}</button>
+        <div style="flex:1;">${txtHtml}</div>
+      </div>`;
+    }).join('');
+    const nomEff = tobMcRecNombre(t.r, t.aj);
+    const removedList = t.aj.ingRemoved.map(rid => {
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === rid);
+      return ing ? ing.nombre : rid;
+    }).join(', ');
+    return `<details open style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--surface2,#1a1a1a);">
+      <summary style="font-weight:700;color:var(--acc);cursor:pointer;font-size:.82rem;">
+        ${tobEsc(nomEff)}
+        <span style="color:var(--mute);font-weight:400;font-size:.7rem;">— sense ${tobEsc(removedList)}</span>
+      </summary>
+      <div style="margin-top:8px;">${pasosHtml}</div>
+    </details>`;
+  }).join('');
+}
+function tobMcReviewPasoCycle(recId, i){
+  if(!tobMcState || !tobMcState.ajustes) return;
+  const aj = tobMcState.ajustes[recId];
+  if(!aj) return;
+  if(!aj.pasosState) aj.pasosState = {};
+  const cur = aj.pasosState[i];
+  // Cicle: undefined (auto) → true (forçar tachat) → false (forçar visible) → undefined
+  if(cur === undefined) aj.pasosState[i] = true;
+  else if(cur === true)  aj.pasosState[i] = false;
+  else delete aj.pasosState[i];
+  tobMcReviewRender();
+}
+function tobMcReviewApplyAuto(){
+  if(!tobMcState || !tobMcState.ajustes) return;
+  Object.values(tobMcState.ajustes).forEach(aj => { delete aj.pasosState; });
+  tobMcReviewRender();
+  tobToast('↻ Tots els passos tornen a auto', 'green');
+}
+function tobMcReviewMarkAllVisible(){
+  if(!tobMcState || !tobMcState.ajustes) return;
+  Object.entries(tobMcState.ajustes).forEach(([recId, aj]) => {
+    if(!Array.isArray(aj.ingRemoved) || !aj.ingRemoved.length) return;
+    const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+    if(!r || !Array.isArray(r.instrucciones)) return;
+    aj.pasosState = aj.pasosState || {};
+    r.instrucciones.forEach((_, i) => { aj.pasosState[i] = false; });
+  });
+  tobMcReviewRender();
+  tobToast('✓ Tots els passos marcats visibles', 'green');
+}
+function tobMcReviewMarkAllStruck(){
+  if(!tobMcState || !tobMcState.ajustes) return;
+  Object.entries(tobMcState.ajustes).forEach(([recId, aj]) => {
+    if(!Array.isArray(aj.ingRemoved) || !aj.ingRemoved.length) return;
+    const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+    if(!r || !Array.isArray(r.instrucciones)) return;
+    aj.pasosState = aj.pasosState || {};
+    r.instrucciones.forEach((_, i) => { aj.pasosState[i] = true; });
+  });
+  tobMcReviewRender();
+  tobToast('✂️ Tots els passos marcats tachats', 'orange');
+}
+
 function tobMcAjustePasoToggle(i){
   const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
   if(!r) return;
@@ -10987,16 +11165,14 @@ async function tobMenuPdf(cliId, menuId){
       });
     }
     const pasosManual = (aj && aj.pasosState) || {};
+    // struck = true només si l'override manual força tachat total. Si no,
+    // el render farà tachat per paraules (només les mencions als ingredients
+    // eliminats), més fi visualment que tachar tota la frase.
     const pasos = pasosRaw.map((p, i) => {
-      let autoStruck = false;
-      if(removedNames.length){
-        const norm = _normPaso(p);
-        autoStruck = !!removedNames.find(rn => rn.length > 3 && norm.includes(rn));
-      }
-      // Override manual: si l'usuari ha decidit per aquest pas, fer-li cas
       const manual = pasosManual[i];
-      const struck = (manual === undefined) ? autoStruck : !!manual;
-      return { text:p, struck };
+      const struck = (manual === true);  // només si l'usuari ha forçat tachat total
+      // Si l'usuari ha forçat visible (manual === false), saltem el tachat per paraules
+      return { text:p, struck, forceVisible: manual === false };
     });
     const ajBadge = ajActivo
       ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
@@ -11024,10 +11200,20 @@ async function tobMenuPdf(cliId, menuId){
       </div>
       ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
         <div><h4>Preparació</h4><ol>${pasos.map(p=>{
-          const txt = esc(String(p.text).replace(/^[-·•*\d.\s]+/,''));
-          return p.struck
-            ? `<li class="mp-paso-eliminat" style="opacity:.5;text-decoration:line-through;"><s>${txt}</s> <small style="text-decoration:none;color:#e03535;">✂️</small></li>`
-            : `<li>${txt}</li>`;
+          const cleanTxt = String(p.text).replace(/^[-·•*\d.\s]+/,'');
+          if(p.struck){
+            // Tota la frase tachada (manual override "force struck")
+            return `<li style="opacity:.5;"><s>${esc(cleanTxt)}</s> <small style="text-decoration:none;color:#e03535;">✂️</small></li>`;
+          }
+          if(p.forceVisible){
+            // Manual: respecta visible sense tachado
+            return `<li>${esc(cleanTxt)}</li>`;
+          }
+          // Tachat per paraules: només les mencions als ingredients eliminats
+          if(removedNames.length){
+            return `<li>${tobMcWordStrike(cleanTxt, removedNames)}</li>`;
+          }
+          return `<li>${esc(cleanTxt)}</li>`;
         }).join('')||'<li>—</li>'}</ol></div></div>` : ''}
     </div>`;
   };

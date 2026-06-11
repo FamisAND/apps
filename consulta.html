@@ -400,6 +400,7 @@
               <div id="tobMcSemanasTabs" style="display:flex;gap:4px;"></div>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenMealsModal()" title="Elegir qué àpats tiene el menú (añadir 2ª media mañana, 2ª merienda...)">⚙ Àpats</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenNotasModal()" title="Editar las notas/recomendaciones que salen en el PDF del menú">📝 Notes</button>
+              <button class="tob-action ghost btn-xs" onclick="tobMcOpenReviewPasos()" title="Revisar tots els passos del menú amb ingredients eliminats — toggle ✂️/✓ ràpid + accions massives">✂️ Revisar passos</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
               <button class="tob-action btn-xs" onclick="tobMcSave()" title="Guardar el menú en el cliente">💾 Guardar</button>
             </div>
@@ -665,6 +666,27 @@
       <button class="tob-action ghost" onclick="tobMcResetAjuste()">↺ Sense ajust</button>
       <button class="tob-action ghost" onclick="document.getElementById('tobMcAjusteBg').classList.remove('on')">Cancelar</button>
       <button class="tob-action" onclick="tobMcApplyAjuste()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL REVISAR PASSOS DEL MENÚ ════════ -->
+<div class="tob-modal-bg" id="tobMcReviewPasosBg">
+  <div class="tob-modal" style="max-width:780px;max-height:92vh;display:flex;flex-direction:column;">
+    <h3 style="margin:0 0 6px;">✂️ Revisar passos del menú</h3>
+    <div style="font-size:.72rem;color:var(--mute);margin-bottom:10px;line-height:1.5;">
+      Aquí veus, en una sola pantalla, els passos de totes les receptes que tenen ingredients eliminats. Les paraules tachades són les mencions als ingredients que has tret. Pots forçar tota la frase com tachada (✂️) o visible (✓) clicant el botó de la dreta.
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+      <button class="tob-action ghost btn-xs" onclick="tobMcReviewApplyAuto()" title="Esborra tots els overrides manuals — torna tot a auto-tachado">↻ Tot a auto</button>
+      <button class="tob-action ghost btn-xs" onclick="tobMcReviewMarkAllVisible()" title="Marca totes les frases com visibles (no tachades)">✓ Tot visible</button>
+      <button class="tob-action ghost btn-xs" onclick="tobMcReviewMarkAllStruck()" title="Marca totes les frases com tachades">✂️ Tot tachat</button>
+      <div style="flex:1;"></div>
+      <span id="tobMcReviewCount" style="font-size:.7rem;color:var(--mute);align-self:center;"></span>
+    </div>
+    <div id="tobMcReviewBody" style="overflow-y:auto;flex:1;padding-right:4px;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button class="tob-action" onclick="document.getElementById('tobMcReviewPasosBg').classList.remove('on');tobMcRenderGrid();">Tancar</button>
     </div>
   </div>
 </div>
