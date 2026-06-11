@@ -641,13 +641,20 @@
       <div id="tobMcAjusteExtras" style="margin-bottom:12px;"></div>
       <datalist id="tobMcAjusteIngList"></datalist>
 
-      <!-- Pasos personalitzats (override) -->
+      <!-- Pasos: preview interactiu + override per text lliure -->
       <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;display:flex;justify-content:space-between;align-items:center;">
-        <span>Passos de preparació (només per a aquest menú):</span>
-        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteLoadPasosBase()" title="Carregar els passos de la recepta del catàleg">↻ Carregar base</button>
+        <span>Passos de preparació:</span>
+        <span style="font-size:.62rem;font-family:inherit;color:var(--mute2);">click ✂️/↺ per alternar tachat</span>
       </div>
-      <div style="font-size:.66rem;color:var(--mute);margin-bottom:6px;line-height:1.4;">Si el deixes buit, s'usen els passos del catàleg amb auto-tachat dels que mencionen ingredients eliminats. Si l'omples, els teus reemplacen els originals (un pas per línia).</div>
-      <textarea class="tob-input" id="tobMcAjusteInstrucciones" rows="4" placeholder="1. Trocea el carbassó en daus mitjans.&#10;2. Sofregeix amb oli...&#10;..." style="margin:4px 0 12px;font-family:inherit;resize:vertical;"></textarea>
+      <div style="font-size:.66rem;color:var(--mute);margin-bottom:6px;line-height:1.4;">Per defecte, els passos que mencionen un ingredient eliminat surten <s>tachats</s>. Pots forçar-ne qualsevol clicant el botó del costat. Si vols reescriure'ls del tot, fes servir el textarea de sota.</div>
+      <div id="tobMcAjustePasosPreview" style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface2,#1a1a1a);max-height:280px;overflow-y:auto;"></div>
+
+      <details style="margin-bottom:12px;">
+        <summary style="font-size:.72rem;color:var(--mute);cursor:pointer;font-family:'DM Mono',monospace;">↺ Reescriure tots els passos manualment (avançat)</summary>
+        <div style="font-size:.66rem;color:var(--mute);margin:8px 0 6px;line-height:1.4;">Si l'omples, el teu text reemplaça TOTS els passos del catàleg (un pas per línia). Si el deixes buit, s'usen els passos amb les marques de dalt.</div>
+        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;margin-bottom:6px;" onclick="tobMcAjusteLoadPasosBase()" title="Carregar els passos del catàleg al textarea">↻ Carregar base al textarea</button>
+        <textarea class="tob-input" id="tobMcAjusteInstrucciones" rows="4" placeholder="1. Trocea el carbassó en daus mitjans.&#10;2. Sofregeix amb oli...&#10;..." style="margin:4px 0 0;font-family:inherit;resize:vertical;width:100%;"></textarea>
+      </details>
 
       <!-- Motiu -->
       <label style="font-size:.74rem;color:var(--mute);">Motiu del canvi (opcional)</label>

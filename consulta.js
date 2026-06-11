@@ -9013,6 +9013,7 @@ function tobMcAjusteActivo(aj){
   if(Array.isArray(aj.ingExtras) && aj.ingExtras.length) return true;
   if(aj.nombreOverride && String(aj.nombreOverride).trim()) return true;
   if(aj.instruccionesOverride && String(aj.instruccionesOverride).trim()) return true;
+  if(aj.pasosState && Object.keys(aj.pasosState).length) return true;
   return false;
 }
 // Nombre efectiu d'una recepta dins del menú (honra nombreOverride per-menú).
@@ -9137,7 +9138,8 @@ function tobMcRenderAjustes(){
       <button class="tob-action ghost btn-xs" onclick="tobMcQuitarAjuste('${id}')" style="color:#dc6a6a;" title="Treure ajust">✗</button>
     </div>`;
   }).join('');
-  box.innerHTML = `<div class="tob-mc-aj-title">⚖ Racions ajustades <span>(${ids.length})</span></div>${rows}`;
+  // Per defecte plegat — l'usuari l'expandeix si vol veure'ls. Estalvia molt espai vertical.
+  box.innerHTML = `<details><summary class="tob-mc-aj-title" style="cursor:pointer;list-style:revert;">⚖ Racions ajustades <span>(${ids.length})</span></summary>${rows}</details>`;
 }
 function tobMcQuitarAjuste(id){
   if(!tobMcState || !tobMcState.ajustes) return;
@@ -9350,6 +9352,25 @@ function tobMcRenderChecks(){
   if(descartadasUsadas.size){
     alertasHtml += '<div class="tob-mc-check-alert bad"><b>⚠ Receptes descartades utilitzades:</b> ' + descartadasUsadas.size + ' al menú</div>';
   }
+  // ── Validador clínic: patologies + intoleràncies ──
+  if(typeof tobValidateMenuForCli === 'function'){
+    const snapshot = { data: tobMcState.data, ajustes: tobMcState.ajustes };
+    const v = tobValidateMenuForCli(snapshot, cli);
+    if(!v.ok){
+      // Agrupar per receta
+      const perRec = {};
+      v.conflicts.forEach(c => { (perRec[c.recNombre] = perRec[c.recNombre] || []).push(c); });
+      const recsKeys = Object.keys(perRec);
+      const cats = new Set();
+      v.conflicts.forEach(c => c.motivos.forEach(m => cats.add(m)));
+      const linesHtml = recsKeys.slice(0, 8).map(rec => {
+        const items = perRec[rec];
+        return '<div>· <b>' + rec + '</b>: ' + items.map(c => c.ingNombre + ' <span style="opacity:.65;font-size:.7em;">(' + c.motivos.join('/') + ')</span>').join(', ') + '</div>';
+      });
+      if(recsKeys.length > 8) linesHtml.push('<div style="opacity:.7;">… i ' + (recsKeys.length-8) + ' més</div>');
+      alertasHtml += '<div class="tob-mc-check-alert bad"><b>🚫 Triggers clínics detectats (' + v.conflicts.length + ' ingredients en ' + recsKeys.length + ' receptes · ' + Array.from(cats).join(', ') + '):</b>' + linesHtml.join('') + '</div>';
+    }
+  }
 
   const kcalBadge = kcalOk
     ? `<span class="tob-mc-check-pill ok">✓ ${Math.round(kcalMed)} kcal/dia</span>`
@@ -9384,6 +9405,9 @@ function tobMcOpenAjuste(recId){
   document.getElementById('tobMcAjusteNombre').value = aj.nombreOverride || '';
   document.getElementById('tobMcAjusteNombre').placeholder = r.nombre || '';
   document.getElementById('tobMcAjusteInstrucciones').value = aj.instruccionesOverride || '';
+  // Preview interactiu de passos
+  _tobMcAjustePasosState = Object.assign({}, aj.pasosState || {});
+  _tobMcAjusteRenderPasosPreview();
 
   // Datalist d'ingredients del catàleg (per autocompletar extras)
   const dl = document.getElementById('tobMcAjusteIngList');
@@ -9464,6 +9488,8 @@ function tobMcAjusteToggleRemove(ingId){
     const inp = row.querySelector('input'); if(inp) inp.style.pointerEvents = 'none';
   }
   tobMcAjustePreview();
+  // Re-renderitzar preview de passos (auto-tachat depèn de quins ingredients estan eliminats)
+  if(typeof _tobMcAjusteRenderPasosPreview === 'function') _tobMcAjusteRenderPasosPreview();
 }
 
 // Afegir un ingredient extra (prompt autocompletat amb datalist)
@@ -9537,7 +9563,8 @@ function tobMcAjusteLeerModal(){
   const ingExtras = tobMcAjusteReadExtrasFromDOM(rac);
   const nombreOverride = (document.getElementById('tobMcAjusteNombre').value || '').trim();
   const instruccionesOverride = (document.getElementById('tobMcAjusteInstrucciones').value || '').trim();
-  return { r, rac, aj: { factor, ing, ingRemoved, ingExtras, nombreOverride, instruccionesOverride } };
+  const pasosState = Object.assign({}, _tobMcAjustePasosState || {});
+  return { r, rac, aj: { factor, ing, ingRemoved, ingExtras, nombreOverride, instruccionesOverride, pasosState } };
 }
 
 // Carrega els passos del catàleg al textarea (per editar-los manualment)
@@ -9548,6 +9575,72 @@ function tobMcAjusteLoadPasosBase(){
               : String(r.instrucciones||'').split('\n').filter(Boolean);
   document.getElementById('tobMcAjusteInstrucciones').value = pasos.map(p => String(p).replace(/^[-·•*\d.\s]+/,'')).join('\n');
   tobToast('✓ Passos carregats — edita\'ls', 'green');
+}
+
+// ── Preview interactiu de passos (estat manual per índex) ─────
+let _tobMcAjustePasosState = {};  // { [index]: true|false } — override manual del tachat
+function _tobMcGetCurrentRemovedNames(){
+  const out = [];
+  document.querySelectorAll('#tobMcAjusteIngs [data-row-ingid]').forEach(row => {
+    if(row.style.textDecoration.includes('line-through')){
+      const ingId = row.dataset.rowIngid;
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ingId);
+      if(ing && ing.nombre){
+        const base = String(ing.nombre).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+        out.push(base);
+        if(!base.endsWith('s')) out.push(base + 's');
+      }
+    }
+  });
+  return out;
+}
+function _tobMcAjusteRenderPasosPreview(){
+  const box = document.getElementById('tobMcAjustePasosPreview');
+  if(!box) return;
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
+  if(!r){ box.innerHTML = ''; return; }
+  const pasosRaw = Array.isArray(r.instrucciones) ? r.instrucciones
+                 : String(r.instrucciones||'').split('\n').filter(Boolean);
+  if(!pasosRaw.length){
+    box.innerHTML = '<div style="color:var(--mute2);font-size:.7rem;padding:4px;">Aquesta recepta no té passos de preparació al catàleg.</div>';
+    return;
+  }
+  const removed = _tobMcGetCurrentRemovedNames();
+  const _norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  box.innerHTML = pasosRaw.map((p, i) => {
+    const norm = _norm(p);
+    const autoStrike = !!removed.find(rn => rn.length > 3 && norm.includes(rn));
+    const manual = _tobMcAjustePasosState[i];  // undefined | true | false
+    const struck = (manual !== undefined) ? manual : autoStrike;
+    const label = struck ? '✂️' : '✓';
+    const lblTitle = struck ? 'Click per mantenir el pas' : 'Click per marcar com tachat';
+    const txtStyle = struck ? 'opacity:.45;text-decoration:line-through;' : '';
+    const isManual = manual !== undefined;
+    return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 4px;border-bottom:1px solid var(--border);font-size:.74rem;line-height:1.4;">
+      <button class="tob-action ghost" style="padding:2px 6px;font-size:.72rem;min-width:32px;flex-shrink:0;${isManual?'border-color:var(--acc);color:var(--acc);':''}"
+              title="${lblTitle}${isManual?' · sobreescrit manualment':''}" onclick="tobMcAjustePasoToggle(${i})">${label}</button>
+      <div style="flex:1;${txtStyle}">${tobEsc(String(p).replace(/^[-·•*\d.\s]+/,''))}</div>
+    </div>`;
+  }).join('');
+}
+function tobMcAjustePasoToggle(i){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
+  if(!r) return;
+  const pasosRaw = Array.isArray(r.instrucciones) ? r.instrucciones : [];
+  const p = pasosRaw[i] || '';
+  const removed = _tobMcGetCurrentRemovedNames();
+  const _norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const auto = !!removed.find(rn => rn.length > 3 && _norm(p).includes(rn));
+  const cur = _tobMcAjustePasosState[i];
+  // Cicle: undefined (auto) → invertir auto → undefined (reset)
+  if(cur === undefined){
+    _tobMcAjustePasosState[i] = !auto;
+  } else if(_tobMcAjustePasosState[i] === !auto){
+    delete _tobMcAjustePasosState[i];   // reset a auto
+  } else {
+    _tobMcAjustePasosState[i] = !auto;
+  }
+  _tobMcAjusteRenderPasosPreview();
 }
 function tobMcAjustePreview(){
   const data = tobMcAjusteLeerModal();
@@ -9565,6 +9658,8 @@ function tobMcResetAjuste(){
   document.getElementById('tobMcAjusteFactor').value = 1;
   document.getElementById('tobMcAjusteNombre').value = '';
   document.getElementById('tobMcAjusteInstrucciones').value = '';
+  _tobMcAjustePasosState = {};
+  if(typeof _tobMcAjusteRenderPasosPreview === 'function') _tobMcAjusteRenderPasosPreview();
   document.querySelectorAll('#tobMcAjusteIngs input[data-ingid]').forEach(inp => inp.value = '');
   // Restaurar files eliminades
   document.querySelectorAll('#tobMcAjusteIngs [data-row-ingid]').forEach(row => {
@@ -10891,11 +10986,17 @@ async function tobMenuPdf(cliId, menuId){
         }
       });
     }
-    const pasos = pasosRaw.map(p => {
-      if(!removedNames.length) return { text:p, struck:false };
-      const norm = _normPaso(p);
-      const hit = removedNames.find(rn => rn.length > 3 && norm.includes(rn));
-      return hit ? { text:p, struck:true, ing:hit } : { text:p, struck:false };
+    const pasosManual = (aj && aj.pasosState) || {};
+    const pasos = pasosRaw.map((p, i) => {
+      let autoStruck = false;
+      if(removedNames.length){
+        const norm = _normPaso(p);
+        autoStruck = !!removedNames.find(rn => rn.length > 3 && norm.includes(rn));
+      }
+      // Override manual: si l'usuari ha decidit per aquest pas, fer-li cas
+      const manual = pasosManual[i];
+      const struck = (manual === undefined) ? autoStruck : !!manual;
+      return { text:p, struck };
     });
     const ajBadge = ajActivo
       ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
@@ -11270,6 +11371,35 @@ const TOB_AI_DEFAULTS = {
 // desde ⚙ IA. {kcal} {margen} {prot} se sustituyen al generar.
 const TOB_AI_MENU_RULES_DEFAULT =
 `Ets el dietista de Sergio. Munta el menú com ho faria ell. Filosofia: flexible, centrat en el client, dia a dia.
+
+═══ 🚫 REGLA #-1 — PERFIL CLÍNIC, ABSOLUTA (supera fins i tot REGLA #0) ═══
+Si el client té AL·LÈRGIES, PATOLOGIES (SIBO, celiaquia, diabetis, etc.) o
+INTOLERÀNCIES llistades al PERFIL, OBLIGATÒRIAMENT:
+
+  1) Llegeix la secció "ADAPTAR" del perfil i els camps "AL·LÈRGIES",
+     "Aliments que NO vol", "Li senten malament" ABANS de proposar cap recepta.
+
+  2) Per cada recepta que vulguis posar, examina TOTS els ingredients de la
+     recepta candidata del catàleg. Si CONTÉ un ingredient prohibit per la
+     patologia/al·lèrgia/intolerància del client:
+       a) PRIMER intenta buscar una recepta alternativa equivalent que NO
+          el contingui (mira tot el catàleg).
+       b) Si no n'hi ha cap d'equivalent, USA "ingRemoved" per treure aquell
+          ingredient i "ingExtras" per afegir un substitut adequat. Indica
+          a "motiu" per què (ex: "SIBO — sense all").
+       c) Si la recepta es queda sense sentit al treure-li l'ingredient
+          (ex: "Hummus de cigrons" sense cigrons), DESCARTA-la i busca una
+          de totalment diferent. No la posis igual.
+
+  3) Mai posis una recepta a "raw" del catàleg si conté triggers prohibits.
+     El client confia que el menú respecti la seva condició clínica.
+
+  4) Si trobes que aplicar correctament la patologia et fa baixar de kcal/prot,
+     PRIMER respecta la patologia, DESPRÉS ajusta amb quantitats o altres
+     receptes compatibles. PRIMER la salut, després els números.
+
+  5) Si l'al·lèrgia és greu (anafilaxi), CAP RECEPTA del menú pot contenir
+     l'al·lergen, ni com a ingredient menor. Revisa-ho dues vegades.
 
 ═══ ⛔ REGLA #0 — RECORDATORI DEL CLIENT, INNEGOCIABLE (supera totes les altres) ═══
 El RECORDATORI 24h del client (a "Estructura habitual dels àpats" del PERFIL)
@@ -11954,9 +12084,18 @@ function tobMcPerfilTexto(cli){
   const intol = t.intolerancia || [];
   const adapt = [];
   if(intol.includes('gluten') || (t.patologies||[]).includes('celiaquia')) adapt.push('GLUTEN (usa receptes amb pa/pasta normalment — el client comprarà la versió SENSE GLUTEN)');
-  if(intol.includes('lactosa')) adapt.push('LACTOSA (usa receptes amb lactis normalment — el client comprarà versió SENSE LACTOSA)');
-  if(intol.includes('fructosa')) adapt.push('FRUCTOSA (limita fruites amb molt sucre fructos, prioritza les baixes)');
-  if(intol.includes('histamina')) adapt.push('HISTAMINA (limita peix blau curat, formatges curats, embutits, vi)');
+  if(intol.includes('lactosa')) adapt.push(
+    'LACTOSA (intolerància — versions sense lactosa OBLIGATÒRIES):\n' +
+    '    🚫 NO posis: llet sencera, llet desnatada, iogurt natural, formatge fresc, ricotta, mozzarella fresca, feta fresc, nata, mantega\n' +
+    '    ✅ SÍ pots posar: llet sense lactosa, iogurt sense lactosa, formatges curats (parmesà, manxec curat, gruyère — lactosa molt baixa), oli d\'oliva en comptes de mantega');
+  if(intol.includes('fructosa')) adapt.push(
+    'FRUCTOSA (intolerància — restriccions estrictes):\n' +
+    '    🚫 NO posis: mel, agave, fructosa pura, poma, pera, mango, síndria, cireres, figues, dàtils, prunes, préssec, sucs de fruita comercials\n' +
+    '    ✅ SÍ pots: maduixes, nabius, kiwi, taronja, mandarina, raïm en porció petita, plàtan verd');
+  if(intol.includes('histamina')) adapt.push(
+    'HISTAMINA (intolerància — evita aliments fermentats/curats):\n' +
+    '    🚫 NO posis: formatges curats (parmesà, manxec curat, roquefort, gorgonzola), embutits (jamó serrà, salami, xoriço, sobrasada), peix en conserva (atun llauna, anxoves, sardines llauna), tomàquet molt madur, vi, cervesa, vinagre balsàmic, xucrut\n' +
+    '    ✅ SÍ pots: peix fresc, carn fresca, ous frescs, formatges molt joves, verdures fresques');
   // SIBO: PROHIBICIONS ESTRICTES (no és "limita", és "no posis cap quantitat").
   // L'IA tendeix a interpretar "limita" com "menys" i segueix incloent-ho. Aquí
   // marquem clarament què està PROHIBIT i què és OBLIGAT prioritzar.
