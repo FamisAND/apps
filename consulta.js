@@ -2106,20 +2106,36 @@ function tobRunPasteImport(){
   catch(e){ info.textContent = 'JSON inválido: ' + e.message; info.style.color = 'var(--red)'; return; }
   if(!data.cliente){ info.textContent = 'Falta campo "cliente".'; info.style.color = 'var(--red)'; return; }
 
-  // Buscar cliente (por id exacto o nombre includes case-insensitive)
+  // Buscar cliente: id exacto o nombre exacto. El match per "includes" és
+  // perillós quan crearCliente=true (cas real: "Xell" ⊂ "Meritxell Roquet"
+  // → les dades de Xell s'injectaven a Meritxell). Per això, si el match és
+  // parcial i el JSON demana crear, es PREGUNTA abans de fusionar.
   const needle = String(data.cliente).toLowerCase();
   let cli = tobDB.clientes.find(c => c.id === data.cliente)
-         || tobDB.clientes.find(c => (c.nombre||'').toLowerCase() === needle)
-         || tobDB.clientes.find(c => (c.nombre||'').toLowerCase().includes(needle));
+         || tobDB.clientes.find(c => (c.nombre||'').toLowerCase() === needle);
+  if(!cli){
+    const parcial = tobDB.clientes.find(c => (c.nombre||'').toLowerCase().includes(needle));
+    if(parcial){
+      if(data.crearCliente){
+        if(confirm('El JSON és de "' + data.cliente + '" i existeix un client "' + parcial.nombre + '" el nom del qual el conté.\n\nSón la MATEIXA persona?\n\n· Acceptar = importar dins de "' + parcial.nombre + '"\n· Cancel·lar = crear client nou "' + data.cliente + '"')){
+          cli = parcial;
+        }
+      } else {
+        cli = parcial;
+      }
+    }
+  }
   let clienteCreado = false;
   if(!cli){
     // Crear el cliente si el JSON lo pide (crearCliente:true) — útil para altas nuevas.
     if(data.crearCliente){
       // Se añade a tobDB.clientes tras confirmar (no antes, por si cancela).
+      // alta: si el JSON porta data d'alta vàlida (= primera medició real), usar-la.
       cli = {
         id: tobUid('cli'),
         nombre: String(data.nombre || data.cliente).trim(),
-        sexo: 'H', contacto: '', alta: new Date().toISOString().slice(0,10),
+        sexo: 'H', contacto: '',
+        alta: (data.alta && /^\d{4}-\d{2}-\d{2}$/.test(data.alta)) ? data.alta : new Date().toISOString().slice(0,10),
         nacimiento: '', idioma: 'ca', asignaciones: [], activo: true
       };
       clienteCreado = true;
