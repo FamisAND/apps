@@ -9012,6 +9012,7 @@ function tobMcAjusteActivo(aj){
   if(Array.isArray(aj.ingRemoved) && aj.ingRemoved.length) return true;
   if(Array.isArray(aj.ingExtras) && aj.ingExtras.length) return true;
   if(aj.nombreOverride && String(aj.nombreOverride).trim()) return true;
+  if(aj.instruccionesOverride && String(aj.instruccionesOverride).trim()) return true;
   return false;
 }
 // Nombre efectiu d'una recepta dins del menú (honra nombreOverride per-menú).
@@ -9098,6 +9099,9 @@ function tobMcAjusteResumen(aj){
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
       parts.push('+ ' + (ing ? ing.nombre : 'ingredient') + ' ' + Math.round(ex.gramos||0) + ' g');
     });
+  }
+  if(aj.instruccionesOverride && String(aj.instruccionesOverride).trim()){
+    parts.push('passos personalitzats');
   }
   return parts.join(' · ');
 }
@@ -9379,6 +9383,7 @@ function tobMcOpenAjuste(recId){
   document.getElementById('tobMcAjusteMotiu').value = aj.motiu || '';
   document.getElementById('tobMcAjusteNombre').value = aj.nombreOverride || '';
   document.getElementById('tobMcAjusteNombre').placeholder = r.nombre || '';
+  document.getElementById('tobMcAjusteInstrucciones').value = aj.instruccionesOverride || '';
 
   // Datalist d'ingredients del catàleg (per autocompletar extras)
   const dl = document.getElementById('tobMcAjusteIngList');
@@ -9531,7 +9536,18 @@ function tobMcAjusteLeerModal(){
   });
   const ingExtras = tobMcAjusteReadExtrasFromDOM(rac);
   const nombreOverride = (document.getElementById('tobMcAjusteNombre').value || '').trim();
-  return { r, rac, aj: { factor, ing, ingRemoved, ingExtras, nombreOverride } };
+  const instruccionesOverride = (document.getElementById('tobMcAjusteInstrucciones').value || '').trim();
+  return { r, rac, aj: { factor, ing, ingRemoved, ingExtras, nombreOverride, instruccionesOverride } };
+}
+
+// Carrega els passos del catàleg al textarea (per editar-los manualment)
+function tobMcAjusteLoadPasosBase(){
+  const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
+  if(!r){ tobToast('Recepta no trobada', 'red'); return; }
+  const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
+              : String(r.instrucciones||'').split('\n').filter(Boolean);
+  document.getElementById('tobMcAjusteInstrucciones').value = pasos.map(p => String(p).replace(/^[-·•*\d.\s]+/,'')).join('\n');
+  tobToast('✓ Passos carregats — edita\'ls', 'green');
 }
 function tobMcAjustePreview(){
   const data = tobMcAjusteLeerModal();
@@ -9548,6 +9564,7 @@ function tobMcAjustePreview(){
 function tobMcResetAjuste(){
   document.getElementById('tobMcAjusteFactor').value = 1;
   document.getElementById('tobMcAjusteNombre').value = '';
+  document.getElementById('tobMcAjusteInstrucciones').value = '';
   document.querySelectorAll('#tobMcAjusteIngs input[data-ingid]').forEach(inp => inp.value = '');
   // Restaurar files eliminades
   document.querySelectorAll('#tobMcAjusteIngs [data-row-ingid]').forEach(row => {
@@ -10329,6 +10346,147 @@ function tobMcApplyMeals(){
   tobToast('✓ Àpats actualitzats', 'green');
 }
 
+// ════════════════════════════════════════════════════════════════════
+// VALIDADOR DETERMINISTA DE MENÚ (patologies + intoleràncies)
+// ════════════════════════════════════════════════════════════════════
+// Blacklists per patologia/intolerància, normalitzades. Substring-match
+// (si el nom de l'ingredient conté la paraula, és trigger). Cobreix
+// noms en català, castellà i variants comunes.
+const TOB_BLACKLISTS = {
+  sibo: [
+    'cebolla','ceba','cebolla dulce','ceba dolca','cebolleta','ceballot',
+    'ajo','all','chalota','escalonia',
+    'puerro','porro',
+    'coliflor','col-i-flor',
+    'champinones','champinones blancos','xampinyons','shiitake','setas shiitake',
+    'garbanzos','cigrons','lentejas','llenties','alubias','judias','mongetes','edamame',
+    'leche entera','llet sencera','leche desnatada','llet desnatada','leche semidesnatada',
+    'leche de soja','llet de soja','llet soja',
+    'yogur natural','iogurt natural',
+    'mozzarella fresca','mozzarella','queso fresco','formatge fresc','ricotta','feta fresc',
+    'queso mexicano','queso oaxaca',
+    'mantequilla','mantega','mantequilla batida','nata','nata liquida','nata para cocinar','crema de leche',
+    'pan','pa','pan integral','pa integral','pan de centeno','pa de sègol','pan de molde',
+    'harina de trigo','farina de blat','trigo','blat','cuscus','cous cous','seitan','seitán',
+    'miel','mel','agave','sirope de agave','jarabe de agave','sirope agave',
+    'manzana','poma','pera','mango','sandia','sindria','cireza','cirera','cereza','higo','figa','datil','dàtil','ciruela','pruna','melocoton','presec',
+    'pistachos','pistatxos','anacardos',
+    'curry en polvo','curri en pols','curry',
+    'mostaza','mostassa',
+    'caldo de pollo','brou de pollastre','caldo de verduras','brou de verdures'
+  ],
+  celiaquia: [
+    'trigo','blat','harina de trigo','farina de blat','farina blat',
+    'pan','pa','pan integral','pa integral','pan de molde','pa de motlle',
+    'centeno','sègol','cebada','ordi','espelta','kamut',
+    'cuscus','cous cous','bulgur','seitan','seitán',
+    'pasta','espaguetis','macarrons','macarrones','galletas','galetes',
+    'cerveza con gluten','cervesa amb gluten','salsa de soja con trigo','salsa de soja amb blat'
+  ],
+  lactosa: [
+    'leche entera','llet sencera','leche desnatada','llet desnatada','leche semidesnatada',
+    'yogur natural','iogurt natural',
+    'queso fresco','formatge fresc','queso de burgos','ricotta','mozzarella fresca','feta fresc',
+    'nata','nata liquida','crema de leche','crème fraîche',
+    'mantequilla','mantega','mantequilla batida'
+  ],
+  histamina: [
+    'queso curado','formatge curat','parmesano','parmesa','manchego curado','manxec curat','roquefort','gorgonzola','gruyere','emmental',
+    'embutidos','embutits','jamon serrano','pernil serrà','salami','chorizo','sobrasada','fuet','xoriço',
+    'atun en conserva','tonyina en conserva','anchoa','anxoa','sardinas en conserva','sardines en conserva','arenque',
+    'vino','vi','cerveza','cervesa','champagne','cava',
+    'vinagre balsamico','vinagre balsàmic','tomate maduro','tomàquet madur','xucrut','sauerkraut','kimchi'
+  ],
+  fructosa: [
+    'miel','mel','agave','sirope de agave','sirope d agave',
+    'manzana','poma','pera','mango','sandia','sindria','cereza','cirera','higo','figa','datil','dàtil','ciruela','pruna','melocoton','presec',
+    'zumo de fruta','suc de fruita','mermelada','melmelada','sirope arce','sirope d arce','sirope d auró'
+  ]
+};
+function _tobNormBL(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+}
+// Per cada conflicte: { recId, recNombre, ingId, ingNombre, motivos:[cat,...] }
+function tobValidateMenuForCli(menu, cli){
+  if(!menu || !cli) return { ok:true, conflicts:[] };
+  const tags = cli.questionari || cli.preguntes || cli.profile || {};
+  const trigByName = {};  // nom_normalitzat → [categorias trigger]
+  const addCat = (cat, arr) => {
+    arr.forEach(name => {
+      const n = _tobNormBL(name);
+      if(!trigByName[n]) trigByName[n] = [];
+      if(!trigByName[n].includes(cat)) trigByName[n].push(cat);
+    });
+  };
+  if((tags.patologies||[]).includes('sibo'))      addCat('SIBO',      TOB_BLACKLISTS.sibo);
+  if((tags.patologies||[]).includes('celiaquia')) addCat('Celiaquia', TOB_BLACKLISTS.celiaquia);
+  if((tags.intolerancia||[]).includes('gluten'))  addCat('Gluten',    TOB_BLACKLISTS.celiaquia);
+  if((tags.intolerancia||[]).includes('lactosa')) addCat('Lactosa',   TOB_BLACKLISTS.lactosa);
+  if((tags.intolerancia||[]).includes('histamina'))addCat('Histamina',TOB_BLACKLISTS.histamina);
+  if((tags.intolerancia||[]).includes('fructosa'))addCat('Fructosa',  TOB_BLACKLISTS.fructosa);
+  if(!Object.keys(trigByName).length) return { ok:true, conflicts:[] };
+
+  // Cerca substring-match per nom normalitzat (perquè "Leche entera" cobreixi "leche entera (UHT)")
+  const triggerKeys = Object.keys(trigByName).sort((a,b)=>b.length-a.length); // més llargs primer
+  const matchTrigger = (ingName) => {
+    const n = _tobNormBL(ingName);
+    for(const k of triggerKeys){
+      if(k.length > 2 && n.includes(k)) return trigByName[k];
+    }
+    return null;
+  };
+
+  const conflicts = [];
+  const recIds = new Set();
+  Object.values(menu.data || {}).forEach(sem =>
+    Object.values(sem || {}).forEach(dia =>
+      Object.values(dia || {}).forEach(arr =>
+        (arr || []).forEach(id => recIds.add(id)))));
+  recIds.forEach(recId => {
+    const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+    if(!r || !Array.isArray(r.ingredientes)) return;
+    const aj = (menu.ajustes||{})[recId];
+    const removed = new Set((aj && aj.ingRemoved) || []);
+    // Ingredients del catàleg (excloent eliminats)
+    r.ingredientes.forEach(it => {
+      if(removed.has(it.ingId)) return;
+      const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
+      if(!ing) return;
+      const cats = matchTrigger(ing.nombre);
+      if(cats){
+        conflicts.push({ recId, recNombre: tobMcRecNombre(r, aj),
+          ingId: ing.id, ingNombre: ing.nombre, motivos: cats });
+      }
+    });
+    // Ingredients extras
+    if(aj && Array.isArray(aj.ingExtras)){
+      aj.ingExtras.forEach(ex => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
+        if(!ing) return;
+        const cats = matchTrigger(ing.nombre);
+        if(cats){
+          conflicts.push({ recId, recNombre: tobMcRecNombre(r, aj),
+            ingId: ing.id, ingNombre: ing.nombre + ' [extra]', motivos: cats });
+        }
+      });
+    }
+  });
+  return { ok: conflicts.length === 0, conflicts };
+}
+// Botó manual des de la consola: tobMcValidate() → log + toast
+function tobMcValidate(){
+  if(!tobMcState){ tobToast('Cap menú obert', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
+  if(!cli){ tobToast('Client no trobat', 'red'); return; }
+  const snapshot = { data: tobMcState.data, ajustes: tobMcState.ajustes };
+  const v = tobValidateMenuForCli(snapshot, cli);
+  if(v.ok){ tobToast('✓ Cap conflicte detectat amb el perfil del client', 'green'); return; }
+  console.warn('═══ ' + v.conflicts.length + ' CONFLICTES DETECTATS ═══');
+  v.conflicts.forEach(c => console.warn('  ▶', c.recNombre, '·', c.ingNombre, '· trigger', c.motivos.join('/')));
+  tobToast('⚠ ' + v.conflicts.length + ' conflictes — revisa consola', 'orange');
+}
+
 function tobMcSave(){
   if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
@@ -10358,7 +10516,21 @@ function tobMcSave(){
   // Refrescar la ficha del cliente (si está abierta) y la pestaña de menús
   if(typeof tobFichaRenderMenus === 'function') tobFichaRenderMenus();
   if(typeof tobMenusGuardadosRender === 'function') tobMenusGuardadosRender();
-  tobToast(`✓ Menú guardado en ${cli.nombre}`, 'green');
+  // Auto-validar contra perfil clínic del client (SIBO/celiaquia/intoleràncies)
+  const v = tobValidateMenuForCli(snapshot, cli);
+  if(v.ok){
+    tobToast(`✓ Menú guardado en ${cli.nombre}`, 'green');
+  } else {
+    // Agrupar per recepta per al missatge
+    const perRec = {};
+    v.conflicts.forEach(c => { (perRec[c.recNombre] = perRec[c.recNombre] || []).push(c); });
+    console.warn('═══ ' + v.conflicts.length + ' CONFLICTES amb el perfil de ' + cli.nombre + ' ═══');
+    Object.entries(perRec).forEach(([rec, items]) => {
+      console.warn('  ▶ ' + rec);
+      items.forEach(c => console.warn('     · ' + c.ingNombre + ' (trigger ' + c.motivos.join('/') + ')'));
+    });
+    tobToast(`✓ Guardat · ⚠ ${v.conflicts.length} conflictes en ${Object.keys(perRec).length} receptes — revisa consola`, 'orange');
+  }
 }
 
 function tobMcShowList(){
@@ -10696,8 +10868,35 @@ async function tobMenuPdf(cliId, menuId){
       return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
     });
     const ings = [...baseIngs, ...extraIngs].join('');
-    const pasos = Array.isArray(r.instrucciones) ? r.instrucciones
+    // Pasos: si hi ha override manual, fer-lo servir. Si no, els originals
+    // amb auto-tachado de les passes que mencionen un ingredient eliminat.
+    let pasosRaw;
+    if(aj && aj.instruccionesOverride && String(aj.instruccionesOverride).trim()){
+      pasosRaw = String(aj.instruccionesOverride).split('\n').filter(Boolean);
+    } else {
+      pasosRaw = Array.isArray(r.instrucciones) ? r.instrucciones
                 : String(r.instrucciones||'').split('\n').filter(Boolean);
+    }
+    // Noms normalitzats dels ingredients eliminats — per detectar mencions als passos
+    const _normPaso = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const removedNames = [];
+    if(aj && Array.isArray(aj.ingRemoved)){
+      aj.ingRemoved.forEach(rid => {
+        const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === rid);
+        if(ing && ing.nombre){
+          // Forma singular i plural simple (-s, -es)
+          const base = _normPaso(ing.nombre);
+          removedNames.push(base);
+          if(!base.endsWith('s')) removedNames.push(base + 's');
+        }
+      });
+    }
+    const pasos = pasosRaw.map(p => {
+      if(!removedNames.length) return { text:p, struck:false };
+      const norm = _normPaso(p);
+      const hit = removedNames.find(rn => rn.length > 3 && norm.includes(rn));
+      return hit ? { text:p, struck:true, ing:hit } : { text:p, struck:false };
+    });
     const ajBadge = ajActivo
       ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
       : '';
@@ -10723,7 +10922,12 @@ async function tobMenuPdf(cliId, menuId){
         ${ajBadge}</div>
       </div>
       ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
-        <div><h4>Preparació</h4><ol>${pasos.map(p=>`<li>${esc(p.replace(/^[-·•*\d.\s]+/,''))}</li>`).join('')||'<li>—</li>'}</ol></div></div>` : ''}
+        <div><h4>Preparació</h4><ol>${pasos.map(p=>{
+          const txt = esc(String(p.text).replace(/^[-·•*\d.\s]+/,''));
+          return p.struck
+            ? `<li class="mp-paso-eliminat" style="opacity:.5;text-decoration:line-through;"><s>${txt}</s> <small style="text-decoration:none;color:#e03535;">✂️</small></li>`
+            : `<li>${txt}</li>`;
+        }).join('')||'<li>—</li>'}</ol></div></div>` : ''}
     </div>`;
   };
 
@@ -11753,10 +11957,29 @@ function tobMcPerfilTexto(cli){
   if(intol.includes('lactosa')) adapt.push('LACTOSA (usa receptes amb lactis normalment — el client comprarà versió SENSE LACTOSA)');
   if(intol.includes('fructosa')) adapt.push('FRUCTOSA (limita fruites amb molt sucre fructos, prioritza les baixes)');
   if(intol.includes('histamina')) adapt.push('HISTAMINA (limita peix blau curat, formatges curats, embutits, vi)');
-  // SIBO: és una patologia, però el guideline per a la IA és del mateix tipus
-  // que les intoleràncies (limitar grups d'aliments). Sergio ho gestiona com
-  // restricció dietètica activa, no només etiqueta.
-  if((t.patologies||[]).includes('sibo')) adapt.push('SIBO (dieta BAIXA en FODMAPs: limita ceba, all, llegums, lactosa, blat, fruites altes en fructosa/sorbitol — préssec, poma, pera, mango, mel. Prioritza arròs, civada, patata, carns/peix, ous, formatges curats, fruits secs en quantitats petites, verdures FODMAP baix com pastanaga, carbassó, espinacs)');
+  // SIBO: PROHIBICIONS ESTRICTES (no és "limita", és "no posis cap quantitat").
+  // L'IA tendeix a interpretar "limita" com "menys" i segueix incloent-ho. Aquí
+  // marquem clarament què està PROHIBIT i què és OBLIGAT prioritzar.
+  if((t.patologies||[]).includes('sibo')) adapt.push(
+    'SIBO (dieta BAIXA en FODMAPs — restricció ESTRICTA):\n' +
+    '    🚫 PROHIBIT ABSOLUTAMENT (no ho posis en cap recepta, en cap quantitat):\n' +
+    '       • Allium: ceba, all, porro, cebolleta, escalonia, ceballot (sense excepcions)\n' +
+    '       • Crucíferes alt FODMAP: coliflor, bròquil (>75g per ració), col\n' +
+    '       • Bolets alt FODMAP: xampinyons blancs, shiitake\n' +
+    '       • Llegums: cigrons, llenties, mongetes, alubies, edamame, soja sencera\n' +
+    '       • Cereals amb gluten: blat, sègol, ordi (pa, pasta, cuscús, seitan, farina de blat)\n' +
+    '       • Lactosa: llet sencera/desnatada, iogurt natural amb lactosa, formatge fresc, mozzarella fresca, ricotta, feta fresc, nata, mantega (usa versions sense lactosa o oli)\n' +
+    '       • Fruites alt FODMAP: poma, pera, mango, préssec, síndria, cireres, figues, dàtils, prunes, gerds en quantitat\n' +
+    '       • Edulcorants: mel, sirope d\'àgave, fructosa, sorbitol, manitol, xilitol\n' +
+    '       • Productes processats que solen portar all/ceba en pols: curri en pols comercial, brou de pollastre/verdures envasat, mostassa, salsa de soja amb blat\n' +
+    '    ✅ PRIORITZA: arròs, civada, patata, quinoa, blat sarraí, carns magres, peix, ous, formatges molt curats (parmesà, manxec curat), llet sense lactosa, fruita seca en porcions petites (ametlles, nous; mai pistatxos ni anacards), verdures low FODMAP (pastanaga, carbassó, espinacs, cogombre, pebrot, enciam, tomàquet en porció moderada), fruita low FODMAP (kiwi, maduixes, nabius, taronja, plàtan verd, raïm, mandarina)\n' +
+    '    ⚠️ Si una recepta de catàleg porta un d\'aquests prohibits, NO la facis servir — busca una alternativa o substitueix l\'ingredient per un equivalent low FODMAP.');
+  // CELIAQUIA: prohibició estricta (no és intolerància suau, és reacció autoimmune).
+  if((t.patologies||[]).includes('celiaquia')) adapt.push(
+    'CELIAQUIA (zero tolerància — no és "elegeix versió sense gluten", és PROHIBIT):\n' +
+    '    🚫 NO pots incloure: blat, sègol, ordi, espelta, kamut, cuscús, bulgur, seitan, salsa de soja amb blat, pa, pasta, farina, galetes, cervesa amb gluten\n' +
+    '    ✅ Pots usar: arròs, blat sarraí, quinoa, mill, sorgo, civada certificada SG, patata, farina de cigró, farina d\'arròs, maizena, tapioca\n' +
+    '    ⚠️ Contaminació encreuada: si una recepta porta "pa", marca-la PER FER AMB PA SENSE GLUTEN — no l\'incloguis sense aquesta nota');
   if(adapt.length){
     L.push('ADAPTAR (NO excloure) — el client té intolerància però el menú els porta amb versions aptes:');
     adapt.forEach(a => L.push('  · ' + a));
