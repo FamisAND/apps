@@ -488,6 +488,25 @@ function defaultSections(){
 
 // ── Asset helpers ──
 function profileAssets(p){const r=[];p.sections.forEach(s=>s.assets.forEach(a=>r.push(a)));return r;}
+// Versió que oculta carteres arxivades (per a Historial, Formulari, Comparativa anual…)
+// Les gràfiques segueixen usant profileAssets() per preservar l'històric visual.
+function activeAssetsOf(p){const r=[];p.sections.forEach(s=>s.assets.forEach(a=>{if(!a.archived)r.push(a);}));return r;}
+// Detecta carteres sense valors > 0 en les últimes N entrades (default 6 mesos).
+// Ignora les seccions d'ingressos (no es consideren "carteres" arxivables).
+function findEmptyAssets(p,monthsBack){
+  monthsBack=monthsBack||6;
+  const ents=(p.entries||[]).slice(-monthsBack);
+  const ingSec=ingSection(p);
+  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
+  const empty=[];
+  p.sections.forEach(s=>s.assets.forEach(a=>{
+    if(ingIds.has(a.id))return;
+    if(a.archived)return;
+    const hasValue=ents.some(e=>{const v=parseFloat((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
+    if(!hasValue)empty.push(a);
+  }));
+  return empty;
+}
 function entryActiveAssets(entry,p){
   if(entry._activeAssets&&entry._activeAssets.length){const all=profileAssets(p);return all.filter(a=>entry._activeAssets.includes(a.id));}
   return profileAssets(p);
@@ -2404,7 +2423,7 @@ function renderHistorial(){
   thead.innerHTML="";tbody.innerHTML="";
   if(!ents.length){empty.classList.remove("hidden");return;}
   empty.classList.add("hidden");
-  const assetMap={};ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{if(!assetMap[a.id])assetMap[a.id]=a;}));
+  const assetMap={};ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{if(!assetMap[a.id]&&!a.archived)assetMap[a.id]=a;}));
   const allA=Object.values(assetMap);
   const hasDeuda=ents.some(e=>e.deuda>0);
   const hr=document.createElement("tr");
@@ -2509,7 +2528,7 @@ function renderAssetYearComparison(){
   const allAssets=[];
   p.sections.forEach(s=>{
     s.assets.forEach(a=>{
-      if(!ingIds.has(a.id) && !allAssets.find(x=>x.id===a.id)){
+      if(!ingIds.has(a.id) && !a.archived && !allAssets.find(x=>x.id===a.id)){
         allAssets.push(a);
       }
     });
@@ -2647,21 +2666,32 @@ function renderFormFields(prefill){
   let baseActiveIds;
   if(prefill){
     // Al editar: activar todos los activos que tienen datos guardados, más los que estaban en _activeAssets
-    const savedIds=prefill._activeAssets||profileAssets(p).map(a=>a.id);
+    // INCLOEM les arxivades si tenen dades guardades en aquesta entrada (per no perdre dades en editar).
+    const savedIds=prefill._activeAssets||activeAssetsOf(p).map(a=>a.id);
     const withData=profileAssets(p).filter(a=>{const v=(prefill.assets||{})[a.id];return v!==""&&v!=null;}).map(a=>a.id);
     baseActiveIds=[...new Set([...savedIds,...withData])];
-  } else if(ents.length)baseActiveIds=ents[ents.length-1]._activeAssets||profileAssets(p).map(a=>a.id);
-  else baseActiveIds=profileAssets(p).map(a=>a.id);
+  } else if(ents.length)baseActiveIds=ents[ents.length-1]._activeAssets||activeAssetsOf(p).map(a=>a.id);
+  else baseActiveIds=activeAssetsOf(p).map(a=>a.id);
   const activeState={};profileAssets(p).forEach(a=>activeState[a.id]=baseActiveIds.includes(a.id));
 
   const ingSec=ingSection(p);
   const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
+  // Per saber si pintar carteres arxivades: només si l'edició conté valors
+  const archivedWithDataIds=new Set(
+    prefill ? profileAssets(p).filter(a=>{
+      if(!a.archived)return false;
+      const v=(prefill.assets||{})[a.id];return v!==""&&v!=null;
+    }).map(a=>a.id) : []
+  );
 
   p.sections.forEach(sec=>{
+    // Filtrem arxivades — excepte si estem editant i tenen valor en aquesta entrada
+    const visibleAssets=sec.assets.filter(a=>!a.archived||archivedWithDataIds.has(a.id));
+    if(!visibleAssets.length)return;
     const wrap=document.createElement("div");wrap.className="form-sec";
     wrap.innerHTML=`<div class="form-sec-hdr">${sec.title}</div>`;
     const grid=document.createElement("div");grid.className="grid2";
-    sec.assets.forEach(a=>{
+    visibleAssets.forEach(a=>{
       const isIncome=ingIds.has(a.id);
       const oldVal=prefill?(prefill.assets||{})[a.id]||"":"";
       // Find previous entry value for reference
@@ -2676,7 +2706,7 @@ function renderFormFields(prefill){
     wrap.appendChild(grid);
     const tbox=document.createElement("div");tbox.className="month-note-box";
     tbox.innerHTML=`<div class="month-note-lbl">Activo este mes</div><div style="display:flex;flex-wrap:wrap">`;
-    sec.assets.forEach(a=>{
+    visibleAssets.forEach(a=>{
       const row=document.createElement("span");row.className="asset-toggle-row";
       const cb=document.createElement("input");cb.type="checkbox";cb.checked=activeState[a.id];cb.id="atgl_"+a.id;
       const lbl=document.createElement("label");lbl.htmlFor="atgl_"+a.id;lbl.style.cssText="font-size:.8rem;color:#94a3b8;cursor:pointer;";lbl.textContent=a.name;
@@ -3143,15 +3173,37 @@ function renderAjustes(){
 
 function buildSectionsUI(){
   const wrap=document.getElementById("secWrap");if(!wrap)return;
-  wrap.innerHTML=`<div class="sett-hdr" style="margin-bottom:12px">Secciones y activos</div>`;
+  // Compta arxivades per al toggle de visualització
+  const totalArxiv=tmpSections.reduce((s,sec)=>s+sec.assets.filter(a=>a.archived).length,0);
+  const showArxiv=window._patShowArchived||false;
+  wrap.innerHTML=`<div class="sett-hdr" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="flex:1">Secciones y activos</span>
+    <button class="btn-sm" onclick="patAutoArchive()" title="Detecta carteras sin valores en los últimos 6 meses y propone archivarlas" style="font-size:.7rem;padding:4px 9px;background:#1a2942;border-color:#2e3e57;color:#94a3b8">📦 Archivar carteras sin uso</button>
+    ${totalArxiv?`<button class="btn-sm" onclick="window._patShowArchived=!window._patShowArchived;buildSectionsUI()" style="font-size:.7rem;padding:4px 9px;background:${showArxiv?'#2e3e57':'#0f1729'};border-color:#2e3e57;color:#94a3b8">${showArxiv?'🙈 Ocultar archivadas':'👁 Ver archivadas'} (${totalArxiv})</button>`:''}
+  </div>`;
   tmpSections.forEach((sec,si)=>{
     const sd=document.createElement("div");sd.className="sett-sec";
     sd.innerHTML=`<div class="sett-hdr"><input style="background:none;border:none;color:#60a5fa;font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;font-weight:600;font-family:inherit;outline:none;flex:1;min-width:0" value="${sec.title}" onchange="tmpSections[${si}].title=this.value"><button class="btn-del" style="padding:2px 7px;font-size:.68rem" onclick="tmpSections.splice(${si},1);buildSectionsUI()">✕ Sección</button></div>`;
-    sec.assets.forEach((a,ai)=>{
+    // Actives primer, arxivades al final
+    const ordered=sec.assets.map((a,ai)=>({a,ai})).sort((x,y)=>(x.a.archived?1:0)-(y.a.archived?1:0));
+    let renderedAnyArchived=false;
+    ordered.forEach(({a,ai})=>{
+      if(a.archived && !showArxiv) return;
+      if(a.archived && !renderedAnyArchived){
+        const sep=document.createElement("div");
+        sep.style.cssText="margin-top:8px;padding:5px 0;border-top:1px dashed #1e2d4a;font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:.08em;";
+        sep.textContent="📦 Archivadas";
+        sd.appendChild(sep);
+        renderedAnyArchived=true;
+      }
       const row=document.createElement("div");row.className="asset-row";
+      if(a.archived) row.style.opacity="0.55";
+      const archIcon=a.archived?'↩':'📦';
+      const archTitle=a.archived?'Desarchivar — vuelve a aparecer en Historial, Formulario, etc.':'Archivar — la cartera dejará de aparecer en Historial y Formulario, pero seguirá en gráficos';
       row.innerHTML=`<div class="color-dot" style="background:${a.color}"></div>
         <input class="asset-inp" value="${esc(a.name)}" onchange="tmpSections[${si}].assets[${ai}].name=this.value">
         <select class="color-sel" onchange="tmpSections[${si}].assets[${ai}].color=this.value">${ACOLS.map(cl=>`<option value="${cl}" ${a.color===cl?"selected":""} style="background:#0f1729">${cl}</option>`).join("")}</select>
+        <button class="btn-del" title="${archTitle}" style="background:${a.archived?'#1e3a26':'#162536'};border-color:${a.archived?'#2e6e3e':'#2e3e57'};color:${a.archived?'#86efac':'#94a3b8'};padding:4px 8px;font-size:.78rem;" onclick="tmpSections[${si}].assets[${ai}].archived=!tmpSections[${si}].assets[${ai}].archived;buildSectionsUI()">${archIcon}</button>
         <button class="btn-del" onclick="tmpSections[${si}].assets.splice(${ai},1);buildSectionsUI()">✕</button>`;
       sd.appendChild(row);
     });
@@ -3162,6 +3214,34 @@ function buildSectionsUI(){
   const as=document.createElement("button");as.className="btn-add-sec";as.textContent="＋ Añadir sección nueva";
   as.onclick=()=>{tmpSections.push({id:uid(),title:"Nueva sección",assets:[]});buildSectionsUI();};
   wrap.appendChild(as);
+}
+
+// ── Smart archive: detecta carteres sense valors en els últims 6 mesos ──
+function patAutoArchive(){
+  const p=prof();if(!p)return;
+  // Usem tmpSections (els canvis pendents) per detectar — així funciona dins d'Ajustes obert
+  const ents=(p.entries||[]).slice(-6);
+  const ingSec=ingSection(p);
+  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
+  const candidats=[];
+  tmpSections.forEach((sec,si)=>{
+    sec.assets.forEach((a,ai)=>{
+      if(ingIds.has(a.id))return;
+      if(a.archived)return;
+      const hasValue=ents.some(e=>{const v=parseFloat((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
+      if(!hasValue) candidats.push({si,ai,name:a.name,section:sec.title});
+    });
+  });
+  if(!candidats.length){
+    toast('✓ Cap cartera sense ús detectada (últims 6 mesos)','green');
+    return;
+  }
+  const lines=candidats.map(c=>`  · ${c.name} (${c.section})`).join('\n');
+  const msg=`S'arxivaran aquestes ${candidats.length} carteres (sense valors >0 als últims 6 mesos):\n\n${lines}\n\nDeixaran d'aparèixer a Historial i al Formulari de nous mesos, però seguiran a les gràfiques per mantenir l'històric. Pots desarxivar-les en qualsevol moment.\n\nContinuar?`;
+  if(!confirm(msg))return;
+  candidats.forEach(c=>{tmpSections[c.si].assets[c.ai].archived=true;});
+  buildSectionsUI();
+  toast(`📦 ${candidats.length} carteres marcades per arxivar — recorda guardar`,'green');
 }
 
 function saveAjustes(){
