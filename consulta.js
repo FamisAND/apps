@@ -9016,7 +9016,12 @@ function tobMcEffGramos(it, aj){
   if(Array.isArray(aj.ingRemoved) && aj.ingRemoved.includes(it.ingId)) return 0;
   if(aj.ing && aj.ing[it.ingId] != null){
     const v = +aj.ing[it.ingId];
-    if(isFinite(v) && v >= 0) return base > 0 ? Math.min(v, base * TOB_MC_ING_CAP) : v;
+    // aj.exact=true → gramos EXACTOS d'una font fiable (PDF ICNS importat); sense cap.
+    // La resta (ajust manual/IA) manté el cap +120% per evitar disparates.
+    if(isFinite(v) && v >= 0){
+      if(aj.exact) return v;
+      return base > 0 ? Math.min(v, base * TOB_MC_ING_CAP) : v;
+    }
   }
   return base * (aj.factor || 1);
 }
