@@ -10239,70 +10239,88 @@ function tobMcRenderGrid(){
   const comidas = (tobMcState.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
   const sem = tobMcState.semanaActiva;
 
-  // grid layout: 1 col label comida + 7 cols días = 8 columnas
-  grid.style.gridTemplateColumns = '100px repeat(7, minmax(135px, 1fr))';
+  // Helper: HTML interior d'una cel·la (items + resum). Reutilitzat per la
+  // vista desktop (graella 7 columnes) i la vista mòbil (apilada per dies).
+  const _cellInner = (d, comida) => {
+    const items = tobMcState.data[sem]?.[d]?.[comida.id] || [];
+    const itemsHtml = items.map((recId, ix) => {
+      const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+      if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><div class="mc-it-body"><div class="mc-it-nm">(eliminada)</div></div><button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
+      const m = tobMcMacros(r);
+      const rac = r.raciones || 1;
+      const kcalPer = Math.round(m.kcal / rac);
+      const protPer = Math.round(m.proteina / rac);
+      const aj = (tobMcState.ajustes||{})[recId];
+      const ajustada = tobMcAjusteActivo(aj);
+      const ajBadge = ajustada ? `<span class="mc-it-aj" title="Ració ajustada: ${tobEsc(tobMcAjusteResumen(aj))}">⚖</span>` : '';
+      const savedAtMs = tobMcState._savedAt ? Date.parse(tobMcState._savedAt) : 0;
+      const stale = savedAtMs && r._editTs && r._editTs > savedAtMs;
+      const staleBadge = stale ? `<span class="mc-it-stale" title="La recepta s'ha modificat després de desar el menú">⚠</span>` : '';
+      const nomEff = tobMcRecNombre(r, aj);
+      return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(nomEff)} · ${kcalPer} kcal · ${protPer}g prot — clica per personalitzar">
+        <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
+        <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
+        ${staleBadge}
+        <div class="mc-it-foto placeholder icono" data-foto-rec="${recId}">${tobFoodEmoji(nomEff)}</div>
+        <div class="mc-it-body">
+          <div class="mc-it-nm">${ajBadge}${tobEsc(nomEff)}</div>
+          <div class="mc-it-mac">${kcalPer} kcal · ${protPer}g prot</div>
+        </div>
+      </div>`;
+    }).join('');
+    let ck=0, cp=0, ch=0, cg=0;
+    items.forEach(recId => {
+      const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
+      if(!r) return;
+      const m = tobMcMacros(r); const rac = r.raciones || 1;
+      ck += m.kcal/rac; cp += m.proteina/rac; ch += m.hc/rac; cg += m.grasa/rac;
+    });
+    const cellSum = items.length
+      ? `<div class="tob-mc-cell-sum">${Math.round(ck)} kcal · ${Math.round(cp)}P · ${Math.round(ch)}H · ${Math.round(cg)}G</div>`
+      : '';
+    return itemsHtml + cellSum;
+  };
+
+  const isMobile = window.matchMedia('(max-width: 760px)').matches;
   let html = '';
-  // Fila header con días
-  html += `<div class="tob-mc-grid-row">
-    <div class="tob-mc-cell-meal-lbl"></div>
-    ${TOB_MC_DIAS.map((d, i) => `<div class="tob-mc-grid-header">${d}</div>`).join('')}
-  </div>`;
-  // Fila por comida
-  comidas.forEach(comida => {
-    html += `<div class="tob-mc-grid-row">`;
-    html += `<div class="tob-mc-cell-meal-lbl">${tobEsc(comida.label)}</div>`;
+  if(isMobile){
+    // ── Vista MÒBIL: apilada per dies (cada dia un bloc amb les seves àpats) ──
+    grid.style.display = 'block';
+    grid.style.gridTemplateColumns = '';
     for(let d = 0; d < 7; d++){
-      const items = tobMcState.data[sem]?.[d]?.[comida.id] || [];
-      const itemsHtml = items.map((recId, ix) => {
-        const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
-        if(!r) return `<div class="tob-mc-cell-item" data-rec="${recId}"><div class="mc-it-body"><div class="mc-it-nm">(eliminada)</div></div><button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})">×</button></div>`;
-        const m = tobMcMacros(r);
-        const rac = r.raciones || 1;
-        const kcalPer = Math.round(m.kcal / rac);
-        const protPer = Math.round(m.proteina / rac);
-        const aj = (tobMcState.ajustes||{})[recId];
-        const ajustada = tobMcAjusteActivo(aj);
-        const ajBadge = ajustada ? `<span class="mc-it-aj" title="Ració ajustada: ${tobEsc(tobMcAjusteResumen(aj))}">⚖</span>` : '';
-        // ⚠ stale: la recepta s'ha editat al catàleg després de guardar aquest menú.
-        // Les macros mostrades són les del catàleg actual; el menú podria no
-        // estar quadrant les kcal/prot que es van calcular originalment.
-        const savedAtMs = tobMcState._savedAt ? Date.parse(tobMcState._savedAt) : 0;
-        const stale = savedAtMs && r._editTs && r._editTs > savedAtMs;
-        const staleBadge = stale ? `<span class="mc-it-stale" title="La recepta s'ha modificat després de desar el menú">⚠</span>` : '';
-        const nomEff = tobMcRecNombre(r, aj);
-        return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(nomEff)} · ${kcalPer} kcal · ${protPer}g prot — clica per personalitzar">
-          <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
-          <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
-          ${staleBadge}
-          <div class="mc-it-foto placeholder icono" data-foto-rec="${recId}">${tobFoodEmoji(nomEff)}</div>
-          <div class="mc-it-body">
-            <div class="mc-it-nm">${ajBadge}${tobEsc(nomEff)}</div>
-            <div class="mc-it-mac">${kcalPer} kcal · ${protPer}g prot</div>
-          </div>
+      html += `<div class="tob-mc-day-block">`;
+      html += `<div class="tob-mc-day-block-hdr"><span>${TOB_MC_DIAS[d]}</span><span class="tob-mc-cell-totals" id="tobMcTot_${d}"><span class="kcal-val">—</span></span></div>`;
+      comidas.forEach(comida => {
+        html += `<div class="tob-mc-day-meal">
+          <div class="tob-mc-day-meal-lbl">${tobEsc(comida.label)}</div>
+          <div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${_cellInner(d, comida)}</div>
         </div>`;
-      }).join('');
-      // Resumen de macros de la celda (este àpat, este día)
-      let ck=0, cp=0, ch=0, cg=0;
-      items.forEach(recId => {
-        const r = (tobMenusDB.recetas||[]).find(x => x.id === recId);
-        if(!r) return;
-        const m = tobMcMacros(r); const rac = r.raciones || 1;
-        ck += m.kcal/rac; cp += m.proteina/rac; ch += m.hc/rac; cg += m.grasa/rac;
       });
-      const cellSum = items.length
-        ? `<div class="tob-mc-cell-sum">${Math.round(ck)} kcal · ${Math.round(cp)}P · ${Math.round(ch)}H · ${Math.round(cg)}G</div>`
-        : '';
-      html += `<div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${itemsHtml}${cellSum}</div>`;
+      html += `</div>`;
+    }
+  } else {
+    // ── Vista DESKTOP: graella 1 col label + 7 cols dies ──
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = '100px repeat(7, minmax(135px, 1fr))';
+    html += `<div class="tob-mc-grid-row">
+      <div class="tob-mc-cell-meal-lbl"></div>
+      ${TOB_MC_DIAS.map((d) => `<div class="tob-mc-grid-header">${d}</div>`).join('')}
+    </div>`;
+    comidas.forEach(comida => {
+      html += `<div class="tob-mc-grid-row">`;
+      html += `<div class="tob-mc-cell-meal-lbl">${tobEsc(comida.label)}</div>`;
+      for(let d = 0; d < 7; d++){
+        html += `<div class="tob-mc-cell" data-day="${d}" data-meal="${comida.id}">${_cellInner(d, comida)}</div>`;
+      }
+      html += `</div>`;
+    });
+    html += `<div class="tob-mc-grid-row">`;
+    html += `<div class="tob-mc-cell-meal-lbl">Total</div>`;
+    for(let d = 0; d < 7; d++){
+      html += `<div class="tob-mc-cell-totals" id="tobMcTot_${d}"><div class="row"><span class="kcal-val">—</span></div></div>`;
     }
     html += `</div>`;
-  });
-  // Fila totales del día
-  html += `<div class="tob-mc-grid-row">`;
-  html += `<div class="tob-mc-cell-meal-lbl">Total</div>`;
-  for(let d = 0; d < 7; d++){
-    html += `<div class="tob-mc-cell-totals" id="tobMcTot_${d}"><div class="row"><span class="kcal-val">—</span></div></div>`;
   }
-  html += `</div>`;
   grid.innerHTML = html;
   tobHydrateFotos('#tobMcGrid');
 
