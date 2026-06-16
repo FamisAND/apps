@@ -395,9 +395,23 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
     </div>
     <div style="background:var(--card2);border:1px solid var(--border2);border-radius:2px;padding:12px;margin-bottom:9px;">
       <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.12em;color:var(--yellow);font-weight:700;margin-bottom:8px;">Condiciones iniciales</div>
+      <div class="fld" style="margin:0 0 10px 0">
+        <label>Modo de retribución</label>
+        <select class="inp" id="mb_modo" onchange="_mbModoChange()">
+          <option value="fijoMasPct">Fijo + % (fijo €/mes + % de toda la facturación)</option>
+          <option value="tramos">Por tramos (ej: 1ros 1000€ al X%, resto al Y%)</option>
+          <option value="hibrido">Híbrido (umbral al 100% + % del excedente)</option>
+        </select>
+        <div style="font-size:.62rem;color:var(--muted);margin-top:4px;line-height:1.4;" id="mb_modo_help"></div>
+      </div>
       <div class="g2">
-        <div class="fld" style="margin:0"><label>Fijo (€/mes)</label><input class="inp" type="number" id="mb_fijo" placeholder="0"></div>
-        <div class="fld" style="margin:0"><label>% facturación</label><input class="inp" type="number" id="mb_pct" placeholder="0"></div>
+        <div class="fld" style="margin:0"><label id="mb_fijo_lbl">Fijo (€/mes)</label><input class="inp" type="number" id="mb_fijo" placeholder="0"></div>
+        <div class="fld" style="margin:0" id="mb_pct_fld"><label>% facturación</label><input class="inp" type="number" id="mb_pct" placeholder="0"></div>
+      </div>
+      <div class="fld hidden" id="mb_tramos_box" style="margin:10px 0 0 0">
+        <label>Tramos (cada % se aplica solo a la parte dentro del tramo)</label>
+        <div id="mb_tramos_rows"></div>
+        <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:.7rem;margin-top:4px;" onclick="_mbAddTramo()">+ Añadir tramo</button>
       </div>
       <div class="fld" style="margin:10px 0 0 0"><label>Horas deseadas/semana</label><input class="inp" type="number" id="mb_desiredHours" placeholder="0" step="0.5"></div>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;cursor:pointer;font-size:.72rem;">
@@ -3448,8 +3462,11 @@ function openMemberModal(id=null){
     document.getElementById(`mb_r_${r}`).checked=t?getRoles(t).includes(r):false;
   });
   const cond=t?getCondAt(t,monthKey(nowD.getFullYear(),nowD.getMonth()+1)):{fijo:0,pct:0};
+  document.getElementById('mb_modo').value=cond.modo||'fijoMasPct';
   document.getElementById('mb_fijo').value=cond.fijo||'';
   document.getElementById('mb_pct').value=cond.pct||'';
+  _mbRenderTramos(cond.tramos);
+  _mbModoChange();
   document.getElementById('mb_desiredHours').value=t?.desiredHours||'';
   document.getElementById('mb_showInDashboard').checked=t?(t.showInDashboard!==false):true;
   document.getElementById('memberErr').textContent='';
@@ -3461,28 +3478,90 @@ function saveMember(){
   const color=document.getElementById('mb_color').value;
   const active=document.getElementById('mb_active').value==='1';
   const roles=['entrenador','fisio','nutricionista','otro'].filter(r=>document.getElementById(`mb_r_${r}`).checked);
+  const modo=document.getElementById('mb_modo').value||'fijoMasPct';
   const fijo=parseFloat(document.getElementById('mb_fijo').value)||0;
   const pct=parseFloat(document.getElementById('mb_pct').value)||0;
   const desiredHours=parseFloat(document.getElementById('mb_desiredHours').value)||0;
   const showInDashboard=document.getElementById('mb_showInDashboard').checked;
   if(!name){document.getElementById('memberErr').textContent='El nombre es obligatorio';return;}
   if(!roles.length){document.getElementById('memberErr').textContent='Selecciona al menos un rol';return;}
+  let tramos=null;
+  if(modo==='tramos'){
+    tramos=_mbCollectTramos();
+    if(!tramos.length){document.getElementById('memberErr').textContent='Añade al menos un tramo con %';return;}
+  }
   const today=new Date().toISOString().slice(0,10);
+  // Construeix l'objecte de condició segons el mode
+  const buildCond=()=>{const c={date:today,fijo,pct,modo};if(modo==='tramos')c.tramos=tramos;return c;};
+  // Compara si la condició ha canviat respecte de l'última
+  const condChanged=(last)=>{
+    if(!last)return true;
+    if((last.modo||'fijoMasPct')!==modo||last.fijo!==fijo||last.pct!==pct)return true;
+    if(modo==='tramos'&&JSON.stringify(last.tramos||[])!==JSON.stringify(tramos))return true;
+    return false;
+  };
   if(editMemberId){
     const t=db.team.find(x=>x.id===editMemberId);
     t.name=name;t.color=color;t.active=active;t.roles=roles;t.desiredHours=desiredHours;t.showInDashboard=showInDashboard;
     const last=t.conditions?.slice(-1)[0];
-    if(!last||last.fijo!==fijo||last.pct!==pct){
+    if(condChanged(last)){
       if(!t.conditions)t.conditions=[];
-      const nc={date:today,fijo,pct};
-      // Preservem el mode avançat (tramos/hibrido) i els trams: el modal bàsic no els gestiona
-      if(last&&last.modo&&last.modo!=='fijoMasPct'){nc.modo=last.modo;if(last.tramos)nc.tramos=last.tramos;}
-      t.conditions.push(nc);
+      t.conditions.push(buildCond());
     }
   } else {
-    db.team.push({id:uid(),name,roles,color,active,desiredHours,showInDashboard,createdAt:today,conditions:[{date:today,fijo,pct}]});
+    db.team.push({id:uid(),name,roles,color,active,desiredHours,showInDashboard,createdAt:today,conditions:[buildCond()]});
   }
   save();closeModal('memberModal');renderEquipo();toast('✓ Guardado');
+}
+
+// ─── Modo de retribución en el modal de miembro (fijoMasPct / tramos / hibrido) ───
+function _mbModoChange(){
+  const modo=document.getElementById('mb_modo').value;
+  const lbl=document.getElementById('mb_fijo_lbl');
+  const help=document.getElementById('mb_modo_help');
+  const pctFld=document.getElementById('mb_pct_fld');
+  const tramosBox=document.getElementById('mb_tramos_box');
+  pctFld.classList.remove('hidden');
+  tramosBox.classList.add('hidden');
+  if(modo==='hibrido'){
+    lbl.textContent='Umbral (€) — facturación al 100%';
+    help.textContent='Cobra el 100% hasta el umbral y un % del resto. Ej: umbral 1000€, %=30, factura 5000€ → 1000 + 4000×30% = 2200€.';
+  } else if(modo==='tramos'){
+    lbl.textContent='Fijo (€/mes) — opcional, se suma encima';
+    pctFld.classList.add('hidden');
+    tramosBox.classList.remove('hidden');
+    if(!document.querySelector('#mb_tramos_rows .cond-tramo-row')) _mbRenderTramos(null);
+    help.textContent='Cada % se aplica solo a la parte dentro de ese tramo (marginal, tipo IRPF). Ej: 50% hasta 1000€ y 30% el resto → factura 5000€: 1000×50% + 4000×30% = 1700€. Deja "hasta" vacío en el último tramo (= resto).';
+  } else {
+    lbl.textContent='Fijo (€/mes)';
+    help.textContent='Fijo se suma siempre. % se aplica a toda la facturación. Ej: fijo 500€, %=20, factura 3000€ → 500 + 600 = 1100€.';
+  }
+}
+function _mbAddTramo(hasta,pct){
+  const rows=document.getElementById('mb_tramos_rows');if(!rows)return;
+  const row=document.createElement('div');
+  row.className='cond-tramo-row';
+  row.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+  row.innerHTML=
+    '<span style="font-size:.7rem;color:var(--muted);white-space:nowrap;">hasta</span>'+
+    '<input class="inp ct-hasta" type="number" placeholder="€ (vacío = resto)" value="'+(hasta!=null?hasta:'')+'" style="flex:1;min-width:0;">'+
+    '<input class="inp ct-pct" type="number" placeholder="%" value="'+(pct!=null?pct:'')+'" style="width:64px;">'+
+    '<span style="font-size:.7rem;color:var(--muted);">%</span>'+
+    '<button type="button" class="btn btn-ghost" style="padding:3px 8px;" onclick="this.closest(\'.cond-tramo-row\').remove()">✕</button>';
+  rows.appendChild(row);
+}
+function _mbRenderTramos(tramos){
+  const rows=document.getElementById('mb_tramos_rows');if(!rows)return;
+  rows.innerHTML='';
+  const list=(tramos&&tramos.length)?tramos:[{hasta:1000,pct:''},{hasta:'',pct:''}];
+  list.forEach(t=>_mbAddTramo(t.hasta,t.pct));
+}
+function _mbCollectTramos(){
+  return [...document.querySelectorAll('#mb_tramos_rows .cond-tramo-row')].map(r=>{
+    const h=r.querySelector('.ct-hasta').value.trim();
+    const p=r.querySelector('.ct-pct').value.trim();
+    return { hasta: h===''?null:(parseFloat(h)||0), pct: parseFloat(p)||0 };
+  }).filter(t=>t.pct>0 || t.hasta!=null);
 }
 
 function deleteMember(id){
