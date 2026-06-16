@@ -1051,3 +1051,32 @@ tr.tob-cli-inactivo > td:nth-child(2){ opacity:1; }  /* estado y acciones siempr
   filter:grayscale(1); opacity:.28;
   background:transparent; border-color:var(--border);
 }
+
+/* ════════════════════════════════════════════════════════════════
+   MÒBIL — fer Consulta usable des del telèfon (rellenar info fora del PC)
+   Verificat a 390px. Els formularis (mediciones, cuestionario) ja
+   s'apilaven bé; aquí arreglem la barra superior i la taula de clients.
+   ════════════════════════════════════════════════════════════════ */
+@media(max-width:760px){
+  /* Barra superior: logo + eines a dalt, pestanyes en una fila pròpia */
+  .tob-topbar{flex-wrap:wrap;gap:8px;padding:10px 12px;}
+  .tob-logo{font-size:.95rem;}
+  .tob-logo .tag{display:none;}                 /* amaga "// BIIO + MEDICIONES" */
+  .tob-tools{margin-left:auto;gap:6px;}
+  .tob-btn{padding:6px 9px;font-size:.72rem;}
+  .tob-tabs{order:3;width:100%;margin-left:0;flex-wrap:nowrap;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
+  .tob-tab{flex:0 0 auto;padding:7px 11px;font-size:.72rem;}
+
+  /* Taula de clients: deixar només Nom + Estat + accions (la fila obre la ficha).
+     S'amaguen Contacte, Sexe, Registrat, Rutines i Actual per fer-la tocable. */
+  #tob-clientes table th:nth-child(3),#tob-clientes table td:nth-child(3),
+  #tob-clientes table th:nth-child(4),#tob-clientes table td:nth-child(4),
+  #tob-clientes table th:nth-child(5),#tob-clientes table td:nth-child(5),
+  #tob-clientes table th:nth-child(6),#tob-clientes table td:nth-child(6),
+  #tob-clientes table th:nth-child(7),#tob-clientes table td:nth-child(7){display:none;}
+  #tob-clientes table th:nth-child(8),#tob-clientes table td:nth-child(8){text-align:right;}
+
+  /* Modals: ample complet amb marge i scroll intern */
+  .tob-modal{max-width:96vw!important;width:96vw;max-height:92vh;overflow-y:auto;}
+}
