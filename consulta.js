@@ -9963,7 +9963,37 @@ function tobMcOnClienteChange(){
   // Resumen del perfil alimentario
   tobMcRenderPerfilResumen(cli);
 
-  // Crear estado fresh
+  // Si el cliente YA tiene menús guardados/importados, cargar el más reciente
+  // (así al seleccionar el cliente VES su menú, no una rejilla en blanco).
+  // Para crear uno nuevo en blanco está el botón "Vaciar semana" / "+ Nou menú".
+  const menusCli = (cli.menus || []).slice()
+    .sort((a,b) => (b.savedAt||b.fecha||'').localeCompare(a.savedAt||a.fecha||''));
+  if(menusCli.length){
+    const m = menusCli[0];
+    tobMcState = {
+      cliId,
+      semanas: m.semanas || 1,
+      comidasIds: (m.comidasIds && m.comidasIds.length) ? m.comidasIds.slice() : comidas.map(c => c.id),
+      semanaActiva: 0,
+      notas: tobNotasMenu(m),
+      data: _tobMcReindexData(m.data),
+      ajustes: JSON.parse(JSON.stringify(m.ajustes || {})),
+      _menuId: m.id,
+      _savedAt: m.savedAt || m.fecha || null
+    };
+    document.getElementById('tobMcSemanas').value = m.semanas || 1;
+    if(m.kcalObj) document.getElementById('tobMcKcal').value = m.kcalObj;
+    if(m.margenPct != null) document.getElementById('tobMcMargen').value = m.margenPct;
+    if(m.protObj) document.getElementById('tobMcProt').value = m.protObj;
+    document.getElementById('tobMcWorkspace').style.display = '';
+    _tobMcSideRestoreState();
+    tobMcRenderSemanasTabs();
+    tobMcRenderGrid();
+    tobMcRenderSidePanel();
+    return;
+  }
+
+  // Sin menús previos → estado fresh vacío
   const semanas = Math.max(1, parseInt(document.getElementById('tobMcSemanas').value) || 1);
   tobMcState = {
     cliId, semanas,
@@ -10878,6 +10908,21 @@ function tobMcShowList(){
   document.getElementById('tobMcListModalBg').classList.add('on');
 }
 
+// Re-indexa les claus de setmana a 0-based ordenades. Els menús importats
+// guarden la setmana com "1" (1-based) però el creador renderitza amb
+// semanaActiva=0 (0-based) → buscava data[0] inexistent i la graella sortia
+// EN BLANC. Aquest helper normalitza {"1":X,"2":Y} → {0:X,1:Y}.
+function _tobMcReindexData(data){
+  const src = data || {};
+  const keys = Object.keys(src).sort((a,b) => (parseFloat(a)||0) - (parseFloat(b)||0));
+  // si ja són 0-based correlatives, no cal tocar res
+  const yaOk = keys.length && keys.every((k,i) => k === String(i));
+  if(yaOk) return JSON.parse(JSON.stringify(src));
+  const out = {};
+  keys.forEach((k, i) => { out[i] = JSON.parse(JSON.stringify(src[k])); });
+  return out;
+}
+
 function tobMcLoadMenu(menuId){
   const cliSel = document.getElementById('tobMcCliente').value;
   const cli = tobDB.clientes.find(c => c.id === cliSel);
@@ -10888,7 +10933,7 @@ function tobMcLoadMenu(menuId){
     semanas: m.semanas || 1,
     comidasIds: m.comidasIds || tobMcComidasDelCliente(cli).map(c => c.id),
     semanaActiva: 0,
-    data: JSON.parse(JSON.stringify(m.data || {})),
+    data: _tobMcReindexData(m.data),
     ajustes: JSON.parse(JSON.stringify(m.ajustes || {})),
     notas: tobNotasMenu(m),
     _menuId: m.id,
