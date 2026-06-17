@@ -4314,6 +4314,16 @@ function tobBuildMedChartConfigs(cli, forPdf){
   cfgs.pp      = lineChart('Pliegues/Peso',   meds.map(m => { const r = tobMedRatios(m).plecsPes; return r != null ? +r.toFixed(3) : null; }), '#a78bfa');
 
   const _L_chart = tobLangOf(cli);
+  // Eje X dinámico: los perímetros son valores grandes (40-100cm) con cambios
+  // pequeños (1-3cm). Con eje desde 0 las barras inicio/actual se ven idénticas
+  // aunque difieran. Arrancamos cerca del mínimo real para que el CAMBIO se vea.
+  const _perimVals = TOB_MED_PERIM.flatMap(([k]) => [first.perimetres?.[k], last.perimetres?.[k]])
+    .map(v => v != null ? +v : null).filter(v => v != null && !isNaN(v));
+  const _perimMin = _perimVals.length ? Math.min(..._perimVals) : 0;
+  const _perimMax = _perimVals.length ? Math.max(..._perimVals) : 100;
+  const _perimPad = Math.max(2, (_perimMax - _perimMin) * 0.12);
+  const _perimAxisMin = Math.max(0, Math.floor(_perimMin - _perimPad));
+  const _perimAxisMax = Math.ceil(_perimMax + _perimPad);
   cfgs.perim = {
     type: 'bar',
     data: {
@@ -4339,7 +4349,7 @@ function tobBuildMedChartConfigs(cli, forPdf){
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x} cm` } }
       },
       scales: {
-        x: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol, drawTicks: false }, border: { display: false }, beginAtZero: true },
+        x: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol, drawTicks: false }, border: { display: false }, min: _perimAxisMin, max: _perimAxisMax },
         y: { ticks: { color: txtCol2, font: { size: 9, weight: '600' } }, grid: { display: false }, border: { display: false } }
       }
     }
