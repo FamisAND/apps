@@ -4255,6 +4255,10 @@ function tobBuildMedChartConfigs(cli, forPdf){
   const txtCol  = forPdf ? '#555555' : '#9aa7bd';
   const txtCol2 = forPdf ? '#222222' : '#e6e2d4';
   const gridCol = forPdf ? '#e6e6e6' : '#221d14';
+  // En el PDF las gráficas se renderizan a ~2× y luego se dibujan a la mitad,
+  // así que las fuentes de 9px acababan en ~4,5pt (casi ilegibles). En PDF las
+  // subimos un punto para que los números se lean. En pantalla, sin cambios.
+  const FS = (n) => Math.round(n * (forPdf ? 1.6 : 1));
 
   // Línea bonita: relleno en degradado, último punto resaltado (valor actual),
   // datalabels limpios. Reutilizable en pantalla y en PDF.
@@ -4291,15 +4295,15 @@ function tobBuildMedChartConfigs(cli, forPdf){
           } },
           datalabels: {
             color: (c) => c.dataIndex === lastIdx ? color : txtCol2,
-            font: (c) => ({ size: c.dataIndex === lastIdx ? 11 : 9, weight: c.dataIndex === lastIdx ? '800' : '600' }),
+            font: (c) => ({ size: c.dataIndex === lastIdx ? FS(11) : FS(9), weight: c.dataIndex === lastIdx ? '800' : '600' }),
             align: 'top', offset: 6,
             formatter: v => (v == null ? '' : v)
           }
         },
         scales: {
-          x: { ticks: { color: txtCol, font: { size: 9 }, maxRotation: 40 },
+          x: { ticks: { color: txtCol, font: { size: FS(9) }, maxRotation: 40 },
                grid: { color: gridCol, drawTicks: false }, border: { display: false } },
-          y: { ticks: { color: txtCol, font: { size: 9 }, padding: 6 },
+          y: { ticks: { color: txtCol, font: { size: FS(9) }, padding: 6 },
                grid: { color: gridCol, drawTicks: false }, border: { display: false }, beginAtZero: false }
         }
       }
@@ -4340,18 +4344,18 @@ function tobBuildMedChartConfigs(cli, forPdf){
       responsive: true, maintainAspectRatio: false, indexAxis: 'y',
       layout: { padding: { right: 38, left: 2 } },
       plugins: {
-        legend: { position: 'top', labels: { color: txtCol2, font: { size: 9 }, boxWidth: 12, padding: 10 } },
+        legend: { position: 'top', labels: { color: txtCol2, font: { size: FS(9) }, boxWidth: 12, padding: 10 } },
         datalabels: {
           display: true, anchor: 'end', align: 'end', offset: 4,
           color: (c) => c.datasetIndex === 1 ? ACC : (forPdf ? '#666666' : '#8a7f6a'),
-          font: (c) => ({ size: 9, weight: c.datasetIndex === 1 ? '800' : '600' }),
+          font: (c) => ({ size: FS(9), weight: c.datasetIndex === 1 ? '800' : '600' }),
           formatter: v => v == null ? '' : v
         },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x} cm` } }
       },
       scales: {
-        x: { ticks: { color: txtCol, font: { size: 9 } }, grid: { color: gridCol, drawTicks: false }, border: { display: false }, min: _perimAxisMin, max: _perimAxisMax },
-        y: { ticks: { color: txtCol2, font: { size: 9, weight: '600' } }, grid: { display: false }, border: { display: false } }
+        x: { ticks: { color: txtCol, font: { size: FS(9) } }, grid: { color: gridCol, drawTicks: false }, border: { display: false }, min: _perimAxisMin, max: _perimAxisMax },
+        y: { ticks: { color: txtCol2, font: { size: FS(9), weight: '600' } }, grid: { display: false }, border: { display: false } }
       }
     }
   };
@@ -4371,11 +4375,11 @@ function tobBuildMedChartConfigs(cli, forPdf){
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'top', labels: { color: txtCol2, font: { size: 9 }, boxWidth: 12, padding: 10 } },
+        legend: { position: 'top', labels: { color: txtCol2, font: { size: FS(9) }, boxWidth: 12, padding: 10 } },
         datalabels: {
           // Solo etiquetamos el "Actual" para no saturar el radar.
           display: (c) => c.datasetIndex === 1,
-          color: ACC, font: { size: 9, weight: '800' }, align: 'end', offset: 4,
+          color: ACC, font: { size: FS(9), weight: '800' }, align: 'end', offset: 4,
           formatter: v => v == null ? '' : v,
           textStrokeColor: forPdf ? '#ffffff' : '#0a0a0c', textStrokeWidth: 3
         }
@@ -4383,8 +4387,8 @@ function tobBuildMedChartConfigs(cli, forPdf){
       scales: { r: {
         angleLines: { color: forPdf ? '#dddddd' : '#2f2a20' },
         grid: { color: forPdf ? '#e6e6e6' : '#2f2a20' },
-        pointLabels: { color: txtCol2, font: { size: 9, weight: '600' } },
-        ticks: { color: txtCol, backdropColor: 'transparent', font: { size: 8 } },
+        pointLabels: { color: txtCol2, font: { size: FS(9), weight: '600' } },
+        ticks: { color: txtCol, backdropColor: 'transparent', font: { size: FS(8) } },
         beginAtZero: true
       } }
     }
@@ -4598,10 +4602,10 @@ async function _tobPdfMedicionMiniCharts(doc, ctx, cli){
         data: { labels, datasets: [{ label, data, borderColor:'#f5a721', backgroundColor:'rgba(245,166,35,0.12)', borderWidth:2, fill:true, pointRadius:2.5, tension:0.3, spanGaps:true }] },
         options: {
           responsive:false, animation:false, devicePixelRatio:2,
-          plugins:{ legend:{ display:false }, title:{ display:true, text:label, font:{ size:13, weight:'bold' }, color:'#333' } },
+          plugins:{ legend:{ display:false }, title:{ display:true, text:label, font:{ size:17, weight:'bold' }, color:'#333' } },
           scales:{
-            x:{ ticks:{ font:{ size:9 }, maxRotation:0, autoSkip:true, maxTicksLimit:6 }, grid:{ display:false } },
-            y:{ ticks:{ font:{ size:9 } }, grid:{ color:'rgba(0,0,0,0.06)' } }
+            x:{ ticks:{ font:{ size:13 }, maxRotation:0, autoSkip:true, maxTicksLimit:6 }, grid:{ display:false } },
+            y:{ ticks:{ font:{ size:13 } }, grid:{ color:'rgba(0,0,0,0.06)' } }
           }
         }
       };
@@ -4641,7 +4645,7 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
       const col = i % 2, row = Math.floor(i / 2);
       const x = ox + col*(chW+gapX);
       const yTop = oy - row*(chH+gapY);
-      page.drawText(title, { x, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+      page.drawText(title, { x, y: yTop + 4, size: 11, font: fontB, color: GRAY_DK });
       try {
         const png = await tobChartToPng(cfgs[k], 760, 430);
         page.drawImage(await doc.embedPng(png), { x, y: yTop - chH, width: chW, height: chH });
@@ -4656,8 +4660,8 @@ async function _tobPdfMedicionPages(doc, ctx, cli){
     const chW = 380, chH = 380, gapX = 30;
     const ox = (W - (chW*2 + gapX)) / 2;
     const yTop = H - 90;
-    page.drawText(tobT('med.comp.perimetros', L), { x: ox, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
-    page.drawText(tobT('med.comp.plecs_cutanis', L), { x: ox + chW + gapX, y: yTop + 4, size: 9, font: fontB, color: GRAY_DK });
+    page.drawText(tobT('med.comp.perimetros', L), { x: ox, y: yTop + 4, size: 11, font: fontB, color: GRAY_DK });
+    page.drawText(tobT('med.comp.plecs_cutanis', L), { x: ox + chW + gapX, y: yTop + 4, size: 11, font: fontB, color: GRAY_DK });
     try {
       const png1 = await tobChartToPng(cfgs.perim, 700, 700);
       page.drawImage(await doc.embedPng(png1), { x: ox, y: yTop - chH, width: chW, height: chH });

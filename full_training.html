@@ -2500,7 +2500,6 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
         <span class="badge ${stCls}" style="margin-left:8px">${stTxt}</span>
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;font-size:.65rem;padding:2px 8px;" onclick="event.stopPropagation();openInvoiceModal('${cid}')">🧾 Factura</button>
         <button class="cl-flag ${flagOn?'on':''}" onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${flagTitle}">⚠</button>
-        ${flagOn&&flagNote?`<span onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${esc(flagNote)}" style="color:var(--orange,#e0a458);font-size:.68rem;margin-left:5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;display:inline-block;vertical-align:middle;">${esc(flagNote)}</span>`:''}
         <span style="color:var(--muted);font-size:.8rem;margin-left:6px">▴</span>
       </div>
       <div class="cl-group-body" style="display:block">
