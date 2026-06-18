@@ -183,12 +183,12 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
   padding:5px 7px;border-radius:2px;font-size:.78rem;font-family:'DM Mono',monospace;outline:none;}
 
 /* ── Charts grid ── */
-.tob-charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));
-  gap:16px;margin-top:14px;}
+.tob-charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(500px,1fr));
+  gap:18px;margin-top:14px;}
 .tob-chart-card{background:#0e0d0a;border:2px solid var(--acc);border-radius:4px;overflow:hidden;}
 .tob-chart-card .hdr{background:var(--acc);color:#0a0a0c;padding:7px 14px;font-family:'DM Mono',monospace;
   font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;font-weight:800;text-align:center;}
-.tob-chart-card .body{padding:10px;height:260px;position:relative;}
+.tob-chart-card .body{padding:12px;height:340px;position:relative;}
 
 /* ── Dropzone PDF ── */
 .tob-dropzone{border:2px dashed var(--border2);border-radius:4px;padding:24px;text-align:center;

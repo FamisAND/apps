@@ -4144,7 +4144,8 @@ function tobOpenMedCompare(){
   const opts = meds.map(m => `<option value="${m.id}">${m.fecha}  ·  ${m.pes != null ? m.pes + ' kg' : '—'}</option>`).join('');
   document.getElementById('tobMedCmpA').innerHTML = opts;
   document.getElementById('tobMedCmpB').innerHTML = opts;
-  document.getElementById('tobMedCmpA').value = meds[0].id;
+  // Por defecto: izquierda = anterior (penúltima), derecha = actual (última).
+  document.getElementById('tobMedCmpA').value = meds[meds.length-2].id;
   document.getElementById('tobMedCmpB').value = meds[meds.length-1].id;
   tobRenderMedCmp();
   document.getElementById('tobMedCompareBg').classList.add('on');
@@ -4181,7 +4182,7 @@ function tobRenderMedCmp(){
       <th>Métrica</th>
       <th class="num">${A.fecha || '?'}</th>
       <th class="num">${B.fecha || '?'}</th>
-      <th class="num">Δ (B − A)</th>
+      <th class="num">Δ (Actual − Anterior)</th>
     </tr></thead>
     <tbody>
       ${sectionRow('Datos')}

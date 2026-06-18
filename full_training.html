@@ -360,6 +360,18 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
         </div>
       </div>
 
+      <!-- ══ TABLÓN DE NOTAS (general · siempre al fondo, bajo cualquier pestaña) ══ -->
+      <div id="tablonBoard" style="margin-top:30px;border-top:1px solid var(--border,#2a2a2a);padding-top:8px;">
+        <div onclick="toggleTablon()" title="Notas generales del gimnasio" style="display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--muted,#9a9a9a);font-size:.78rem;user-select:none;padding:4px 2px;">
+          <span id="tablonCaret" style="font-size:.7rem;display:inline-block;width:10px;">▸</span>
+          <span>📌 Tablón de notas</span>
+          <span id="tablonHint" style="margin-left:auto;font-size:.66rem;color:var(--muted2,#777);"></span>
+        </div>
+        <div id="tablonBody" style="display:none;padding:6px 2px 4px;">
+          <textarea id="tablonText" oninput="saveTablon()" placeholder="Notas generales… (ej: en septiembre vuelve Marta para 8h/sem · llamar al proveedor X · revisar precios en enero)" style="width:100%;min-height:130px;resize:vertical;background:var(--card,#161616);color:var(--text,#e8e8e8);border:1px solid var(--border,#333);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:.85rem;line-height:1.5;box-sizing:border-box;"></textarea>
+        </div>
+      </div>
+
     </div>
   </main>
 </div>
@@ -991,6 +1003,43 @@ function save(){
   const b=document.getElementById('saveBadge');
   if(b){b.textContent='✓ Guardado';setTimeout(()=>b.textContent='',1600);}
   updateExportBtn();
+}
+
+// ── Tablón de notas general (db.tablon, sincroniza con el resto vía save()) ──
+function toggleTablon(){
+  const body=document.getElementById('tablonBody');
+  const caret=document.getElementById('tablonCaret');
+  if(!body) return;
+  const open=body.style.display==='none';
+  body.style.display=open?'block':'none';
+  if(caret) caret.textContent=open?'▾':'▸';
+  try{ localStorage.setItem('ft_tablon_open', open?'1':'0'); }catch{}
+  if(open){ const t=document.getElementById('tablonText'); if(t) t.focus(); }
+  updateTablonHint();
+}
+function saveTablon(){
+  const t=document.getElementById('tablonText');
+  if(!t) return;
+  db.tablon=t.value;
+  save();
+  updateTablonHint();
+}
+function updateTablonHint(){
+  const hint=document.getElementById('tablonHint');
+  if(!hint) return;
+  const txt=(db.tablon||'').trim();
+  const body=document.getElementById('tablonBody');
+  // Si está plegado y hay contenido, avisar de cuántas líneas hay escritas.
+  if(body && body.style.display==='none' && txt){
+    const n=txt.split(/\n+/).filter(Boolean).length;
+    hint.textContent=`${n} nota${n===1?'':'s'} ·`;
+  } else hint.textContent='';
+}
+function initTablon(){
+  const t=document.getElementById('tablonText');
+  if(t) t.value=db.tablon||'';
+  if(localStorage.getItem('ft_tablon_open')==='1') toggleTablon();
+  else updateTablonHint();
 }
 
 function uid(){return Math.random().toString(36).slice(2,10);}
@@ -2438,8 +2487,9 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
     </tr>`;
     const genBtnId=`gbtn_${cid}`;
     const flagOn = !!cl?.flag;
+    const flagNote = (cl?.flagNote||'').trim();
     const flagTitle = flagOn
-      ? 'Marca activa — clic para quitar'
+      ? (flagNote ? `⚠ ${esc(flagNote)} — clic para editar / quitar` : 'Marcada (sin motivo) — clic para añadir motivo / quitar')
       : 'Marcar (ej: cambió cuota, revisar al copiar mes)';
     return`<div class="cl-group" draggable="true" data-cid="${cid}" ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragend="onDragEnd(event)">
       <div class="cl-group-hdr" onclick="toggleGroup(this)" style="cursor:grab">
@@ -2450,6 +2500,7 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
         <span class="badge ${stCls}" style="margin-left:8px">${stTxt}</span>
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;font-size:.65rem;padding:2px 8px;" onclick="event.stopPropagation();openInvoiceModal('${cid}')">🧾 Factura</button>
         <button class="cl-flag ${flagOn?'on':''}" onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${flagTitle}">⚠</button>
+        ${flagOn&&flagNote?`<span onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${esc(flagNote)}" style="color:var(--orange,#e0a458);font-size:.68rem;margin-left:5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;display:inline-block;vertical-align:middle;">${esc(flagNote)}</span>`:''}
         <span style="color:var(--muted);font-size:.8rem;margin-left:6px">▴</span>
       </div>
       <div class="cl-group-body" style="display:block">
@@ -2493,10 +2544,22 @@ function toggleGroup(hdr){
 function toggleClientFlag(cid){
   const cl=db.clients.find(c=>c.id===cid);
   if(!cl) return;
-  cl.flag=!cl.flag;
+  if(cl.flag){
+    // Ya marcado → editar el motivo (vacío = quitar la marca).
+    const r=prompt('Motivo de la marca (deja el campo vacío para QUITAR la marca):', cl.flagNote||'');
+    if(r===null) return;                       // Cancelar: sin cambios
+    const t=r.trim();
+    if(!t){ cl.flag=false; cl.flagNote=''; toast(`✓ Marca quitada de ${cl.name||'cliente'}`); }
+    else  { cl.flagNote=t; toast(`🔶 Motivo actualizado`); }
+  } else {
+    // Marcar → pedir el motivo (opcional).
+    const r=prompt('¿Por qué marcas a este cliente?\n(ej: cambió cuota, revisar al copiar mes, vuelve en septiembre)', '');
+    if(r===null) return;                       // Cancelar: no marcar
+    cl.flag=true; cl.flagNote=(r||'').trim();
+    toast(`🔶 ${cl.name||'Cliente'}: marcado`);
+  }
   save();
   renderRemesas();
-  toast(cl.flag?`🔶 ${cl.name||'Cliente'}: marcado`:`✓ Marca quitada de ${cl.name||'cliente'}`);
 }
 function markAllPaid(ids){
   const key=curKey('remesas');
@@ -4994,6 +5057,7 @@ function removeFromRecapt(clientId){
 load();
 initTheme();
 initLang();
+initTablon();
 renderLoginScreen();
 </script>
 
