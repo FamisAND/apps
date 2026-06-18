@@ -2552,7 +2552,8 @@ function openEntryModal(id=null){
           <option value="debito" ${e.entryDirection==='debit'?'selected':''}>Débito</option>
         </select>
       </div>
-      <div class="hfr"><label>Multiplicador ($/pt)</label><input type="number" id="hf_mult" step="1" min="1" placeholder="100" value="${e.mult||''}" oninput="hfCompute()"/></div>
+      <!-- Multiplicador siempre 100 (equity). Campo oculto: preserva el valor de entradas antiguas y no descuadra la rejilla. -->
+      <div class="hfr"><input type="hidden" id="hf_mult" value="${e.mult||100}"></div>
       <div class="hfr"></div>
       <div class="hfr"></div>
 
