@@ -923,6 +923,13 @@ let db={team:[],clients:[],services:[],months:{},stock:[]};
 let editMemberId=null,editClientId=null,editServiceId=null,editEntryId=null,editGastoId=null,fichaMemberId=null,condMemberId=null,editMasajePackId=null;
 let clientFilterState='todos';
 let selectedClientIds=new Set();
+// Filtro dinámico de la lista de Remesas, controlado por las tarjetas KPI de arriba.
+// '' = todos · 'cobrado' = solo clientes con todo pagado · 'pendiente' = con algo por cobrar · 'cuidado' = marcados ⚠
+let remPayFilter='';
+function setRemFilter(f){
+  remPayFilter = (remPayFilter===f) ? '' : f;   // volver a picar el filtro activo = quitarlo
+  renderRemesas();
+}
 const nowD=new Date();
 let curMo={remesas:{y:nowD.getFullYear(),m:nowD.getMonth()+1},masajes:{y:nowD.getFullYear(),m:nowD.getMonth()+1},gastos:{y:nowD.getFullYear(),m:nowD.getMonth()+1},stock:{y:nowD.getFullYear(),m:nowD.getMonth()+1}};
 
@@ -2425,16 +2432,44 @@ function renderRemesas(){
 
   const total=allEntries.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
   const paid=allEntries.filter(e=>e.paid==='pagado').reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+  const monthClientIds=new Set(allEntries.map(e=>e.clientId));
+  const flaggedCount=[...monthClientIds].filter(cid=>db.clients.find(c=>c.id===cid)?.flag).length;
+  // Las tarjetas KPI hacen de filtro dinámico: al picarlas filtran la lista de abajo.
+  // Los TOTALES no cambian nunca (siempre reflejan el mes entero); solo filtran la lista.
+  const _kc=(active)=>`cursor:pointer;${active?'outline:2px solid var(--orange);outline-offset:-2px;border-radius:6px;':''}`;
   document.getElementById('remKpis').innerHTML=`
-    <div class="kpi"><div class="kpi-lbl">Facturación</div><div class="kpi-val yl">${fmt(total)}</div></div>
-    <div class="kpi"><div class="kpi-lbl">Cobrado</div><div class="kpi-val gn">${fmt(paid)}</div></div>
-    <div class="kpi"><div class="kpi-lbl">Pendiente</div><div class="kpi-val rd">${fmt(total-paid)}</div></div>
-    <div class="kpi"><div class="kpi-lbl">Clientes</div><div class="kpi-val">${new Set(allEntries.map(e=>e.clientId)).size}</div></div>
+    <div class="kpi" style="${_kc(remPayFilter==='')}" onclick="setRemFilter('')" title="Ver todos los clientes"><div class="kpi-lbl">Facturación</div><div class="kpi-val yl">${fmt(total)}</div></div>
+    <div class="kpi" style="${_kc(remPayFilter==='cobrado')}" onclick="setRemFilter('cobrado')" title="Filtrar: solo clientes con todo cobrado"><div class="kpi-lbl">Cobrado</div><div class="kpi-val gn">${fmt(paid)}</div></div>
+    <div class="kpi" style="${_kc(remPayFilter==='pendiente')}" onclick="setRemFilter('pendiente')" title="Filtrar: solo clientes con algo pendiente"><div class="kpi-lbl">Pendiente</div><div class="kpi-val rd">${fmt(total-paid)}</div></div>
+    <div class="kpi" style="${_kc(remPayFilter==='cuidado')}" onclick="setRemFilter('cuidado')" title="Filtrar: solo clientes marcados ⚠"><div class="kpi-lbl">⚠ Cuidados</div><div class="kpi-val" style="color:var(--orange)">${flaggedCount}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Clientes</div><div class="kpi-val">${monthClientIds.size}</div></div>
   `;
   document.getElementById('remTotal').textContent=`${allEntries.length} línea${allEntries.length!==1?'s':''}`;
+  // Aplicar el filtro dinámico de las tarjetas SOLO a la lista (no a los totales ni a la tabla de pagos).
+  let listEntries=entries;
+  if(remPayFilter==='cuidado'){
+    listEntries=entries.filter(e=>db.clients.find(c=>c.id===e.clientId)?.flag);
+  } else if(remPayFilter==='cobrado'||remPayFilter==='pendiente'){
+    const byCli={};
+    entries.forEach(e=>{(byCli[e.clientId]=byCli[e.clientId]||[]).push(e);});
+    const wanted=new Set(Object.keys(byCli).filter(cid=>{
+      const allP=byCli[cid].every(e=>e.paid==='pagado');
+      return remPayFilter==='cobrado' ? allP : !allP;
+    }));
+    listEntries=entries.filter(e=>wanted.has(e.clientId));
+  }
   // Use custom order if saved
   const order=db.months[key]?.clientOrder||[];
-  renderClientGroups(entries,'remClientGroups','remEmpty','remesa',key,order);
+  renderClientGroups(listEntries,'remClientGroups','remEmpty','remesa',key,order);
+  // Mensaje de lista vacía coherente con el filtro activo
+  const _emp=document.getElementById('remEmpty');
+  if(_emp){
+    const _msg = remPayFilter==='cuidado' ? 'No hay clientes marcados ⚠ este mes'
+               : remPayFilter==='cobrado' ? 'No hay clientes con todo cobrado este mes'
+               : remPayFilter==='pendiente' ? 'No hay clientes pendientes este mes'
+               : 'Sin clientes este mes';
+    const _d=_emp.querySelector('div:last-child'); if(_d) _d.textContent=_msg;
+  }
   renderPayTableGeneric('remPayTable',allEntries,key,db.team.filter(t=>t.active));
   renderExtrasSection(key,db.team.filter(t=>t.active));
   renderServiceBreak('remServiceBreak',allEntries,key);
@@ -2500,6 +2535,7 @@ function renderClientGroups(entries,containerId,emptyId,type,key,order=[]){
         <span class="badge ${stCls}" style="margin-left:8px">${stTxt}</span>
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;font-size:.65rem;padding:2px 8px;" onclick="event.stopPropagation();openInvoiceModal('${cid}')">🧾 Factura</button>
         <button class="cl-flag ${flagOn?'on':''}" onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${flagTitle}">⚠</button>
+        ${flagOn&&flagNote?`<span onclick="event.stopPropagation();toggleClientFlag('${cid}')" title="${esc(flagNote)}" style="color:var(--orange,#e0a458);font-size:.68rem;margin-left:5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;display:inline-block;vertical-align:middle;">${esc(flagNote)}</span>`:''}
         <span style="color:var(--muted);font-size:.8rem;margin-left:6px">▴</span>
       </div>
       <div class="cl-group-body" style="display:block">
