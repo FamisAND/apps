@@ -812,6 +812,7 @@ function tobSetCliBuscar(v){
 function tobRenderClientes(){
   const tbody = document.getElementById('tobClientesBody');
   const empty = document.getElementById('tobClientesEmpty');
+  tobUpdateMedMesCount();
   if(!tobDB.clientes.length){ tbody.innerHTML=''; empty.style.display='block'; empty.innerHTML='Aún no hay clientes. Crea el primero con <strong>+ Nuevo cliente</strong>.'; return; }
   // Aplicar filtro activo/inactivo + buscador (nombre o contacto)
   const lista = tobDB.clientes.filter(c => {
@@ -4132,6 +4133,62 @@ function tobDelMedicion(medId){
 function tobMedFillPrev(id, v){
   const el = document.getElementById(id);
   if(el){ el.value = v; el.focus(); }
+}
+
+// ── Control de mediciones hechas por mes (para cobros) ──
+let tobMedMesOffset = 0;   // 0 = mes actual · -1 = mes anterior · …
+
+function tobMedMesData(offset){
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const y = d.getFullYear(), m = d.getMonth();
+  const prefix = `${y}-${String(m+1).padStart(2,'0')}`;   // 'YYYY-MM'
+  const items = [];
+  (tobDB.clientes||[]).forEach(cli => {
+    (cli.mediciones||[]).forEach(med => {
+      if((med.fecha||'').slice(0,7) === prefix){
+        items.push({ cliId: cli.id, nombre: cli.nombre||'—', fecha: med.fecha });
+      }
+    });
+  });
+  items.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));   // más recientes primero
+  return { prefix, y, m, items };
+}
+
+// Pinta el número del mes actual en el botón de la barra de clientes.
+function tobUpdateMedMesCount(){
+  const el = document.getElementById('tobMedMesCount');
+  if(el) el.textContent = tobMedMesData(0).items.length;
+}
+
+function tobOpenMedMes(){ tobMedMesOffset = 0; tobRenderMedMes(); document.getElementById('tobMedMesBg').classList.add('on'); }
+function tobCloseMedMes(){ document.getElementById('tobMedMesBg').classList.remove('on'); }
+function tobMedMesNav(delta){
+  if(delta > 0 && tobMedMesOffset >= 0) return;   // no navegar al futuro
+  tobMedMesOffset += delta;
+  tobRenderMedMes();
+}
+function tobRenderMedMes(){
+  const { items, y, m } = tobMedMesData(tobMedMesOffset);
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const tit = document.getElementById('tobMedMesTitulo');
+  if(tit) tit.textContent = `📏 Mediciones de ${MESES[m]} ${y}`;
+  const next = document.getElementById('tobMedMesNext');
+  if(next) next.style.visibility = tobMedMesOffset >= 0 ? 'hidden' : 'visible';   // ocultar ▶ en el mes actual
+  const nCli = new Set(items.map(i => i.cliId)).size;
+  const res = document.getElementById('tobMedMesResumen');
+  if(res) res.textContent = items.length
+    ? `${items.length} medición${items.length!==1?'es':''} · ${nCli} cliente${nCli!==1?'s':''}`
+    : 'Sin mediciones este mes';
+  const body = document.getElementById('tobMedMesBody');
+  if(!body) return;
+  if(!items.length){ body.innerHTML = '<div style="color:var(--mute2);text-align:center;padding:18px;">— Ninguna —</div>'; return; }
+  body.innerHTML = items.map((it,i) => `
+    <div onclick="tobCloseMedMes();tobOpenFicha('${it.cliId}')" title="Abrir ficha de ${tobEsc(it.nombre)}"
+         style="display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border2);cursor:pointer;align-items:center;">
+      <span style="display:flex;gap:8px;align-items:center;"><span style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.7rem;min-width:22px;">${i+1}.</span><strong>${tobEsc(it.nombre)}</strong></span>
+      <span style="color:var(--acc);font-family:DM Mono,monospace;font-size:.78rem;">${it.fecha}</span>
+    </div>`).join('');
 }
 
 // ── Comparar 2 mediciones lado a lado ──

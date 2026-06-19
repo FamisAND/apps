@@ -88,6 +88,7 @@
         <button class="tob-cli-filtro-btn"    data-f="inactivos" onclick="tobSetCliFiltro('inactivos')">Inactivos</button>
       </div>
       <span id="tobCliFiltroCount" style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.72rem;"></span>
+      <button class="tob-action ghost" id="tobMedMesBtn" onclick="tobOpenMedMes()" title="Mediciones hechas este mes — para controlar cobros. Clic para ver el detalle.">📏 Mediciones este mes: <strong id="tobMedMesCount">0</strong></button>
       <button class="tob-action" onclick="tobOpenClienteModal()">+ Nuevo cliente</button>
     </div>
   </div>
@@ -1229,6 +1230,22 @@
         <button class="tob-action ghost" onclick="tobCloseMedicionModal()">Cancelar</button>
         <button class="tob-action" onclick="tobSaveMedicion()">💾 Guardar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL MEDICIONES DEL MES (control de cobros) ════════ -->
+<div class="tob-modal-bg" id="tobMedMesBg">
+  <div class="tob-modal" style="max-width:540px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+      <button class="tob-action ghost btn-xs" onclick="tobMedMesNav(-1)" title="Mes anterior">◀</button>
+      <h3 id="tobMedMesTitulo" style="margin:0;flex:1;text-align:center;">Mediciones del mes</h3>
+      <button class="tob-action ghost btn-xs" id="tobMedMesNext" onclick="tobMedMesNav(1)" title="Mes siguiente">▶</button>
+    </div>
+    <div id="tobMedMesResumen" style="text-align:center;color:var(--mute);font-size:.8rem;margin-bottom:10px;"></div>
+    <div id="tobMedMesBody" style="max-height:55vh;overflow-y:auto;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+      <button class="tob-action ghost" onclick="tobCloseMedMes()">Cerrar</button>
     </div>
   </div>
 </div>
