@@ -473,7 +473,10 @@ const TOB_PDF_I18N = {
 };
 
 // Devuelve el idioma del cliente, con fallback a 'ca' (catalán por defecto).
-function tobLangOf(cli){ return (cli && cli.idioma) || 'ca'; }
+// TEMPORAL (2026-06): toda la app en castellano, sin opción de catalán.
+// El bilingüe por cliente se reintegrará más adelante (volver a:
+//   return (cli && cli.idioma) || 'ca';). El campo cli.idioma se conserva en datos.
+function tobLangOf(cli){ return 'es'; }
 
 // Traduce una key con interpolación tipo "{var}". Si la key no existe,
 // devuelve la propia key como fallback visible (para detectar typos).
@@ -905,7 +908,7 @@ function tobOpenClienteModal(cli){
   document.getElementById('tobCliAlta').value = cli?.alta || new Date().toISOString().slice(0,10);
   document.getElementById('tobCliNacimiento').value = cli?.nacimiento || '';
   // Idioma de los PDFs (default 'ca' catalán para clientes nuevos)
-  document.getElementById('tobCliIdioma').value = cli?.idioma || 'ca';
+  document.getElementById('tobCliIdioma').value = 'es';   // app en castellano por ahora
   const sel = document.getElementById('tobCliPlantilla');
   sel.innerHTML = '<option value="">— Ninguna —</option>' +
     tobDB.plantillas.map(p => `<option value="${p.id}">${tobEsc(p.nombre)}</option>`).join('');
@@ -934,7 +937,7 @@ function tobSaveCliente(){
     alta: document.getElementById('tobCliAlta').value,
     nacimiento: document.getElementById('tobCliNacimiento').value || '',
     // Idioma de los PDFs entregables ('ca' / 'es' / 'en'). Default catalán.
-    idioma: document.getElementById('tobCliIdioma').value || 'ca'
+    idioma: document.getElementById('tobCliIdioma').value || 'es'
   };
   const editId = document.getElementById('tobClienteModalBg').dataset.editId;
   if(editId){
@@ -2137,7 +2140,7 @@ function tobRunPasteImport(){
         nombre: String(data.nombre || data.cliente).trim(),
         sexo: 'H', contacto: '',
         alta: (data.alta && /^\d{4}-\d{2}-\d{2}$/.test(data.alta)) ? data.alta : new Date().toISOString().slice(0,10),
-        nacimiento: '', idioma: 'ca', asignaciones: [], activo: true
+        nacimiento: '', idioma: 'es', asignaciones: [], activo: true
       };
       clienteCreado = true;
     } else {
