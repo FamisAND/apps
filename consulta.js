@@ -8963,7 +8963,7 @@ function tobClasifBulkApply(){
       const rn = norm(r.nombre);
       return rn.includes(nomN) || nomN.includes(rn);
     });
-    if(!candidats.length){ notMatched.push({ line, reason:'cap recepta amb aquest nom' }); return; }
+    if(!candidats.length){ notMatched.push({ line, reason:'ninguna receta con este nombre' }); return; }
     if(candidats.length > 1){
       // Si hi ha múltiples, agafem la que té matching més exacte (longitud més propera)
       candidats.sort((a, b) => Math.abs(norm(a.nombre).length - nomN.length) - Math.abs(norm(b.nombre).length - nomN.length));
@@ -9235,7 +9235,7 @@ function tobMcRenderAjustes(){
   const rows = ids.map(id => {
     const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
     const a = aj[id];
-    const nom = r ? tobMcRecNombre(r, a) : '(recepta eliminada)';
+    const nom = r ? tobMcRecNombre(r, a) : '(receta eliminada)';
     const rac = (r && r.raciones) || 1;
     let macTxt = '';
     if(r){
@@ -12659,7 +12659,7 @@ function _tobMcForçaIngredientsRecordatori(cli){
       return kws && kws.length && !chipsIngs.find(x => x.chip === c);
     });
     chipsSenseIng.forEach(c => {
-      log.push('ℹ ' + tobMcMealLabel(mealId) + ': chip "' + c + '" no té cap ingredient simple al catàleg — marca\'l com a "Usar com a plat solt" amb _iaMomentos.');
+      log.push('ℹ ' + tobMcMealLabel(mealId) + ': chip "' + c + '" no tiene ningún ingrediente simple en el catálogo — márcalo como "Usar como plato suelto" con _iaMomentos.');
     });
     if(!chipsIngs.length) return;
 
@@ -12677,7 +12677,7 @@ function _tobMcForçaIngredientsRecordatori(cli){
           if(dayHasChip(arr, chip)) return;
           arr.push(ing.id);
           added++;
-          log.push('+ Setm ' + (s+1) + '·' + DIA_LABEL[d] + ' ' + tobMcMealLabel(mealId) + ': afegit "' + ing.nombre + '" (per chip "' + chip + '")');
+          log.push('+ Sem ' + (s+1) + '·' + DIA_LABEL[d] + ' ' + tobMcMealLabel(mealId) + ': añadido "' + ing.nombre + '" (por chip "' + chip + '")');
         });
       }
     }
@@ -12859,11 +12859,11 @@ async function tobMcGenerarIA(){
       diffs.push('• PROTEÏNA/DIA:  Cuestionari ' + protCuest + 'g  vs  Menú ' + protMenu + 'g');
     }
     const sync = confirm(
-      'El qüestionari del client té dades diferents que el menú actual:\n\n' +
+      'El cuestionario del cliente tiene datos diferentes que el menú actual:\n\n' +
       diffs.join('\n\n') +
-      '\n\nVols SINCRONITZAR (usar els valors del cuestionari) abans de generar?\n' +
-      '  · Sí → s\'apliquen els valors del cuestionari, després generem\n' +
-      '  · No → generem amb els valors actuals del menú (els que veus a la pantalla)'
+      '\n\n¿Quieres SINCRONIZAR (usar los valores del cuestionario) antes de generar?\n' +
+      '  · Sí → se aplican los valores del cuestionario, después generamos\n' +
+      '  · No → generamos con los valores actuales del menú (los que ves en pantalla)'
     );
     if(sync){
       if(apatsDiff){
@@ -13044,7 +13044,7 @@ async function tobMcGenerarIA(){
       console.log('────────── [IA menú] CATÀLEG INGREDIENTS SIMPLES ──────────');
       console.log('  Total ingredients simples (∙) al catàleg de la IA: ' + totIngs);
       Object.entries(ingsPerApat).forEach(([apat, list]) => {
-        console.log('  · ' + apat + ' (' + list.length + '): ' + (list.join(', ') || '(cap)'));
+        console.log('  · ' + apat + ' (' + list.length + '): ' + (list.join(', ') || '(ninguna)'));
       });
       if(totIngs === 0){
         console.warn('  ⚠ Cap ingredient simple al catàleg. Probables causes:');
@@ -13443,7 +13443,7 @@ function tobMcOpenSwap(day, mealId, ix){
   _tobMcSwapCtx = { day, mealId, ix };
   document.getElementById('tobMcSwapInfo').textContent =
     tobMcMealLabel(mealId) + ' · ' + (TOB_MC_DIAS[day]||'') +
-    ' — actual: ' + (cur ? cur.nombre : '(cap)') + (curKcal ? ' · ' + Math.round(curKcal) + ' kcal' : '');
+    ' — actual: ' + (cur ? cur.nombre : '(ninguna)') + (curKcal ? ' · ' + Math.round(curKcal) + ' kcal' : '');
   let alts = tobMcCandidatas(cli, mealId, true).filter(r => !cur || r.id !== cur.id);
   alts.sort((a,b) => {
     const ka = tobRecMacros(a).kcal/(a.raciones||1), kb = tobRecMacros(b).kcal/(b.raciones||1);
