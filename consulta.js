@@ -247,7 +247,7 @@ const TOB_DESC_CATEGORIAS = {
       'REPETICIONS: Sèries clúster — 8 sèries de 2-3 reps amb pausa 1\'. Accessoris MAX PUMP 10-12 reps en SUPERSÈRIE (2 exs alternats) o TRISÈRIE (3 exs alternats).\n\n' +
       'PESOS: % del 1RM. Tempo crític: 3 segons excèntrica · 2 segons pausa abaix · 3 segons concèntrica · 2 segons pausa amunt (3232).\n\n' +
       'DESCANSOS: 1\'00" entre sèries clúster, 1\'30" entre supersèries / trisèries. Als accessoris només el temps d\'alternar.\n\n' +
-      'CONSELLS: Mínim 3 dies per setmana. Divisió A+B+C. El tempo 3232 és el que dóna la qualitat — sense això perds l\'objectiu. A l\'últim exercici de cada grup es fan STRIPPING (drop sets) per apurar.',
+      'CONSELLS: Mínim 3 dies per setmana. Divisió A+B+C. El tempo 3232 és el que dóna la qualitat — sin això perds l\'objectiu. A l\'últim exercici de cada grup es fan STRIPPING (drop sets) per apurar.',
     en:
       'GOAL: Muscle quality and definition. Cluster at 75% / 77.5% with 3232 tempo, accessories as SUPERSET / TRISET chasing MAX PUMP.\n\n' +
       'PROGRESSION: 6 BIIO microcycles. Blocks 1-3 at 75% of 1RM (8×2, 8×3, 8×3 alternating). Blocks 4-6 at 77.5% (same scheme). Progressive cardio from 15\' to 50\' at 60-70% of max HR.\n\n' +
@@ -6387,7 +6387,7 @@ function tobQuestRenderRecordatori(){
     ? TOB_MEALS.filter(mDef => sel.includes(mDef.id))
     : TOB_MEALS.filter(mDef => TOB_MEALS_DEFAULT.includes(mDef.id));
   if(!sel.length){
-    cont.innerHTML = '<div style="font-size:.74rem;color:var(--mute2);font-family:DM Mono,monospace;padding:6px 2px;">Marca a dalt els àpats que fa el client.</div>';
+    cont.innerHTML = '<div style="font-size:.74rem;color:var(--mute2);font-family:DM Mono,monospace;padding:6px 2px;">Marca arriba las comidas que hace el cliente.</div>';
     return;
   }
   const recChips = q.recChips || {};
@@ -7041,7 +7041,7 @@ function tobExportClienteExcel(cliId){
   const safeName = (cli.nombre || 'client').replace(/[^a-zA-Z0-9_-]/g,'_');
   const dateStr = new Date().toISOString().slice(0,10);
   XLSX.writeFile(wb, `${safeName}_${dateStr}.xlsx`);
-  tobToast('✓ Excel descarregat', 'green');
+  tobToast('✓ Excel descargado', 'green');
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -8838,7 +8838,7 @@ function tobClasifRender(){
     return (a.nombre||'').localeCompare(b.nombre||'','ca',{sensitivity:'base'});
   });
   const info = document.getElementById('tobClasifInfo');
-  if(info) info.textContent = `${all.length} receptes · ${sinClasif.length} sense classificar`;
+  if(info) info.textContent = `${all.length} recetas · ${sinClasif.length} sin clasificar`;
 
   const PER = 20;
   const pages = Math.max(1, Math.ceil(list.length / PER));
@@ -8884,7 +8884,7 @@ function _tobClasifUpdInfo(){
   const all = (tobMenusDB.recetas||[]).filter(x => x.origen !== 'ingrediente');
   const sinN = all.filter(_tobClasifSinClasif).length;
   const info = document.getElementById('tobClasifInfo');
-  if(info) info.textContent = `${all.length} receptes · ${sinN} sense classificar`;
+  if(info) info.textContent = `${all.length} recetas · ${sinN} sin clasificar`;
 }
 
 function tobClasifToggleMom(recId, momId, btn){
@@ -9013,11 +9013,11 @@ function tobClasifBulkApply(){
   const noLines = notMatched.map(m => '  ✗ "' + m.line + '" — ' + m.reason).join('\n');
   res.innerHTML =
     '<div style="color:#3fb68b">✓ ' + matched.length + ' aplicades' + (multiMatched.length ? ' (' + multiMatched.length + ' amb múltiples)' : '') + '</div>' +
-    (notMatched.length ? '<div style="color:#d94040">✗ ' + notMatched.length + ' sense match</div>' : '') +
+    (notMatched.length ? '<div style="color:#d94040">✗ ' + notMatched.length + ' sin match</div>' : '') +
     '<pre style="white-space:pre-wrap;font-size:.7rem;color:var(--mute);max-height:200px;overflow-y:auto;margin-top:6px;">' +
     okLines + (multiLines ? '\n\n' + multiLines : '') + (noLines ? '\n\n' + noLines : '') +
     '</pre>';
-  tobToast('✓ ' + matched.length + ' receptes classificades' + (notMatched.length ? ' · ' + notMatched.length + ' sense match' : ''), 'green');
+  tobToast('✓ ' + matched.length + ' receptes classificades' + (notMatched.length ? ' · ' + notMatched.length + ' sin match' : ''), 'green');
 }
 
 // Funció antiga "Clasificar amb IA" eliminada — Sergio prefereix dictar
@@ -9484,7 +9484,7 @@ function tobMcRenderChecks(){
         return '<div>· <b>' + rec + '</b>: ' + items.map(c => c.ingNombre + ' <span style="opacity:.65;font-size:.7em;">(' + c.motivos.join('/') + ')</span>').join(', ') + '</div>';
       });
       if(recsKeys.length > 8) linesHtml.push('<div style="opacity:.7;">… i ' + (recsKeys.length-8) + ' més</div>');
-      alertasHtml += '<div class="tob-mc-check-alert bad"><b>🚫 Triggers clínics detectats (' + v.conflicts.length + ' ingredients en ' + recsKeys.length + ' receptes · ' + Array.from(cats).join(', ') + '):</b>' + linesHtml.join('') + '</div>';
+      alertasHtml += '<div class="tob-mc-check-alert bad"><b>🚫 Triggers clínics detectats (' + v.conflicts.length + ' ingredients en ' + recsKeys.length + ' recetas · ' + Array.from(cats).join(', ') + '):</b>' + linesHtml.join('') + '</div>';
     }
   }
 
@@ -9551,11 +9551,11 @@ function tobMcOpenAjuste(recId){
         <input type="number" class="tob-input" data-ingid="${it.ingId}" data-base="${baseG}"
                placeholder="${Math.round(baseG/rac)}" value="${cur}" min="0" style="width:78px;${isRem?'pointer-events:none;':''}"
                oninput="tobMcAjustePreview()">
-        <button class="tob-action ghost" style="padding:3px 8px;font-size:.75rem;" title="${isRem?'Restaurar':'Eliminar de la recepta'}" onclick="tobMcAjusteToggleRemove('${it.ingId}')">${isRem?'↺':'🗑'}</button>
+        <button class="tob-action ghost" style="padding:3px 8px;font-size:.75rem;" title="${isRem?'Restaurar':'Eliminar de la receta'}" onclick="tobMcAjusteToggleRemove('${it.ingId}')">${isRem?'↺':'🗑'}</button>
       </div>`;
     }).join('');
   } else {
-    ingBody.innerHTML = '<div style="color:var(--mute2);font-size:.72rem;padding:6px 2px;">Aquesta recepta no té desglossament d\'ingredients — només es pot escalar amb el factor o afegir ingredients nous.</div>';
+    ingBody.innerHTML = '<div style="color:var(--mute2);font-size:.72rem;padding:6px 2px;">Esta receta no tiene desglose de ingredientes — solo se puede escalar con el factor o añadir ingredientes nuevos.</div>';
   }
 
   // Ingredients extra
@@ -9595,7 +9595,7 @@ function tobMcAjusteToggleRemove(ingId){
   if(isRem){
     row.style.opacity = '';
     row.style.textDecoration = '';
-    const btn = row.querySelector('button'); if(btn){ btn.textContent='🗑'; btn.title='Eliminar de la recepta'; }
+    const btn = row.querySelector('button'); if(btn){ btn.textContent='🗑'; btn.title='Eliminar de la receta'; }
     const inp = row.querySelector('input'); if(inp) inp.style.pointerEvents = '';
   } else {
     row.style.opacity = '.4';
@@ -9766,7 +9766,7 @@ function _tobMcAjusteRenderPasosPreview(){
   const pasosRaw = Array.isArray(r.instrucciones) ? r.instrucciones
                  : String(r.instrucciones||'').split('\n').filter(Boolean);
   if(!pasosRaw.length){
-    box.innerHTML = '<div style="color:var(--mute2);font-size:.7rem;padding:4px;">Aquesta recepta no té passos de preparació al catàleg.</div>';
+    box.innerHTML = '<div style="color:var(--mute2);font-size:.7rem;padding:4px;">Esta receta no tiene pasos de preparación en el catálogo.</div>';
     return;
   }
   const removed = _tobMcGetCurrentRemovedNames();
@@ -9816,10 +9816,10 @@ function tobMcReviewRender(){
     targets.push({ recId, r, aj });
   });
   document.getElementById('tobMcReviewCount').textContent =
-    targets.length ? (targets.length + ' receptes · ' +
-      targets.reduce((s,t) => s + t.r.instrucciones.length, 0) + ' passos') : '';
+    targets.length ? (targets.length + ' recetas · ' +
+      targets.reduce((s,t) => s + t.r.instrucciones.length, 0) + ' pasos') : '';
   if(!targets.length){
-    body.innerHTML = '<div style="color:var(--mute);font-size:.78rem;text-align:center;padding:30px 10px;">No hi ha cap recepta amb ingredients eliminats per revisar. Quan elimines ingredients d\'una recepta des del seu modal, els passos afectats apareixeran aquí.</div>';
+    body.innerHTML = '<div style="color:var(--mute);font-size:.78rem;text-align:center;padding:30px 10px;">No hay ninguna receta con ingredientes eliminados para revisar. Cuando elimines ingredientes de una receta desde su modal, los pasos afectados aparecerán aquí.</div>';
     return;
   }
   body.innerHTML = targets.map(t => {
@@ -9868,7 +9868,7 @@ function tobMcReviewRender(){
     return `<details open style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;padding:8px 10px;background:var(--surface2,#1a1a1a);">
       <summary style="font-weight:700;color:var(--acc);cursor:pointer;font-size:.82rem;">
         ${tobEsc(nomEff)}
-        <span style="color:var(--mute);font-weight:400;font-size:.7rem;">— sense ${tobEsc(removedList)}</span>
+        <span style="color:var(--mute);font-weight:400;font-size:.7rem;">— sin ${tobEsc(removedList)}</span>
       </summary>
       <div style="margin-top:8px;">${pasosHtml}</div>
     </details>`;
@@ -9890,7 +9890,7 @@ function tobMcReviewApplyAuto(){
   if(!tobMcState || !tobMcState.ajustes) return;
   Object.values(tobMcState.ajustes).forEach(aj => { delete aj.pasosState; });
   tobMcReviewRender();
-  tobToast('↻ Tots els passos tornen a auto', 'green');
+  tobToast('↻ Todos los pasos vuelven a auto', 'green');
 }
 function tobMcReviewMarkAllVisible(){
   if(!tobMcState || !tobMcState.ajustes) return;
@@ -9902,7 +9902,7 @@ function tobMcReviewMarkAllVisible(){
     r.instrucciones.forEach((_, i) => { aj.pasosState[i] = false; });
   });
   tobMcReviewRender();
-  tobToast('✓ Tots els passos marcats visibles', 'green');
+  tobToast('✓ Todos los pasos marcados visibles', 'green');
 }
 function tobMcReviewMarkAllStruck(){
   if(!tobMcState || !tobMcState.ajustes) return;
@@ -9914,7 +9914,7 @@ function tobMcReviewMarkAllStruck(){
     r.instrucciones.forEach((_, i) => { aj.pasosState[i] = true; });
   });
   tobMcReviewRender();
-  tobToast('✂️ Tots els passos marcats tachats', 'orange');
+  tobToast('✂️ Todos los pasos marcados tachados', 'orange');
 }
 
 function tobMcAjustePasoToggle(i){
@@ -9959,7 +9959,7 @@ function tobMcResetAjuste(){
   document.querySelectorAll('#tobMcAjusteIngs [data-row-ingid]').forEach(row => {
     row.style.opacity = '';
     row.style.textDecoration = '';
-    const btn = row.querySelector('button'); if(btn){ btn.textContent='🗑'; btn.title='Eliminar de la recepta'; }
+    const btn = row.querySelector('button'); if(btn){ btn.textContent='🗑'; btn.title='Eliminar de la receta'; }
     const inp = row.querySelector('input'); if(inp) inp.style.pointerEvents = '';
   });
   // Buidar extras
@@ -9992,19 +9992,22 @@ function _tobNotasEsAuto(n){
   const s = String(n||'').toLowerCase();
   return /import/.test(s) && /(pdf|validad|cat[aà]leg|catalog|cantidades exactas)/.test(s);
 }
-// Devuelve las notas a mostrar: las del menú si son reales, si no el texto por defecto.
+// Nota GLOBAL: la misma para TODOS los menús (pautas/recomendaciones generales).
+// Se guarda en tobDB.notasMenuGlobal (se edita una vez, sale en cada PDF). Si no
+// se ha tocado nunca, cae al texto por defecto. (m se ignora; antes era por-menú.)
 function tobNotasMenu(m){
-  const n = m && m.notas;
-  if(n && String(n).trim() && !_tobNotasEsAuto(n)) return String(n);
+  const g = tobDB && tobDB.notasMenuGlobal;
+  if(g != null && String(g).trim()) return String(g);
   return TOB_MENU_NOTAS_DEFAULT;
 }
 const TOB_MENU_NOTAS_DEFAULT =
-  "- El saltat de verdures simbolitza un PLAT DE VERDURA: fes-lo amb les verdures que més t'agradin i com més t'agradi (saltades, al vapor, amanida, al forn...).\n" +
-  "- Les cremes de verdura es poden variar lliurement: canvia les verdures, combina-les, juga amb les textures... el valor nutricional gairebé no canvia.\n" +
-  "- Si et quedes amb gana, pots augmentar les racions de verdura sense cap problema.\n" +
-  "- Les receptes es poden adaptar al teu gust amb els mateixos ingredients del dia.\n" +
-  "- Esmorzars i berenars són intercanviables entre dies: si un dia et ve de gust el d'un altre, cap problema.\n" +
-  "- Davant de qualsevol dubte amb una recepta o una substitució, consulta'm.";
+  "- El salteado de verduras simboliza un PLATO DE VERDURA: hazlo con las verduras que más te gusten y como más te guste (salteadas, al vapor, en ensalada, al horno...).\n" +
+  "- Las cremas de verdura se pueden variar libremente: cambia las verduras, combínalas, juega con las texturas... el valor nutricional apenas cambia.\n" +
+  "- Si te quedas con hambre, puedes aumentar las raciones de verdura sin ningún problema.\n" +
+  "- Las recetas pueden adaptarse a tu gusto con los mismos ingredientes del día.\n" +
+  "- Desayunos y meriendas son intercambiables entre días: si un día te apetece el de otro, ningún problema.\n" +
+  "- Bebe suficiente agua durante el día. A veces el cuerpo confunde la sed con el hambre: ante un picoteo entre horas, prueba primero un vaso de agua.\n" +
+  "- Ante cualquier duda con una receta o una sustitución, consúltame.";
 
 // Comidas/día del cliente, según los àpats elegidos en su cuestionario.
 // Devuelve array de { id, label } en el orden de TOB_MEALS.
@@ -10194,7 +10197,7 @@ function tobMcRenderPerfilResumen(cli){
   }
   if(tags.patologies && tags.patologies.length){
     const items = (TOB_QUEST_CHIPS.patologies || {}).items || [];
-    perfil.push('Patologies: ' + tobEsc(tags.patologies.map(id => { const d = items.find(c => c.id === id); return d ? d.label : id; }).join(', ')));
+    perfil.push('Patologías: ' + tobEsc(tags.patologies.map(id => { const d = items.find(c => c.id === id); return d ? d.label : id; }).join(', ')));
   }
   const prefPos = (tags.pref || []).filter(t => !['sense_gluten','sense_lactosa','sense_fruita_seca','sense_cuina'].includes(t));
   if(prefPos.length) perfil.push('Preferències: ' + tobEsc(prefPos.join(', ')));
@@ -10205,7 +10208,7 @@ function tobMcRenderPerfilResumen(cli){
 
   el.innerHTML = secs.length
     ? secs.join('')
-    : '<span style="color:var(--mute2)">⚠ Aquest client encara no té el qüestionari omplert. Sense perfil no es poden filtrar bé les receptes — ves a la fitxa del client i omple com a mínim el recordatori, els aliments ✗/✓ i el perfil alimentari.</span>';
+    : '<span style="color:var(--mute2)">⚠ Este cliente todavía no tiene el cuestionario rellenado. Sin perfil no se pueden filtrar bien las recetas — ve a la ficha del cliente y rellena como mínimo el recordatorio, los alimentos ✗/✓ y el perfil alimentario.</span>';
 }
 
 // ── Compatibilidad receta ↔ perfil del cliente ──────────────────
@@ -10332,7 +10335,7 @@ function tobMcRenderSemanasTabs(){
     btn.onclick = () => { tobMcState.semanaActiva = i; tobMcRenderSemanasTabs(); tobMcRenderGrid(); };
     cont.appendChild(btn);
   }
-  document.getElementById('tobMcSemanaActiva').textContent = 'Setmana ' + (tobMcState.semanaActiva + 1);
+  document.getElementById('tobMcSemanaActiva').textContent = 'Semana ' + (tobMcState.semanaActiva + 1);
 }
 
 // ── Render: tabla del menú (días × comidas) ────────────────────
@@ -10380,7 +10383,7 @@ function tobMcRenderGrid(){
       const ajBadge = ajustada ? `<span class="mc-it-aj" title="Ració ajustada: ${tobEsc(tobMcAjusteResumen(aj))}">⚖</span>` : '';
       const savedAtMs = tobMcState._savedAt ? Date.parse(tobMcState._savedAt) : 0;
       const stale = savedAtMs && r._editTs && r._editTs > savedAtMs;
-      const staleBadge = stale ? `<span class="mc-it-stale" title="La recepta s'ha modificat després de desar el menú">⚠</span>` : '';
+      const staleBadge = stale ? `<span class="mc-it-stale" title="La receta se ha modificado después de guardar el menú">⚠</span>` : '';
       const nomEff = tobMcRecNombre(r, aj);
       return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(nomEff)} · ${kcalPer} kcal · ${protPer}g prot — clica per personalitzar">
         <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
@@ -10587,7 +10590,7 @@ function tobMcSideGoToIngs(){
     sep.style.backgroundColor = 'var(--acc-soft, rgba(245,167,33,.18))';
     setTimeout(() => { sep.style.backgroundColor = orig || ''; }, 1200);
   } else {
-    tobToast('No hi ha ingredients simples al catàleg actual. Marca\'n al modal d\'ingredient.', '');
+    tobToast('No hay ingredientes simples en el catálogo actual. Márcalos en el modal de ingrediente.', '');
   }
 }
 
@@ -10723,9 +10726,9 @@ function tobMcOpenMealsModal(){
   document.getElementById('tobMcMealsBody').innerHTML = TOB_MEALS.map(d => {
     const enCuest = apatsCuest.includes(d.id);
     const enMenu  = cur.has(d.id);
-    const tag = enCuest && !enMenu ? ' <span class="tob-mc-meal-hint warn">⚠ al qüestionari però no al menú</span>' :
-                !enCuest && enMenu ? ' <span class="tob-mc-meal-hint info">no al qüestionari</span>' :
-                enCuest ? ' <span class="tob-mc-meal-hint ok">✓ al qüestionari</span>' : '';
+    const tag = enCuest && !enMenu ? ' <span class="tob-mc-meal-hint warn">⚠ en el cuestionario pero no en el menú</span>' :
+                !enCuest && enMenu ? ' <span class="tob-mc-meal-hint info">no en el cuestionario</span>' :
+                enCuest ? ' <span class="tob-mc-meal-hint ok">✓ en el cuestionario</span>' : '';
     return `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--line);">
       <input type="checkbox" id="tobMcMeal_${d.id}" ${enMenu?'checked':''} style="accent-color:var(--acc);">
       <span>${tobEsc(d.label)}${tag}</span>
@@ -10741,23 +10744,23 @@ function tobMcOpenMealsModal(){
         const el = document.getElementById('tobMcMeal_'+d.id);
         if(el) el.checked = apatsCuest.includes(d.id);
       });
-      tobToast('Àpats sincronitzats amb el qüestionari. Prem Aplicar per confirmar.', '');
+      tobToast('Comidas sincronizadas con el cuestionario. Pulsa Aplicar para confirmar.', '');
     };
   }
   document.getElementById('tobMcMealsModalBg').classList.add('on');
 }
 // ── Notes/recomanacions del menú (apareixen al PDF) ────────────
 function tobMcOpenNotasModal(){
-  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
-  document.getElementById('tobMcNotasText').value =
-    tobMcState.notas != null ? tobMcState.notas : TOB_MENU_NOTAS_DEFAULT;
+  // Nota GLOBAL: no depende de tener un menú abierto.
+  const g = (tobDB && tobDB.notasMenuGlobal != null) ? tobDB.notasMenuGlobal : TOB_MENU_NOTAS_DEFAULT;
+  document.getElementById('tobMcNotasText').value = g;
   document.getElementById('tobMcNotasModalBg').classList.add('on');
 }
 function tobMcApplyNotas(){
-  if(!tobMcState) return;
-  tobMcState.notas = document.getElementById('tobMcNotasText').value;
+  tobDB.notasMenuGlobal = document.getElementById('tobMcNotasText').value;
+  tobSave();   // global → se sincroniza y se aplica a TODOS los menús
   document.getElementById('tobMcNotasModalBg').classList.remove('on');
-  tobToast('✓ Notes actualitzades', 'green');
+  tobToast('✓ Notas actualizadas — se aplican a todos los menús', 'green');
 }
 
 function tobMcApplyMeals(){
@@ -10780,7 +10783,7 @@ function tobMcApplyMeals(){
   document.getElementById('tobMcMealsModalBg').classList.remove('on');
   tobMcRenderGrid();
   tobMcUpdateAllTotals();
-  tobToast('✓ Àpats actualitzats', 'green');
+  tobToast('✓ Comidas actualizadas', 'green');
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -10918,7 +10921,7 @@ function tobMcValidate(){
   if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
   const snapshot = { data: tobMcState.data, ajustes: tobMcState.ajustes };
   const v = tobValidateMenuForCli(snapshot, cli);
-  if(v.ok){ tobToast('✓ Cap conflicte detectat amb el perfil del client', 'green'); return; }
+  if(v.ok){ tobToast('✓ Ningún conflicto detectado con el perfil del cliente', 'green'); return; }
   console.warn('═══ ' + v.conflicts.length + ' CONFLICTES DETECTATS ═══');
   v.conflicts.forEach(c => console.warn('  ▶', c.recNombre, '·', c.ingNombre, '· trigger', c.motivos.join('/')));
   tobToast('⚠ ' + v.conflicts.length + ' conflictes — revisa consola', 'orange');
@@ -11087,7 +11090,7 @@ function tobMenuRowHTML(cli, m){
   return `<div class="tob-menu-row">
     <div class="tob-menu-row-info">
       <div class="nm">${tobEsc(cli.nombre)}</div>
-      <div class="meta">${tobEsc(fecha)}${hora?' '+tobEsc(hora):''} · ${m.semanas||1} setm · ${n} receptes · ${m.kcalObj||'—'} kcal/dia · ${m.protObj||'—'} g prot</div>
+      <div class="meta">${tobEsc(fecha)}${hora?' '+tobEsc(hora):''} · ${m.semanas||1} setm · ${n} recetas · ${m.kcalObj||'—'} kcal/dia · ${m.protObj||'—'} g prot</div>
     </div>
     <div class="tob-menu-row-acts">
       <button class="tob-action ghost btn-xs" onclick="tobMenuGuardadoOpen('${cli.id}','${m.id}')" title="Obrir al creador de menús">✏️ Obrir</button>
@@ -11112,7 +11115,7 @@ function tobMenusGuardadosRender(){
   if(cnt) cnt.textContent = all.length ? `· ${all.length}` : '';
   if(!all.length){
     cont.innerHTML = '<div style="text-align:center;color:var(--mute2);padding:34px;font-family:DM Mono,monospace;font-size:.8rem;line-height:1.7;">'
-      + (q ? 'Cap menú per aquest client.' : 'Encara no hi ha menús guardats.<br>Ves al <strong>Creador de menús</strong>, munta un menú i prem 💾 Guardar.')
+      + (q ? 'No hay menús para este cliente.' : 'Todavía no hay menús guardados.<br>Ve al <strong>Creador de menús</strong>, monta un menú y pulsa 💾 Guardar.')
       + '</div>';
     return;
   }
@@ -11734,7 +11737,7 @@ async function tobMenuPdf(cliId, menuId){
     tobToast('✓ PDF del menú descargado', 'green');
   } catch(e){
     console.warn('[menu pdf]', e);
-    tobToast('✗ Error generant el PDF: ' + (e.message || e), 'red');
+    tobToast('✗ Error generando el PDF: ' + (e.message || e), 'red');
   } finally {
     document.body.removeChild(holder);
   }
@@ -11770,7 +11773,7 @@ INTOLERÀNCIES llistades al PERFIL, OBLIGATÒRIAMENT:
           el contingui (mira tot el catàleg).
        b) Si no n'hi ha cap d'equivalent, USA "ingRemoved" per treure aquell
           ingredient i "ingExtras" per afegir un substitut adequat. Indica
-          a "motiu" per què (ex: "SIBO — sense all").
+          a "motiu" per què (ex: "SIBO — sin all").
        c) Si la recepta es queda sense sentit al treure-li l'ingredient
           (ex: "Hummus de cigrons" sense cigrons), DESCARTA-la i busca una
           de totalment diferent. No la posis igual.
@@ -12307,7 +12310,7 @@ async function tobAiCall(messages, cfgOverride){
   if(!r.ok){
     const bodyTxt = await r.text();
     // Loguem el body sencer per debugging (400 de DeepSeek/OpenRouter sol
-    // venir amb un error JSON explicat — sense això no sabem què molesta).
+    // venir amb un error JSON explicat — sin això no sabem què molesta).
     console.warn('[IA call] ' + prov + ' ' + r.status + ' — body:');
     console.warn('  ' + bodyTxt.slice(0, 800).replace(/\n/g, '\n  '));
     throw new Error(prov + ' ' + r.status + ': ' + bodyTxt.slice(0, 220));
@@ -12459,7 +12462,7 @@ function tobMcPerfilTexto(cli){
   if(t.dieta)         L.push('Tipus de dieta: ' + lbl('dieta', t.dieta));
   if(t.proteina && t.proteina.length)   L.push('Proteïna animal: ' + lbls('proteina', t.proteina));
   if(t.pref && t.pref.length)           L.push('Preferències: ' + lbls('pref', t.pref));
-  if(t.patologies && t.patologies.length) L.push('Patologies: ' + lbls('patologies', t.patologies));
+  if(t.patologies && t.patologies.length) L.push('Patologías: ' + lbls('patologies', t.patologies));
   if(t.alergies && t.alergies.length)   L.push('AL·LÈRGIES (evitar SEMPRE): ' + t.alergies.join(', '));
   if(t.alimX && t.alimX.length)         L.push('Aliments que NO vol: ' + t.alimX.join(', '));
   if(t.alimOk && t.alimOk.length)       L.push('Aliments preferits: ' + t.alimOk.join(', '));
@@ -12559,7 +12562,7 @@ function tobMcCandidatas(cli, comidaId, strict){
   return (tobMenusDB.recetas || []).filter(r => {
     if(r.descartada) return false;
     const moms = r.momentos || [];
-    // Receta sense classificar I sense ser favorita → auto-excloïda del catàleg
+    // Receta sin clasificar I sense ser favorita → auto-excloïda del catàleg
     // (criteri de Sergio: si no s'ha classificat ni marcat com a favorita, la IA
     // no la fa servir. Les favorites sí poden entrar encara que no tinguin
     // moments — el matching per nom (keyword) decideix on encaixen).
@@ -12594,7 +12597,7 @@ const TOB_REC_CHIP_KEYWORDS = {
   'dolc':           ['dolc', 'dulce', 'galeta', 'galleta'],
   'barreta':        ['barreta', 'barrita'],
   'entrepa petit':  ['entrepa', 'bocadillo', 'sandvitx', 'sandwich'],
-  'plat unic':      [],   // sense match concret — la IA decideix
+  'plat unic':      [],   // sin match concret — la IA decideix
   'principal acompanyament': [],
   'porta postre':   ['postre', 'iogurt', 'fruita'],
   'porta pa':       ['pa', 'llesca', 'pan']
@@ -12879,7 +12882,7 @@ async function tobMcGenerarIA(){
       if(kcalDiff) document.getElementById('tobMcKcal').value = kcalCuest;
       if(protDiff) document.getElementById('tobMcProt').value = protCuest;
       tobMcRenderGrid();
-      tobToast('✓ Sincronitzat amb el qüestionari', 'green');
+      tobToast('✓ Sincronizado con el cuestionario', 'green');
     }
   }
 
@@ -12915,8 +12918,8 @@ async function tobMcGenerarIA(){
     // ── Inferència per nom: si una recepta NO té moment classificat però el
     // seu nom suggereix clarament un àpat (ex: "Tostada amb tomàquet" → esmorzar,
     // "Bocadillo" → esmorzar/berenar), la considerem candidata per a aquest àpat.
-    // NOMÉS s'aplica a receptes FAVORITES sense classificar — la resta de
-    // receptes sense classificar i sense favorit s'auto-excloen (criteri de
+    // NOMÉS s'aplica a receptes FAVORITES sin clasificar — la resta de
+    // receptes sin clasificar i sense favorit s'auto-excloen (criteri de
     // Sergio). El canvi manual de plat (swap) segueix usant tobMcCandidatas estricte.
     const TOB_KW = {
       esmorzar: ['tostada','torrada','pa amb','bocadillo','sandvitx','sandwich','sandwitx','pa amb tomaquet','llesca','tortilla','truita','batid','smoothie','iogurt','muesli','porridge','pancake','crep','cereal','barreta','barrita','muffin','xocolata calenta','desdejuni','desayuno','breakfast','pa integral','focaccia'],
@@ -13375,7 +13378,7 @@ async function tobMcGenerarIA(){
       if(parche.added > 0){
         console.log('[IA post-procés] ✓ Afegits ' + parche.added + ' ingredient(s) simple(s) del recordatori que la IA no havia posat.');
         parche.log.forEach(l => console.log('   ' + l));
-        tobToast('✓ Post-procés: afegits ' + parche.added + ' ingredients del recordatori que la IA havia oblidat', 'green');
+        tobToast('✓ Post-proceso: añadidos ' + parche.added + ' ingredientes del recordatorio que la IA había olvidado', 'green');
       } else if(parche.log.length){
         // Si hi ha avisos (chips sense ingredient al catàleg), els loguegem
         console.log('[IA post-procés] avisos:');
@@ -13391,13 +13394,13 @@ async function tobMcGenerarIA(){
       if(div.swaps > 0){
         console.log('[IA varietat] ✓ ' + div.swaps + ' plat(s) substituït(s) per variar la font proteica:');
         div.log.forEach(l => console.log('   ' + l));
-        tobToast('✓ Varietat: ' + div.swaps + ' plats canviats perquè no es repeteixi la mateixa base proteica', 'green');
+        tobToast('✓ Variedad: ' + div.swaps + ' platos cambiados para que no se repita la misma base proteica', 'green');
       }
     } catch(e){ console.warn('[IA varietat]', e); }
 
     tobMcRenderGrid();
     tobMcUpdateAllTotals();
-    tobToast('✓ Menú generat amb IA — ' + puestos + ' plats. Revisa\'l i ajusta el que calgui.', 'green');
+    tobToast('✓ Menú generado con IA — ' + puestos + ' platos. Revísalo y ajusta lo que haga falta.', 'green');
   } catch(e){
     console.warn('[IA menú]', e);
     let msg = e.message || String(e);

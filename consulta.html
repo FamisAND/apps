@@ -400,8 +400,8 @@
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
               <div id="tobMcSemanasTabs" style="display:flex;gap:4px;"></div>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenMealsModal()" title="Elegir qué comidas tiene el menú (añadir 2ª media mañana, 2ª merienda...)">⚙ Comidas</button>
-              <button class="tob-action ghost btn-xs" onclick="tobMcOpenNotasModal()" title="Editar las notas/recomendaciones que salen en el PDF del menú">📝 Notes</button>
-              <button class="tob-action ghost btn-xs" onclick="tobMcOpenReviewPasos()" title="Revisar tots els passos del menú amb ingredients eliminats — toggle ✂️/✓ ràpid + accions massives">✂️ Revisar passos</button>
+              <button class="tob-action ghost btn-xs" onclick="tobMcOpenNotasModal()" title="Editar las notas/recomendaciones que salen al final del PDF de TODOS los menús (son comunes)">📝 Notas</button>
+              <button class="tob-action ghost btn-xs" onclick="tobMcOpenReviewPasos()" title="Revisar todos los pasos del menú con ingredientes eliminados — toggle ✂️/✓ rápido + acciones masivas">✂️ Revisar pasos</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
               <button class="tob-action btn-xs" onclick="tobMcSave()" title="Guardar el menú en el cliente">💾 Guardar</button>
             </div>
@@ -498,10 +498,10 @@
     <div style="margin-top:12px;">
       <label class="tob-lbl">Passades de correcció màx <span class="tob-quest-h-sub">(quants reintents fa la IA si el menú no quadra — més passades = millor qualitat però més requests a l'API)</span></label>
       <select class="tob-select" id="tobAiMaxPasadas" style="max-width:280px;">
-        <option value="0">0 — sense correcció (1 request/menú)</option>
+        <option value="0">0 — sin corrección (1 request/menú)</option>
         <option value="1">1 — una passada (1-2 requests/menú)</option>
         <option value="2">2 — dues passades (1-3 requests/menú)</option>
-        <option value="3" selected>3 — màxim, recomanat (1-4 requests/menú)</option>
+        <option value="3" selected>3 — máximo, recomendado (1-4 requests/menú)</option>
       </select>
     </div>
 
@@ -538,16 +538,16 @@
   </div>
 </div>
 
-<!-- ════════ MODAL NOTES DEL MENÚ ════════ -->
+<!-- ════════ MODAL NOTAS (GLOBAL, todos los menús) ════════ -->
 <div class="tob-modal-bg" id="tobMcNotasModalBg">
   <div class="tob-modal" style="max-width:540px;">
-    <h3>📝 Notes del menú</h3>
+    <h3>📝 Notas de los menús</h3>
     <p style="font-size:.78rem;color:var(--mute);margin-bottom:8px;line-height:1.5;">
-      Recomanacions que apareixen al final del PDF del menú. Pots editar-les.
+      Recomendaciones que salen al final del PDF de <b>todos los menús</b>. Las editas una vez aquí y se aplican a todos.
     </p>
-    <textarea class="tob-input" id="tobMcNotasText" rows="8" style="font-family:inherit;line-height:1.5;"></textarea>
+    <textarea class="tob-input" id="tobMcNotasText" rows="9" style="font-family:inherit;line-height:1.5;"></textarea>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
-      <button class="tob-action ghost" onclick="document.getElementById('tobMcNotasText').value=TOB_MENU_NOTAS_DEFAULT">↺ Per defecte</button>
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcNotasText').value=TOB_MENU_NOTAS_DEFAULT">↺ Por defecto</button>
       <button class="tob-action ghost" onclick="document.getElementById('tobMcNotasModalBg').classList.remove('on')">Cancelar</button>
       <button class="tob-action" onclick="tobMcApplyNotas()">Guardar</button>
     </div>
@@ -620,7 +620,7 @@
     </p>
     <div style="overflow-y:auto;flex:1;">
       <!-- Nombre custom -->
-      <label style="font-size:.74rem;color:var(--mute);">Nom per a aquest menú (opcional, deixa buit per fer servir el del catàleg)</label>
+      <label style="font-size:.74rem;color:var(--mute);">Nombre para este menú (opcional, deja vacío para usar el del catálogo)</label>
       <input type="text" class="tob-input" id="tobMcAjusteNombre" placeholder="ej: Crema de calabacín con albahaca" style="margin:4px 0 14px;">
 
       <!-- Factor global -->
@@ -637,7 +637,7 @@
 
       <!-- Ingredients extra -->
       <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;display:flex;justify-content:space-between;align-items:center;">
-        <span>Ingredients afegits només per a aquest menú:</span>
+        <span>Ingredientes añadidos solo para este menú:</span>
         <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteAddExtra()">+ Añadir ingrediente</button>
       </div>
       <div id="tobMcAjusteExtras" style="margin-bottom:12px;"></div>
@@ -648,12 +648,12 @@
         <span>Passos de preparació:</span>
         <span style="font-size:.62rem;font-family:inherit;color:var(--mute2);">click ✂️/↺ per alternar tachat</span>
       </div>
-      <div style="font-size:.66rem;color:var(--mute);margin-bottom:6px;line-height:1.4;">Per defecte, els passos que mencionen un ingredient eliminat surten <s>tachats</s>. Pots forçar-ne qualsevol clicant el botó del costat. Si vols reescriure'ls del tot, fes servir el textarea de sota.</div>
+      <div style="font-size:.66rem;color:var(--mute);margin-bottom:6px;line-height:1.4;">Por defecto, los pasos que mencionan un ingrediente eliminado salen <s>tachados</s>. Puedes forzar cualquiera clicando el botón del lado. Si quieres reescribirlos del todo, usa el textarea de abajo.</div>
       <div id="tobMcAjustePasosPreview" style="margin-bottom:12px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface2,#1a1a1a);max-height:280px;overflow-y:auto;"></div>
 
       <details style="margin-bottom:12px;">
-        <summary style="font-size:.72rem;color:var(--mute);cursor:pointer;font-family:'DM Mono',monospace;">↺ Reescriure tots els passos manualment (avançat)</summary>
-        <div style="font-size:.66rem;color:var(--mute);margin:8px 0 6px;line-height:1.4;">Si l'omples, el teu text reemplaça TOTS els passos del catàleg (un pas per línia). Si el deixes buit, s'usen els passos amb les marques de dalt.</div>
+        <summary style="font-size:.72rem;color:var(--mute);cursor:pointer;font-family:'DM Mono',monospace;">↺ Reescribir todos los pasos manualmente (avanzado)</summary>
+        <div style="font-size:.66rem;color:var(--mute);margin:8px 0 6px;line-height:1.4;">Si lo rellenas, tu texto reemplaza TODOS los pasos del catálogo (un paso por línea). Si lo dejas vacío, se usan los pasos con las marcas de arriba.</div>
         <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;margin-bottom:6px;" onclick="tobMcAjusteLoadPasosBase()" title="Carregar els passos del catàleg al textarea">↻ Carregar base al textarea</button>
         <textarea class="tob-input" id="tobMcAjusteInstrucciones" rows="4" placeholder="1. Trocea el calabacín en dados medianos.&#10;2. Sofríe con aceite...&#10;..." style="margin:4px 0 0;font-family:inherit;resize:vertical;width:100%;"></textarea>
       </details>
@@ -674,7 +674,7 @@
 <!-- ════════ MODAL REVISAR PASSOS DEL MENÚ ════════ -->
 <div class="tob-modal-bg" id="tobMcReviewPasosBg">
   <div class="tob-modal" style="max-width:780px;max-height:92vh;display:flex;flex-direction:column;">
-    <h3 style="margin:0 0 6px;">✂️ Revisar passos del menú</h3>
+    <h3 style="margin:0 0 6px;">✂️ Revisar pasos del menú</h3>
     <div style="font-size:.72rem;color:var(--mute);margin-bottom:10px;line-height:1.5;">
       Aquí veus, en una sola pantalla, els passos de totes les receptes que tenen ingredients eliminats. Les paraules tachades són les mencions als ingredients que has tret. Pots forçar tota la frase com tachada (✂️) o visible (✓) clicant el botó de la dreta.
     </div>
@@ -932,7 +932,7 @@
             <div>
               <label class="tob-lbl">Nivell d'activitat (PAL)</label>
               <select class="tob-select tob-quest-f" id="qPAL">
-                <option value="">— sense definir —</option>
+                <option value="">— sin definir —</option>
                 <option value="1.2">Sedentari (1.2)</option>
                 <option value="1.375">Activitat lleugera (1.375)</option>
                 <option value="1.55">Activitat moderada (1.55)</option>
@@ -980,7 +980,7 @@
             <div class="tob-quest-chips" id="qChipsIntolerancia"></div>
           </div>
           <div class="tob-quest-chip-block">
-            <label class="tob-lbl">Al·lèrgies <span class="tob-quest-h-sub">(reacció severa — INNEGOCIABLE, s'exclouen totes les receptes amb aquests aliments)</span></label>
+            <label class="tob-lbl">Alergias <span class="tob-quest-h-sub">(reacción severa — INNEGOCIABLE, se excluyen todas las recetas con estos alimentos)</span></label>
             <div class="tob-quest-chips" id="qChipsAlergies"></div>
             <input class="tob-input" id="qAlergiesNew" placeholder="ex: anacards, mango, crustacis..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alergies',event)">
           </div>
