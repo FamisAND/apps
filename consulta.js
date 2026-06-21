@@ -9053,7 +9053,21 @@ const TOB_MC_DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
 const TOB_MC_DIA_FULL = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
 let _tobMcMomentoFiltro = '';  // filtro activo del panel lateral
 
-function tobMcMealLabel(id){
+// ── i18n del menú (ca/es): comidas, días y secciones del súper ──
+const TOB_MEAL_ES = { esmorzar:'Desayuno', mig_mati:'Media mañana', dinar:'Comida',
+  berenar:'Merienda', berenar2:'2ª merienda', sopar:'Cena', ressopo:'Recena' };
+const TOB_MENU_DIAS = {
+  ca:['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'],
+  es:['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'] };
+const TOB_MENU_SECCION_ES = {
+  'Verdures i hortalisses':'Verduras y hortalizas','Fruita':'Fruta','Carn i aviram':'Carne y aves',
+  'Peix i marisc':'Pescado y marisco','Ous, làctics i derivats':'Huevos, lácteos y derivados',
+  'Cereals, pa i pasta':'Cereales, pan y pasta','Llegums i fruits secs':'Legumbres y frutos secos',
+  'Olis, condiments i espècies':'Aceites, condimentos y especias','Altres':'Otros' };
+function tobMenuSeccionL(sec, L){ return L==='es' ? (TOB_MENU_SECCION_ES[sec]||sec) : sec; }
+// L opcional: 'es' traduce; sin L (o 'ca') mantiene el catalán original (resto de la app).
+function tobMcMealLabel(id, L){
+  if(L==='es' && TOB_MEAL_ES[id]) return TOB_MEAL_ES[id];
   const d = TOB_MEALS.find(x => x.id === id);
   return d ? d.label : (TOB_REC_MOMENTO_LBL[id] || id);
 }
@@ -9110,10 +9124,15 @@ function tobMcAjusteActivo(aj){
   return false;
 }
 // Nombre efectiu d'una recepta dins del menú (honra nombreOverride per-menú).
-function tobMcRecNombre(r, aj){
+// L opcional: 'es' → usa r.nombre_es si existe (traducción cacheada por IA).
+// El override per-menú manda siempre. Sin L (o 'ca') → nombre catalán original.
+function tobMcRecNombre(r, aj, L){
   if(!r) return '—';
   if(aj && aj.nombreOverride && String(aj.nombreOverride).trim()){
     return String(aj.nombreOverride).trim();
+  }
+  if(L === 'es' && r.nombre_es && String(r.nombre_es).trim()){
+    return String(r.nombre_es).trim();
   }
   return r.nombre || '—';
 }
@@ -11162,8 +11181,26 @@ async function tobMenuPdf(cliId, menuId){
   }
 
   const esc = tobEsc;
-  const DIAS = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
-  const comidas = (m.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
+  const L = tobLangOf(cli);
+  const _es = L === 'es';
+  // Textos estructurales del menú (ca/es). El contenido (recetas/ingredientes/pasos)
+  // usa los campos _es del catálogo cuando existen.
+  const MT = {
+    semana:       _es ? 'Semana' : 'Setmana',
+    totalDia:     _es ? 'Total día' : 'Total dia',
+    llistaCompra: _es ? 'Lista de la compra' : 'Llista de la compra',
+    receptari:    _es ? 'Recetario' : 'Receptari',
+    ingredients:  _es ? 'Ingredientes (por ración)' : 'Ingredients (per ració)',
+    preparacio:   _es ? 'Preparación' : 'Preparació',
+    eliminada:    _es ? '(eliminada)' : '(eliminada)',
+    ajustada:     _es ? 'Cantidades ajustadas para este menú' : 'Quantitats ajustades per a aquest menú',
+    detalladaEn:  _es ? 'Receta detallada en' : 'Recepta detallada a',
+    grasa:        _es ? 'grasa' : 'greix'
+  };
+  // Nombre de ingrediente en el idioma del cliente (usa _es si está cacheado).
+  const ingNomL = (ing) => ing ? ((_es && ing.nombre_es && String(ing.nombre_es).trim()) ? String(ing.nombre_es).trim() : ing.nombre) : null;
+  const DIAS = TOB_MENU_DIAS[L] || TOB_MENU_DIAS.ca;
+  const comidas = (m.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id, L) }));
   const semanas = m.semanas || 1;
   // Ajustes guardados en el menú — afectan a graella, totals, llista de la
   // compra i receptari (cantitats per ració). Si una receta no té ajust, es
@@ -11183,7 +11220,7 @@ async function tobMenuPdf(cliId, menuId){
         const ids = ((m.data[s]||{})[d]||{})[c.id] || [];
         const platos = ids.map(id => {
           const r = recsById[id];
-          if(!r) return '<div class="mp-plato mp-buit">(eliminada)</div>';
+          if(!r) return `<div class="mp-plato mp-buit">${MT.eliminada}</div>`;
           const foto = fotoMap[id];
           const mr = macRac(r);
           dayTot[d].kcal += mr.kcal; dayTot[d].prot += mr.prot;
@@ -11191,8 +11228,8 @@ async function tobMenuPdf(cliId, menuId){
           // Plats solts (origen ingredient) → miniatura petita: és només un emoji,
           // no té sentit una foto gran com a les receptes de veritat.
           const fcls = r.origen === 'ingrediente' ? 'mp-foto mp-foto-ing' : 'mp-foto';
-          // Nom efectiu: respecta nombreOverride per-menú si està definit
-          const nomEff = tobMcRecNombre(r, ajMap[id]);
+          // Nom efectiu: respecta nombreOverride per-menú; si no, idioma del client
+          const nomEff = tobMcRecNombre(r, ajMap[id], L);
           return `<div class="mp-plato">
             ${foto ? `<div class="${fcls}" style="background-image:url('${esc(foto)}')"></div>` : `<div class="${fcls} mp-nofoto">${tobFoodEmoji(nomEff)}</div>`}
             <div class="mp-plato-txt"><div class="mp-plato-nm">${esc(nomEff)}</div>
@@ -11203,11 +11240,11 @@ async function tobMenuPdf(cliId, menuId){
       }
       rows += `<tr><th>${esc(c.label)}</th>${cells}</tr>`;
     });
-    const totRow = '<tr class="mp-tot"><th>Total dia</th>' + dayTot.map(t =>
+    const totRow = `<tr class="mp-tot"><th>${MT.totalDia}</th>` + dayTot.map(t =>
       `<td><b>${Math.round(t.kcal)}</b> kcal · ${Math.round(t.prot)}P · ${Math.round(t.hc)}H · ${Math.round(t.gras)}G</td>`
     ).join('') + '</tr>';
     graellaHtml += `<div class="mp-section mp-blk mp-page-break">
-      <h2>Setmana ${s+1}</h2>
+      <h2>${MT.semana} ${s+1}</h2>
       <table class="mp-graella"><thead><tr><th></th>${DIAS.map(d=>`<th>${d}</th>`).join('')}</tr></thead>
       <tbody>${rows}${totRow}</tbody></table></div>`;
   }
@@ -11227,12 +11264,12 @@ async function tobMenuPdf(cliId, menuId){
       r.ingredientes.forEach(it => {
         if(removedSet.has(it.ingId)) return;
         const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-        const nom = ing ? ing.nombre : (it._nombreFallback || null);
-        if(!nom) return;
+        const nomCa = ing ? ing.nombre : (it._nombreFallback || null);
+        if(!nomCa) return;
         const g = tobMcEffGramos(it, aj) / rac * usos[id];
         if(g <= 0) return;
-        const k = nom.toLowerCase();
-        if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
+        const k = nomCa.toLowerCase();
+        if(!compra[k]) compra[k] = { nom: (ing ? ingNomL(ing) : nomCa), g:0, seccion: tobSeccionAlimento(nomCa) };
         compra[k].g += g;
       });
     }
@@ -11240,12 +11277,12 @@ async function tobMenuPdf(cliId, menuId){
     if(aj && Array.isArray(aj.ingExtras)){
       aj.ingExtras.forEach(ex => {
         const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
-        const nom = ing ? ing.nombre : (ex._nombreFallback || null);
-        if(!nom) return;
+        const nomCa = ing ? ing.nombre : (ex._nombreFallback || null);
+        if(!nomCa) return;
         const g = (+ex.gramos||0) / rac * usos[id];
         if(g <= 0) return;
-        const k = nom.toLowerCase();
-        if(!compra[k]) compra[k] = { nom, g:0, seccion: tobSeccionAlimento(nom) };
+        const k = nomCa.toLowerCase();
+        if(!compra[k]) compra[k] = { nom: (ing ? ingNomL(ing) : nomCa), g:0, seccion: tobSeccionAlimento(nomCa) };
         compra[k].g += g;
       });
     }
@@ -11258,10 +11295,10 @@ async function tobMenuPdf(cliId, menuId){
   let compraHtml = '';
   const secsAmbDades = TOB_SECCIONS.filter(s => porSeccion[s] && porSeccion[s].length);
   if(secsAmbDades.length){
-    compraHtml = '<div class="mp-section mp-blk mp-page-break"><h2>Llista de la compra</h2>';
+    compraHtml = `<div class="mp-section mp-blk mp-page-break"><h2>${MT.llistaCompra}</h2>`;
     secsAmbDades.forEach(sec => {
       const items = porSeccion[sec].sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
-      compraHtml += '<h4 class="mp-compra-sec">' + esc(sec) + '</h4><ul class="mp-compra">' +
+      compraHtml += '<h4 class="mp-compra-sec">' + esc(tobMenuSeccionL(sec, L)) + '</h4><ul class="mp-compra">' +
         items.map(c => `<li><span>${esc(c.nom)}</span><span class="mp-g">${c.g >= 1000 ? (c.g/1000).toFixed(2)+' kg' : Math.round(c.g)+' g'}</span></li>`).join('') +
         '</ul>';
     });
@@ -11280,19 +11317,19 @@ async function tobMenuPdf(cliId, menuId){
     const racR = r.raciones || 1;
     const aj = ajMap[r.id];
     const ajActivo = tobMcAjusteActivo(aj);
-    const nomEff = tobMcRecNombre(r, aj);
+    const nomEff = tobMcRecNombre(r, aj, L);
     // Ingredients del catàleg (excloent eliminats, amb gramos efectius)
     const removedSet = (aj && Array.isArray(aj.ingRemoved)) ? new Set(aj.ingRemoved) : new Set();
     const baseIngs = (r.ingredientes||[]).filter(it => !removedSet.has(it.ingId)).map(it => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-      const nom = ing ? ing.nombre : (it._nombreFallback || '—');
+      const nom = ing ? ingNomL(ing) : (it._nombreFallback || '—');
       const g = tobMcEffGramos(it, aj) / racR;
       return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
     });
     // Ingredients afegits només per a aquest menú
     const extraIngs = (aj && Array.isArray(aj.ingExtras) ? aj.ingExtras : []).map(ex => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
-      const nom = ing ? ing.nombre : (ex._nombreFallback || '—');
+      const nom = ing ? ingNomL(ing) : (ex._nombreFallback || '—');
       const g = (+ex.gramos||0) / racR;
       return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
     });
@@ -11303,8 +11340,9 @@ async function tobMenuPdf(cliId, menuId){
     if(aj && aj.instruccionesOverride && String(aj.instruccionesOverride).trim()){
       pasosRaw = String(aj.instruccionesOverride).split('\n').filter(Boolean);
     } else {
-      pasosRaw = Array.isArray(r.instrucciones) ? r.instrucciones
-                : String(r.instrucciones||'').split('\n').filter(Boolean);
+      const _ins = (_es && Array.isArray(r.instrucciones_es) && r.instrucciones_es.length) ? r.instrucciones_es : r.instrucciones;
+      pasosRaw = Array.isArray(_ins) ? _ins
+                : String(_ins||'').split('\n').filter(Boolean);
     }
     // Noms normalitzats dels ingredients eliminats — per detectar mencions als passos
     const _normPaso = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -11331,7 +11369,7 @@ async function tobMenuPdf(cliId, menuId){
       return { text:p, struck, forceVisible: manual === false };
     });
     const ajBadge = ajActivo
-      ? `<div class="mp-recepta-aj">⚖ Quantitats ajustades per a aquest menú${aj.motiu?': '+esc(aj.motiu):''}</div>`
+      ? `<div class="mp-recepta-aj">⚖ ${MT.ajustada}${aj.motiu?': '+esc(aj.motiu):''}</div>`
       : '';
     if(isRepeat){
       // Versió compacta: només cap + badge indicant on s'ha vist abans.
@@ -11340,8 +11378,8 @@ async function tobMenuPdf(cliId, menuId){
         <div class="mp-recepta-head">
           ${foto ? `<div class="mp-recepta-foto mp-recepta-foto-sm" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-foto-sm mp-recepta-nofoto">${tobFoodEmoji(nomEff)}</div>`}
           <div><div class="mp-recepta-nm">${esc(nomEff)}</div>
-          <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
-          <div class="mp-recepta-repeat-badge">↻ Recepta detallada a <b>${esc(repeatOf)}</b></div>
+          <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g ${MT.grasa}${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
+          <div class="mp-recepta-repeat-badge">↻ ${MT.detalladaEn} <b>${esc(repeatOf)}</b></div>
           ${ajBadge}</div>
         </div>
       </div>`;
@@ -11350,12 +11388,12 @@ async function tobMenuPdf(cliId, menuId){
       <div class="mp-recepta-head">
         ${foto ? `<div class="mp-recepta-foto" style="background-image:url('${esc(foto)}')"></div>` : `<div class="mp-recepta-foto mp-recepta-nofoto">${tobFoodEmoji(nomEff)}</div>`}
         <div><div class="mp-recepta-nm">${esc(nomEff)}</div>
-        <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g greix${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
+        <div class="mp-recepta-mac">${Math.round(mr.kcal)} kcal · ${Math.round(mr.prot)}g prot · ${Math.round(mr.hc)}g HC · ${Math.round(mr.gras)}g ${MT.grasa}${r.tiempoTotal?` · ⏱ ${esc(r.tiempoTotal)}`:''}</div>
         ${(r.alergenos&&r.alergenos.length)?`<div class="mp-recepta-al">⚠ ${esc(r.alergenos.join(' · '))}</div>`:''}
         ${ajBadge}</div>
       </div>
-      ${ings ? `<div class="mp-recepta-cols"><div><h4>Ingredients (per ració)</h4><ul>${ings}</ul></div>
-        <div><h4>Preparació</h4><ol>${pasos.map(p=>{
+      ${ings ? `<div class="mp-recepta-cols"><div><h4>${MT.ingredients}</h4><ul>${ings}</ul></div>
+        <div><h4>${MT.preparacio}</h4><ol>${pasos.map(p=>{
           const cleanTxt = String(p.text).replace(/^[-·•*\d.\s]+/,'');
           if(p.struck){
             // Tota la frase tachada (manual override "force struck")
@@ -11410,17 +11448,17 @@ async function tobMenuPdf(cliId, menuId){
       if(dayBody){
         weekBody += `<div class="mp-day-banner mp-blk mp-keep-next">
           <span class="mp-day-name">${DIAS[d]}</span>
-          <span class="mp-day-totals">${dayApats} àpats · ${Math.round(dayKcal)} kcal · ${Math.round(dayProt)} g proteïna</span>
+          <span class="mp-day-totals">${dayApats} ${_es?'comidas':'àpats'} · ${Math.round(dayKcal)} kcal · ${Math.round(dayProt)} g ${_es?'proteína':'proteïna'}</span>
         </div>${dayBody}`;
       }
     }
     if(weekBody){
       // Encapçalament de setmana només si hi ha més d'una setmana (sinó és redundant).
-      recetariBody += (semanas > 1 ? `<h3 class="mp-week-h mp-blk mp-page-break">Setmana ${s+1}</h3>` : '') + weekBody;
+      recetariBody += (semanas > 1 ? `<h3 class="mp-week-h mp-blk mp-page-break">${MT.semana} ${s+1}</h3>` : '') + weekBody;
     }
   }
   const recetariHtml = anyRecepta
-    ? '<h2 class="mp-blk mp-page-break mp-recetari-h">Receptari</h2>' + recetariBody
+    ? `<h2 class="mp-blk mp-page-break mp-recetari-h">${MT.receptari}</h2>` + recetariBody
     : '';
 
   // ── Notes / recomanacions ──────────────────────────────────────
@@ -11428,12 +11466,12 @@ async function tobMenuPdf(cliId, menuId){
   // Notes NO força salt de pàgina — sol ser una secció curta, que flueixi
   // amb el que vingui darrere per evitar pàgines amb 80% de buit.
   const notasHtml = notas
-    ? `<div class="mp-section mp-blk"><h2>Recomanacions</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
+    ? `<div class="mp-section mp-blk"><h2>${_es?'Recomendaciones':'Recomanacions'}</h2><div class="mp-notas">${esc(notas).replace(/\n/g,'<br>')}</div></div>`
     : '';
 
   // ── Documento del menú (se renderiza fuera de pantalla y se vuelca
   //    a un PDF descargable con html2canvas + jsPDF) ───────────────
-  const hoy = new Date().toLocaleDateString('ca-ES', { day:'numeric', month:'long', year:'numeric' });
+  const hoy = new Date().toLocaleDateString(_es?'es-ES':'ca-ES', { day:'numeric', month:'long', year:'numeric' });
   // Tokens visuals iguals al PDF de mediciones — branding consistent.
   // ORANGE #f5a721 · BLACK #0f0f0f · GRAY_LIGHT #f7f7f7 · GRAY_DK #404040.
   // PDF en LANDSCAPE A4 (1123×794 a 96dpi). Més ample = la graella respira,
@@ -11552,7 +11590,7 @@ async function tobMenuPdf(cliId, menuId){
   const kpiVsObj = (real, obj) => {
     if(!obj || !real) return '';
     const diff = Math.round(real - obj);
-    return `${diff>=0?'+':''}${diff} vs objectiu`;
+    return `${diff>=0?'+':''}${diff} vs ${_es?'objetivo':'objectiu'}`;
   };
 
   const bodyHtml = `<div class="mp-doc">
@@ -11560,25 +11598,25 @@ async function tobMenuPdf(cliId, menuId){
       <div class="mp-logo-wrap">
         <span class="mp-logo-full">FULL</span><span class="mp-logo-training">TRAINING</span>
       </div>
-      <div class="mp-cover-sub">NUTRICIÓ · Menú setmanal personalitzat</div>
+      <div class="mp-cover-sub">${_es?'NUTRICIÓN · Menú semanal personalizado':'NUTRICIÓ · Menú setmanal personalitzat'}</div>
       <div class="mp-cover-cli">${esc(cli.nombre)}</div>
-      <div class="mp-cover-periodo">${esc(hoy)} &nbsp;·&nbsp; ${semanas} setmana(es) &nbsp;·&nbsp; ${comidas.length} àpats/dia</div>
+      <div class="mp-cover-periodo">${esc(hoy)} &nbsp;·&nbsp; ${semanas} ${_es?'semana(s)':'setmana(es)'} &nbsp;·&nbsp; ${comidas.length} ${_es?'comidas/día':'àpats/dia'}</div>
 
       <div class="mp-kpis">
         <div class="mp-kpi">
-          <div class="mp-kpi-lbl">Receptes</div>
+          <div class="mp-kpi-lbl">${_es?'Recetas':'Receptes'}</div>
           <div class="mp-kpi-val">${nRecsUnicas}</div>
-          <div class="mp-kpi-sub">úniques al menú</div>
+          <div class="mp-kpi-sub">${_es?'únicas en el menú':'úniques al menú'}</div>
         </div>
         <div class="mp-kpi">
-          <div class="mp-kpi-lbl">Kcal / dia</div>
+          <div class="mp-kpi-lbl">Kcal / ${_es?'día':'dia'}</div>
           <div class="mp-kpi-val">${kcalProm || '—'}</div>
-          <div class="mp-kpi-sub">${objKcal ? 'objectiu ' + objKcal + ' kcal · ' + kpiVsObj(kcalProm, objKcal) : 'mitjana del menú'}</div>
+          <div class="mp-kpi-sub">${objKcal ? (_es?'objetivo ':'objectiu ') + objKcal + ' kcal · ' + kpiVsObj(kcalProm, objKcal) : (_es?'media del menú':'mitjana del menú')}</div>
         </div>
         <div class="mp-kpi">
-          <div class="mp-kpi-lbl">Proteïna / dia</div>
+          <div class="mp-kpi-lbl">${_es?'Proteína / día':'Proteïna / dia'}</div>
           <div class="mp-kpi-val">${protProm || '—'} g</div>
-          <div class="mp-kpi-sub">${objProt ? 'objectiu ' + objProt + ' g · ' + kpiVsObj(protProm, objProt) : 'mitjana del menú'}</div>
+          <div class="mp-kpi-sub">${objProt ? (_es?'objetivo ':'objectiu ') + objProt + ' g · ' + kpiVsObj(protProm, objProt) : (_es?'media del menú':'mitjana del menú')}</div>
         </div>
       </div>
     </div>
