@@ -3398,7 +3398,7 @@ function tobFichaRenderMenus(){
   const menus = (cli.menus || []).slice()
     .sort((a,b) => (b.savedAt||b.fecha||'').localeCompare(a.savedAt||a.fecha||''));
   if(!menus.length){
-    cont.innerHTML = '<div style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.76rem;padding:8px 2px;">Aquest client encara no té cap menú assignat. Crea\'n un amb <strong>+ Nou menú</strong>.</div>';
+    cont.innerHTML = '<div style="color:var(--mute2);font-family:DM Mono,monospace;font-size:.76rem;padding:8px 2px;">Este cliente todavía no tiene ningún menú asignado. Crea uno con <strong>+ Nuevo menú</strong>.</div>';
     return;
   }
   cont.innerHTML = menus.map(m => tobMenuRowHTML(cli, m)).join('');
@@ -3411,7 +3411,7 @@ function tobFichaMenuPdf(){
   const menus = (cli.menus || []).slice()
     .sort((a,b) => (b.savedAt||b.fecha||'').localeCompare(a.savedAt||a.fecha||''));
   if(!menus.length){
-    tobToast('Aquest client encara no té cap menú guardat. Crea\'n un amb "+ Nou menú".', 'red');
+    tobToast('Este cliente todavía no tiene ningún menú guardado. Crea uno con "+ Nuevo menú".', 'red');
     return;
   }
   tobMenuPdf(cli.id, menus[0].id);
@@ -6568,7 +6568,7 @@ function tobHbCalcular(){
 }
 function tobHbAplicar(){
   const cli = _tobHbCli();
-  if(!cli){ tobToast('Cliente no trobat', 'red'); return; }
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
   const num = id => {
     const v = parseFloat((document.getElementById(id) || {}).value);
     return isFinite(v) ? v : null;
@@ -6577,7 +6577,7 @@ function tobHbAplicar(){
   const sexe = (document.getElementById('qHbSexe') || {}).value || 'H';
   const pal  = num('qHbPAL'), objPct = num('qHbObj'), protGkg = num('qHbProtGkg');
   if(peso == null || altura == null || edat == null || pal == null || objPct == null || protGkg == null){
-    tobToast('Falten dades per calcular', 'red'); return;
+    tobToast('Faltan datos para calcular', 'red'); return;
   }
   const bmr = sexe === 'M'
     ? 10*peso + 6.25*altura - 5*edat - 161
@@ -6849,7 +6849,7 @@ function tobQuestSave(showToast){
     hint.textContent = '✓ guardat ' + new Date().toLocaleTimeString('ca-ES');
     setTimeout(() => { if(hint.textContent.startsWith('✓')) hint.textContent = ''; }, 3000);
   }
-  if(showToast) tobToast('✓ Cuestionari guardat', 'green');
+  if(showToast) tobToast('✓ Cuestionario guardado', 'green');
   // Refrescar el badge del botón en toolbar (visible cuando vacío)
   if(typeof tobUpdateCuestionarioBadge === 'function') tobUpdateCuestionarioBadge();
 }
@@ -6861,7 +6861,7 @@ function tobQuestReset(){
   delete cli.cuestionario;
   tobSave();
   tobQuestLoad();
-  tobToast('Cuestionari esborrat', '');
+  tobToast('Cuestionario borrado', '');
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -6881,7 +6881,7 @@ function tobExportClienteExcel(cliId){
     return;
   }
   const cli = tobDB.clientes.find(c => c.id === cliId);
-  if(!cli){ tobToast('Client no trobat', 'red'); return; }
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
 
   const wb = XLSX.utils.book_new();
 
@@ -7847,7 +7847,7 @@ const TOB_REC_MOMENTOS = [
   { id:'berenar',  label:'Berenar' },
   { id:'sopar',    label:'Sopar' }
 ];
-const TOB_REC_MOMENTO_LBL = { esmorzar:'Esmorzar', mig_mati:'Mig matí', dinar:'Dinar', berenar:'Berenar', sopar:'Sopar' };
+const TOB_REC_MOMENTO_LBL = { esmorzar:'Desayuno', mig_mati:'Media mañana', dinar:'Comida', berenar:'Merienda', sopar:'Cena' };
 
 // Rol del plato: ayuda a la IA a montar comidas con sentido (un principal
 // + acompañamiento + postre; nunca un acompañamiento solo).
@@ -9068,9 +9068,10 @@ const TOB_MENU_SECCION_ES = {
   'Cereals, pa i pasta':'Cereales, pan y pasta','Llegums i fruits secs':'Legumbres y frutos secos',
   'Olis, condiments i espècies':'Aceites, condimentos y especias','Altres':'Otros' };
 function tobMenuSeccionL(sec, L){ return L==='es' ? (TOB_MENU_SECCION_ES[sec]||sec) : sec; }
-// L opcional: 'es' traduce; sin L (o 'ca') mantiene el catalán original (resto de la app).
+// App en castellano por ahora: por defecto devuelve la etiqueta en castellano.
+// Solo L==='ca' fuerza el catalán original. (Las claves id/momento no cambian.)
 function tobMcMealLabel(id, L){
-  if(L==='es' && TOB_MEAL_ES[id]) return TOB_MEAL_ES[id];
+  if(L !== 'ca' && TOB_MEAL_ES[id]) return TOB_MEAL_ES[id];
   const d = TOB_MEALS.find(x => x.id === id);
   return d ? d.label : (TOB_REC_MOMENTO_LBL[id] || id);
 }
@@ -9618,9 +9619,9 @@ function tobMcAjusteAddExtra(){
   if(!nomRaw) return;
   const nom = String(nomRaw).trim().toLowerCase();
   const ing = (tobMenusDB.ingredientes||[]).find(i => (i.nombre||'').toLowerCase() === nom);
-  if(!ing){ tobToast('Ingredient no trobat al catàleg', 'red'); return; }
+  if(!ing){ tobToast('Ingrediente no encontrado en el catálogo', 'red'); return; }
   if(arr.some(e => e.ingId === ing.id) || (r.ingredientes||[]).some(it => it.ingId === ing.id)){
-    tobToast('Ja existeix en aquesta recepta', 'orange'); return;
+    tobToast('Ya existe en esta receta', 'orange'); return;
   }
   const gRaw = prompt(`Grams per ració de "${ing.nombre}":`, '30');
   const g = parseFloat(gRaw);
@@ -9792,7 +9793,7 @@ function _tobMcAjusteRenderPasosPreview(){
 }
 // ── Modal: revisar tots els passos del menú d'un cop ──────────
 function tobMcOpenReviewPasos(){
-  if(!tobMcState){ tobToast('Cap menú obert', 'red'); return; }
+  if(!tobMcState){ tobToast('No hay ningún menú abierto', 'red'); return; }
   tobMcReviewRender();
   document.getElementById('tobMcReviewPasosBg').classList.add('on');
 }
@@ -10713,7 +10714,7 @@ function tobMcClearSemana(){
 
 // ── Àpats del menú: elegir qué comidas tiene (incl. 2ª mig matí/berenar)
 function tobMcOpenMealsModal(){
-  if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
   const apatsCuest = (cli && cli.cuestionario && cli.cuestionario.tags && cli.cuestionario.tags.apats) || [];
   const cur = new Set(tobMcState.comidasIds || []);
@@ -10747,7 +10748,7 @@ function tobMcOpenMealsModal(){
 }
 // ── Notes/recomanacions del menú (apareixen al PDF) ────────────
 function tobMcOpenNotasModal(){
-  if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
   document.getElementById('tobMcNotasText').value =
     tobMcState.notas != null ? tobMcState.notas : TOB_MENU_NOTAS_DEFAULT;
   document.getElementById('tobMcNotasModalBg').classList.add('on');
@@ -10764,7 +10765,7 @@ function tobMcApplyMeals(){
   const checked = TOB_MEALS
     .filter(d => { const el = document.getElementById('tobMcMeal_'+d.id); return el && el.checked; })
     .map(d => d.id);
-  if(!checked.length){ tobToast('Selecciona almenys un àpat', 'red'); return; }
+  if(!checked.length){ tobToast('Selecciona al menos una comida', 'red'); return; }
   tobMcState.comidasIds = checked;
   // Asegurar arrays en data para todos los àpats y semanas
   for(let s = 0; s < tobMcState.semanas; s++){
@@ -10912,9 +10913,9 @@ function tobValidateMenuForCli(menu, cli){
 }
 // Botó manual des de la consola: tobMcValidate() → log + toast
 function tobMcValidate(){
-  if(!tobMcState){ tobToast('Cap menú obert', 'red'); return; }
+  if(!tobMcState){ tobToast('No hay ningún menú abierto', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
-  if(!cli){ tobToast('Client no trobat', 'red'); return; }
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
   const snapshot = { data: tobMcState.data, ajustes: tobMcState.ajustes };
   const v = tobValidateMenuForCli(snapshot, cli);
   if(v.ok){ tobToast('✓ Cap conflicte detectat amb el perfil del client', 'green'); return; }
@@ -11166,8 +11167,8 @@ function tobSeccionAlimento(nombre){
 async function tobMenuPdf(cliId, menuId){
   const cli = tobDB.clientes.find(c => c.id === cliId);
   const m = cli && (cli.menus || []).find(x => x.id === menuId);
-  if(!cli || !m){ tobToast('Menú no trobat', 'red'); return; }
-  tobToast('Generant PDF del menú…', '');
+  if(!cli || !m){ tobToast('Menú no encontrado', 'red'); return; }
+  tobToast('Generando PDF del menú…', '');
 
   const recsById = {};
   (tobMenusDB.recetas || []).forEach(r => { recsById[r.id] = r; });
@@ -11730,7 +11731,7 @@ async function tobMenuPdf(cliId, menuId){
     const fname = 'Menu_' + String(cli.nombre||'client').replace(/[^\w\-]+/g,'_') +
                   '_' + new Date().toISOString().slice(0,10) + '.pdf';
     pdf.save(fname);
-    tobToast('✓ PDF del menú descarregat', 'green');
+    tobToast('✓ PDF del menú descargado', 'green');
   } catch(e){
     console.warn('[menu pdf]', e);
     tobToast('✗ Error generant el PDF: ' + (e.message || e), 'red');
@@ -12818,11 +12819,11 @@ function _tobMcDiversificaFonts(cli){
 
 // ── Generación automática del menú con IA ──────────────────────
 async function tobMcGenerarIA(){
-  if(!tobMcState){ tobToast('Selecciona un client primer', 'red'); return; }
+  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
   const cfg = tobAiGetCfg();
   if(!cfg.key){ tobToast('Configura la IA primer (botó ⚙ IA)', 'red'); tobAiOpenConfig(); return; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
-  if(!cli){ tobToast('Client no trobat', 'red'); return; }
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
 
   // ── PRE-CHECK: detectar desincronització menú ↔ cuestionario ──
   // Si Sergio ha canviat els àpats del cuestionari o els objectius kcal/prot
@@ -12883,7 +12884,7 @@ async function tobMcGenerarIA(){
   }
 
   const comidas = (tobMcState.comidasIds || []).map(id => ({ id, label: tobMcMealLabel(id) }));
-  if(!comidas.length){ tobToast('El client no té àpats definits al qüestionari', 'red'); return; }
+  if(!comidas.length){ tobToast('El cliente no tiene comidas definidas en el cuestionario', 'red'); return; }
   if(!(tobMenusDB.recetas||[]).length){ tobToast('No hi ha receptes importades', 'red'); return; }
 
   if(tobMenuCountRecetas({ data: tobMcState.data }) > 0 &&
@@ -13122,7 +13123,7 @@ async function tobMcGenerarIA(){
       '· Si tot el menú quadra sense ajustar, omet "ajustes" o posa-l\'ho buit ({}).'
     ].join('\n');
 
-    tobToast('🤖 La IA està generant el menú… pot trigar uns segons', '');
+    tobToast('🤖 La IA está generando el menú… puede tardar unos segundos', '');
     const raw = await tobAiCallWithFallback([{ role:'system', content:sys }, { role:'user', content:user }]);
     const parsed = tobAiParseJson(raw);
 

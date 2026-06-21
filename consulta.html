@@ -396,10 +396,10 @@
         <!-- Tabla del menú (días × comidas) -->
         <div class="tob-card tob-mc-grid-card">
           <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span>📋 Menú · <span id="tobMcSemanaActiva">Setmana 1</span></span>
+            <span>📋 Menú · <span id="tobMcSemanaActiva">Semana 1</span></span>
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
               <div id="tobMcSemanasTabs" style="display:flex;gap:4px;"></div>
-              <button class="tob-action ghost btn-xs" onclick="tobMcOpenMealsModal()" title="Elegir qué àpats tiene el menú (añadir 2ª media mañana, 2ª merienda...)">⚙ Àpats</button>
+              <button class="tob-action ghost btn-xs" onclick="tobMcOpenMealsModal()" title="Elegir qué comidas tiene el menú (añadir 2ª media mañana, 2ª merienda...)">⚙ Comidas</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenNotasModal()" title="Editar las notas/recomendaciones que salen en el PDF del menú">📝 Notes</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenReviewPasos()" title="Revisar tots els passos del menú amb ingredients eliminats — toggle ✂️/✓ ràpid + accions massives">✂️ Revisar passos</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
@@ -513,7 +513,7 @@
 
     <div id="tobAiTestResult" style="font-size:.74rem;font-family:'DM Mono',monospace;margin-top:10px;"></div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-      <button class="tob-action ghost" onclick="document.getElementById('tobAiConfigBg').classList.remove('on')">Tancar</button>
+      <button class="tob-action ghost" onclick="document.getElementById('tobAiConfigBg').classList.remove('on')">Cerrar</button>
       <button class="tob-action ghost" onclick="tobAiTestConfig()">🔌 Provar</button>
       <button class="tob-action" onclick="tobAiSaveConfigFromModal()">💾 Guardar</button>
     </div>
@@ -529,7 +529,7 @@
     </p>
     <div id="tobMcMealsBody"></div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:space-between;align-items:center;flex-wrap:wrap;">
-      <button type="button" class="tob-action ghost btn-xs" id="tobMcMealsSyncBtn" title="Marcar només els àpats que el client té al qüestionari">↺ Sincronitzar amb qüestionari</button>
+      <button type="button" class="tob-action ghost btn-xs" id="tobMcMealsSyncBtn" title="Marcar solo las comidas que el cliente tiene en el cuestionario">↺ Sincronizar con cuestionario</button>
       <div style="display:flex;gap:8px;">
         <button class="tob-action ghost" onclick="document.getElementById('tobMcMealsModalBg').classList.remove('on')">Cancelar</button>
         <button class="tob-action" onclick="tobMcApplyMeals()">Aplicar</button>
@@ -572,14 +572,14 @@
 
     <!-- Bulk classify: textarea per a aplicar moltes classificacions de cop -->
     <details id="tobClasifBulkBlock" class="tob-clasif-bulk">
-      <summary>📋 Importar classificacions en bloc <span class="tob-quest-h-sub">(escriu o dicta una línia per recepta · aplica desenes de cop)</span></summary>
+      <summary>📋 Importar clasificaciones en bloque <span class="tob-quest-h-sub">(escribe o dicta una línea por receta · aplica decenas de golpe)</span></summary>
       <div style="padding:8px 0;">
         <div style="font-size:.74rem;color:var(--mute);line-height:1.55;margin-bottom:6px;">
-          Format flexible — una recepta per línia, separadors lliures (coma, dos punts, guió):<br>
+          Formato flexible — una receta por línea, separadores libres (coma, dos puntos, guion):<br>
           <code style="background:var(--card2,#1a1a1a);padding:2px 5px;border-radius:2px;font-size:.7rem;">Tortilla francesa : esmorzar, basic</code><br>
           <code style="background:var(--card2,#1a1a1a);padding:2px 5px;border-radius:2px;font-size:.7rem;">Pollastre rostit - dinar sopar principal</code><br>
           Paraules clau reconegudes: <b>esmorzar</b> · <b>mig matí</b>/migmati · <b>dinar</b> · <b>berenar</b> · <b>sopar</b> · <b>principal</b>(P) · <b>acompanyament</b>/acomp(A) · <b>postre</b>(D) · <b>basic</b>(B) · <b>fav</b>(orit) · <b>desc</b>(artar)<br>
-          Matching del nom: substring case-insensitive sense accents. Si una línia no matcheja cap recepta, surt al log.
+          Emparejado por nombre: substring sin mayúsculas/acentos. Si una línea no casa con ninguna receta, sale en el log.
         </div>
         <textarea class="tob-input" id="tobClasifBulkText" rows="10" placeholder="Tortilla francesa: esmorzar, basic&#10;Pollastre rostit - dinar, sopar, principal&#10;Crema de pastanaga: dinar sopar acompanyament" style="font-family:'DM Mono',monospace;font-size:.78rem;line-height:1.5;"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px;justify-content:flex-end;">
@@ -605,7 +605,7 @@
     <div id="tobMcSwapInfo" style="font-size:.78rem;color:var(--mute);margin-bottom:10px;font-family:'DM Mono',monospace;"></div>
     <div id="tobMcSwapList" style="max-height:58vh;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
-      <button class="tob-action ghost" onclick="document.getElementById('tobMcSwapBg').classList.remove('on')">Tancar</button>
+      <button class="tob-action ghost" onclick="document.getElementById('tobMcSwapBg').classList.remove('on')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -613,15 +613,15 @@
 <!-- ════════ MODAL AJUSTAR QUANTITATS ════════ -->
 <div class="tob-modal-bg" id="tobMcAjusteBg">
   <div class="tob-modal" style="max-width:600px;max-height:90vh;display:flex;flex-direction:column;">
-    <h3 style="margin:0 0 2px;">⚖ Personalitzar recepta per a aquest menú</h3>
+    <h3 style="margin:0 0 2px;">⚖ Personalizar receta para este menú</h3>
     <div id="tobMcAjusteNom" style="font-size:.92rem;font-weight:700;color:var(--acc);margin-bottom:8px;"></div>
     <p style="font-size:.74rem;color:var(--mute);margin-bottom:10px;line-height:1.5;">
-      Els canvis només afecten <b>aquest menú</b>, no la recepta del catàleg. Pots renombrar, escalar quantitats, eliminar ingredients o afegir-ne de nous. Quantitats per 1 ració.
+      Los cambios solo afectan a <b>este menú</b>, no a la receta del catálogo. Puedes renombrar, escalar cantidades, eliminar ingredientes o añadir nuevos. Cantidades por 1 ración.
     </p>
     <div style="overflow-y:auto;flex:1;">
       <!-- Nombre custom -->
       <label style="font-size:.74rem;color:var(--mute);">Nom per a aquest menú (opcional, deixa buit per fer servir el del catàleg)</label>
-      <input type="text" class="tob-input" id="tobMcAjusteNombre" placeholder="ex: Crema de carbassó amb alfàbrega" style="margin:4px 0 14px;">
+      <input type="text" class="tob-input" id="tobMcAjusteNombre" placeholder="ej: Crema de calabacín con albahaca" style="margin:4px 0 14px;">
 
       <!-- Factor global -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
@@ -638,7 +638,7 @@
       <!-- Ingredients extra -->
       <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;display:flex;justify-content:space-between;align-items:center;">
         <span>Ingredients afegits només per a aquest menú:</span>
-        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteAddExtra()">+ Afegir ingredient</button>
+        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteAddExtra()">+ Añadir ingrediente</button>
       </div>
       <div id="tobMcAjusteExtras" style="margin-bottom:12px;"></div>
       <datalist id="tobMcAjusteIngList"></datalist>
@@ -655,7 +655,7 @@
         <summary style="font-size:.72rem;color:var(--mute);cursor:pointer;font-family:'DM Mono',monospace;">↺ Reescriure tots els passos manualment (avançat)</summary>
         <div style="font-size:.66rem;color:var(--mute);margin:8px 0 6px;line-height:1.4;">Si l'omples, el teu text reemplaça TOTS els passos del catàleg (un pas per línia). Si el deixes buit, s'usen els passos amb les marques de dalt.</div>
         <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;margin-bottom:6px;" onclick="tobMcAjusteLoadPasosBase()" title="Carregar els passos del catàleg al textarea">↻ Carregar base al textarea</button>
-        <textarea class="tob-input" id="tobMcAjusteInstrucciones" rows="4" placeholder="1. Trocea el carbassó en daus mitjans.&#10;2. Sofregeix amb oli...&#10;..." style="margin:4px 0 0;font-family:inherit;resize:vertical;width:100%;"></textarea>
+        <textarea class="tob-input" id="tobMcAjusteInstrucciones" rows="4" placeholder="1. Trocea el calabacín en dados medianos.&#10;2. Sofríe con aceite...&#10;..." style="margin:4px 0 0;font-family:inherit;resize:vertical;width:100%;"></textarea>
       </details>
 
       <!-- Motiu -->
@@ -687,7 +687,7 @@
     </div>
     <div id="tobMcReviewBody" style="overflow-y:auto;flex:1;padding-right:4px;"></div>
     <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-      <button class="tob-action" onclick="document.getElementById('tobMcReviewPasosBg').classList.remove('on');tobMcRenderGrid();">Tancar</button>
+      <button class="tob-action" onclick="document.getElementById('tobMcReviewPasosBg').classList.remove('on');tobMcRenderGrid();">Cerrar</button>
     </div>
   </div>
 </div>
@@ -723,7 +723,7 @@
         <label class="tob-lbl">Ración por defecto (g)</label>
         <input class="tob-input" type="number" step="1" id="tobIngPlatoGramos" placeholder="150" style="max-width:160px;">
         <div style="margin-top:10px;">
-          <label class="tob-lbl">La IA pot usar-lo a aquests àpats <span class="tob-quest-h-sub">(marca on encaixa — vide = NO el fa servir)</span></label>
+          <label class="tob-lbl">La IA puede usarlo en estas comidas <span class="tob-quest-h-sub">(marca dónde encaja — vacío = NO lo usa)</span></label>
           <div class="tob-quest-chips" id="tobIngMomentosChips"></div>
         </div>
       </div>
@@ -783,7 +783,7 @@
 
   <!-- ── PESTAÑAS de la ficha ── -->
   <div class="tob-ficha-tabs" id="tobFichaTabs">
-    <button class="tob-ficha-tab active" data-fichatab="cuestionario" onclick="tobFichaShowTab('cuestionario')">📋 Qüestionari</button>
+    <button class="tob-ficha-tab active" data-fichatab="cuestionario" onclick="tobFichaShowTab('cuestionario')">📋 Cuestionario</button>
     <button class="tob-ficha-tab" data-fichatab="mediciones" onclick="tobFichaShowTab('mediciones')">📏 Mediciones</button>
     <button class="tob-ficha-tab" data-fichatab="entrenos" onclick="tobFichaShowTab('entrenos')">💪 Entrenos</button>
     <button class="tob-ficha-tab" data-fichatab="menus" onclick="tobFichaShowTab('menus')">🍽 Menús</button>
@@ -832,7 +832,7 @@
   <div class="tob-card tob-ficha-tab-content" id="tobFichaMenusBlock" data-fichatab="menus">
     <div class="tob-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <span>🍽 Menús del client</span>
-      <button class="tob-action ghost btn-xs" onclick="tobFichaNuevoMenu()" title="Crear un menú nou per a aquest client al creador de menús">+ Nou menú</button>
+      <button class="tob-action ghost btn-xs" onclick="tobFichaNuevoMenu()" title="Crear un menú nuevo para este cliente en el creador de menús">+ Nuevo menú</button>
     </div>
     <div id="tobFichaMenusList"></div>
   </div>
@@ -993,7 +993,7 @@
             <div class="tob-quest-chip-block">
               <label class="tob-lbl">Aliments ✓ (preferits)</label>
               <div class="tob-quest-chips" id="qChipsAlimOk"></div>
-              <input class="tob-input" id="qAlimOkNew" placeholder="el que sí menja amb gust..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alimOk',event)">
+              <input class="tob-input" id="qAlimOkNew" placeholder="lo que sí come con gusto..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alimOk',event)">
             </div>
           </div>
           <div class="tob-quest-chip-block">
@@ -1015,7 +1015,7 @@
 
         <!-- RECORDATORI NUTRICIONAL -->
         <div class="tob-quest-section">
-          <h4 class="tob-quest-h">🍽 Recordatori nutricional <span class="tob-quest-h-sub">(què menja habitualment a cada àpat — surten els àpats marcats a dalt)</span></h4>
+          <h4 class="tob-quest-h">🍽 Recordatorio nutricional <span class="tob-quest-h-sub">(qué come habitualmente en cada comida — salen las comidas marcadas arriba)</span></h4>
           <div id="qRecordatoriFields"></div>
         </div>
 
@@ -1036,7 +1036,7 @@
           </div>
           <div><label class="tob-lbl">Horaris habituals de menjar</label><input class="tob-input tob-quest-f" id="qHoraris" placeholder="ex: esmorzar 7h · dinar 14h · sopar 21h"></div>
           <div><label class="tob-lbl">Exercici físic i esport</label><textarea class="tob-input tob-quest-f" id="qEsport" rows="2" placeholder="ex: gimnàs 3 cops setmana + caminar diari"></textarea></div>
-          <div><label class="tob-lbl">Motivació i adherència</label><textarea class="tob-input tob-quest-f" id="qMotivacio" rows="2" placeholder="ex: motivat però amb caps de setmana fluixos"></textarea></div>
+          <div><label class="tob-lbl">Motivación y adherencia</label><textarea class="tob-input tob-quest-f" id="qMotivacio" rows="2" placeholder="ej: motivado pero con fines de semana flojos"></textarea></div>
         </div>
 
         <!-- PERFIL ALIMENTARI -->
@@ -1068,7 +1068,7 @@
         <!-- COMENTARIO GENERAL -->
         <div class="tob-quest-section">
           <h4 class="tob-quest-h">💬 Comentari general</h4>
-          <textarea class="tob-input tob-quest-f" id="qComentari" rows="4" placeholder="Qualsevol nota lliure que vulguis tenir present sobre aquest client..."></textarea>
+          <textarea class="tob-input tob-quest-f" id="qComentari" rows="4" placeholder="Cualquier nota libre que quieras tener presente sobre este cliente..."></textarea>
         </div>
 
         <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:12px;border-top:1px solid var(--line);margin-top:14px;align-items:center;">
