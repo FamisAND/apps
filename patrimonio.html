@@ -231,14 +231,14 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
           <div class="form-sec-hdr">📅 Período</div>
           <div class="grid2">
             <div><div class="fld-lbl">Mes</div>
-              <select class="inp" id="fMonth">
+              <select class="inp" id="fMonth" onchange="if(!editKey)renderFormFields()">
                 <option value="0">Enero</option><option value="1">Febrero</option><option value="2">Marzo</option>
                 <option value="3">Abril</option><option value="4">Mayo</option><option value="5">Junio</option>
                 <option value="6">Julio</option><option value="7">Agosto</option><option value="8">Septiembre</option>
                 <option value="9">Octubre</option><option value="10">Noviembre</option><option value="11">Diciembre</option>
               </select>
             </div>
-            <div><div class="fld-lbl">Año</div><input class="inp" type="number" id="fYear" placeholder="2025"></div>
+            <div><div class="fld-lbl">Año</div><input class="inp" type="number" id="fYear" placeholder="2025" onchange="if(!editKey)renderFormFields()"></div>
           </div>
         </div>
         <div id="formFields"></div>
@@ -2328,6 +2328,16 @@ function renderDashGastosCharts(){
   const min = totales.length ? Math.min(...totales) : 0;
   const sortedT = [...totales].sort((a,b)=>a-b);
   const mediana = totales.length ? (totales.length%2 ? sortedT[Math.floor(totales.length/2)] : (sortedT[totales.length/2-1]+sortedT[totales.length/2])/2) : 0;
+  const avgLast = (n) => {
+    const vals = mesesConGasto.slice(-n).map(d=>d.totalMiParte);
+    return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : 0;
+  };
+  const media3 = avgLast(3), media6 = avgLast(6), media12 = avgLast(12);
+  const lastMonthData = mesesConGasto[mesesConGasto.length-1] || null;
+  const prevForTrend = mesesConGasto.slice(Math.max(0, mesesConGasto.length-7), Math.max(0, mesesConGasto.length-1));
+  const prevTrendAvg = prevForTrend.length ? prevForTrend.reduce((s,d)=>s+d.totalMiParte,0)/prevForTrend.length : 0;
+  const trendDiff = lastMonthData && prevTrendAvg ? lastMonthData.totalMiParte - prevTrendAvg : null;
+  const trendPct = trendDiff!=null && prevTrendAvg ? trendDiff/prevTrendAvg*100 : null;
 
   // Mejor categoría (la que más gasto acumulado tiene en el rango)
   const acumPorCat = {};
@@ -2343,6 +2353,28 @@ function renderDashGastosCharts(){
     .sort((a,b)=>b[1]-a[1])[0];
   const topCatName = topCat ? (catMap[topCat[0]]?.name||'—') : '—';
   const topCatPct = topCat && totalAcum>0 ? (topCat[1]/totalAcum*100) : 0;
+
+  const alerts = [];
+  if(lastMonthData && trendPct!=null && Math.abs(trendPct)>=20){
+    alerts.push({color:trendPct>0?'#f87171':'#4ade80',text:`${monthKeyToLabel(lastMonthData.mk)} está ${trendPct>0?'por encima':'por debajo'} de la media 6m: ${trendPct>0?'+':''}${trendPct.toFixed(0)}% (${fmt(trendDiff)})`});
+  }
+  const sinCat = lastMonthData?.porCat?.sin_cat || 0;
+  if(sinCat>0 && lastMonthData.totalMiParte>0){
+    const pct = sinCat/lastMonthData.totalMiParte*100;
+    if(pct>=10) alerts.push({color:'#fbbf24',text:`Sin categorizar alto: ${fmt(sinCat)} (${pct.toFixed(0)}% del mes)`});
+  }
+  if(lastMonthData && prevForTrend.length){
+    const prevCatAvg = {};
+    prevForTrend.forEach(d=>Object.entries(d.porCat||{}).forEach(([cid,v])=>{prevCatAvg[cid]=(prevCatAvg[cid]||0)+v;}));
+    Object.keys(prevCatAvg).forEach(cid=>prevCatAvg[cid]/=prevForTrend.length);
+    const catSpike = Object.entries(lastMonthData.porCat||{})
+      .filter(([cid,v])=>cid!=='sin_cat' && prevCatAvg[cid]>0 && v>prevCatAvg[cid]*1.35 && v-prevCatAvg[cid]>=50)
+      .sort((a,b)=>(b[1]-(prevCatAvg[b[0]]||0))-(a[1]-(prevCatAvg[a[0]]||0)))[0];
+    if(catSpike){
+      const c = catMap[catSpike[0]] || {name:'Categoria'};
+      alerts.push({color:c.color||'#f87171',text:`${c.name} sube vs media 6m: ${fmt(catSpike[1])} frente a ${fmt(prevCatAvg[catSpike[0]])}`});
+    }
+  }
 
   kpiEl.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:8px">
@@ -2364,7 +2396,19 @@ function renderDashGastosCharts(){
         <div style="font-size:.86rem;font-weight:600;margin-top:2px;color:${topCat?(catMap[topCat[0]]?.color||'#94a3b8'):'#475569'}">${topCatName}</div>
         <div style="font-size:.62rem;color:#475569">${topCat?fmt(topCat[1])+' · '+topCatPct.toFixed(0)+'%':''}</div>
       </div>
+      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
+        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Media 3 / 6 / 12m</div>
+        <div style="font-size:.82rem;color:#94a3b8;margin-top:4px"><span style="color:#f87171">${fmt(media3)}</span> · ${fmt(media6)} · ${fmt(media12)}</div>
+      </div>
+      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
+        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Último vs media 6m</div>
+        <div style="font-size:1rem;font-weight:700;margin-top:2px;color:${trendDiff==null?'#64748b':trendDiff>0?'#f87171':'#4ade80'}">${trendDiff==null?'—':(trendDiff>0?'+':'')+fmt(trendDiff)}</div>
+        <div style="font-size:.62rem;color:#475569">${trendPct==null?'sin comparación':(trendPct>0?'+':'')+trendPct.toFixed(1)+'%'}</div>
+      </div>
     </div>
+    ${alerts.length?`<div style="display:grid;gap:6px;margin:8px 0 10px">
+      ${alerts.slice(0,3).map(a=>`<div style="border:1px solid ${a.color}55;background:${a.color}14;color:${a.color};border-radius:8px;padding:7px 10px;font-size:.72rem">${esc(a.text)}</div>`).join('')}
+    </div>`:''}
   `;
 
   // Limpiar gráficas previas
@@ -2741,11 +2785,42 @@ function renderAssetYearComparison(){
 }
 function resetForm(){editKey=null;document.getElementById("formTitle").textContent="Nuevo registro mensual";const now=new Date();document.getElementById("fMonth").value=now.getMonth();document.getElementById("fYear").value=now.getFullYear();}
 
+function getPreviousEntryForForm(p){
+  const month=parseInt(document.getElementById("fMonth")?.value);
+  const year=parseInt(document.getElementById("fYear")?.value);
+  if(!p||isNaN(month)||isNaN(year))return null;
+  return [...(p.entries||[])]
+    .filter(e=>(e.year<year)||(e.year===year&&e.month<month))
+    .sort((a,b)=>a.year!==b.year?b.year-a.year:b.month-a.month)[0]||null;
+}
+function copyPreviousMonthValues(){
+  const p=prof();if(!p)return;
+  const prev=getPreviousEntryForForm(p);
+  if(!prev){toast("No hay mes anterior para copiar","red");return;}
+  activeAssetsOf(p).forEach(a=>{
+    const el=document.getElementById("fi_"+a.id);
+    if(el)el.value=(prev.assets||{})[a.id]||"";
+  });
+  const deuda=document.getElementById("fi_deuda");
+  if(deuda)deuda.value=prev.deuda||"";
+  const caja=document.getElementById("fi_emp_caja");
+  if(caja)caja.value=prev.emp_caja||"";
+  updateFP();
+  toast("Valores copiados de "+MO[prev.month]+" "+prev.year,"green");
+}
+function clearMonthlyValues(){
+  document.querySelectorAll('#formFields input[id^="fi_"], #formFields input[id^="fc_"]').forEach(el=>{el.value='';});
+  const note=document.getElementById("fi_note");if(note)note.value="";
+  updateFP();
+  toast("Formulario limpio","green");
+}
+
 function renderFormFields(prefill){
   const p=prof();if(!p)return;
   const container=document.getElementById("formFields");container.innerHTML="";
   const ents=p.entries||[];
   const currentActiveIds=activeAssetsOf(p).map(a=>a.id);
+  const prevEntryForForm=!prefill?getPreviousEntryForForm(p):null;
   let baseActiveIds;
   if(prefill){
     // Al editar: activar todos los activos que tienen datos guardados, más los que estaban en _activeAssets
@@ -2772,6 +2847,22 @@ function renderFormFields(prefill){
     }).map(a=>a.id) : []
   );
 
+  if(!prefill){
+    const helper=document.createElement("div");
+    helper.className="form-sec";
+    helper.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <div class="form-sec-hdr" style="margin:0;border:0;padding:0">Entrada rápida</div>
+        <div style="font-size:.72rem;color:#475569;margin-top:3px">${prevEntryForForm?`Valores base copiados de ${MO[prevEntryForForm.month]} ${prevEntryForForm.year}. Ajusta solo lo que haya cambiado.`:'Primer mes del perfil: introduce los valores de cierre.'}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn-ghost" style="font-size:.72rem;padding:6px 10px" onclick="copyPreviousMonthValues()">Copiar mes anterior</button>
+        <button type="button" class="btn-ghost" style="font-size:.72rem;padding:6px 10px" onclick="clearMonthlyValues()">Limpiar</button>
+      </div>
+    </div>`;
+    container.appendChild(helper);
+  }
+
   p.sections.forEach(sec=>{
     // Filtrem arxivades — excepte si estem editant i tenen valor en aquesta entrada
     const visibleAssets=sec.assets.filter(a=>!a.archived||archivedWithDataIds.has(a.id));
@@ -2781,7 +2872,7 @@ function renderFormFields(prefill){
     const grid=document.createElement("div");grid.className="grid2";
     visibleAssets.forEach(a=>{
       const isIncome=ingIds.has(a.id);
-      const oldVal=prefill?(prefill.assets||{})[a.id]||"":"";
+      const oldVal=prefill?(prefill.assets||{})[a.id]||"":(prevEntryForForm?(prevEntryForForm.assets||{})[a.id]||"":"");
       // Find previous entry value for reference
       const prevEntry=ents.length&&!prefill?ents[ents.length-1]:null;
       const prevVal=prevEntry?(prevEntry.assets||{})[a.id]||"":"";
@@ -2835,7 +2926,7 @@ function renderFormFields(prefill){
         <div><div class="fld-lbl" style="color:#f472b6">Beneficio empresa ESTE mes (€)</div><input class="inp" type="number" id="fi_emp_ben_mes" placeholder="0" oninput="updateFP()" value="${prefill?.emp_ben_mes??''}">
           <div style="font-size:.65rem;color:#334155;margin-top:3px">Solo el beneficio de este mes. Se suman automáticamente los 11 anteriores.</div>
         </div>
-        <div><div class="fld-lbl" style="color:#e879f9">Caja Neta (mi parte)</div><input class="inp" type="number" id="fi_emp_caja" placeholder="0" oninput="updateFP()" value="${prefill?.emp_caja||''}"></div>
+        <div><div class="fld-lbl" style="color:#e879f9">Caja Neta (mi parte)</div><input class="inp" type="number" id="fi_emp_caja" placeholder="0" oninput="updateFP()" value="${prefill?.emp_caja??prevEntryForForm?.emp_caja??''}"></div>
       </div>
       <div id="ben12Detail" style="margin-top:8px;padding:7px 11px;background:#080d1a;border:1px solid #111827;border-radius:8px;font-size:.72rem;color:#475569;display:none"></div>
       <div class="formula-box hidden" id="formulaBox"></div>
@@ -2856,7 +2947,7 @@ function renderFormFields(prefill){
     <div class="grid2">
       <div>
         <div class="fld-lbl" style="color:#f87171">Deuda (€) <span style="color:#334155;font-weight:400;font-size:.68rem">se resta del patrimonio</span></div>
-        <input class="inp" type="number" id="fi_deuda" placeholder="0" value="${prefill?.deuda||''}">
+        <input class="inp" type="number" id="fi_deuda" placeholder="0" value="${prefill?.deuda??prevEntryForForm?.deuda??''}">
       </div>
       <div style="display:flex;align-items:flex-end;padding-bottom:2px">
         <div style="font-size:.75rem;color:#334155;line-height:1.5">Hipoteca, préstamos,<br>tarjetas pendientes…</div>
