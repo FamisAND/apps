@@ -9291,6 +9291,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═════════════════════════════════════════════════════════════════
 
 let tobMcState = null;
+let _tobMcDndRenderTimer = null;
 const TOB_MC_DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
 const TOB_MC_DIA_FULL = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
 let _tobMcMomentoFiltro = '';  // filtro activo del panel lateral
@@ -10692,22 +10693,41 @@ function tobMcRenderGrid(){
 
   // Habilitar drag&drop en cada celda
   if(typeof Sortable !== 'undefined'){
+    const syncCellState = (cellEl) => {
+      if(!cellEl || !cellEl.classList || !cellEl.classList.contains('tob-mc-cell')) return;
+      const day = +cellEl.dataset.day;
+      const meal = cellEl.dataset.meal;
+      if(!Number.isInteger(day) || !meal) return;
+      if(!tobMcState.data[sem]) tobMcState.data[sem] = {};
+      if(!tobMcState.data[sem][day]) tobMcState.data[sem][day] = {};
+      tobMcState.data[sem][day][meal] = Array.from(cellEl.children)
+        .filter(el => el.classList && el.classList.contains('tob-mc-cell-item'))
+        .map(el => el.dataset.rec)
+        .filter(Boolean);
+    };
+    const scheduleDndRender = () => {
+      clearTimeout(_tobMcDndRenderTimer);
+      _tobMcDndRenderTimer = setTimeout(() => {
+        _tobMcDndRenderTimer = null;
+        tobMcRenderGrid();
+        tobMcUpdateAllTotals();
+      }, 0);
+    };
     grid.querySelectorAll('.tob-mc-cell').forEach(cell => {
       new Sortable(cell, {
         group: { name: 'menu', pull: true, put: true },
         animation: 150,
         ghostClass: 'tob-sortable-ghost',
         filter: '.tob-mc-cell-sum',   // el resumen de la celda no se arrastra
+        draggable: '.tob-mc-cell-item',
+        onEnd: (ev) => {
+          syncCellState(ev.from);
+          syncCellState(ev.to);
+          scheduleDndRender();
+        },
         onAdd: (ev) => {
-          const recId = ev.item.dataset.rec;
-          const day = +cell.dataset.day;
-          const meal = cell.dataset.meal;
-          if(!tobMcState.data[sem][day][meal].includes(recId)){
-            tobMcState.data[sem][day][meal].push(recId);
-          }
-          // Si vino del panel lateral, ev.item se reposiciona en la celda — re-render para limpiar
-          tobMcRenderGrid();
-          tobMcUpdateAllTotals();
+          syncCellState(ev.to);
+          scheduleDndRender();
         }
       });
     });
