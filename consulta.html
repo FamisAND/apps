@@ -282,10 +282,10 @@
       <div style="margin-top:14px;">
         <label class="tob-lbl">Ingredientes <span class="tob-quest-h-sub">(cantidad en gramos · macros calculados al vuelo)</span></label>
         <div id="tobRecIngredientes" class="tob-rec-ing-list"></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-          <select class="tob-select" id="tobRecIngPicker" style="flex:1;min-width:220px;">
-            <option value="">— Selecciona un ingrediente —</option>
-          </select>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;position:relative;">
+          <input class="tob-input" id="tobRecIngPicker" list="tobRecIngList" placeholder="Busca ingrediente..." style="flex:1;min-width:220px;" oninput="tobRecSuggestIngGrams()">
+          <datalist id="tobRecIngList"></datalist>
+          <div id="tobRecIngSuggest" class="tob-rec-ing-suggest" style="display:none;"></div>
           <input class="tob-input" type="number" min="0" step="1" id="tobRecIngGramos" placeholder="gramos" style="width:110px;">
           <button type="button" class="tob-action btn-xs" onclick="tobRecAddIngrediente()">+ Añadir</button>
         </div>
@@ -705,6 +705,10 @@
       <div><label class="tob-lbl">Proteína (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngProt" placeholder="0"></div>
       <div><label class="tob-lbl">Grasa (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngGras" placeholder="0"></div>
       <div><label class="tob-lbl">Fibra (g)</label><input class="tob-input" type="number" step="0.1" id="tobIngFibra" placeholder="0"></div>
+    </div>
+    <div>
+      <label class="tob-lbl">Cantidad habitual (g) <span class="tob-quest-h-sub">(se propone al añadirlo a recetas o menús)</span></label>
+      <input class="tob-input" type="number" step="1" id="tobIngDefaultGramos" placeholder="ej: 80 para una lata de atún" style="max-width:220px;">
     </div>
     <div>
       <label class="tob-lbl">Etiquetas <span class="tob-quest-h-sub">(coma o Enter — ej: lácteo, vegetal, proteína, fruta)</span></label>

@@ -2100,6 +2100,10 @@ function tobCloseSettingsMenu(){
 document.addEventListener('click', e => {
   const wrap = e.target.closest('.tob-settings-wrap');
   if(!wrap) tobCloseSettingsMenu();
+  const ingSuggest = document.getElementById('tobRecIngSuggest');
+  if(ingSuggest && !e.target.closest('#tobRecIngPicker') && !e.target.closest('#tobRecIngSuggest')){
+    ingSuggest.style.display = 'none';
+  }
 });
 function tobRunPasteImport(){
   const txt = document.getElementById('tobPasteImportTxt').value.trim();
@@ -7587,6 +7591,7 @@ function tobIngOpenModal(){
   document.getElementById('tobIngProt').value   = '';
   document.getElementById('tobIngGras').value   = '';
   document.getElementById('tobIngFibra').value  = '';
+  document.getElementById('tobIngDefaultGramos').value = '';
   document.getElementById('tobIngTags').value   = '';
   document.getElementById('tobIngAlergenos').value = '';
   document.getElementById('tobIngComoPlato').checked = false;
@@ -7617,6 +7622,7 @@ function tobIngEdit(id){
   document.getElementById('tobIngProt').value   = ing.proteina != null ? ing.proteina : '';
   document.getElementById('tobIngGras').value   = ing.grasa != null ? ing.grasa : '';
   document.getElementById('tobIngFibra').value  = ing.fibra != null ? ing.fibra : '';
+  document.getElementById('tobIngDefaultGramos').value = ing.defaultGramos != null ? ing.defaultGramos : '';
   document.getElementById('tobIngTags').value   = (ing.tags || []).join(', ');
   document.getElementById('tobIngAlergenos').value = (ing.alergenos || []).join(', ');
   document.getElementById('tobIngComoPlato').checked = !!ing.comoPlato;
@@ -7685,6 +7691,7 @@ function tobIngSave(){
     proteina: parseN(document.getElementById('tobIngProt').value),
     grasa:    parseN(document.getElementById('tobIngGras').value),
     fibra:    parseN(document.getElementById('tobIngFibra').value),
+    defaultGramos: parseN(document.getElementById('tobIngDefaultGramos').value),
     tags:     parseList(document.getElementById('tobIngTags').value),
     alergenos:parseList(document.getElementById('tobIngAlergenos').value),
     comoPlato,
@@ -8238,14 +8245,129 @@ function tobRecGetRol(){
 }
 
 // ── Ingredientes: picker + lista + recálculo ────────────────────
+function tobIngNormName(s){
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tobIngFindByText(raw){
+  const q = tobIngNormName(raw);
+  if(!q) return null;
+  const list = tobMenusDB.ingredientes || [];
+  let best = null;
+  let bestScore = 0;
+  for(const ing of list){
+    if(String(ing.id) === String(raw)) return ing;
+    const n = tobIngNormName(ing.nombre);
+    if(!n) continue;
+    if(n === q) return ing;
+    let score = 0;
+    if(n.includes(q) || q.includes(n)) score = Math.max(score, Math.min(q.length, n.length) / Math.max(q.length, n.length));
+    const qWords = q.split(' ').filter(w => w.length > 2);
+    const nWords = new Set(n.split(' ').filter(Boolean));
+    const hits = qWords.filter(w => nWords.has(w) || [...nWords].some(nw => nw.includes(w) || w.includes(nw))).length;
+    if(qWords.length) score = Math.max(score, hits / qWords.length);
+    if(score > bestScore){ bestScore = score; best = ing; }
+  }
+  return bestScore >= 0.55 ? best : null;
+}
+
+function tobIngSearchMatches(raw, limit){
+  const q = tobIngNormName(raw);
+  const list = tobMenusDB.ingredientes || [];
+  const scored = [];
+  for(const ing of list){
+    const n = tobIngNormName(ing.nombre);
+    if(!n) continue;
+    let score = 0;
+    if(!q) score = 0.2;
+    else if(n === q) score = 1.2;
+    else if(n.startsWith(q)) score = 1;
+    else if(n.includes(q) || q.includes(n)) score = Math.max(score, 0.75);
+    if(q){
+      const qWords = q.split(' ').filter(w => w.length > 1);
+      const nWords = n.split(' ').filter(Boolean);
+      const hits = qWords.filter(w => nWords.some(nw => nw.includes(w) || w.includes(nw))).length;
+      if(qWords.length) score = Math.max(score, hits / qWords.length * 0.8);
+    }
+    if(score > 0) scored.push({ ing, score });
+  }
+  return scored
+    .sort((a,b) => b.score - a.score || (a.ing.nombre||'').localeCompare(b.ing.nombre||'','es',{sensitivity:'base'}))
+    .slice(0, limit || 8)
+    .map(x => x.ing);
+}
+
+function tobIngDefaultGrams(ing){
+  if(!ing) return 30;
+  const explicit = parseFloat(ing.defaultGramos);
+  if(Number.isFinite(explicit) && explicit > 0) return Math.round(explicit);
+  const plato = parseFloat(ing.platoGramos);
+  if(Number.isFinite(plato) && plato > 0) return Math.round(plato);
+  const n = tobIngNormName((ing.nombre || '') + ' ' + (ing.tags || []).join(' '));
+  if(/\b(lata|conserva|atun|bonito|caballa|sardina)\b/.test(n)) return 80;
+  if(/\b(huevo|ou)\b/.test(n)) return 60;
+  if(/\b(yogur|iogurt|skyr)\b/.test(n)) return 125;
+  if(/\b(fruta|fruita|manzana|poma|platano|banana|pera|naranja|taronja|kiwi)\b/.test(n)) return 150;
+  if(/\b(aceite|oli)\b/.test(n)) return 10;
+  if(/\b(frutos secos|fruita seca|nueces|almendra|avellana)\b/.test(n)) return 30;
+  if(/\b(pan|pa|tostada|torrada|biscote|tortita)\b/.test(n)) return 30;
+  if(/\b(queso|formatge|mozzarella|feta)\b/.test(n)) return 40;
+  if(/\b(leche|llet|bebida vegetal)\b/.test(n)) return 200;
+  if(/\b(arroz|arros|pasta|quinoa|cuscus|avena|civada)\b/.test(n)) return 80;
+  if(/\b(patata|boniato|moniato)\b/.test(n)) return 200;
+  if(/\b(pollo|pollastre|pavo|gall dindi|ternera|vedella|cerdo|porc|salmon|salmó|merluza|lluc|pescado|peix)\b/.test(n)) return 150;
+  if(/\b(verdura|verdures|ensalada|amanida|lechuga|enciam|tomate|tomaquet|calabacin|carbasso)\b/.test(n)) return 150;
+  return 30;
+}
+
+function tobRecSuggestIngGrams(){
+  const picker = document.getElementById('tobRecIngPicker');
+  const gramsEl = document.getElementById('tobRecIngGramos');
+  if(!picker || !gramsEl) return;
+  const ing = tobIngFindByText(picker.value);
+  if(ing && !gramsEl.value) gramsEl.placeholder = String(tobIngDefaultGrams(ing));
+  tobRecRenderIngSuggestions(picker.value);
+}
+
+function tobRecRenderIngSuggestions(raw){
+  const box = document.getElementById('tobRecIngSuggest');
+  if(!box) return;
+  const q = tobIngNormName(raw);
+  if(q.length < 1){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  const matches = tobIngSearchMatches(raw, 8);
+  if(!matches.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = matches.map(ing => {
+    const g = tobIngDefaultGrams(ing);
+    return `<div class="opt" onclick="tobRecPickIngSuggestion('${tobEsc(ing.id)}')">
+      <span>${tobEsc(ing.nombre)}</span><span class="g">${g} g</span>
+    </div>`;
+  }).join('');
+  box.style.display = 'block';
+}
+
+function tobRecPickIngSuggestion(id){
+  const ing = (tobMenusDB.ingredientes || []).find(i => i.id === id);
+  if(!ing) return;
+  const picker = document.getElementById('tobRecIngPicker');
+  const gramsEl = document.getElementById('tobRecIngGramos');
+  if(picker) picker.value = ing.nombre || '';
+  if(gramsEl && !gramsEl.value) gramsEl.value = tobIngDefaultGrams(ing);
+  const box = document.getElementById('tobRecIngSuggest');
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+}
+
 function tobRecFillIngPicker(){
-  const sel = document.getElementById('tobRecIngPicker');
-  if(!sel) return;
+  const dl = document.getElementById('tobRecIngList');
+  if(!dl) return;
   const list = (tobMenusDB.ingredientes||[])
     .slice()
     .sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
-  sel.innerHTML = '<option value="">— Selecciona un ingrediente —</option>' +
-    list.map(i => `<option value="${i.id}">${tobEsc(i.nombre)}</option>`).join('');
+  dl.innerHTML = list.map(i => `<option value="${tobEsc(i.nombre)}"></option>`).join('');
 }
 
 // Render de la lista editable de ingredientes del modal.
@@ -8278,15 +8400,20 @@ function tobRecRenderIngredientesEdit(items){
 let _tobRecModalIngredientes = [];
 
 function tobRecAddIngrediente(){
-  const ingId = document.getElementById('tobRecIngPicker').value;
-  const gramos = parseFloat(document.getElementById('tobRecIngGramos').value);
-  if(!ingId){ tobToast('Elige un ingrediente', 'red'); return; }
+  const raw = document.getElementById('tobRecIngPicker').value;
+  const ing = tobIngFindByText(raw);
+  const gramosRaw = document.getElementById('tobRecIngGramos').value;
+  const gramos = gramosRaw === '' ? tobIngDefaultGrams(ing) : parseFloat(gramosRaw);
+  if(!ing){ tobToast('Ingrediente no encontrado en el catálogo', 'red'); return; }
   if(!Number.isFinite(gramos) || gramos <= 0){ tobToast('Pon los gramos', 'red'); return; }
-  _tobRecModalIngredientes.push({ ingId, gramos });
+  _tobRecModalIngredientes.push({ ingId: ing.id, gramos });
   tobRecRenderIngredientesEdit(_tobRecModalIngredientes);
   tobRecRecalc();
   document.getElementById('tobRecIngPicker').value = '';
   document.getElementById('tobRecIngGramos').value = '';
+  document.getElementById('tobRecIngGramos').placeholder = 'gramos';
+  const suggest = document.getElementById('tobRecIngSuggest');
+  if(suggest){ suggest.style.display = 'none'; suggest.innerHTML = ''; }
 }
 
 function tobRecRemoveIngrediente(ix){
@@ -9617,13 +9744,12 @@ function tobMcAjusteAddExtra(){
   // Diàleg lleuger amb 2 prompts (nom + grams). Nom es busca al catàleg.
   const nomRaw = prompt('Nom de l\'ingredient (ha d\'existir al catàleg):');
   if(!nomRaw) return;
-  const nom = String(nomRaw).trim().toLowerCase();
-  const ing = (tobMenusDB.ingredientes||[]).find(i => (i.nombre||'').toLowerCase() === nom);
+  const ing = tobIngFindByText(nomRaw);
   if(!ing){ tobToast('Ingrediente no encontrado en el catálogo', 'red'); return; }
   if(arr.some(e => e.ingId === ing.id) || (r.ingredientes||[]).some(it => it.ingId === ing.id)){
     tobToast('Ya existe en esta receta', 'orange'); return;
   }
-  const gRaw = prompt(`Grams per ració de "${ing.nombre}":`, '30');
+  const gRaw = prompt(`Grams per ració de "${ing.nombre}":`, String(tobIngDefaultGrams(ing)));
   const g = parseFloat(gRaw);
   if(!isFinite(g) || g <= 0){ tobToast('Grams invàlids', 'red'); return; }
   arr.push({ ingId: ing.id, gramos: Math.round(g * rac) });
