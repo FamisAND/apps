@@ -2745,15 +2745,21 @@ function renderFormFields(prefill){
   const p=prof();if(!p)return;
   const container=document.getElementById("formFields");container.innerHTML="";
   const ents=p.entries||[];
+  const currentActiveIds=activeAssetsOf(p).map(a=>a.id);
   let baseActiveIds;
   if(prefill){
     // Al editar: activar todos los activos que tienen datos guardados, más los que estaban en _activeAssets
     // INCLOEM les arxivades si tenen dades guardades en aquesta entrada (per no perdre dades en editar).
-    const savedIds=prefill._activeAssets||activeAssetsOf(p).map(a=>a.id);
+    const savedIds=prefill._activeAssets||currentActiveIds;
     const withData=profileAssets(p).filter(a=>{const v=(prefill.assets||{})[a.id];return v!==""&&v!=null;}).map(a=>a.id);
     baseActiveIds=[...new Set([...savedIds,...withData])];
-  } else if(ents.length)baseActiveIds=ents[ents.length-1]._activeAssets||activeAssetsOf(p).map(a=>a.id);
-  else baseActiveIds=activeAssetsOf(p).map(a=>a.id);
+  } else if(ents.length){
+    const prev=ents[ents.length-1];
+    const prevActiveIds=prev._activeAssets||currentActiveIds;
+    const prevAssets=prev.assets||{};
+    const newCurrentIds=currentActiveIds.filter(id=>!Object.prototype.hasOwnProperty.call(prevAssets,id));
+    baseActiveIds=[...new Set([...prevActiveIds.filter(id=>currentActiveIds.includes(id)),...newCurrentIds])];
+  } else baseActiveIds=currentActiveIds;
   const activeState={};profileAssets(p).forEach(a=>activeState[a.id]=baseActiveIds.includes(a.id));
 
   const ingSec=ingSection(p);
@@ -2863,7 +2869,8 @@ function renderFormFields(prefill){
   aportWrap.innerHTML=`<div class="form-sec-hdr" style="border-bottom:1px dashed #334155;opacity:.6;">💰 Aportaciones / Retiros (opcional)</div>`;
   const aportGrid=document.createElement("div");aportGrid.className="grid2";
   p.sections.forEach(sec=>{
-    sec.assets.forEach(a=>{
+    const visibleAssets=sec.assets.filter(a=>!a.archived||archivedWithDataIds.has(a.id));
+    visibleAssets.forEach(a=>{
       const oldVal=prefill?(prefill.contributions||{})[a.id]||"":"";
       const cell=document.createElement("div");
       cell.innerHTML=`<div class="fld-lbl" style="color:${a.color};font-size:.7rem;opacity:.7">${esc(a.name)}</div>
@@ -2974,7 +2981,8 @@ function submitForm(){
       if(el){const v=el.value.trim();if(v===""||v==="0"){activeState[a.id]=false;}}
     });
   }
-  const activeIds=Object.keys(activeState).filter(id=>activeState[id]);
+  const allowedIds=new Set(editKey?profileAssets(p).map(a=>a.id):activeAssetsOf(p).map(a=>a.id));
+  const activeIds=Object.keys(activeState).filter(id=>activeState[id]&&allowedIds.has(id));
   const entry={key,month,year,assets:{},_activeAssets:activeIds};
   profileAssets(p).forEach(a=>{
     const el=document.getElementById("fi_"+a.id);if(el)entry.assets[a.id]=el.value;
