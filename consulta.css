@@ -412,6 +412,14 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 }
 .tob-rec-dislike:hover{border-color:#dc6a6a;opacity:1;transform:scale(1.12);}
 .tob-rec-dislike.on{border-color:#dc6a6a;background:rgba(60,14,14,.92);filter:none;opacity:1;}
+.tob-rec-pdf{
+  position:absolute;top:6px;left:6px;z-index:2;height:30px;
+  background:rgba(13,12,10,.8);border:1px solid var(--border);
+  color:var(--acc2);font-family:'DM Mono',monospace;font-size:.62rem;
+  letter-spacing:.08em;border-radius:999px;padding:0 9px;cursor:pointer;
+  transition:all .13s ease;
+}
+.tob-rec-pdf:hover{border-color:var(--acc);color:var(--acc);transform:scale(1.06);}
 .tob-rec-card.descartada{opacity:.5;}
 .tob-rec-card.descartada:hover{opacity:.85;}
 /* Estrella del modal de receta */

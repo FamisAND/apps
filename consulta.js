@@ -8005,6 +8005,7 @@ function tobRecRender(){
       <div class="foto placeholder" data-foto-rec="${r.id}">${fotoTxt}</div>
       <button class="tob-rec-dislike${r.descartada?' on':''}" title="${r.descartada?'Recuperar — la IA podrá usarla':'Descartar — la IA no la usará'}" onclick="event.stopPropagation();tobRecToggleDislike('${r.id}')">🚫</button>
       <button class="tob-rec-fav${r.favorito?' on':''}" title="${r.favorito?'Quitar de favoritos':'Guardar en favoritos'}" onclick="event.stopPropagation();tobRecToggleFav('${r.id}')">${r.favorito?'★':'☆'}</button>
+      <button class="tob-rec-pdf" title="Descargar receta en PDF" onclick="event.stopPropagation();tobRecDownloadPdf('${r.id}')">PDF</button>
       <div class="body">
         <div class="nombre">${tobEsc(r.nombre || '—')}</div>
         <div class="macros">
@@ -8035,6 +8036,117 @@ function tobRecRender(){
 function tobRecSetPage(p){ tobRecPage = p; tobRecRender(); }
 
 // ── Favoritos ────────────────────────────────────────────────────
+async function tobRecDownloadPdf(id){
+  const r = (tobMenusDB.recetas || []).find(x => x.id === id);
+  if(!r){ tobToast('Receta no encontrada', 'red'); return; }
+  if(typeof html2canvas === 'undefined' || !window.jspdf){
+    tobToast('No se han cargado las librerías del PDF. Recarga la página.', 'red');
+    return;
+  }
+  tobToast('Generando PDF de la receta...', '');
+  const esc = tobEsc;
+  const m = tobRecMacros(r);
+  const rac = Math.max(1, r.raciones || 1);
+  let foto = '';
+  try { foto = await tobRecFotoResolve(r); } catch(e){ foto = ''; }
+  const ingHtml = (r.ingredientes || []).map(it => {
+    const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
+    const nom = ing ? ing.nombre : (it._nombreFallback || 'Ingrediente');
+    const g = (+it.gramos || 0) / rac;
+    return `<li><span>${esc(nom)}</span><b>${g ? Math.round(g) + ' g' : ''}</b></li>`;
+  }).join('');
+  const pasosRaw = Array.isArray(r.instrucciones)
+    ? r.instrucciones
+    : String(r.instrucciones || '').split('\n').filter(Boolean);
+  const pasosHtml = pasosRaw.map(p => `<li>${esc(String(p).replace(/^[-·•*\d.\s]+/,''))}</li>`).join('');
+  const tagsHtml = [...(r.momentos || []).map(mm => TOB_REC_MOMENTO_LBL[mm] || mm), ...(r.tags || [])]
+    .filter(Boolean).slice(0, 8).map(t => `<span>${esc(t)}</span>`).join('');
+  const alergenos = (r.alergenos || []).filter(Boolean).join(' · ');
+  const hoy = new Date().toLocaleDateString('es-ES', { day:'numeric', month:'long', year:'numeric' });
+  const css = `
+    .rp-doc *{box-sizing:border-box;margin:0;padding:0;}
+    .rp-doc{width:794px;min-height:1123px;background:#fff;color:#111;font-family:'Segoe UI',Helvetica,Arial,sans-serif;padding:54px 58px;}
+    .rp-brand{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#f5a721;font-weight:800;margin-bottom:18px;}
+    .rp-head{display:grid;grid-template-columns:1.15fr 260px;gap:28px;align-items:start;border-bottom:5px solid #f5a721;padding-bottom:26px;margin-bottom:24px;}
+    .rp-title{font-size:34px;line-height:1.05;font-weight:900;color:#111;margin-bottom:12px;}
+    .rp-meta{font-size:12px;color:#666;line-height:1.5;}
+    .rp-photo{width:260px;height:190px;background:#f2f2f2 center/cover;border-radius:8px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;font-size:58px;}
+    .rp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0 24px;}
+    .rp-kpi{background:#f7f7f7;border-top:4px solid #f5a721;padding:12px 10px;}
+    .rp-kpi .lbl{font-size:9px;color:#888;letter-spacing:.08em;text-transform:uppercase;font-weight:800;}
+    .rp-kpi .val{font-size:22px;font-weight:900;margin-top:4px;color:#111;}
+    .rp-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+    .rp-tags span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;background:#f2f2f2;color:#555;padding:4px 8px;border-radius:999px;}
+    .rp-section{margin-top:24px;}
+    .rp-section h2{font-size:14px;text-transform:uppercase;letter-spacing:.1em;color:#111;background:#f5a721;padding:8px 12px;margin-bottom:12px;}
+    .rp-ing{list-style:none;columns:2;column-gap:26px;}
+    .rp-ing li{break-inside:avoid;display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dotted #ddd;font-size:13px;}
+    .rp-ing b{color:#f5a721;white-space:nowrap;}
+    .rp-steps{margin-left:22px;font-size:13px;line-height:1.7;color:#333;}
+    .rp-steps li{margin-bottom:6px;padding-left:4px;}
+    .rp-note{font-size:12px;line-height:1.6;color:#444;background:#f7f7f7;border-left:5px solid #f5a721;padding:12px 14px;}
+    .rp-foot{margin-top:34px;text-align:right;font-size:10px;color:#888;font-style:italic;}
+  `;
+  const html = `<div class="rp-doc">
+    <div class="rp-brand">FULL TRAINING · Receta</div>
+    <div class="rp-head">
+      <div>
+        <div class="rp-title">${esc(r.nombre || 'Receta')}</div>
+        <div class="rp-meta">
+          ${r.tiempoTotal ? `Tiempo total: <b>${esc(r.tiempoTotal)}</b><br>` : ''}
+          ${r.tiempoElaboracion ? `Elaboración: <b>${esc(r.tiempoElaboracion)}</b><br>` : ''}
+          Raciones: <b>${rac}</b>${r.autor ? `<br>Autor: <b>${esc(r.autor)}</b>` : ''}
+        </div>
+        ${tagsHtml ? `<div class="rp-tags">${tagsHtml}</div>` : ''}
+      </div>
+      ${foto ? `<div class="rp-photo" style="background-image:url('${esc(foto)}')"></div>` : `<div class="rp-photo">${tobFoodEmoji(r.nombre || '')}</div>`}
+    </div>
+    <div class="rp-kpis">
+      <div class="rp-kpi"><div class="lbl">Kcal/ración</div><div class="val">${Math.round(m.kcal / rac)}</div></div>
+      <div class="rp-kpi"><div class="lbl">Proteína</div><div class="val">${Math.round(m.proteina / rac)} g</div></div>
+      <div class="rp-kpi"><div class="lbl">Hidratos</div><div class="val">${Math.round(m.hc / rac)} g</div></div>
+      <div class="rp-kpi"><div class="lbl">Grasa</div><div class="val">${Math.round(m.grasa / rac)} g</div></div>
+    </div>
+    ${alergenos ? `<div class="rp-note"><b>Alérgenos:</b> ${esc(alergenos)}</div>` : ''}
+    ${ingHtml ? `<div class="rp-section"><h2>Ingredientes por ración</h2><ul class="rp-ing">${ingHtml}</ul></div>` : ''}
+    ${pasosHtml ? `<div class="rp-section"><h2>Preparación</h2><ol class="rp-steps">${pasosHtml}</ol></div>` : ''}
+    ${r.comentarios ? `<div class="rp-section"><h2>Comentarios</h2><div class="rp-note">${esc(r.comentarios).replace(/\n/g,'<br>')}</div></div>` : ''}
+    <div class="rp-foot">FULL TRAINING · ${esc(hoy)}</div>
+  </div>`;
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;';
+  holder.innerHTML = '<style>' + css + '</style>' + html;
+  document.body.appendChild(holder);
+  try {
+    await new Promise(res => setTimeout(res, 120));
+    const docEl = holder.querySelector('.rp-doc');
+    const canvas = await html2canvas(docEl, { scale:2, backgroundColor:'#ffffff', useCORS:true, logging:false });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210, pageH = 297;
+    const imgW = pageW;
+    const imgH = canvas.height * imgW / canvas.width;
+    const img = canvas.toDataURL('image/jpeg', 0.92);
+    pdf.addImage(img, 'JPEG', 0, 0, imgW, imgH);
+    let remaining = imgH - pageH;
+    let y = -pageH;
+    while(remaining > 1){
+      pdf.addPage();
+      pdf.addImage(img, 'JPEG', 0, y, imgW, imgH);
+      remaining -= pageH;
+      y -= pageH;
+    }
+    const fname = 'Receta_' + String(r.nombre || 'receta').replace(/[^\w\-]+/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+    pdf.save(fname);
+    tobToast('✓ PDF de receta descargado', 'green');
+  } catch(e){
+    console.warn('[receta pdf]', e);
+    tobToast('Error generando PDF: ' + (e.message || e), 'red');
+  } finally {
+    document.body.removeChild(holder);
+  }
+}
+
 function tobRecToggleFav(id){
   const r = (tobMenusDB.recetas||[]).find(x => x.id === id);
   if(!r) return;
