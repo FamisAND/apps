@@ -138,7 +138,7 @@
   <div class="last-update" id="lastUpd">▸ SYNC OK ◂</div>
 
   <div class="menu-grid" id="menuGrid">
-    <a class="menu-card" href="patrimonio.html">
+    <a class="menu-card" href="patrimonio.html" data-dashboard-id="patrimonio">
       <div class="corner-tr"></div><div class="corner-bl"></div>
       <div class="card-num">// 01</div>
       <div class="card-emoji">💰</div>
@@ -148,7 +148,7 @@
       <div class="kpi-bar"><div class="kpi-bar-fill" id="kpiPatBar"></div></div>
       <div class="card-update" id="kpiPatUpd">— ◂</div>
     </a>
-    <a class="menu-card" href="options.html">
+    <a class="menu-card" href="options.html" data-dashboard-id="options">
       <div class="corner-tr"></div><div class="corner-bl"></div>
       <div class="card-num">// 02</div>
       <div class="card-emoji">📈</div>
@@ -158,7 +158,7 @@
       <div class="kpi-badges" id="kpiOptBadges"></div>
       <div class="card-update" id="kpiOptUpd">— ◂</div>
     </a>
-    <a class="menu-card" href="full_training.html">
+    <a class="menu-card" href="full_training.html" data-dashboard-id="full_training">
       <div class="corner-tr"></div><div class="corner-bl"></div>
       <div class="card-num">// 03</div>
       <div class="card-emoji">💪</div>
@@ -167,7 +167,7 @@
       <div class="kpi-sub">clientes activos</div>
       <div class="card-update" id="kpiFtUpd">— ◂</div>
     </a>
-    <a class="menu-card" href="facturas.html">
+    <a class="menu-card" href="facturas.html" data-dashboard-id="facturas">
       <div class="corner-tr"></div><div class="corner-bl"></div>
       <div class="card-num">// 04</div>
       <div class="card-emoji">📄</div>
@@ -176,7 +176,7 @@
       <div class="kpi-sub">facturas totales</div>
       <div class="card-update" id="kpiFacUpd">— ◂</div>
     </a>
-    <a class="menu-card" href="consulta.html">
+    <a class="menu-card" href="consulta.html" data-dashboard-id="consulta">
       <div class="corner-tr"></div><div class="corner-bl"></div>
       <div class="card-num">// 05</div>
       <div class="card-emoji">🏋</div>
@@ -223,6 +223,15 @@
         <span style="color:#0e7490">→</span>
       </button>
 
+      <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); openDashboardVisibilityModal();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
+        <span style="margin-right:10px">HTML</span>
+        <div style="flex:1">
+          <div style="font-weight:600;color:#67e8f9">HTMLs visibles</div>
+          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Ocultar tarjetas del menu principal</div>
+        </div>
+        <span style="color:#0e7490">-&gt;</span>
+      </button>
+
       <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); reSync();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
         <span style="margin-right:10px">↻</span>
         <div style="flex:1">
@@ -237,6 +246,18 @@
 </div>
 
 <!-- ════════ APIs (sub-pestañas: IA y Financieras) ════════ -->
+<div id="dashboardVisibilityModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:95;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
+  <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:520px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
+    <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;">// HTMLS VISIBLES</div>
+    <div id="dashboardVisibilityList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+    <div id="dashboardVisibilityMsg" style="display:none;margin-top:10px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+      <button class="btn btn-ghost" style="flex:1;min-width:140px;" onclick="closeDashboardVisibilityModal()">Cancelar</button>
+      <button class="btn" style="flex:1;min-width:140px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveDashboardVisibility()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div id="apisModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:90;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
   <div style="background:#020617;border:1px solid #22d3ee;padding:0;width:100%;max-width:760px;box-shadow:0 0 40px rgba(34,211,238,.3);">
     <!-- Header (sin tabs IA — ya no hay IA) -->

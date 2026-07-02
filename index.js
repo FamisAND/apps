@@ -97,7 +97,9 @@ async function syncNow(btn){
     if(result && result.lastUpdate){
       localStorage.setItem('gh_last_remote_lastUpdate', result.lastUpdate);
     }
+    await loadDashboardVisibilityConfig({ force: true });
     computeKpis();
+    applyDashboardVisibility();
     if(lastUpd) lastUpd.textContent = '▸ SYNC OK · ' + new Date().toLocaleTimeString('es-ES') + ' ◂';
     if(btn){ btn.textContent = '✓ Sincronizado'; setTimeout(restoreBtn, 1600); }
   } catch(e){
@@ -107,10 +109,12 @@ async function syncNow(btn){
   }
 }
 
-function goMenu(){
+async function goMenu(){
   document.getElementById('menuRepo').textContent     = GitHubSync.getRepo() || '—';
   document.getElementById('menuRepoFull').textContent = GitHubSync.getRepo() || '—';
+  await loadDashboardVisibilityConfig();
   computeKpis();
+  applyDashboardVisibility();
   show('menuScreen');
 }
 
@@ -543,6 +547,120 @@ function _requireAuth(callback){
 }
 
 // ── Modal de APIs (solo Financieras ya, IA fuera) ──
+const DASHBOARD_VIS_SECTION = '__dashboard_config';
+const DASHBOARD_VIS_LOCAL_KEY = 'dashboard_visibility_v1';
+const DASHBOARD_APPS = [
+  { id:'patrimonio', label:'Patrimonio', file:'patrimonio.html' },
+  { id:'options', label:'Opciones', file:'options.html' },
+  { id:'full_training', label:'Full Training', file:'full_training.html' },
+  { id:'facturas', label:'Facturas', file:'facturas.html' },
+  { id:'consulta', label:'Consulta', file:'consulta.html' }
+];
+let _dashboardVisibilityLoaded = false;
+let _dashboardVisibility = { hidden: [] };
+
+function getDashboardVisibility(){
+  try {
+    const cfg = JSON.parse(localStorage.getItem(DASHBOARD_VIS_LOCAL_KEY) || '{}');
+    return { hidden: Array.isArray(cfg.hidden) ? cfg.hidden : [] };
+  } catch(e){
+    return { hidden: [] };
+  }
+}
+
+function setDashboardVisibility(cfg){
+  _dashboardVisibility = { hidden: Array.isArray(cfg && cfg.hidden) ? cfg.hidden : [] };
+  localStorage.setItem(DASHBOARD_VIS_LOCAL_KEY, JSON.stringify(_dashboardVisibility));
+}
+
+async function loadDashboardVisibilityConfig(opts){
+  if(_dashboardVisibilityLoaded && !(opts && opts.force)) return _dashboardVisibility;
+  _dashboardVisibility = getDashboardVisibility();
+  if(window.GitHubSync && GitHubSync.isLoggedIn() && GitHubSync.fetchSection){
+    try {
+      const remote = await GitHubSync.fetchSection(DASHBOARD_VIS_SECTION);
+      if(remote && remote.dashboardVisibility){
+        setDashboardVisibility(remote.dashboardVisibility);
+      }
+    } catch(e){
+      console.warn('[dashboard visibility] fetch failed:', e.message);
+    }
+  }
+  _dashboardVisibilityLoaded = true;
+  return _dashboardVisibility;
+}
+
+function applyDashboardVisibility(){
+  const hidden = new Set((getDashboardVisibility().hidden || []).map(String));
+  document.querySelectorAll('.menu-card[data-dashboard-id]').forEach(card => {
+    const id = card.getAttribute('data-dashboard-id');
+    card.style.display = hidden.has(id) ? 'none' : '';
+  });
+}
+
+async function openDashboardVisibilityModal(){
+  await loadDashboardVisibilityConfig();
+  const cfg = getDashboardVisibility();
+  const hidden = new Set(cfg.hidden || []);
+  const list = document.getElementById('dashboardVisibilityList');
+  const msg = document.getElementById('dashboardVisibilityMsg');
+  if(msg) msg.style.display = 'none';
+  if(list){
+    list.innerHTML = DASHBOARD_APPS.map(app => `
+      <label style="display:flex;align-items:center;gap:10px;background:#020617;border:1px solid #06b6d433;padding:12px 14px;color:#67e8f9;cursor:pointer;">
+        <input type="checkbox" data-dashboard-toggle="${app.id}" ${hidden.has(app.id) ? '' : 'checked'} style="accent-color:#22d3ee;">
+        <div style="flex:1">
+          <div style="font-weight:600;letter-spacing:.05em">${app.label}</div>
+          <div style="font-size:.68rem;color:#0e7490;font-family:'DM Mono',monospace">${app.file}</div>
+        </div>
+      </label>
+    `).join('');
+  }
+  document.getElementById('menuScreen').classList.remove('active');
+  document.getElementById('dashboardVisibilityModal').style.display = 'flex';
+}
+
+function closeDashboardVisibilityModal(){
+  document.getElementById('dashboardVisibilityModal').style.display = 'none';
+  if(_configAuthenticated) _showConfigMenuPanel();
+  else document.getElementById('menuScreen').classList.add('active');
+}
+
+async function saveDashboardVisibility(){
+  const checked = new Set(Array.from(document.querySelectorAll('[data-dashboard-toggle]'))
+    .filter(el => el.checked)
+    .map(el => el.getAttribute('data-dashboard-toggle')));
+  const hidden = DASHBOARD_APPS.map(app => app.id).filter(id => !checked.has(id));
+  const cfg = { hidden };
+  const msg = document.getElementById('dashboardVisibilityMsg');
+  const showMsg = (text, color) => {
+    if(!msg) return;
+    msg.style.display = 'block';
+    msg.style.color = color;
+    msg.textContent = text;
+  };
+  if(hidden.length >= DASHBOARD_APPS.length){
+    showMsg('Deja al menos un HTML visible.', '#fca5a5');
+    return;
+  }
+  setDashboardVisibility(cfg);
+  applyDashboardVisibility();
+  showMsg('Guardando...', '#67e8f9');
+  try {
+    if(window.GitHubSync && GitHubSync.isLoggedIn() && GitHubSync.updateSection){
+      await GitHubSync.updateSection(DASHBOARD_VIS_SECTION, current => ({
+        ...(current || {}),
+        dashboardVisibility: cfg,
+        updated_at: new Date().toISOString()
+      }));
+    }
+    showMsg('Guardado', '#22d3ee');
+    setTimeout(closeDashboardVisibilityModal, 500);
+  } catch(e){
+    showMsg('Guardado local. Sync fallido: ' + e.message, '#fbbf24');
+  }
+}
+
 function openApisModal(){
   closeConfigMenu();
   document.getElementById('apisModal').style.display = 'flex';
