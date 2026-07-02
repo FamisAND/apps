@@ -565,7 +565,7 @@ function calcEmp(entry,p){
 }
 
 // Calcula beneficio últimos 12 meses sumando el mes actual + los 11 meses anteriores
-function calcBen12Rolling(entry,p){
+function calcBen12RollingLegacy(entry,p){
   const ents=p.entries||[];
   const idx=ents.findIndex(e=>e.key===entry.key);
   if(idx<0)return parseFloat(entry.emp_ben_mes)||0;
@@ -580,6 +580,29 @@ function calcBen12Rolling(entry,p){
       // usar emp_ben12 como total y no sumar más meses anteriores
       return parseFloat(e.emp_ben12)||0;
     }
+  }
+  return sum;
+}
+
+function calcBen12Rolling(entry,p){
+  const ents=p.entries||[];
+  const entryKey=entry.key||`${entry.year}-${String((entry.month||0)+1).padStart(2,'0')}`;
+  const [yy,mm]=entryKey.split('-').map(Number);
+  if(!yy||!mm)return parseFloat(entry.emp_ben_mes)||0;
+  const byKey={};
+  ents.forEach(e=>{
+    const k=e.key||`${e.year}-${String((e.month||0)+1).padStart(2,'0')}`;
+    byKey[k]=e;
+  });
+  let sum=0;
+  for(let i=0;i<12;i++){
+    const d=new Date(yy,mm-1-i,1);
+    const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const e=byKey[k];
+    if(!e)continue;
+    const v=parseFloat(e.emp_ben_mes);
+    if(!isNaN(v))sum+=v;
+    else if(e.emp_ben12!=null&&e.emp_ben12!=="")return parseFloat(e.emp_ben12)||0;
   }
   return sum;
 }
@@ -1294,9 +1317,50 @@ function gastosInit(p){
   }
 }
 
+function gastoCuentaFactor(archivo){
+  return (archivo?.tipo || 'individual') === 'comun' ? 0.5 : 1;
+}
+function isTransferCategoria(catId){
+  return catId === 'cat_transfer';
+}
+function isInternalTransferConcept(text){
+  const s = String(text||'').toLowerCase();
+  return /\b(traspaso|entre\s+cuentas|entre\s+comptes|compte\s+propi|cuenta\s+propia)\b/.test(s);
+}
+function calcGastosMes(md){
+  const archivoMap = {};
+  (md?.archivos||[]).forEach(a=>{archivoMap[a.id]=a;});
+  let totalGastos=0,totalMiParte=0,totalComun=0,totalTransfer=0;
+  const porCategoria={},porCuenta={};
+  (md?.transacciones||[]).forEach(t=>{
+    if(t.excluido || t.importe>=0)return;
+    const arch=archivoMap[t.archivoId]||{};
+    const abs=Math.abs(t.importe);
+    const miParte=abs*gastoCuentaFactor(arch);
+    if(isTransferCategoria(t.categoriaId)){
+      totalTransfer+=miParte;
+      return;
+    }
+    totalGastos+=abs;
+    totalMiParte+=miParte;
+    if((arch.tipo||'individual')==='comun')totalComun+=abs;
+    const catId=t.categoriaId||'sin_cat';
+    porCategoria[catId]=(porCategoria[catId]||0)+miParte;
+    const accountKey=arch.id||t.archivoId||'sin_cuenta';
+    if(!porCuenta[accountKey]){
+      porCuenta[accountKey]={label:arch.etiqueta||arch.nombre||'Sin cuenta',tipo:arch.tipo||'individual',total:0,miParte:0,count:0};
+    }
+    porCuenta[accountKey].total+=abs;
+    porCuenta[accountKey].miParte+=miParte;
+    porCuenta[accountKey].count+=1;
+  });
+  return{archivoMap,totalGastos,totalMiParte,totalComun,totalTransfer,porCategoria,porCuenta};
+}
+
 let _pendingFiles = [];      // archivos en cola para configurar
 let _currentFileToCfg = null; // archivo siendo configurado
 let _gastosTableSort = 'fecha-desc';
+let _gastosAccountFilter = '';
 
 function renderGastos(){
   const p = prof(); if(!p) return;
@@ -1345,29 +1409,9 @@ function renderGastos(){
   // Cálculos
   const txs = monthData.transacciones;
   const archivos = monthData.archivos || [];
-  const archivoMap = {};
-  archivos.forEach(a => { archivoMap[a.id] = a; });
+  const {archivoMap,totalGastos,totalMiParte,totalComun,totalTransfer,porCategoria,porCuenta} = calcGastosMes(monthData);
 
   // Filtro: solo gastos (importe<0) y no excluidos
-  let totalGastos = 0, totalMiParte = 0, totalComun = 0;
-  const porCategoria = {}; // ahora en MI PARTE (consistente con el resto)
-  txs.forEach(t => {
-    if(t.excluido) return;
-    if(t.importe >= 0) return; // solo gastos
-    const arch = archivoMap[t.archivoId];
-    const tipo = arch?.tipo || 'individual';
-    const importeAbs = Math.abs(t.importe);
-    totalGastos += importeAbs;
-    const miParteTx = (tipo === 'comun') ? importeAbs / 2 : importeAbs;
-    if(tipo === 'comun'){
-      totalComun += importeAbs;
-    }
-    totalMiParte += miParteTx;
-    const catId = t.categoriaId || 'sin_cat';
-    if(!porCategoria[catId]) porCategoria[catId] = 0;
-    porCategoria[catId] += miParteTx;
-  });
-
   // Render summary
   const cats = p.gastos.categorias;
   const catMap = {}; cats.forEach(c => { catMap[c.id] = c; });
@@ -1379,6 +1423,18 @@ function renderGastos(){
       const c = catMap[catId] || catMap['sin_cat'];
       return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:${c.color}22;border:1px solid ${c.color}55;border-radius:12px;font-size:.7rem;color:${c.color};margin:2px">${esc(c.name)}: ${fmt(total)}</span>`;
     }).join('');
+  const accountCards = Object.values(porCuenta).sort((a,b)=>b.miParte-a.miParte).map(a=>{
+    const tipoLabel=a.tipo==='comun'?'Comun (mi 50%)':'Individual';
+    const tipoColor=a.tipo==='comun'?'#a78bfa':'#60a5fa';
+    return `<div style="background:#080d1a;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px;min-width:160px;flex:1">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px">
+        <div style="font-size:.76rem;color:#e2e8f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.label)}</div>
+        <span style="font-size:.6rem;color:${tipoColor};white-space:nowrap">${tipoLabel}</span>
+      </div>
+      <div style="font-size:1rem;color:#f87171;font-weight:700">-${fmt(a.miParte)}</div>
+      <div style="font-size:.62rem;color:#475569">${a.count} mov · bruto ${fmt(a.total)}</div>
+    </div>`;
+  }).join('');
 
   summaryEl.innerHTML = `
     <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:12px;padding:14px 18px;margin-bottom:14px">
@@ -1396,9 +1452,17 @@ function renderGastos(){
             <div style="font-size:.6rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Cuenta común</div>
             <div style="font-size:.95rem;font-weight:600;color:#a78bfa">-${fmt(totalComun)}</div>
           </div>`:''}
+          ${totalTransfer>0?`<div>
+            <div style="font-size:.6rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Transferencias internas</div>
+            <div style="font-size:.95rem;font-weight:600;color:#64748b">${fmt(totalTransfer)}</div>
+          </div>`:''}
         </div>
       </div>
       <div style="margin-top:8px">${catBadges||'<span style="color:#475569;font-size:.72rem">Sin categorías asignadas</span>'}</div>
+      ${accountCards?`<div style="margin-top:12px;border-top:1px solid #1e2d3d;padding-top:12px">
+        <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Por cuenta</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${accountCards}</div>
+      </div>`:''}
     </div>
   `;
 
@@ -1430,9 +1494,11 @@ function renderGastos(){
 function renderGastosTable(p, monthKey, txs, archivoMap){
   const tableEl = document.getElementById('gastosTableWrap');
   const cats = p.gastos.categorias;
+  const accountOptions = Object.values(archivoMap).map(a=>`<option value="${a.id}"${_gastosAccountFilter===a.id?' selected':''}>${esc(a.etiqueta||a.nombre)}</option>`).join('');
+  if(_gastosAccountFilter && !archivoMap[_gastosAccountFilter]) _gastosAccountFilter = '';
 
   // Sort
-  let sorted = [...txs];
+  let sorted = _gastosAccountFilter ? txs.filter(t=>t.archivoId===_gastosAccountFilter) : [...txs];
   const [field, dir] = _gastosTableSort.split('-');
   const mult = dir==='asc' ? 1 : -1;
   sorted.sort((a,b)=>{
@@ -1464,8 +1530,13 @@ function renderGastosTable(p, monthKey, txs, archivoMap){
 
   tableEl.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Movimientos (${txs.length})</div>
+      <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Movimientos (${sorted.length}${_gastosAccountFilter?` de ${txs.length}`:''})</div>
       <div style="display:flex;align-items:center;gap:8px;font-size:.72rem">
+        <span style="color:#475569">Cuenta:</span>
+        <select onchange="_gastosAccountFilter=this.value;renderGastos()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-size:.72rem;padding:3px 8px;border-radius:5px;outline:none;cursor:pointer">
+          <option value="">Todas</option>
+          ${accountOptions}
+        </select>
         <span style="color:#475569">Ordenar:</span>
         <select onchange="_gastosTableSort=this.value;renderGastos()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-size:.72rem;padding:3px 8px;border-radius:5px;outline:none;cursor:pointer">
           <option value="fecha-desc"${_gastosTableSort==='fecha-desc'?' selected':''}>Fecha (recientes primero)</option>
@@ -1721,6 +1792,7 @@ function importGastosRows(rows, etiqueta, tipo, fileName){
     // Aplicar regla de auto-categorización si existe
     let categoriaId = '';
     if(p.gastos.reglas[conceptoOrig]) categoriaId = p.gastos.reglas[conceptoOrig];
+    else if(isInternalTransferConcept(conceptoOrig)) categoriaId = 'cat_transfer';
     // Excluir por defecto si es positivo (ingreso)
     const excluido = importe >= 0;
     const tx = {
@@ -2042,20 +2114,8 @@ function renderDashGastos(p){
   // Calcular totales del mes más reciente y comparar con anterior
   const calcMes = (mk) => {
     const md = meses[mk]; if(!md) return null;
-    const archivoMap = {}; (md.archivos||[]).forEach(a=>{archivoMap[a.id]=a;});
-    let total=0, miParte=0;
-    const porCat = {}; // en MI PARTE
-    (md.transacciones||[]).forEach(t=>{
-      if(t.excluido) return; if(t.importe>=0) return;
-      const tipo = archivoMap[t.archivoId]?.tipo || 'individual';
-      const abs = Math.abs(t.importe);
-      const miParteTx = tipo==='comun' ? abs/2 : abs;
-      total += abs;
-      miParte += miParteTx;
-      const cid = t.categoriaId || 'sin_cat';
-      porCat[cid] = (porCat[cid]||0) + miParteTx;
-    });
-    return {total, miParte, porCat};
+    const r = calcGastosMes(md);
+    return {total:r.totalGastos, miParte:r.totalMiParte, porCat:r.porCategoria, totalTransfer:r.totalTransfer, porCuenta:r.porCuenta};
   };
   const last = monthKeys[0], prev = monthKeys[1];
   const lastData = calcMes(last);
@@ -2071,6 +2131,7 @@ function renderDashGastos(p){
   const catMap = {}; cats.forEach(c=>{catMap[c.id]=c;});
   catMap['sin_cat'] = {name:'Sin categorizar', color:'#64748b'};
   const topCats = Object.entries(lastData.porCat).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  const topAccounts = Object.values(lastData.porCuenta||{}).sort((a,b)=>b.miParte-a.miParte).slice(0,3);
 
   let diffHtml = '';
   if(diff != null){
@@ -2090,6 +2151,10 @@ function renderDashGastos(p){
         <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Total movido</div>
         <div style="font-size:1.1rem;font-weight:600;color:#94a3b8">-${fmt(lastData.total)}</div>
       </div>
+      ${lastData.totalTransfer>0?`<div>
+        <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Transferencias internas</div>
+        <div style="font-size:1rem;font-weight:600;color:#64748b">${fmt(lastData.totalTransfer)}</div>
+      </div>`:''}
       <div style="flex:1;text-align:right">${diffHtml}</div>
     </div>
     <div>
@@ -2105,6 +2170,11 @@ function renderDashGastos(p){
         </div>`;
       }).join('')}
     </div>
+    ${topAccounts.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;border-top:1px solid #0f1d2e;padding-top:10px">
+      ${topAccounts.map(a=>`<div style="font-size:.68rem;color:#94a3b8;background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:6px 8px">
+        <span style="color:#e2e8f0">${esc(a.label)}</span> · <span style="color:#f87171">${fmt(a.miParte)}</span>
+      </div>`).join('')}
+    </div>`:''}
   `;
 }
 
@@ -2242,19 +2312,8 @@ function renderDashGastosCharts(){
 
   const calcMes = (mk) => {
     const md = meses[mk]; if(!md) return null;
-    const archivoMap = {}; (md.archivos||[]).forEach(a=>{archivoMap[a.id]=a;});
-    let totalMiParte = 0;
-    const porCat = {};
-    (md.transacciones||[]).forEach(t=>{
-      if(t.excluido) return; if(t.importe>=0) return;
-      const tipo = archivoMap[t.archivoId]?.tipo || 'individual';
-      const abs = Math.abs(t.importe);
-      const miParte = tipo==='comun' ? abs/2 : abs;
-      totalMiParte += miParte;
-      const cid = t.categoriaId || 'sin_cat';
-      porCat[cid] = (porCat[cid]||0) + miParte;
-    });
-    return {totalMiParte, porCat};
+    const r = calcGastosMes(md);
+    return {totalMiParte:r.totalMiParte, porCat:r.porCategoria};
   };
 
   // Por mes
