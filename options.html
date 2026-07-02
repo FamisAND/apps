@@ -329,8 +329,8 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div class="d-card-title" style="margin:0">P&L mensual + acumulado</div>
           <button id="btnPnlDesgloseStrat" onclick="togglePnlDesglose()"
-            style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:.5px;text-transform:uppercase;background:#4a9eff11;border:1px solid #4a9eff44;color:#4a9eff;padding:2px 7px;border-radius:3px;cursor:pointer;flex-shrink:0">
-            Por estrategia
+            style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:.5px;text-transform:uppercase;background:#3fb68b11;border:1px solid #3fb68b44;color:#3fb68b;padding:2px 7px;border-radius:3px;cursor:pointer;flex-shrink:0">
+            Total
           </button>
         </div>
         <div class="d-chart-wrap" style="flex:1"><canvas id="sPnl" height="200"></canvas></div>
@@ -556,7 +556,7 @@
       <div class="cfg-field"><label>Apertura</label><input type="date" id="am_apertura"/></div>
       <div class="cfg-field"><label>Expiración</label><input type="date" id="am_exp"/></div>
       <div class="cfg-field"><label>Max Risk ($)</label><input type="number" id="am_maxrisk" placeholder="5000" step="50" oninput="this.dataset.autocalc='0'" title="Se calcula automáticamente desde las patas (strikes + prima). Edítalo para fijarlo manualmente."/></div>
-      <div class="cfg-field"><label id="am_pcred_label">Prima neta cobrada ($/contrato)</label><input type="number" id="am_pcred" placeholder="2.50" step="0.01" title="Magnitud de la prima neta. Para crédito = lo que cobras al abrir. Para débito = lo que pagas al abrir. El sistema usa Math.abs así que da igual el signo."/></div>
+      <div class="cfg-field"><label id="am_pcred_label">Prima total posición ($)</label><input type="number" id="am_pcred" placeholder="250" step="0.01" title="Prima total de la posición completa. El sistema la convierte internamente según el número de contratos."/></div>
       <input type="hidden" id="am_pdeb" value="0"/>
       <input type="hidden" id="am_strike" value=""/>
       <div class="cfg-field"><label title="Delta neto de la posición. Para spreads: delta vendido − delta comprado. Para IC: suma de ambos spreads.">Delta neto</label><input type="number" id="am_delta" placeholder="ej: -0.08" step="0.01" title="Delta vendido − delta comprado. Para IC suma ambos spreads."/></div>
@@ -843,8 +843,8 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="d-card-title" style="margin:0">P&L mensual + acumulado</div>
         <button id="btnPnlDesglose" onclick="togglePnlDesglose()"
-          style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:.5px;text-transform:uppercase;background:#4a9eff11;border:1px solid #4a9eff44;color:#4a9eff;padding:2px 7px;border-radius:3px;cursor:pointer;flex-shrink:0">
-          Por estrategia
+          style="font-family:'Courier New',monospace;font-size:7px;letter-spacing:.5px;text-transform:uppercase;background:#3fb68b11;border:1px solid #3fb68b44;color:#3fb68b;padding:2px 7px;border-radius:3px;cursor:pointer;flex-shrink:0">
+          Total
         </button>
       </div>
       <div class="d-chart-wrap" style="flex:1"><canvas id="cPnl" height="220" style="cursor:pointer" title="Clic para ver calendario de trades" onclick="openCalModal()"></canvas></div>
@@ -2999,7 +2999,18 @@ histLoad();
 // ── DASHBOARD ────────────────────────────────────────────────
 let SNAPS = [];
 let dashCharts = {};
-let _pnlDesglose = true; // true=por estrategia, false=total
+let _pnlDesglose = false; // true=por estrategia, false=total
+
+function premiumTotalToStorage(total, contracts){
+  const t = parseFloat(total);
+  const c = Math.max(1, parseFloat(contracts) || 1);
+  return Number.isFinite(t) ? t / (10000 * c) : null;
+}
+function premiumStorageToTotal(stored, contracts){
+  const v = parseFloat(stored);
+  const c = Math.max(1, parseFloat(contracts) || 1);
+  return Number.isFinite(v) ? v * 10000 * c : null;
+}
 
 function togglePnlDesglose(){
   _pnlDesglose = !_pnlDesglose;
@@ -3410,6 +3421,38 @@ const C = { blue:'#4a9eff', green:'#3fb68b', red:'#f04545', amber:'#f0a500', pur
 
 // Zoom + pan en eje X (Ctrl+rueda PC, pinch mobile, drag tras zoom)
 const ZCFG = { pan:{enabled:true, mode:'x', threshold:5}, zoom:{wheel:{enabled:true, modifierKey:'ctrl'}, pinch:{enabled:true}, mode:'x'} };
+
+function buildProfitOpHistogram(values, opts){
+  const vals = (values || []).map(Number).filter(Number.isFinite);
+  if(!vals.length) return null;
+  const bins = (opts && opts.bins) || 28;
+  const sorted = [...vals].sort((a,b)=>a-b);
+  const q = p => sorted[Math.max(0, Math.min(sorted.length-1, Math.floor((sorted.length-1)*p)))];
+  let lo = Math.floor(q(0.05) / 2.5) * 2.5;
+  let hi = Math.ceil(q(0.95) / 2.5) * 2.5;
+  lo = Math.min(lo, 0);
+  hi = Math.max(hi, 0);
+  if(hi - lo < 10){ lo -= 5; hi += 5; }
+  const step = (hi - lo) / bins;
+  const counts = Array(bins + 2).fill(0);
+  vals.forEach(v => {
+    if(v < lo){ counts[0]++; return; }
+    if(v >= hi){ counts[counts.length - 1]++; return; }
+    const idx = 1 + Math.min(bins - 1, Math.floor((v - lo) / step));
+    counts[idx]++;
+  });
+  const labels = [
+    '< ' + lo.toFixed(1) + '%',
+    ...Array.from({length: bins}, (_, i) => {
+      const a = lo + i * step;
+      const b = a + step;
+      return a.toFixed(1) + '→' + b.toFixed(1) + '%';
+    }),
+    '≥ ' + hi.toFixed(1) + '%'
+  ];
+  const mids = [lo - step / 2, ...Array.from({length: bins}, (_, i) => lo + (i + .5) * step), hi + step / 2];
+  return { labels, counts, mids };
+}
 
 const baseOpts = {
   responsive:true, maintainAspectRatio:false,
@@ -3963,19 +4006,14 @@ function renderDash(){
   // 9. Scatter moved to Estrategias tab
   destroyChart('cScatter');
 
-  // 10. Distribución de Profit Op% — bins de 2.5% centrados en 0
-  // Buckets: <-10 | -10→-7.5 | -7.5→-5 | -5→-2.5 | -2.5→0 | 0→2.5 | 2.5→5 | 5→7.5 | 7.5→10 | >10
+  // 10. Distribución de Profit Op% — rango dinámico por percentiles para que los outliers no aplasten las barras
   const poAllDist = allData.filter(e=>e.profitOp!=null).map(e=>e.profitOp);
   if(poAllDist.length){
-    const edges  = [-10, -7.5, -5, -2.5, 0, 2.5, 5, 7.5, 10];
-    const labels = ['< -10%','-10→-7.5%','-7.5→-5%','-5→-2.5%','-2.5→0%','0→2.5%','2.5→5%','5→7.5%','7.5→10%','> 10%'];
-    const counts3 = [
-      poAllDist.filter(v=>v < -10).length,
-      ...edges.slice(0,-1).map((lo,i)=> poAllDist.filter(v=>v>=lo && v<edges[i+1]).length),
-      poAllDist.filter(v=>v >= 10).length
-    ];
-    const bgColors = labels.map(l=> l.startsWith('<') || l.startsWith('-') ? C.red2 : C.green2);
-    const bdColors = labels.map(l=> l.startsWith('<') || l.startsWith('-') ? C.red  : C.green);
+    const hist = buildProfitOpHistogram(poAllDist, { bins: 28 });
+    const labels = hist.labels;
+    const counts3 = hist.counts;
+    const bgColors = hist.mids.map(v=> v < 0 ? C.red2 : C.green2);
+    const bdColors = hist.mids.map(v=> v < 0 ? C.red  : C.green);
     mkChart('cDist',{
       type:'bar',
       data:{ labels, datasets:[{
@@ -4518,7 +4556,7 @@ function buildActCard(a, idx, today){
         return `<div class="act-kv"><span class="act-k">Dist. strike</span><span class="act-v ${dc}">${dist>=0?'+':''}${dist.toFixed(1)}%</span></div>`;
       })():''}
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
-      <div class="act-kv"><span class="act-k">Prima neta</span><span class="act-v">${a.pCredito!=null?(Math.abs(a.pCredito*100)).toFixed(2):'—'}</span></div>
+      <div class="act-kv"><span class="act-k">Prima total</span><span class="act-v">${a.pCredito!=null?'$'+Math.abs(premiumStorageToTotal(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
       <div class="act-kv"><span class="act-k">IV</span><span class="act-v">${a.iv!=null?a.iv+'%':'—'}</span></div>
@@ -4598,8 +4636,12 @@ function openActModal(idx){
   for(const [id,key] of Object.entries(fields)){
     const el=document.getElementById(id);
     if(!el) continue;
-    // pCredito stored as $/share — show as $/contrato
-    if(id==='am_pcred' && a[key]!=null) { el.value = (a[key]*100).toFixed(4); continue; }
+    // pCredito se guarda en escala legacy; en este modal se edita como prima total de la posición.
+    if(id==='am_pcred' && a[key]!=null) {
+      const totalPremium = premiumStorageToTotal(a[key], a.contracts || 1);
+      el.value = totalPremium != null ? totalPremium.toFixed(2) : '';
+      continue;
+    }
     el.value = a[key]!=null?a[key]:(key==='contracts'?1:'');
   }
   // Auto-fill next ID when creating new position
@@ -4684,7 +4726,7 @@ function legsAdd(containerId, leg){
 // (el am_legs vive en el modal "Nueva posición activa", el hf_legs en el
 // modal del historial).
 const LEGS_FIELD_MAP = {
-  'am_legs_container': { delta:'am_delta', prima:'am_pcred', comi:'am_comi', primaScale:1 },
+  'am_legs_container': { delta:'am_delta', prima:'am_pcred', comi:'am_comi', primaScale:'total' },
   'hf_legs_container': { delta:'hf_delta', prima:'hf_pCredito', comi:'hf_comiOpen', primaScale:100 }
 };
 
@@ -4758,8 +4800,10 @@ function legsRecalcTotals(containerId){
   };
   if(hasDelta) setIf(map.delta, Math.abs(netDelta), 2);  // delta siempre positivo (decisión de análisis)
   if(hasPrima){
-    // hf_pCredito está en escala ×100 (cents/dollars-per-contract), am_pcred en escala /share.
-    setIf(map.prima, netPrima * map.primaScale, 2);
+    const primaVal = map.primaScale === 'total'
+      ? netPrima * 100 * (parseFloat(document.getElementById('am_contracts')?.value) || 1)
+      : netPrima * map.primaScale;
+    setIf(map.prima, primaVal, 2);
   }
   if(hasComi)  setIf(map.comi,  totComi, 2);
   // ── Auto-calc Max Risk a partir de strikes ──
@@ -5852,9 +5896,9 @@ function toggleActModalFields(){
   const pcredLabel = document.getElementById('am_pcred_label');
   if(pcredLabel && !isAcc){
     const dir = (typeof _stratDirectionOf === 'function') ? _stratDirectionOf(strat) : null;
-    const txt = dir === 'debit'  ? 'Prima neta pagada ($/contrato)'
-              : dir === 'credit' ? 'Prima neta cobrada ($/contrato)'
-              : 'Prima neta ($/contrato)';
+    const txt = dir === 'debit'  ? 'Prima total pagada ($)'
+              : dir === 'credit' ? 'Prima total cobrada ($)'
+              : 'Prima total posición ($)';
     pcredLabel.textContent = txt;
   }
   // El campo precioCompra solo se muestra para ACC
@@ -5901,7 +5945,9 @@ function saveActPosition(){
     exp:      document.getElementById('am_exp').value,
     strike:   '',  // Removed from modal — reference only
     maxRisk:  +document.getElementById('am_maxrisk').value||null,
-    pCredito: document.getElementById('am_pcred').value ? +document.getElementById('am_pcred').value/100 : null,
+    pCredito: document.getElementById('am_pcred').value
+      ? premiumTotalToStorage(document.getElementById('am_pcred').value, +document.getElementById('am_contracts').value||1)
+      : null,
     pDebito:  0,  // Removed — prima neta entered directly in pCredito
     delta:    document.getElementById('am_delta').value!==''?+document.getElementById('am_delta').value:null,
     iv:       document.getElementById('am_iv').value!==''?+document.getElementById('am_iv').value:null,
@@ -6172,7 +6218,7 @@ function _confirmClosePositionImpl(){
     pNetoOvr:  parseFloat(pneto.toFixed(2)),
     totalNetoOvr: parseFloat(totalneto.toFixed(2)),
     // profitOpOvr: usa los $ reales para el ratio
-    profitOpOvr: a.maxRisk ? parseFloat((totalNetoFallback/a.maxRisk*100).toFixed(2)) : null,
+    profitOpOvr: a.maxRisk ? parseFloat((totalNetoFallback/(a.maxRisk*ctr)*100).toFixed(2)) : null,
     tpOvr:     parseFloat(tp.toFixed(2)),
     dteIni:    dteIni,
     tiempoOp:  tOp
@@ -8053,15 +8099,14 @@ function renderStratDash(){
     borderColor:sortedA.map(([,v])=>v.pnl>=0?C.green:C.red), borderWidth:1
   }]}, options:{ ...baseOpts, indexAxis:'y', scales:{ x:{ticks:{color:C.text,font:{size:8,family:'Courier New'},callback:v=>'$'+Math.round(v).toLocaleString()},grid:{color:C.grid}}, y:{ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid}} }}});
 
-  // Distribution
-  const pos=data.map(e=>e.profitOp!=null?Math.max(-100,Math.min(100,e.profitOp)):null).filter(v=>v!=null);
-  const bins=20; const min=-100,max=100; const step=(max-min)/bins;
-  const counts=Array(bins).fill(0);
-  pos.forEach(v=>{ const idx=Math.min(bins-1,Math.floor((v-min)/step)); counts[idx]++; });
-  const binLabels=Array.from({length:bins},(_,i)=>(min+i*step).toFixed(0)+'%');
+  // Distribution — rango dinámico por percentiles para que haya barras útiles incluso con outliers
+  const pos=data.map(e=>e.profitOp).filter(v=>v!=null&&Number.isFinite(+v)).map(Number);
+  const histDist = buildProfitOpHistogram(pos, { bins: 28 });
+  const binLabels = histDist ? histDist.labels : [];
+  const counts = histDist ? histDist.counts : [];
   mkStratChart('sDist',{ type:'bar', data:{ labels:binLabels, datasets:[{
-    data:counts, backgroundColor:binLabels.map(l=>parseFloat(l)>=0?C.green2:C.red2),
-    borderColor:binLabels.map(l=>parseFloat(l)>=0?C.green:C.red), borderWidth:1
+    data:counts, backgroundColor:(histDist ? histDist.mids : []).map(v=>v>=0?C.green2:C.red2),
+    borderColor:(histDist ? histDist.mids : []).map(v=>v>=0?C.green:C.red), borderWidth:1
   }]}, options:{ ...baseOpts, plugins:{legend:{display:false},zoom:ZCFG}, scales:{ x:{ticks:{color:C.text,font:{size:7,family:'Courier New'},maxTicksLimit:10},grid:{color:C.grid}}, y:{ticks:{color:C.text,font:{size:8,family:'Courier New'}},grid:{color:C.grid}} }}});
 
   // Always render scatter with filter
@@ -9443,6 +9488,8 @@ function openRollModal(idx){
   document.getElementById('roll_newexp').value   = a.exp || '';
   document.getElementById('roll_newcred').value  = '';
   document.getElementById('roll_comi_open').value= '1.24';
+  const rollAddCtr = document.getElementById('roll_add_contracts');
+  if(rollAddCtr) rollAddCtr.value = '0';
   document.getElementById('roll_newstrike').value= a.strike || '';
   document.getElementById('roll_nota').value     = '';
   document.getElementById('roll_delta').value   = '';
@@ -9559,15 +9606,19 @@ function rollCalc(){
   const pc_share  = legInfo ? legInfo.pcShare : (a.pCredito||0) * 100;
   const pcl_share = parseFloat(document.getElementById('roll_pcl').value)||0;  // $/share
   const comiCl    = parseFloat(document.getElementById('roll_comi_close').value)||0;
-  const newCred_share = parseFloat(document.getElementById('roll_newcred').value)||0;  // $/share
   const comiOp    = parseFloat(document.getElementById('roll_comi_open').value)||0;
   const ctr       = a.contracts||1;
+  const addCtr    = Math.max(0, parseInt(document.getElementById('roll_add_contracts')?.value || '0', 10) || 0);
+  const nextCtr   = ctr + addCtr;
+  const newCredTotal = parseFloat(document.getElementById('roll_newcred').value)||0;
+  const canAddCtr = pata === 'todo';
+  const newCred_share = nextCtr > 0 ? newCredTotal / (100 * nextCtr) : 0;
 
   // P&L of leg being closed: ($/share × 100 shares × contratos) - comi
   const pnlClose = (pc_share - pcl_share) * 100 * ctr - comiCl;
 
   // Net cost/credit of the roll itself ($/share × 100 × contratos)
-  const rollNet  = newCred_share * 100 * ctr - comiCl - comiOp;
+  const rollNet  = newCred_share * 100 * nextCtr - comiCl - comiOp;
 
   // Accumulated credit for the whole ID (closed legs + this close)
   // prevClosed viene en escala "prima" (totalNetoOvr histórico = pneto/100)
@@ -9581,7 +9632,8 @@ function rollCalc(){
   document.getElementById('roll_prev_close').innerHTML  = '<span style="color:'+col(pnlClose)+'">'+fmt(pnlClose)+'$</span>'
     + (legInfo ? `<span style="color:#3a5468;font-size:8px;display:block;margin-top:2px">cred. pata: $${pc_share.toFixed(2)}/share (de legs)</span>` : '');
   document.getElementById('roll_prev_accum').innerHTML  = '<span style="color:'+col(accumAfter)+'">'+fmt(accumAfter)+'$</span>';
-  document.getElementById('roll_prev_net').innerHTML    = '<span style="color:'+col(rollNet)+'">'+fmt(rollNet)+'$</span>';
+  document.getElementById('roll_prev_net').innerHTML    = '<span style="color:'+col(rollNet)+'">'+fmt(rollNet)+'$</span>'
+    + (addCtr ? `<span style="color:${canAddCtr ? '#3a5468' : '#f0a500'};font-size:8px;display:block;margin-top:2px">${canAddCtr ? 'nueva posición: '+nextCtr+' contratos' : 'añadir contratos solo en roll completo'}</span>` : '');
 }
 
 function confirmRoll(){
@@ -9594,7 +9646,6 @@ function confirmRoll(){
   const pc_share  = legInfo ? legInfo.pcShare : (a.pCredito||0) * 100;
   const pcl_share = parseFloat(document.getElementById('roll_pcl').value)||0;  // $/share
   const comiCl    = parseFloat(document.getElementById('roll_comi_close').value)||0;
-  const newCred_share = parseFloat(document.getElementById('roll_newcred').value)||0;  // $/share
   const comiOp    = parseFloat(document.getElementById('roll_comi_open').value)||0;
   const newExp    = document.getElementById('roll_newexp').value;
   const newStrike = document.getElementById('roll_newstrike').value;
@@ -9605,9 +9656,17 @@ function confirmRoll(){
   const newIvr    = document.getElementById('roll_ivr')?.value   !== '' ? +document.getElementById('roll_ivr').value   : a.ivr;
   const cierre    = document.getElementById('roll_cierre').value;
   const ctr       = a.contracts||1;
+  const addCtr    = Math.max(0, parseInt(document.getElementById('roll_add_contracts')?.value || '0', 10) || 0);
+  const nextCtr   = ctr + addCtr;
+  const newCredTotal = parseFloat(document.getElementById('roll_newcred').value)||0;
+  const newCred_share = nextCtr > 0 ? newCredTotal / (100 * nextCtr) : 0;
 
   if(!cierre){ toast('Introduce la fecha de cierre.', 'red'); return; }
   if(!newExp){ toast('Introduce la nueva expiración.', 'red'); return; }
+  if(addCtr > 0 && pata !== 'todo'){
+    toast('Para añadir contratos, haz un roll completo. En rolls parciales solo se cambia la pata seleccionada.', 'red');
+    return;
+  }
 
   // 1. Create HIST entry for closed leg
   // pnlClose en $ reales: ($/share × 100 × ctr) - comi
@@ -9646,10 +9705,12 @@ function confirmRoll(){
     pDebito:     0,
     pCierre:     pcl_storage,        // /100 para coincidir con pCredito
     comi:        comiCl,
-    nota:        nota ? '[ROLL'+pataLabelFull+'] '+nota : '[ROLL'+pataLabelFull+']',
+    comiOpen:    0,
+    comiClose:   comiCl,
+    nota:        '',
     pNetoOvr:    parseFloat(pNetoOvrPrima.toFixed(4)),
     totalNetoOvr:parseFloat(totalNetoOvrPrima.toFixed(4)),
-    profitOpOvr: a.maxRisk ? parseFloat((pnlClose/a.maxRisk*100).toFixed(2)) : null,
+    profitOpOvr: a.maxRisk ? parseFloat((pnlClose/(a.maxRisk*ctr)*100).toFixed(2)) : null,
     tpOvr:       parseFloat(tpClose.toFixed(2)),
     dteIni:      dteIni,
     tiempoOp:    tOp,
@@ -9704,13 +9765,14 @@ function confirmRoll(){
     apertura:     cierre,
     exp:          newExp,
     strat:        newStrat,
+    contracts:    nextCtr,
     pCredito:     nextPCredito,
     priceCurrent: null,
     strike:       newStrike || a.strike,
     delta:        newDelta,
     iv:           newIv,
     ivr:          newIvr,
-    nota:         nota ? '[ROLL→'+pataLabelFull+'] '+nota : ('[ROLL→'+pataLabelFull+']'+(a.nota?' '+a.nota:'')),
+    nota:         nota,
     comi:         comiOp,
     legs:         nextLegs
   });
@@ -9849,8 +9911,12 @@ function _initCsvDragDrop(){
         <input type="date" id="roll_newexp" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Crédito nueva pata ($/ctr, negativo si débito)</label>
-        <input type="number" id="roll_newcred" step="0.01" placeholder="ej: 0.60 o -0.20" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima total nueva posición/pata ($)</label>
+        <input type="number" id="roll_newcred" step="0.01" placeholder="ej: 180 o -60" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
+      </div>
+      <div>
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Contratos añadidos</label>
+        <input type="number" id="roll_add_contracts" min="0" step="1" value="0" placeholder="0" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
         <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Comisiones nueva pata ($)</label>
