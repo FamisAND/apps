@@ -1116,14 +1116,8 @@ function calcBreakEvenForKeys(keys){
 }
 function getGymExpenseShareForMonth(trainerId,k){
   const md=db.months[k]||{};
-  const entries=md.entries||[];
   const gasTot=(md.gastos||[]).filter(g=>g.cat!=='dividendos').reduce((s,g)=>s+(parseFloat(g.amount)||0),0);
-  const byTrainer={};
-  entries.forEach(e=>{
-    const svc=db.services.find(s=>s.id===e.serviceId);
-    if(!svc || !svc.hours || !svc.occupiesGym || !e.trainerId)return;
-    byTrainer[e.trainerId]=(byTrainer[e.trainerId]||0)+(parseFloat(svc.hours)||0);
-  });
+  const byTrainer=getGymHoursByTrainerForMonth(k);
   const trainerHours=byTrainer[trainerId]||0;
   const totalHours=Object.values(byTrainer).reduce((s,h)=>s+h,0);
   const fallbackN=getBeNTrainers();
@@ -1138,6 +1132,24 @@ function getGymExpenseShareForMonth(trainerId,k){
     fallback:totalHours<=0,
     fallbackN
   };
+}
+function getTrainerHoursForMonth(trainerId,k,gymOnly=false){
+  const entries=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
+  return entries.reduce((sum,e)=>{
+    const svc=db.services.find(s=>s.id===e.serviceId);
+    if(!svc)return sum;
+    if(gymOnly && !svc.occupiesGym)return sum;
+    return sum+(parseFloat(svc.hours)||0);
+  },0);
+}
+function getGymHoursByTrainerForMonth(k){
+  const byTrainer={};
+  const trainerIds=[...new Set((db.months[k]?.entries||[]).map(e=>e.trainerId).filter(Boolean))];
+  trainerIds.forEach(trainerId=>{
+    const h=getTrainerHoursForMonth(trainerId,k,true);
+    if(h>0)byTrainer[trainerId]=h;
+  });
+  return byTrainer;
 }
 // Cuántas personas se reparten los CF (configurable con ⚙️)
 function getBeNTrainers(){
@@ -2252,16 +2264,14 @@ function renderTrainerOcupChart(){
   mks.forEach(k=>{
     const[y,m]=k.split('-');
     labels.push(MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2));
-    const ents=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
-    let h=0;
-    ents.forEach(e=>{const svc=db.services.find(s=>s.id===e.serviceId);if(svc)h+=svc.hours||0;});
+    const h=getTrainerHoursForMonth(trainerId,k,true);
     realData.push(Math.round(h*100)/100);
     desiredData.push(desired);
     occupancyData.push(desired>0?Math.round((h/desired)*1000)/10:null);
   });
   
   const datasets=[
-    {label:'Horas reales',data:realData,backgroundColor:'rgba(139,92,246,.75)',borderColor:'#8b5cf6',borderWidth:1,type:'bar',yAxisID:'y',order:3}
+    {label:'Horas de sala',data:realData,backgroundColor:'rgba(139,92,246,.75)',borderColor:'#8b5cf6',borderWidth:1,type:'bar',yAxisID:'y',order:3}
   ];
   if(desired>0){
     datasets.push({label:`Deseadas (${desired}h)`,data:desiredData,borderColor:'#f97316',borderDash:[5,4],borderWidth:2,type:'line',fill:false,pointRadius:0,tension:0,yAxisID:'y',order:1});
@@ -2355,84 +2365,6 @@ function renderMgnSegChart(labels,factData,beData){
       scales:{
         x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777'}},
         y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777',callback:v=>v.toFixed(0)+'%'}}
-      }
-    }
-  });
-}
-
-// ── Punto Muerto del trainer seleccionado (mes a mes) ──
-// Usa el selector de "Análisis por trainer" (dashTrainerSelect).
-// Compara la facturación de ese trainer cada mes vs su cuota de gastos:
-//   cuota = (gastos totales del mes sin dividendos) / N personas (configurable con ⚙️)
-function renderBEPersonalChartLegacy(){
-  const el=document.getElementById('cBEPersonal');
-  if(!el)return;
-  if(_dashCharts.bePersonal){_dashCharts.bePersonal.destroy();_dashCharts.bePersonal=null;}
-
-  const sel=document.getElementById('dashTrainerSelect');
-  const trainerId=sel?.value;
-  const trainer=db.team.find(t=>t.id===trainerId);
-  const mks=_dashTrainerMonths||[];
-  const N=getBeNTrainers();
-  const sub=document.getElementById('bePersonalSubtitle');
-
-  if(!trainer || !mks.length){
-    if(sub)sub.textContent='— elige un trainer en la ruleta de arriba';
-    el.parentElement.querySelector('div[style*="height:220px"]').innerHTML='<div style="height:220px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.75rem;">—</div>';
-    return;
-  }
-
-  const labels=[],factVals=[],cuotaVals=[],gasVals=[],hourVals=[],totalHourVals=[],pctVals=[],fallbackVals=[],colors=[],borders=[];
-  mks.forEach(k=>{
-    const[y,m]=k.split('-');
-    labels.push(MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2));
-    const ents=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
-    const bill=ents.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
-    const share=getGymExpenseShareForMonth(trainerId,k);
-    factVals.push(Math.round(bill*100)/100);
-    cuotaVals.push(Math.round(share.quota*100)/100);
-    gasVals.push(share.gasTot);
-    hourVals.push(Math.round(share.trainerHours*10)/10);
-    totalHourVals.push(Math.round(share.totalHours*10)/10);
-    pctVals.push(Math.round(share.pct*10)/10);
-    fallbackVals.push(share.fallback);
-    const ok=bill>=share.quota;
-    colors.push(ok?'rgba(34,197,94,.75)':'rgba(224,53,53,.75)');
-    borders.push(ok?'#22c55e':'#e03535');
-  });
-
-  // Subtítulo con promedio del periodo visible para que se vea de un vistazo
-  if(sub){
-    const gasAvg=gasVals.length?gasVals.reduce((a,b)=>a+b,0)/gasVals.length:0;
-    const cuotaAvg=N>0?gasAvg/N:0;
-    sub.textContent=`— ${trainer.name} · gastos del mes ÷ ${N} personas ≈ ${fmt(cuotaAvg)}/mes`;
-  }
-
-  _dashCharts.bePersonal=new Chart(el,{
-    type:'bar',
-    data:{labels,datasets:[
-      {label:'Facturación '+trainer.name,data:factVals,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:3,order:2},
-      {label:`Su parte de gastos (÷ ${N})`,data:cuotaVals,type:'line',borderColor:'#e03535',backgroundColor:'rgba(224,53,53,.05)',borderDash:[6,4],borderWidth:2,pointRadius:4,pointBackgroundColor:'#e03535',tension:.2,order:1,fill:false}
-    ]},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{display:true,position:'top',labels:{font:{size:10},boxWidth:10}},
-        tooltip:{mode:'index',intersect:false,callbacks:{
-          afterBody:(items)=>{
-            if(!items.length)return'';
-            const i=items[0].dataIndex;
-            const f=factVals[i],c=cuotaVals[i],g=gasVals[i],diff=f-c;
-            const linea1=`Gastos del mes: ${fmt(g)} ÷ ${N} = ${fmt(c)}`;
-            const linea2=diff>=0?`✓ Cubre con ${fmt(diff)} de margen`:`✗ Faltan ${fmt(Math.abs(diff))}`;
-            return [linea1, linea2];
-          }
-        }}
-      },
-      scales:{
-        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777'}},
-        y:{beginAtZero:true,grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:10},color:'#777',callback:v=>'€'+v.toLocaleString('es-ES')}}
       }
     }
   });

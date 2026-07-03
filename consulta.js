@@ -9848,26 +9848,67 @@ function tobMcAjusteToggleRemove(ingId){
   if(typeof _tobMcAjusteRenderPasosPreview === 'function') _tobMcAjusteRenderPasosPreview();
 }
 
-// Afegir un ingredient extra (prompt autocompletat amb datalist)
+function tobMcAjusteSyncExtraPicker(){
+  const picker = document.getElementById('tobMcAjusteExtraPicker');
+  const gramsEl = document.getElementById('tobMcAjusteExtraGrams');
+  if(!picker || !gramsEl) return;
+  const ing = tobIngFindByText(picker.value);
+  if(ing && !gramsEl.value) gramsEl.placeholder = `${tobIngDefaultGrams(ing)} g`;
+  tobMcAjusteRenderExtraSuggestions(picker.value);
+}
+
+function tobMcAjusteRenderExtraSuggestions(raw){
+  const box = document.getElementById('tobMcAjusteExtraSuggest');
+  if(!box) return;
+  const q = tobIngNormName(raw);
+  if(q.length < 1){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  const matches = tobIngSearchMatches(raw, 8);
+  if(!matches.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = matches.map(ing => {
+    const g = tobIngDefaultGrams(ing);
+    return `<div class="opt" onclick="tobMcAjustePickExtraSuggestion('${tobEsc(ing.id)}')">
+      <span>${tobEsc(ing.nombre)}</span><span class="g">${g} g</span>
+    </div>`;
+  }).join('');
+  box.style.display = 'block';
+}
+
+function tobMcAjustePickExtraSuggestion(id){
+  const ing = (tobMenusDB.ingredientes || []).find(i => i.id === id);
+  if(!ing) return;
+  const picker = document.getElementById('tobMcAjusteExtraPicker');
+  const gramsEl = document.getElementById('tobMcAjusteExtraGrams');
+  if(picker) picker.value = ing.nombre || '';
+  if(gramsEl && !gramsEl.value) gramsEl.value = tobIngDefaultGrams(ing);
+  const box = document.getElementById('tobMcAjusteExtraSuggest');
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+// Afegir un ingredient extra des del cercador del modal
 function tobMcAjusteAddExtra(){
   const r = (tobMenusDB.recetas||[]).find(x => x.id === _tobMcAjusteId);
   if(!r) return;
   const rac = r.raciones || 1;
   const arr = tobMcAjusteReadExtrasFromDOM(rac);
-  // Diàleg lleuger amb 2 prompts (nom + grams). Nom es busca al catàleg.
-  const nomRaw = prompt('Nom de l\'ingredient (ha d\'existir al catàleg):');
-  if(!nomRaw) return;
+  const picker = document.getElementById('tobMcAjusteExtraPicker');
+  const gramsEl = document.getElementById('tobMcAjusteExtraGrams');
+  const nomRaw = (picker?.value || '').trim();
+  if(!nomRaw){ tobToast('Escribe un ingrediente', 'orange'); return; }
   const ing = tobIngFindByText(nomRaw);
   if(!ing){ tobToast('Ingrediente no encontrado en el catálogo', 'red'); return; }
   if(arr.some(e => e.ingId === ing.id) || (r.ingredientes||[]).some(it => it.ingId === ing.id)){
     tobToast('Ya existe en esta receta', 'orange'); return;
   }
-  const gRaw = prompt(`Grams per ració de "${ing.nombre}":`, String(tobIngDefaultGrams(ing)));
-  const g = parseFloat(gRaw);
-  if(!isFinite(g) || g <= 0){ tobToast('Grams invàlids', 'red'); return; }
+  const gRaw = (gramsEl?.value || '').trim();
+  const g = gRaw === '' ? tobIngDefaultGrams(ing) : parseFloat(gRaw);
+  if(!isFinite(g) || g <= 0){ tobToast('Gramos inválidos', 'red'); return; }
   arr.push({ ingId: ing.id, gramos: Math.round(g * rac) });
   _tobMcAjusteRenderExtras(arr, rac);
   tobMcAjustePreview();
+  if(picker) picker.value = '';
+  if(gramsEl){ gramsEl.value = ''; gramsEl.placeholder = 'g/racion'; }
+  const box = document.getElementById('tobMcAjusteExtraSuggest');
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
 }
 
 function tobMcAjusteRemoveExtra(ix){

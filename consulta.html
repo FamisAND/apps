@@ -638,7 +638,14 @@
       <!-- Ingredients extra -->
       <div style="font-size:.72rem;color:var(--mute);margin-bottom:6px;font-family:'DM Mono',monospace;display:flex;justify-content:space-between;align-items:center;">
         <span>Ingredientes añadidos solo para este menú:</span>
-        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteAddExtra()">+ Añadir ingrediente</button>
+      </div>
+      <div class="tob-rec-addbar" style="grid-template-columns:1fr 92px auto;margin-bottom:8px;">
+        <div style="position:relative;">
+          <input class="tob-input" id="tobMcAjusteExtraPicker" list="tobMcAjusteIngList" placeholder="Escribe ingrediente..." oninput="tobMcAjusteSyncExtraPicker()" autocomplete="off">
+          <div id="tobMcAjusteExtraSuggest" class="tob-rec-ing-suggest" style="display:none;"></div>
+        </div>
+        <input class="tob-input" id="tobMcAjusteExtraGrams" type="number" min="0" step="1" placeholder="g/racion">
+        <button class="tob-action ghost" style="font-size:.7rem;padding:3px 9px;" onclick="tobMcAjusteAddExtra()">+ Añadir</button>
       </div>
       <div id="tobMcAjusteExtras" style="margin-bottom:12px;"></div>
       <datalist id="tobMcAjusteIngList"></datalist>
