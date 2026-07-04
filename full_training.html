@@ -1142,11 +1142,23 @@ function getTrainerHoursForMonth(trainerId,k,gymOnly=false){
     return sum+(parseFloat(svc.hours)||0);
   },0);
 }
+function getTrainerHourBreakdownForMonth(trainerId,k){
+  const entries=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
+  return entries.reduce((acc,e)=>{
+    const svc=db.services.find(s=>s.id===e.serviceId);
+    if(!svc)return acc;
+    const h=parseFloat(svc.hours)||0;
+    acc.total+=h;
+    if(svc.occupiesGym)acc.gym+=h;
+    else acc.outside+=h;
+    return acc;
+  },{total:0,gym:0,outside:0});
+}
 function getGymHoursByTrainerForMonth(k){
   const byTrainer={};
   const trainerIds=[...new Set((db.months[k]?.entries||[]).map(e=>e.trainerId).filter(Boolean))];
   trainerIds.forEach(trainerId=>{
-    const h=getTrainerHoursForMonth(trainerId,k,true);
+    const h=getTrainerHourBreakdownForMonth(trainerId,k).gym;
     if(h>0)byTrainer[trainerId]=h;
   });
   return byTrainer;
@@ -2259,19 +2271,23 @@ function renderTrainerOcupChart(){
   }
   
   const desired=trainer.desiredHours||0;
-  const labels=[],realData=[],desiredData=[],occupancyData=[];
+  const labels=[],totalData=[],gymData=[],desiredData=[],occupancyData=[];
   
   mks.forEach(k=>{
     const[y,m]=k.split('-');
     labels.push(MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2));
-    const h=getTrainerHoursForMonth(trainerId,k,true);
-    realData.push(Math.round(h*100)/100);
+    const br=getTrainerHourBreakdownForMonth(trainerId,k);
+    const totalH=Math.round(br.total*100)/100;
+    const gymH=Math.round(br.gym*100)/100;
+    totalData.push(totalH);
+    gymData.push(gymH);
     desiredData.push(desired);
-    occupancyData.push(desired>0?Math.round((h/desired)*1000)/10:null);
+    occupancyData.push(desired>0?Math.round((totalH/desired)*1000)/10:null);
   });
   
   const datasets=[
-    {label:'Horas de sala',data:realData,backgroundColor:'rgba(139,92,246,.75)',borderColor:'#8b5cf6',borderWidth:1,type:'bar',yAxisID:'y',order:3}
+    {label:'Horas trabajadas',data:totalData,backgroundColor:'rgba(139,92,246,.55)',borderColor:'#8b5cf6',borderWidth:1,type:'bar',yAxisID:'y',order:3},
+    {label:'Horas de sala',data:gymData,backgroundColor:'rgba(34,197,94,.65)',borderColor:'#22c55e',borderWidth:1,type:'bar',yAxisID:'y',order:2}
   ];
   if(desired>0){
     datasets.push({label:`Deseadas (${desired}h)`,data:desiredData,borderColor:'#f97316',borderDash:[5,4],borderWidth:2,type:'line',fill:false,pointRadius:0,tension:0,yAxisID:'y',order:1});
@@ -2388,17 +2404,20 @@ function renderBEPersonalChart(){
     return;
   }
 
-  const labels=[],factVals=[],cuotaVals=[],gasVals=[],hourVals=[],totalHourVals=[],pctVals=[],fallbackVals=[],colors=[],borders=[];
+  const labels=[],factVals=[],cuotaVals=[],gasVals=[],workHourVals=[],hourVals=[],outsideHourVals=[],totalHourVals=[],pctVals=[],fallbackVals=[],colors=[],borders=[];
   mks.forEach(k=>{
     const[y,m]=k.split('-');
     labels.push(MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2));
     const ents=(db.months[k]?.entries||[]).filter(e=>e.trainerId===trainerId);
     const bill=ents.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
     const share=getGymExpenseShareForMonth(trainerId,k);
+    const br=getTrainerHourBreakdownForMonth(trainerId,k);
     factVals.push(Math.round(bill*100)/100);
     cuotaVals.push(Math.round(share.quota*100)/100);
     gasVals.push(share.gasTot);
+    workHourVals.push(Math.round(br.total*10)/10);
     hourVals.push(Math.round(share.trainerHours*10)/10);
+    outsideHourVals.push(Math.round(br.outside*10)/10);
     totalHourVals.push(Math.round(share.totalHours*10)/10);
     pctVals.push(Math.round(share.pct*10)/10);
     fallbackVals.push(share.fallback);
@@ -2409,11 +2428,13 @@ function renderBEPersonalChart(){
 
   if(sub){
     const cuotaAvg=cuotaVals.length?cuotaVals.reduce((a,b)=>a+b,0)/cuotaVals.length:0;
+    const workAvg=workHourVals.length?workHourVals.reduce((a,b)=>a+b,0)/workHourVals.length:0;
     const hoursAvg=hourVals.length?hourVals.reduce((a,b)=>a+b,0)/hourVals.length:0;
+    const outsideAvg=outsideHourVals.length?outsideHourVals.reduce((a,b)=>a+b,0)/outsideHourVals.length:0;
     const totalHoursAvg=totalHourVals.length?totalHourVals.reduce((a,b)=>a+b,0)/totalHourVals.length:0;
     const pctAvg=totalHoursAvg>0?(hoursAvg/totalHoursAvg)*100:0;
     sub.textContent=totalHoursAvg>0
-      ?`- ${trainer.name}: usa ${fmtN(hoursAvg,1)}h/sem de sala de ${fmtN(totalHoursAvg,1)}h/sem totales; se le imputa el ${fmtN(pctAvg,1)}% de los gastos = ${fmt(cuotaAvg)}/mes`
+      ?`- ${trainer.name}: trabaja ${fmtN(workAvg,1)}h/sem; ${fmtN(hoursAvg,1)}h son de sala y ${fmtN(outsideAvg,1)}h fuera. El gasto usa solo sala: ${fmtN(pctAvg,1)}% = ${fmt(cuotaAvg)}/mes`
       :`- ${trainer.name}: sin horas de sala registradas; se usa fallback / ${getBeNTrainers()} = ${fmt(cuotaAvg)}/mes`;
   }
 
@@ -2435,7 +2456,7 @@ function renderBEPersonalChart(){
             const f=factVals[i],c=cuotaVals[i],g=gasVals[i],diff=f-c;
             const linea1=fallbackVals[i]
               ?`Sin horas de sala: ${fmt(g)} / ${getBeNTrainers()} personas = ${fmt(c)}`
-              :`Uso de sala: ${fmtN(hourVals[i],1)}h / ${fmtN(totalHourVals[i],1)}h = ${fmtN(pctVals[i],1)}%. Gasto imputado: ${fmt(g)} x ${fmtN(pctVals[i],1)}% = ${fmt(c)}`;
+              :`Trabaja ${fmtN(workHourVals[i],1)}h: ${fmtN(hourVals[i],1)}h sala + ${fmtN(outsideHourVals[i],1)}h fuera. Gasto: ${fmt(g)} x ${fmtN(pctVals[i],1)}% de sala (${fmtN(hourVals[i],1)}h / ${fmtN(totalHourVals[i],1)}h) = ${fmt(c)}`;
             const linea2=diff>=0?`Cubre con ${fmt(diff)} de margen`:`Faltan ${fmt(Math.abs(diff))}`;
             return [linea1, linea2];
           }
@@ -3560,16 +3581,16 @@ function renderEquipo(){
     const roles=getRoles(t);
     const roleBadges=roles.map(r=>{const rl=ALL_ROLES.find(x=>x.v===r);const cls={entrenador:'b-yl',fisio:'b-pr',nutricionista:'b-gn',otro:'b-gy'}[r]||'b-gy';return`<span class="badge ${cls}" style="font-size:.56rem">${rl?.l||r}</span>`;}).join(' ');
     // Calcular horas reales del mes actual
-    const ents=(db.months[curKey]?.entries||[]).filter(e=>e.trainerId===t.id);
-    let realHours=0;
-    ents.forEach(e=>{const svc=db.services.find(s=>s.id===e.serviceId);if(svc)realHours+=svc.hours||0;});
+    const br=getTrainerHourBreakdownForMonth(t.id,curKey);
+    const realHours=br.total;
+    const gymHours=br.gym;
     let hoursInfo='';
     if(t.desiredHours>0){
       const occ=(realHours/t.desiredHours)*100;
       const color=occ>=90?'var(--red)':occ>=70?'var(--yellow)':'var(--green)';
-      hoursInfo=`<div class="t-meta" style="margin-top:2px">⏱ ${realHours}h / ${t.desiredHours}h · <span style="color:${color};font-weight:700">${occ.toFixed(0)}%</span></div>`;
+      hoursInfo=`<div class="t-meta" style="margin-top:2px">⏱ ${realHours}h / ${t.desiredHours}h · sala ${gymHours}h · <span style="color:${color};font-weight:700">${occ.toFixed(0)}%</span></div>`;
     } else if(realHours>0){
-      hoursInfo=`<div class="t-meta" style="margin-top:2px">⏱ ${realHours}h/sem</div>`;
+      hoursInfo=`<div class="t-meta" style="margin-top:2px">⏱ ${realHours}h/sem · sala ${gymHours}h</div>`;
     }
     return`<div class="t-card">
       <div class="t-av" style="background:${t.color}18;color:${t.color}">${t.name.slice(0,2).toUpperCase()}</div>
@@ -3708,7 +3729,7 @@ function deleteMember(id){
 
 function renderTeamFichaChart(id,payRows){
   const t=db.team.find(x=>x.id===id);if(!t)return;
-  const data={labels:[],fact:[],sal:[],ben:[],hours:[]};
+  const data={labels:[],fact:[],sal:[],ben:[],hours:[],gymHours:[]};
   
   // Combinar datos históricos con payRows
   const allMeses=new Map();
@@ -3727,7 +3748,8 @@ function renderTeamFichaChart(id,payRows){
         fact:d.f,
         sal:sal,
         ben:d.f-sal,
-        hours:0
+        hours:0,
+        gymHours:0
       });
     });
   }
@@ -3738,11 +3760,9 @@ function renderTeamFichaChart(id,payRows){
     const mname=MES[parseInt(r.m)-1];
     const ents=db.months[r.k].entries||[];
     const teamEnts=ents.filter(e=>e.trainerId===id);
-    let totalHours=0;
-    teamEnts.forEach(e=>{
-      const svc=db.services.find(s=>s.id===e.serviceId);
-      if(svc)totalHours+=svc.hours||0;
-    });
+    const br=getTrainerHourBreakdownForMonth(id,r.k);
+    const totalHours=br.total;
+    const gymHours=br.gym;
     let sal=r.total;
     if(t.name==='Xavi')sal=r.total*1.22;
     allMeses.set(m,{
@@ -3750,7 +3770,8 @@ function renderTeamFichaChart(id,payRows){
       fact:r.bill,
       sal:sal,
       ben:r.bill-sal,
-      hours:totalHours
+      hours:totalHours,
+      gymHours
     });
   });
   
@@ -3763,6 +3784,7 @@ function renderTeamFichaChart(id,payRows){
     data.sal.push(d.sal);
     data.ben.push(d.ben);
     data.hours.push(d.hours);
+    data.gymHours.push(d.gymHours||0);
   });
   if(_dashCharts.teamFicha)_dashCharts.teamFicha.destroy();
   _dashCharts.teamFicha=new Chart(document.getElementById('cTeamFicha'),{
@@ -3787,7 +3809,8 @@ function renderTeamFichaChart(id,payRows){
       const desiredData=data.hours.map(()=>desired);
       const occupancyData=data.hours.map(h=>desired>0?Math.round((h/desired)*1000)/10:0);
       const datasets=[
-        {label:'Horas reales/semana',data:data.hours,borderColor:'#8b5cf6',backgroundColor:'rgba(139,92,246,.3)',borderWidth:2,type:'bar',yAxisID:'y',order:3}
+        {label:'Horas trabajadas/semana',data:data.hours,borderColor:'#8b5cf6',backgroundColor:'rgba(139,92,246,.3)',borderWidth:2,type:'bar',yAxisID:'y',order:3},
+        {label:'Horas sala/semana',data:data.gymHours,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.28)',borderWidth:2,type:'bar',yAxisID:'y',order:2}
       ];
       if(desired>0){
         datasets.push({label:`Horas deseadas (${desired}h)`,data:desiredData,borderColor:'#f97316',borderDash:[6,4],borderWidth:2,type:'line',fill:false,pointRadius:0,tension:0,yAxisID:'y',order:1});
