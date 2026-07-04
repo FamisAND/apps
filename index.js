@@ -115,6 +115,7 @@ async function goMenu(){
   await loadDashboardVisibilityConfig();
   computeKpis();
   applyDashboardVisibility();
+  setMenuView(localStorage.getItem('dashboard_menu_view') || 'classic', { silent: true });
   show('menuScreen');
 }
 
@@ -127,6 +128,38 @@ function computeKpis(){
   computeFtKpi();
   computeFacKpi();
   computeToKpi();
+  updateCityMeta();
+}
+
+function setMenuView(view, opts){
+  const next = view === 'city' ? 'city' : 'classic';
+  const city = document.getElementById('cityView');
+  const grid = document.getElementById('menuGrid');
+  const classicBtn = document.getElementById('classicViewBtn');
+  const cityBtn = document.getElementById('cityViewBtn');
+  if(city) city.classList.toggle('hidden', next !== 'city');
+  if(grid) grid.classList.toggle('hidden', next !== 'classic');
+  if(classicBtn) classicBtn.classList.toggle('active', next === 'classic');
+  if(cityBtn) cityBtn.classList.toggle('active', next === 'city');
+  if(!(opts && opts.silent)) localStorage.setItem('dashboard_menu_view', next);
+}
+
+function setCityMeta(id, text){
+  const el = document.getElementById(id);
+  if(el) el.textContent = text || '—';
+}
+
+function updateCityMeta(){
+  const pat = document.getElementById('kpiPatPct')?.textContent || '—';
+  const opt = document.getElementById('kpiOptActivas')?.textContent || '—';
+  const ft = document.getElementById('kpiFtClientes')?.textContent || '—';
+  const fac = document.getElementById('kpiFacTotal')?.textContent || '—';
+  const to = document.getElementById('kpiToClientes')?.textContent || '—';
+  setCityMeta('cityPatMeta', pat === '—' ? 'objetivo' : pat + ' objetivo');
+  setCityMeta('cityOptMeta', opt === '—' ? 'posiciones' : opt + ' posiciones');
+  setCityMeta('cityFtMeta', ft === '—' ? 'clientes activos' : ft + ' clientes');
+  setCityMeta('cityFacMeta', fac === '—' ? 'facturas' : fac + ' facturas');
+  setCityMeta('cityToMeta', to === '—' ? 'clientes' : to + ' clientes');
 }
 
 const MO3 = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
@@ -592,7 +625,7 @@ async function loadDashboardVisibilityConfig(opts){
 
 function applyDashboardVisibility(){
   const hidden = new Set((getDashboardVisibility().hidden || []).map(String));
-  document.querySelectorAll('.menu-card[data-dashboard-id]').forEach(card => {
+  document.querySelectorAll('.menu-card[data-dashboard-id], .city-building[data-dashboard-id]').forEach(card => {
     const id = card.getAttribute('data-dashboard-id');
     card.style.display = hidden.has(id) ? 'none' : '';
   });

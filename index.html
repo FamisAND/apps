@@ -137,6 +137,61 @@
 
   <div class="last-update" id="lastUpd">▸ SYNC OK ◂</div>
 
+  <div class="view-switch" aria-label="Cambiar vista del menú">
+    <button class="view-switch-btn active" id="classicViewBtn" type="button" onclick="setMenuView('classic')">▦ Clásico</button>
+    <button class="view-switch-btn" id="cityViewBtn" type="button" onclick="setMenuView('city')">▰ Ciudad</button>
+  </div>
+
+  <div class="city-wrap hidden" id="cityView" aria-label="Ciudad de dashboards">
+    <div class="city-sky">
+      <div class="city-sun"></div>
+      <div class="city-cloud c1"></div>
+      <div class="city-cloud c2"></div>
+    </div>
+    <div class="city-map">
+      <a class="city-building b-bank" href="patrimonio.html" data-dashboard-id="patrimonio" aria-label="Entrar en Patrimonio">
+        <span class="building-glow"></span>
+        <span class="building-roof"></span>
+        <span class="building-icon">€</span>
+        <span class="building-name">Banco Patrimonio</span>
+        <span class="building-meta" id="cityPatMeta">objetivo</span>
+      </a>
+      <a class="city-building b-market" href="options.html" data-dashboard-id="options" aria-label="Entrar en Opciones">
+        <span class="building-glow"></span>
+        <span class="building-roof"></span>
+        <span class="building-icon">⌁</span>
+        <span class="building-name">Mercado Options</span>
+        <span class="building-meta" id="cityOptMeta">posiciones</span>
+      </a>
+      <a class="city-building b-gym" href="full_training.html" data-dashboard-id="full_training" aria-label="Entrar en Full Training">
+        <span class="building-glow"></span>
+        <span class="building-roof"></span>
+        <span class="building-icon">FT</span>
+        <span class="building-name">Gym Full Training</span>
+        <span class="building-meta" id="cityFtMeta">clientes activos</span>
+      </a>
+      <a class="city-building b-office" href="facturas.html" data-dashboard-id="facturas" aria-label="Entrar en Facturas">
+        <span class="building-glow"></span>
+        <span class="building-roof"></span>
+        <span class="building-icon">▤</span>
+        <span class="building-name">Oficina Facturas</span>
+        <span class="building-meta" id="cityFacMeta">documentos</span>
+      </a>
+      <a class="city-building b-clinic" href="consulta.html" data-dashboard-id="consulta" aria-label="Entrar en Consulta">
+        <span class="building-glow"></span>
+        <span class="building-roof"></span>
+        <span class="building-icon">+</span>
+        <span class="building-name">Consulta BIIO</span>
+        <span class="building-meta" id="cityToMeta">clientes</span>
+      </a>
+      <div class="city-road main-road"></div>
+      <div class="city-road cross-road"></div>
+      <div class="city-plaza">
+        <div class="plaza-core">CITY<br>MODE</div>
+      </div>
+    </div>
+  </div>
+
   <div class="menu-grid" id="menuGrid">
     <a class="menu-card" href="patrimonio.html" data-dashboard-id="patrimonio">
       <div class="corner-tr"></div><div class="corner-bl"></div>

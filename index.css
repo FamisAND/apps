@@ -128,6 +128,244 @@ html,body{
 
 .err{color:#f87171;font-size:.78rem;min-height:18px;text-align:center;margin:8px 0;text-shadow:0 0 8px #ef444466;}
 
+.hidden{display:none !important;}
+.view-switch{
+  display:flex;
+  gap:6px;
+  margin:0 0 18px;
+  padding:4px;
+  background:#000;
+  border:1px solid #0e7490;
+  border-radius:6px;
+  box-shadow:0 0 18px rgba(34,211,238,.18);
+}
+.view-switch-btn{
+  background:transparent;
+  border:0;
+  color:#0e7490;
+  cursor:pointer;
+  font-family:'DM Mono',monospace;
+  font-size:.68rem;
+  letter-spacing:.1em;
+  padding:7px 12px;
+  text-transform:uppercase;
+  transition:all .15s;
+}
+.view-switch-btn:hover{color:#67e8f9;}
+.view-switch-btn.active{
+  background:#022c43;
+  color:#22d3ee;
+  box-shadow:0 0 14px rgba(34,211,238,.35);
+}
+
+.city-wrap{
+  width:100%;
+  max-width:980px;
+  margin:0 0 24px;
+  border:1px solid #06b6d455;
+  background:linear-gradient(180deg,#03111f 0%,#061529 45%,#04101d 100%);
+  border-radius:8px;
+  overflow:hidden;
+  box-shadow:0 0 40px rgba(34,211,238,.22),inset 0 0 42px rgba(34,211,238,.05);
+  position:relative;
+}
+.city-sky{
+  height:76px;
+  position:relative;
+  background:linear-gradient(180deg,rgba(14,116,144,.35),rgba(14,116,144,0));
+  overflow:hidden;
+}
+.city-sun{
+  position:absolute;
+  right:42px;
+  top:18px;
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  background:#facc15;
+  box-shadow:0 0 30px #facc15aa,0 0 70px #f9731655;
+}
+.city-cloud{
+  position:absolute;
+  width:96px;
+  height:18px;
+  border-radius:999px;
+  background:rgba(103,232,249,.16);
+  border:1px solid rgba(103,232,249,.18);
+}
+.city-cloud::before,.city-cloud::after{
+  content:"";
+  position:absolute;
+  background:inherit;
+  border-radius:50%;
+}
+.city-cloud::before{width:30px;height:30px;left:16px;top:-13px;}
+.city-cloud::after{width:42px;height:42px;right:12px;top:-24px;}
+.city-cloud.c1{left:8%;top:34px;animation:cityDrift 24s linear infinite;}
+.city-cloud.c2{left:52%;top:24px;transform:scale(.75);animation:cityDrift 31s linear infinite reverse;}
+@keyframes cityDrift{
+  0%{translate:-40px 0;opacity:.45;}
+  50%{opacity:.85;}
+  100%{translate:80px 0;opacity:.45;}
+}
+.city-map{
+  position:relative;
+  min-height:430px;
+  padding:26px;
+  background:
+    linear-gradient(90deg,rgba(34,211,238,.04) 1px,transparent 1px),
+    linear-gradient(rgba(34,211,238,.04) 1px,transparent 1px),
+    radial-gradient(circle at 50% 55%,rgba(34,211,238,.13),transparent 28%),
+    linear-gradient(180deg,#061526,#020617);
+  background-size:42px 42px,42px 42px,100% 100%,100% 100%;
+}
+.city-road{
+  position:absolute;
+  background:#0f172a;
+  border:1px solid #1e3a5f;
+  box-shadow:inset 0 0 18px rgba(34,211,238,.08);
+}
+.main-road{
+  left:0;
+  right:0;
+  bottom:78px;
+  height:64px;
+}
+.main-road::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:30px;
+  border-top:2px dashed rgba(103,232,249,.35);
+}
+.cross-road{
+  top:78px;
+  bottom:0;
+  left:50%;
+  width:72px;
+  transform:translateX(-50%);
+}
+.cross-road::after{
+  content:"";
+  position:absolute;
+  top:0;
+  bottom:0;
+  left:35px;
+  border-left:2px dashed rgba(103,232,249,.35);
+}
+.city-plaza{
+  position:absolute;
+  left:50%;
+  top:52%;
+  width:116px;
+  height:116px;
+  transform:translate(-50%,-50%) rotate(45deg);
+  background:#020617;
+  border:1px solid #22d3ee;
+  box-shadow:0 0 28px rgba(34,211,238,.35),inset 0 0 26px rgba(34,211,238,.08);
+}
+.plaza-core{
+  transform:rotate(-45deg);
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#67e8f9;
+  font-family:'DM Mono',monospace;
+  font-size:.66rem;
+  line-height:1.35;
+  letter-spacing:.16em;
+  text-align:center;
+}
+.city-building{
+  position:absolute;
+  width:152px;
+  min-height:126px;
+  color:#e0f2fe;
+  text-decoration:none;
+  text-align:center;
+  padding:22px 12px 12px;
+  border:1px solid #06b6d455;
+  background:linear-gradient(180deg,#082032,#020617);
+  box-shadow:0 12px 24px rgba(0,0,0,.35),0 0 24px rgba(34,211,238,.15);
+  clip-path:polygon(0 14px,50% 0,100% 14px,100% 100%,0 100%);
+  transition:transform .18s,box-shadow .18s,border-color .18s;
+  z-index:3;
+}
+.city-building:hover{
+  transform:translateY(-8px) scale(1.03);
+  border-color:#22d3ee;
+  box-shadow:0 18px 34px rgba(0,0,0,.45),0 0 42px rgba(34,211,238,.55);
+}
+.building-glow{
+  position:absolute;
+  inset:auto 18px -10px;
+  height:18px;
+  background:radial-gradient(ellipse,rgba(34,211,238,.45),transparent 70%);
+  opacity:.65;
+}
+.building-roof{
+  position:absolute;
+  top:15px;
+  left:20px;
+  right:20px;
+  height:8px;
+  background:linear-gradient(90deg,transparent,#22d3ee,transparent);
+  opacity:.65;
+}
+.building-icon{
+  display:inline-flex;
+  width:42px;
+  height:42px;
+  align-items:center;
+  justify-content:center;
+  border:1px solid currentColor;
+  border-radius:50%;
+  color:#22d3ee;
+  font-family:'DM Mono',monospace;
+  font-weight:700;
+  font-size:.9rem;
+  margin-bottom:10px;
+  box-shadow:0 0 16px currentColor;
+}
+.building-name{
+  display:block;
+  color:#67e8f9;
+  font-size:.76rem;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.building-meta{
+  display:block;
+  margin-top:7px;
+  color:#0e7490;
+  font-family:'DM Mono',monospace;
+  font-size:.62rem;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.b-bank{left:8%;top:26px;}
+.b-bank .building-icon{color:#34d399;}
+.b-market{right:10%;top:34px;}
+.b-market .building-icon{color:#c084fc;}
+.b-gym{
+  left:50%;
+  top:150px;
+  width:184px;
+  min-height:148px;
+  transform:translateX(-50%);
+  border-color:#facc15aa;
+  background:linear-gradient(180deg,#1f1a08,#061526 60%,#020617);
+}
+.b-gym:hover{transform:translateX(-50%) translateY(-8px) scale(1.03);box-shadow:0 18px 38px rgba(0,0,0,.45),0 0 46px rgba(250,204,21,.45);}
+.b-gym .building-icon{color:#facc15;}
+.b-office{left:14%;bottom:34px;}
+.b-office .building-icon{color:#fb923c;}
+.b-clinic{right:14%;bottom:34px;}
+.b-clinic .building-icon{color:#22d3ee;}
+
 /* GRID DE LAS 3 CARDS DE APPS */
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;
   width:100%;max-width:780px;margin-bottom:24px;
@@ -253,6 +491,43 @@ html,body{
   .logo-name{font-size:1.15rem;letter-spacing:.04em;}
   .logo-sub{font-size:.6rem;letter-spacing:.16em;}
   .last-update{font-size:.55rem;margin-bottom:20px;}
+  .view-switch{margin-bottom:14px;}
+  .view-switch-btn{font-size:.62rem;padding:7px 10px;}
+  .city-wrap{margin-bottom:16px;}
+  .city-sky{height:52px;}
+  .city-sun{width:28px;height:28px;right:22px;top:13px;}
+  .city-cloud{display:none;}
+  .city-map{
+    min-height:0;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    padding:14px;
+  }
+  .city-road,.city-plaza{display:none;}
+  .city-building,
+  .b-bank,.b-market,.b-gym,.b-office,.b-clinic{
+    position:relative;
+    left:auto;
+    right:auto;
+    top:auto;
+    bottom:auto;
+    width:100%;
+    min-height:96px;
+    transform:none;
+    clip-path:polygon(0 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%);
+    display:grid;
+    grid-template-columns:52px 1fr;
+    align-items:center;
+    text-align:left;
+    gap:8px;
+    padding:14px;
+  }
+  .city-building:hover,.b-gym:hover{transform:none;}
+  .building-roof{display:none;}
+  .building-icon{grid-row:1 / span 2;margin:0;}
+  .building-name{align-self:end;}
+  .building-meta{margin-top:2px;align-self:start;}
 
   /* Cards una por fila, padding ajustado */
   .menu-grid{
