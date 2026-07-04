@@ -2140,7 +2140,7 @@ function renderDashboard(){
     <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span>Ocupación Gym</span><button class="btn btn-sm btn-ghost" onclick="openGymConfig()" style="font-size:0.7rem;padding:2px 6px;">⚙️</button></div><div style="height:180px;"><canvas id="cGymOcup"></canvas></div></div>
     <div class="card"><div class="card-title">Margen de seguridad (%)</div><div style="height:180px;"><canvas id="cMgnSeg"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Análisis por trainer <span style="font-weight:400;color:var(--muted);font-size:.7rem">— ocupación + contribución al margen</span></span><select id="dashTrainerSelect" onchange="renderTrainerOcupChart()" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:3px 8px;font-size:.7rem;max-width:140px;"></select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;"><div><div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Ocupación</div><div style="height:180px;"><canvas id="cTrainerOcup"></canvas></div></div><div><div style="font-size:.65rem;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Contribución al margen</div><div style="height:180px;"><canvas id="cTrainerContrib"></canvas></div></div></div></div>
-    <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Punto Muerto del trainer seleccionado <span style="font-weight:400;color:var(--muted);font-size:.7rem" id="bePersonalSubtitle">— elige un trainer en la ruleta de arriba</span></span><button class="btn btn-sm btn-ghost" onclick="openBEConfig()" style="font-size:0.7rem;padding:2px 6px;" title="Configurar entre cuántas personas se reparten los gastos">⚙️</button></div><div style="height:220px;"><canvas id="cBEPersonal"></canvas></div></div>
+    <div class="card" style="grid-column:1/-1"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;"><span>Rentabilidad del trainer por uso de sala <span style="font-weight:400;color:var(--muted);font-size:.7rem" id="bePersonalSubtitle">— elige un trainer en la ruleta de arriba</span></span><button class="btn btn-sm btn-ghost" onclick="openBEConfig()" style="font-size:0.7rem;padding:2px 6px;" title="Fallback si no hay horas de sala registradas">⚙️</button></div><div style="height:220px;"><canvas id="cBEPersonal"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Facturación por tipo de servicio (mes a mes)</div><div style="height:200px;"><canvas id="cSvc"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Desglose de gastos por categoría (mes a mes)</div><div style="height:200px;"><canvas id="cGas"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Evolución deuda <span style="color:var(--red)">▬</span> vs Caja+Inversiones <span style="color:var(--green)">▬</span></div><div style="height:160px;"><canvas id="cDeuda"></canvas></div></div>
@@ -2413,15 +2413,15 @@ function renderBEPersonalChart(){
     const totalHoursAvg=totalHourVals.length?totalHourVals.reduce((a,b)=>a+b,0)/totalHourVals.length:0;
     const pctAvg=totalHoursAvg>0?(hoursAvg/totalHoursAvg)*100:0;
     sub.textContent=totalHoursAvg>0
-      ?`- ${trainer.name} · ${fmtN(hoursAvg,1)}h de ${fmtN(totalHoursAvg,1)}h de sala (${fmtN(pctAvg,1)}%) ~= ${fmt(cuotaAvg)}/mes`
-      :`- ${trainer.name} · sin horas de sala, usando fallback / ${getBeNTrainers()} ~= ${fmt(cuotaAvg)}/mes`;
+      ?`- ${trainer.name}: usa ${fmtN(hoursAvg,1)}h/sem de sala de ${fmtN(totalHoursAvg,1)}h/sem totales; se le imputa el ${fmtN(pctAvg,1)}% de los gastos = ${fmt(cuotaAvg)}/mes`
+      :`- ${trainer.name}: sin horas de sala registradas; se usa fallback / ${getBeNTrainers()} = ${fmt(cuotaAvg)}/mes`;
   }
 
   _dashCharts.bePersonal=new Chart(el,{
     type:'bar',
     data:{labels,datasets:[
       {label:'Facturacion '+trainer.name,data:factVals,backgroundColor:colors,borderColor:borders,borderWidth:1.5,borderRadius:3,order:2},
-      {label:'Su parte de gastos (por horas)',data:cuotaVals,type:'line',borderColor:'#e03535',backgroundColor:'rgba(224,53,53,.05)',borderDash:[6,4],borderWidth:2,pointRadius:4,pointBackgroundColor:'#e03535',tension:.2,order:1,fill:false}
+      {label:'Gasto imputado por uso de sala',data:cuotaVals,type:'line',borderColor:'#e03535',backgroundColor:'rgba(224,53,53,.05)',borderDash:[6,4],borderWidth:2,pointRadius:4,pointBackgroundColor:'#e03535',tension:.2,order:1,fill:false}
     ]},
     options:{
       responsive:true,maintainAspectRatio:false,
@@ -2434,8 +2434,8 @@ function renderBEPersonalChart(){
             const i=items[0].dataIndex;
             const f=factVals[i],c=cuotaVals[i],g=gasVals[i],diff=f-c;
             const linea1=fallbackVals[i]
-              ?`Gastos del mes: ${fmt(g)} sin horas de sala (fallback / ${getBeNTrainers()}) = ${fmt(c)}`
-              :`Gastos del mes: ${fmt(g)} x ${fmtN(pctVals[i],1)}% (${fmtN(hourVals[i],1)}h / ${fmtN(totalHourVals[i],1)}h) = ${fmt(c)}`;
+              ?`Sin horas de sala: ${fmt(g)} / ${getBeNTrainers()} personas = ${fmt(c)}`
+              :`Uso de sala: ${fmtN(hourVals[i],1)}h / ${fmtN(totalHourVals[i],1)}h = ${fmtN(pctVals[i],1)}%. Gasto imputado: ${fmt(g)} x ${fmtN(pctVals[i],1)}% = ${fmt(c)}`;
             const linea2=diff>=0?`Cubre con ${fmt(diff)} de margen`:`Faltan ${fmt(Math.abs(diff))}`;
             return [linea1, linea2];
           }
