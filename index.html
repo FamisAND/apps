@@ -142,53 +142,60 @@
     <button class="view-switch-btn" id="cityViewBtn" type="button" onclick="setMenuView('city')">▰ Ciudad</button>
   </div>
 
-  <div class="city-wrap hidden" id="cityView" aria-label="Ciudad de dashboards">
-    <div class="city-sky">
-      <div class="city-sun"></div>
-      <div class="city-cloud c1"></div>
-      <div class="city-cloud c2"></div>
-    </div>
-    <div class="city-map">
-      <a class="city-building b-bank" href="patrimonio.html" data-dashboard-id="patrimonio" aria-label="Entrar en Patrimonio">
-        <span class="building-glow"></span>
-        <span class="building-roof"></span>
-        <span class="building-icon">€</span>
-        <span class="building-name">Banco Patrimonio</span>
-        <span class="building-meta" id="cityPatMeta">objetivo</span>
-      </a>
-      <a class="city-building b-market" href="options.html" data-dashboard-id="options" aria-label="Entrar en Opciones">
-        <span class="building-glow"></span>
-        <span class="building-roof"></span>
-        <span class="building-icon">⌁</span>
-        <span class="building-name">Mercado Options</span>
-        <span class="building-meta" id="cityOptMeta">posiciones</span>
-      </a>
-      <a class="city-building b-gym" href="full_training.html" data-dashboard-id="full_training" aria-label="Entrar en Full Training">
-        <span class="building-glow"></span>
-        <span class="building-roof"></span>
-        <span class="building-icon">FT</span>
-        <span class="building-name">Gym Full Training</span>
-        <span class="building-meta" id="cityFtMeta">clientes activos</span>
-      </a>
-      <a class="city-building b-office" href="facturas.html" data-dashboard-id="facturas" aria-label="Entrar en Facturas">
-        <span class="building-glow"></span>
-        <span class="building-roof"></span>
-        <span class="building-icon">▤</span>
-        <span class="building-name">Oficina Facturas</span>
-        <span class="building-meta" id="cityFacMeta">documentos</span>
-      </a>
-      <a class="city-building b-clinic" href="consulta.html" data-dashboard-id="consulta" aria-label="Entrar en Consulta">
-        <span class="building-glow"></span>
-        <span class="building-roof"></span>
-        <span class="building-icon">+</span>
-        <span class="building-name">Consulta BIIO</span>
-        <span class="building-meta" id="cityToMeta">clientes</span>
-      </a>
-      <div class="city-road main-road"></div>
-      <div class="city-road cross-road"></div>
-      <div class="city-plaza">
-        <div class="plaza-core">CITY<br>MODE</div>
+  <div class="city-wrap hidden" id="cityView" aria-label="Ciudad jugable de dashboards">
+    <div class="city-hud">
+      <div>
+        <span class="city-hud-label">Destino</span>
+        <strong id="cityTargetName">Muévete hasta una puerta</strong>
       </div>
+      <button class="city-enter-btn" id="cityEnterBtn" type="button" onclick="enterCityDoor()" disabled>Entrar</button>
+    </div>
+    <div class="city-map" id="cityMap" tabindex="0" aria-label="Mapa 16 bits. Usa flechas o WASD para moverte.">
+      <div class="city-path path-main"></div>
+      <div class="city-path path-cross"></div>
+      <div class="city-grass g1"></div>
+      <div class="city-grass g2"></div>
+      <div class="city-water"></div>
+      <button class="city-place b-bank" type="button" data-dashboard-id="patrimonio" data-href="patrimonio.html" data-door-x="3" data-door-y="4" aria-label="Puerta de Patrimonio">
+        <span class="place-roof"></span>
+        <span class="place-title">Patrimonio</span>
+        <span class="place-meta" id="cityPatMeta">objetivo</span>
+      </button>
+      <button class="city-place b-market" type="button" data-dashboard-id="options" data-href="options.html" data-door-x="9" data-door-y="4" aria-label="Puerta de Opciones">
+        <span class="place-roof"></span>
+        <span class="place-title">Options</span>
+        <span class="place-meta" id="cityOptMeta">posiciones</span>
+      </button>
+      <button class="city-place b-office" type="button" data-dashboard-id="facturas" data-href="facturas.html" data-door-x="15" data-door-y="4" aria-label="Puerta de Facturas">
+        <span class="place-roof"></span>
+        <span class="place-title">Facturas</span>
+        <span class="place-meta" id="cityFacMeta">documentos</span>
+      </button>
+      <button class="city-place b-clinic" type="button" data-dashboard-id="consulta" data-href="consulta.html" data-door-x="3" data-door-y="7" aria-label="Puerta de Consulta">
+        <span class="place-roof"></span>
+        <span class="place-title">Consulta</span>
+        <span class="place-meta" id="cityToMeta">clientes</span>
+      </button>
+      <button class="city-place b-gym" type="button" data-dashboard-id="full_training" data-href="full_training.html" data-door-x="9" data-door-y="6" aria-label="Puerta de Full Training">
+        <span class="place-roof"></span>
+        <span class="place-title">Full Training</span>
+        <span class="place-meta" id="cityFtMeta">clientes activos</span>
+      </button>
+      <span class="city-door d-bank" aria-hidden="true"></span>
+      <span class="city-door d-market" aria-hidden="true"></span>
+      <span class="city-door d-office" aria-hidden="true"></span>
+      <span class="city-door d-clinic" aria-hidden="true"></span>
+      <span class="city-door d-gym" aria-hidden="true"></span>
+      <div class="city-player" id="cityPlayer" aria-hidden="true">
+        <span class="player-head"></span>
+        <span class="player-body"></span>
+      </div>
+    </div>
+    <div class="city-pad" aria-label="Controles del mapa">
+      <button type="button" onclick="moveCityPlayer(0,-1)" aria-label="Arriba">▲</button>
+      <button type="button" onclick="moveCityPlayer(-1,0)" aria-label="Izquierda">◀</button>
+      <button type="button" onclick="moveCityPlayer(1,0)" aria-label="Derecha">▶</button>
+      <button type="button" onclick="moveCityPlayer(0,1)" aria-label="Abajo">▼</button>
     </div>
   </div>
 

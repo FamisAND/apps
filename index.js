@@ -115,7 +115,7 @@ async function goMenu(){
   await loadDashboardVisibilityConfig();
   computeKpis();
   applyDashboardVisibility();
-  setMenuView(localStorage.getItem('dashboard_menu_view') || 'classic', { silent: true });
+  setMenuView(localStorage.getItem('dashboard_menu_view') || 'city', { silent: true });
   show('menuScreen');
 }
 
@@ -142,6 +142,89 @@ function setMenuView(view, opts){
   if(classicBtn) classicBtn.classList.toggle('active', next === 'classic');
   if(cityBtn) cityBtn.classList.toggle('active', next === 'city');
   if(!(opts && opts.silent)) localStorage.setItem('dashboard_menu_view', next);
+  if(next === 'city') initCityMap();
+}
+
+const CITY_COLS = 18;
+const CITY_ROWS = 11;
+const cityState = { x: 9, y: 9, readyHref: '', readyName: '', wired: false };
+
+function initCityMap(){
+  updateCityPlayer();
+  if(cityState.wired) return;
+  cityState.wired = true;
+  document.querySelectorAll('.city-place').forEach(place => {
+    place.addEventListener('click', () => {
+      const name = place.querySelector('.place-title')?.textContent || 'puerta';
+      const target = document.getElementById('cityTargetName');
+      if(target) target.textContent = 'Puerta de ' + name + ': llega con el personaje';
+      const map = document.getElementById('cityMap');
+      if(map) map.focus({ preventScroll: true });
+    });
+  });
+  document.addEventListener('keydown', handleCityKeydown);
+}
+
+function handleCityKeydown(ev){
+  const city = document.getElementById('cityView');
+  if(!city || city.classList.contains('hidden')) return;
+  const tag = (ev.target && ev.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  const moves = {
+    ArrowUp: [0,-1],
+    ArrowDown: [0,1],
+    ArrowLeft: [-1,0],
+    ArrowRight: [1,0],
+    w: [0,-1],
+    s: [0,1],
+    a: [-1,0],
+    d: [1,0],
+    W: [0,-1],
+    S: [0,1],
+    A: [-1,0],
+    D: [1,0]
+  };
+  if(ev.key === 'Enter'){
+    enterCityDoor();
+    ev.preventDefault();
+    return;
+  }
+  if(!moves[ev.key]) return;
+  moveCityPlayer(moves[ev.key][0], moves[ev.key][1]);
+  ev.preventDefault();
+}
+
+function moveCityPlayer(dx, dy){
+  cityState.x = Math.max(0, Math.min(CITY_COLS - 1, cityState.x + dx));
+  cityState.y = Math.max(0, Math.min(CITY_ROWS - 1, cityState.y + dy));
+  updateCityPlayer();
+}
+
+function getCityDoorAt(x, y){
+  return Array.from(document.querySelectorAll('.city-place[data-href]')).find(place => {
+    if(place.style.display === 'none') return false;
+    return Number(place.dataset.doorX) === x && Number(place.dataset.doorY) === y;
+  });
+}
+
+function updateCityPlayer(){
+  const player = document.getElementById('cityPlayer');
+  const enterBtn = document.getElementById('cityEnterBtn');
+  const target = document.getElementById('cityTargetName');
+  const door = getCityDoorAt(cityState.x, cityState.y);
+  if(player){
+    player.style.setProperty('--px', cityState.x);
+    player.style.setProperty('--py', cityState.y);
+    player.classList.toggle('ready', !!door);
+  }
+  cityState.readyHref = door ? door.dataset.href : '';
+  cityState.readyName = door ? (door.querySelector('.place-title')?.textContent || '') : '';
+  if(enterBtn) enterBtn.disabled = !door;
+  if(target) target.textContent = door ? 'Entrar en ' + cityState.readyName : 'Muévete hasta una puerta';
+}
+
+function enterCityDoor(){
+  if(cityState.readyHref) window.location.href = cityState.readyHref;
 }
 
 function setCityMeta(id, text){
@@ -625,10 +708,11 @@ async function loadDashboardVisibilityConfig(opts){
 
 function applyDashboardVisibility(){
   const hidden = new Set((getDashboardVisibility().hidden || []).map(String));
-  document.querySelectorAll('.menu-card[data-dashboard-id], .city-building[data-dashboard-id]').forEach(card => {
+  document.querySelectorAll('.menu-card[data-dashboard-id], .city-place[data-dashboard-id]').forEach(card => {
     const id = card.getAttribute('data-dashboard-id');
     card.style.display = hidden.has(id) ? 'none' : '';
   });
+  updateCityPlayer();
 }
 
 async function openDashboardVisibilityModal(){
