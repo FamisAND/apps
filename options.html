@@ -422,6 +422,8 @@
     </div>
   </div>
 
+  <div id="actRiskPanel" style="padding:14px 20px 0"></div>
+
   <!-- Cards grid -->
   <div id="activasGrid" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px"></div>
 
@@ -1378,6 +1380,25 @@ function buildCalc(i){
         <span class="hint">Pérdida máxima real hasta este nivel</span>
       </div>
 
+      <div class="sep"></div>
+      <div style="background:#0a1421;border:1px solid #1e2d3d;border-radius:6px;padding:10px 12px">
+        <div style="font-family:'Courier New',monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#f0a500;margin-bottom:8px">Sistema PCS → Roll → NP</div>
+        <div class="two">
+          <div class="fr">
+            <label>Activo asignable</label>
+            <select id="c_assign${i}" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none;width:100%">
+              <option value="yes">Sí, puedo quedármelo</option>
+              <option value="no">No, solo PCS definido</option>
+            </select>
+          </div>
+          <div class="fr"><label>Contratos máx. cadena</label><input type="number" id="c_maxctr${i}" value="3" min="1" max="3" step="1"/></div>
+        </div>
+        <div class="two">
+          <div class="fr"><label>Rolls máx.</label><input type="number" id="c_maxrolls${i}" value="2" min="0" max="2" step="1"/></div>
+          <div class="fr"><label>Límite ifAsign (%)</label><input type="number" id="c_iflimit${i}" value="150" min="50" step="5"/></div>
+        </div>
+      </div>
+
       <button class="calcbtn" onclick="calculate(${i})">▶ Calcular</button>
     </div>
     <div class="res" id="res${i}"><div class="ph">— sin calcular —</div></div>
@@ -1406,6 +1427,10 @@ function calcTrade(i){
   const openD=g('c_open').value, expD=g('c_exp').value;
   const ticker=g('c_ticker').value||'—';
   const px=parseFloat(g('c_px').value)||0, sup=parseFloat(g('c_sup').value)||0;
+  const assignable = (g('c_assign')?.value || 'yes') === 'yes';
+  const maxCtr = Math.max(1, Math.min(3, parseInt(g('c_maxctr')?.value || '3', 10) || 3));
+  const maxRolls = Math.max(0, Math.min(2, parseInt(g('c_maxrolls')?.value || '2', 10) || 0));
+  const ifLimit = Math.max(50, parseFloat(g('c_iflimit')?.value || '150') || 150);
 
   if(!ss||!prem||!expD||!openD) return null;
 
@@ -1428,6 +1453,14 @@ function calcTrade(i){
   const ev=(pS/100*ap)-(pF/100*maxLR), evW=(pS/100*ap)-(pF/100*maxL);
   const rr=maxLR/ap, be=ss-prem;
   const ivDelta = iv>0&&delta!==0 ? iv*Math.abs(delta) : null;
+  const liq = _lastAccountLiquidity();
+  const initialRiskPct = liq.value > 0 ? capR / liq.value * 100 : null;
+  const chainRisk = (capR / Math.max(1, ctr)) * maxCtr;
+  const chainRiskPct = liq.value > 0 ? chainRisk / liq.value * 100 : null;
+  const assignNominal = (strat === 'NP' || assignable) ? ss * 100 * maxCtr : 0;
+  const assignStats = _assignmentPortfolioStats(assignNominal);
+  const ifAsignAfter = assignStats.pct;
+  const ifAsignNow = liq.value > 0 ? assignStats.current / liq.value * 100 : null;
 
   let em=0, emPct=0, svR=null, pPctM=null;
   if(px>0&&iv>0){
@@ -1438,7 +1471,8 @@ function calcTrade(i){
   }
 
   return{i,strat,ticker,ss,sl,ctr,prem,dte,ap,pn,capR,maxL,maxLR,sw,useSup,sup,
-    ror,rorN,ann,annN,pS,pF,ev,evW,rr,be,ivr,iv,delta,ivDelta,px,em,emPct,svR,pPctM};
+    ror,rorN,ann,annN,pS,pF,ev,evW,rr,be,ivr,iv,delta,ivDelta,px,em,emPct,svR,pPctM,
+    assignable,maxCtr,maxRolls,ifLimit,liq,initialRiskPct,chainRisk,chainRiskPct,assignNominal,ifAsignNow,ifAsignAfter};
 }
 
 function renderResult(r,i){
@@ -1464,6 +1498,41 @@ function renderResult(r,i){
 
   const evBW = Math.min(100,Math.max(0,(r.ev/r.ap+0.5)*50));
   const evBC = r.ev>=0?'#3fb68b':'#f04545';
+  const sysState = _ifAsignState(r.ifAsignAfter, r.ifLimit);
+  const deltaAbs = Math.abs(r.delta || 0);
+  const deltaNorm = deltaAbs <= 1 ? deltaAbs : deltaAbs / 100;
+  const sysChecks = [
+    { label:'DTE 40-50', pass:r.dte>=40 && r.dte<=50, val:r.dte+'d' },
+    { label:'Delta <=30', pass:deltaNorm<=0.30, val:(deltaNorm*100).toFixed(0) },
+    { label:'Riesgo inicial 1-3%', pass:r.initialRiskPct!=null && r.initialRiskPct>=1 && r.initialRiskPct<=3, val:r.initialRiskPct!=null?r.initialRiskPct.toFixed(1)+'%':'—' },
+    { label:'Riesgo cadena <=9%', pass:r.chainRiskPct!=null && r.chainRiskPct<=9, val:r.chainRiskPct!=null?r.chainRiskPct.toFixed(1)+'%':'—' },
+    { label:'Max. 2 rolls', pass:r.maxRolls<=2, val:r.maxRolls },
+    { label:'Max. 3 contratos', pass:r.maxCtr<=3, val:r.maxCtr },
+    { label:'ifAsign <= '+r.ifLimit+'%', pass:r.ifAsignAfter!=null && r.ifAsignAfter<=r.ifLimit, val:r.ifAsignAfter!=null?r.ifAsignAfter.toFixed(0)+'%':'—' },
+    { label:'Asignable', pass:r.strat==='NP' || r.assignable, val:r.assignable?'si':'no' }
+  ];
+  const sysFails = sysChecks.filter(x=>!x.pass);
+  const sysVerdict = sysFails.length ? 'NO ENTRAR / AJUSTAR' : 'CABE EN SISTEMA';
+  const sysVerdictCol = sysFails.length ? '#f04545' : '#3fb68b';
+  const sysHtml = `
+    <div style="border:1px solid ${sysVerdictCol}55;background:${sysVerdictCol}0d;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px">
+        <div style="font-family:'Courier New',monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:${sysVerdictCol}">Sistema PCS -> Roll -> NP</div>
+        <div style="font-family:'Courier New',monospace;font-size:10px;font-weight:800;color:${sysVerdictCol}">${sysVerdict}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:9px">
+        ${sysChecks.map(ch=>`<div style="border:1px solid ${ch.pass?'#3fb68b44':'#f0454544'};background:${ch.pass?'#3fb68b0d':'#f045450d'};border-radius:4px;padding:5px 6px">
+          <div style="font-size:7px;color:#5a7a9a;text-transform:uppercase">${ch.label}</div>
+          <div style="font-size:10px;font-weight:700;color:${ch.pass?'#3fb68b':'#f04545'}">${ch.pass?'OK':'NO'} ${ch.val}</div>
+        </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-family:'Courier New',monospace">
+        <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Riesgo inicial</span><b style="color:#c9d1d9">${_fmtUsd0(r.capR)}${r.initialRiskPct!=null?' · '+r.initialRiskPct.toFixed(1)+'%':''}</b></div>
+        <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Cadena peor caso</span><b style="color:#c9d1d9">${_fmtUsd0(r.chainRisk)}${r.chainRiskPct!=null?' · '+r.chainRiskPct.toFixed(1)+'%':''}</b></div>
+        <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">ifAsign tras entrar</span><b style="color:${sysState.color}">${r.ifAsignAfter!=null?r.ifAsignAfter.toFixed(0)+'%':'—'} · ${_fmtUsd0(r.assignNominal)} nuevo</b></div>
+      </div>
+      ${sysFails.length?`<div style="font-size:8px;color:#f0a500;margin-top:8px;line-height:1.4">Revisar: ${sysFails.map(x=>x.label).join(' · ')}</div>`:''}
+    </div>`;
 
   // ── PRICE / SIGMA BAR ────────────────────────────────────────
   let moveHtml='';
@@ -1541,6 +1610,7 @@ function renderResult(r,i){
   }
 
   el.innerHTML=`
+    ${sysHtml}
     <div class="mg">
       <div class="mc ${thrClass(r.ror,null)}" id="mc_ror_${i}">
         <div class="ml">ROR bruto</div>
@@ -1683,6 +1753,8 @@ function compareAll(){
     {l:'Ratio R/B',      k:'rr',     f:v=>v.toFixed(1)+'x',  hi:false},
     {l:'Break-even',     k:'be',     f:v=>'$'+v.toFixed(2),  hi:false},
     {l:'Capital riesgo', k:'capR',   f:v=>'$'+v.toLocaleString('es-ES',{maximumFractionDigits:0}), hi:false},
+    {l:'Riesgo cadena',  k:'chainRiskPct', f:v=>v!=null?v.toFixed(1)+'%':'—', hi:false},
+    {l:'ifAsign tras entrar', k:'ifAsignAfter', f:v=>v!=null?v.toFixed(0)+'%':'—', hi:false},
     {l:'IV × |Delta|',   k:'ivDelta',f:v=>v!=null?v.toFixed(2):'—', hi:false},
     {l:'Prima / mov.esp.',k:'pPctM', f:v=>v!=null?v.toFixed(1)+'%':'—', hi:true},
   ];
@@ -4235,11 +4307,66 @@ function activasSave(){
 }
 
 // ── Render all cards ────────────────────────────────────────────
+function _lastAccountLiquidity(){
+  const cfgCash = parseFloat(CFG.cashAvail || 0) || 0;
+  if(cfgCash > 0) return { value: cfgCash, label: 'Cash config.' };
+  const snaps = (SNAPS || []).filter(s => parseFloat(s.val) > 0).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const last = snaps[snaps.length - 1];
+  return last ? { value: parseFloat(last.val) || 0, label: 'NAV ' + (last.date || '') } : { value: 0, label: 'sin liquidez' };
+}
+
+function _fmtUsd0(v){
+  return '$' + (parseFloat(v) || 0).toLocaleString('es-ES', { maximumFractionDigits: 0 });
+}
+
+function _ifAsignState(pct, limit){
+  if(pct == null) return { color:'#5a7a9a', label:'sin dato', bg:'#0a1421' };
+  const lim = limit || 150;
+  if(pct <= 100) return { color:'#3fb68b', label:'OK', bg:'#0f2a1f' };
+  if(pct <= lim) return { color:'#f0a500', label:'gestionable', bg:'#2b220d' };
+  return { color:'#f04545', label:'bloqueado', bg:'#2a0f12' };
+}
+
+function _shortPutAssignmentFromLegs(a){
+  const ctr = parseInt(a.contracts, 10) || 1;
+  if(!Array.isArray(a.legs) || !a.legs.length) return null;
+  const shortPuts = a.legs.filter(l => l && l.kind === 'short_put' && Number.isFinite(parseFloat(l.strike)));
+  if(!shortPuts.length) return 0;
+  return shortPuts.reduce((s,l) => s + (parseFloat(l.strike) * 100 * ctr), 0);
+}
+
+function _activeAssignmentExposure(a){
+  if(!a || a.strat === 'ACC') return { amount:0, source:'acciones ya compradas' };
+  const legsAmt = _shortPutAssignmentFromLegs(a);
+  if(legsAmt != null) return { amount: legsAmt, source: legsAmt > 0 ? 'put vendido' : 'sin put vendido' };
+  const ctr = parseInt(a.contracts, 10) || 1;
+  const strikeRaw = a.strike != null ? String(a.strike).split('-')[0] : '';
+  const strike = parseFloat(strikeRaw);
+  if(Number.isFinite(strike) && strike > 0) return { amount: strike * 100 * ctr, source:'strike' };
+  const premTotal = a.pCredito != null ? Math.abs(premiumStorageToTotal(a.pCredito, ctr)) : 0;
+  if(a.strat === 'NP' && a.maxRisk) return { amount: (parseFloat(a.maxRisk)||0) + premTotal, source:'maxRisk+prima' };
+  return { amount: parseFloat(a.maxRisk)||0, source:'aprox. maxRisk' };
+}
+
+function _assignmentPortfolioStats(extraAmount){
+  const assignableStrats = new Set(['NP','PCS','DPS','BWB','JL','IC','112','0DTE']);
+  const rows = (ACTIVAS || []).map(a => {
+    const exp = assignableStrats.has(a.strat) ? _activeAssignmentExposure(a) : { amount:0, source:'excluido' };
+    return { a, amount: exp.amount || 0, source: exp.source };
+  });
+  const current = rows.reduce((s,r)=>s+r.amount,0);
+  const liq = _lastAccountLiquidity();
+  const total = current + (parseFloat(extraAmount)||0);
+  const pct = liq.value > 0 ? total / liq.value * 100 : null;
+  return { rows, current, total, pct, liquidity: liq };
+}
+
 function renderActivas(){
   activasLoad();
   const grid  = document.getElementById('activasGrid');
   const empty = document.getElementById('activasEmpty');
   const sumEl = document.getElementById('actSummary');
+  const riskPanel = document.getElementById('actRiskPanel');
   if(!grid) return;
 
   // today must be declared BEFORE sort uses it
@@ -4250,6 +4377,7 @@ function renderActivas(){
     grid.innerHTML='';
     if(empty) empty.style.display='block';
     if(sumEl) sumEl.textContent='';
+    if(riskPanel) riskPanel.innerHTML='';
     return;
   }
   if(empty) empty.style.display='none';
@@ -4343,8 +4471,47 @@ function renderActivas(){
     // Legacy signed (fórmula original): (pc - pd - pCur) × 100 × ctr − comi
     return s + ((pc_share - pd_share - pCur_abs) * 100 * ctr) - (a.comi||0);
   },0);
-  const cash = CFG.cashAvail||0;
-  const coverage = cash>0 ? (totalRiskAssign/cash*100) : null;
+  const assignStats = _assignmentPortfolioStats(0);
+  const totalAssignNom = assignStats.current;
+  const cash = assignStats.liquidity.value || 0;
+  const coverage = cash>0 ? (totalAssignNom/cash*100) : null;
+  const ifState = _ifAsignState(coverage, 150);
+  if(riskPanel){
+    const topRows = assignStats.rows
+      .filter(r=>r.amount>0)
+      .sort((a,b)=>b.amount-a.amount)
+      .slice(0,5)
+      .map(r=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid #0d1117">
+        <span style="color:#5a7a9a">${r.a.activo||'—'} · ${r.a.strat||'—'} · ${r.source}</span>
+        <strong style="color:#c9d1d9">${_fmtUsd0(r.amount)}</strong>
+      </div>`).join('');
+    riskPanel.innerHTML = `
+      <div style="display:grid;grid-template-columns:1.05fr .95fr;gap:12px;align-items:stretch">
+        <div style="background:${ifState.bg};border:1px solid ${ifState.color}66;border-radius:8px;padding:14px 16px;box-shadow:0 0 22px ${ifState.color}18">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+            <div>
+              <div style="font-family:'Courier New',monospace;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:${ifState.color};margin-bottom:6px">ifAsign ratio</div>
+              <div style="font-family:'Courier New',monospace;font-size:32px;line-height:1;font-weight:800;color:${ifState.color}">${coverage!=null?coverage.toFixed(0)+'%':'—'}</div>
+            </div>
+            <div style="text-align:right;font-family:'Courier New',monospace">
+              <div style="font-size:10px;color:${ifState.color};font-weight:700;text-transform:uppercase">${ifState.label}</div>
+              <div style="font-size:8px;color:#5a7a9a;margin-top:5px">límite operativo: 150%</div>
+            </div>
+          </div>
+          <div style="height:8px;background:#060a0f;border:1px solid #1e2d3d;border-radius:999px;overflow:hidden;margin:12px 0 8px">
+            <div style="height:100%;width:${Math.min(100, coverage!=null?coverage/150*100:0)}%;background:${ifState.color}"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">
+            <span>Asignación potencial: <b style="color:#c9d1d9">${_fmtUsd0(totalAssignNom)}</b></span>
+            <span>${assignStats.liquidity.label}: <b style="color:#c9d1d9">${cash?_fmtUsd0(cash):'—'}</b></span>
+          </div>
+        </div>
+        <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px">
+          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#f0a500;margin-bottom:8px">Mayor exposición si asignan</div>
+          ${topRows || '<div style="color:#5a7a9a;padding:10px 0">Sin puts vendidos con asignación potencial.</div>'}
+        </div>
+      </div>`;
+  }
   let coverageStr = '';
   if(coverage!=null){
     const covCol = coverage>100?'#f04545':coverage>80?'#f0a500':'#3fb68b';
@@ -4354,7 +4521,7 @@ function renderActivas(){
   // Build summary: separate options risk from stock value
   const riskParts = [];
   if(totalRisk>0)       riskParts.push(`Risk: $${totalRisk.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
-  if(totalRiskAssign>0) riskParts.push(`Asign: $${totalRiskAssign.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
+  if(totalAssignNom>0) riskParts.push(`ifAsign: $${totalAssignNom.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
   if(totalRiskExcl>0)   riskParts.push(`<span style="color:#2a4a6a">+$${totalRiskExcl.toLocaleString('es-ES',{maximumFractionDigits:0})} excl.</span>`);
   const riskStr = riskParts.join(' · ') || 'Sin riesgo';
   if(sumEl) sumEl.innerHTML = `${ACTIVAS.length} pos · ${riskStr} · P&L est: ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}${coverageStr}`;
@@ -4437,6 +4604,14 @@ function buildActCard(a, idx, today){
   const tpTarget = (CFG.tpTargets||{})[strat] || 50;
   const tpAlertOn = tpPct!=null && tpPct >= tpTarget;
   if(tpAlertOn) cardClass += ' act-tp-alert';
+
+  const assignExp = _activeAssignmentExposure(a);
+  const liqInfo = _lastAccountLiquidity();
+  const assignPct = liqInfo.value > 0 ? assignExp.amount / liqInfo.value * 100 : null;
+  const assignCol = assignPct==null ? '#5a7a9a' : assignPct>=50 ? '#f04545' : assignPct>=25 ? '#f0a500' : '#3fb68b';
+  const assignLabel = assignExp.amount > 0
+    ? `${_fmtUsd0(assignExp.amount)}${assignPct!=null?' · '+assignPct.toFixed(0)+'% liq':''}`
+    : '$0';
 
   // Temporal efficiency (ET)
   // ── prima capturada ── Para spreads usamos el crédito NETO (pc-pd).
@@ -4556,6 +4731,7 @@ function buildActCard(a, idx, today){
         return `<div class="act-kv"><span class="act-k">Dist. strike</span><span class="act-v ${dc}">${dist>=0?'+':''}${dist.toFixed(1)}%</span></div>`;
       })():''}
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
+      <div class="act-kv"><span class="act-k" title="Nominal que podría exigir la cuenta si se quita cobertura y/o asignan puts vendidos">ifAsign</span><span class="act-v" style="color:${assignCol}">${assignLabel}</span></div>
       <div class="act-kv"><span class="act-k">Prima total</span><span class="act-v">${a.pCredito!=null?'$'+Math.abs(premiumStorageToTotal(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
