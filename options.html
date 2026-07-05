@@ -1397,6 +1397,10 @@ function buildCalc(i){
           <div class="fr"><label>Rolls máx.</label><input type="number" id="c_maxrolls${i}" value="2" min="0" max="2" step="1"/></div>
           <div class="fr"><label>Límite ifAsign (%)</label><input type="number" id="c_iflimit${i}" value="150" min="50" step="5"/></div>
         </div>
+        <div class="two">
+          <div class="fr"><label>Riesgo objetivo (%)</label><input type="number" id="c_targetrisk${i}" value="2" min="0.5" max="9" step="0.25"/></div>
+          <div class="fr"><label>Contratos objetivo</label><input type="number" id="c_targetctr${i}" value="1" min="1" max="3" step="1"/></div>
+        </div>
       </div>
 
       <button class="calcbtn" onclick="calculate(${i})">▶ Calcular</button>
@@ -1431,6 +1435,8 @@ function calcTrade(i){
   const maxCtr = Math.max(1, Math.min(3, parseInt(g('c_maxctr')?.value || '3', 10) || 3));
   const maxRolls = Math.max(0, Math.min(2, parseInt(g('c_maxrolls')?.value || '2', 10) || 0));
   const ifLimit = Math.max(50, parseFloat(g('c_iflimit')?.value || '150') || 150);
+  const targetRiskPct = Math.max(0.25, parseFloat(g('c_targetrisk')?.value || '2') || 2);
+  const targetCtr = Math.max(1, Math.min(3, parseInt(g('c_targetctr')?.value || '1', 10) || 1));
 
   if(!ss||!prem||!expD||!openD) return null;
 
@@ -1449,18 +1455,33 @@ function calcTrade(i){
 
   const ror=(ap/capR)*100, rorN=(pn/capR)*100;
   const ann=ror*(365/dte), annN=rorN*(365/dte);
-  const pS=(1-Math.abs(delta))*100, pF=100-pS;
+  const deltaAbsCalc = Math.abs(delta || 0);
+  const deltaNormCalc = deltaAbsCalc > 1 ? deltaAbsCalc / 100 : deltaAbsCalc;
+  const pS=(1-deltaNormCalc)*100, pF=100-pS;
   const ev=(pS/100*ap)-(pF/100*maxLR), evW=(pS/100*ap)-(pF/100*maxL);
   const rr=maxLR/ap, be=ss-prem;
   const ivDelta = iv>0&&delta!==0 ? iv*Math.abs(delta) : null;
   const liq = _lastAccountLiquidity();
-  const initialRiskPct = liq.value > 0 ? capR / liq.value * 100 : null;
-  const chainRisk = (capR / Math.max(1, ctr)) * maxCtr;
+  const netRiskPerContract = Math.max(0, maxL / Math.max(1, ctr));
+  const initialRiskPct = liq.value > 0 ? maxL / liq.value * 100 : null;
+  const chainRisk = netRiskPerContract * maxCtr;
   const chainRiskPct = liq.value > 0 ? chainRisk / liq.value * 100 : null;
   const assignNominal = (strat === 'NP' || assignable) ? ss * 100 * maxCtr : 0;
   const assignStats = _assignmentPortfolioStats(assignNominal);
   const ifAsignAfter = assignStats.pct;
   const ifAsignNow = liq.value > 0 ? assignStats.current / liq.value * 100 : null;
+  const targetRiskUsd = liq.value > 0 ? liq.value * targetRiskPct / 100 : null;
+  const maxContractsByRisk = (targetRiskUsd != null && netRiskPerContract > 0)
+    ? Math.max(0, Math.min(3, Math.floor(targetRiskUsd / netRiskPerContract)))
+    : null;
+  const spreadWidthForTarget = (strat === 'PCS' && targetRiskUsd != null)
+    ? [1,2,3].map(n => ({
+        ctr:n,
+        width:Math.max(0, (targetRiskUsd / n + prem * 100) / 100)
+      }))
+    : [];
+  const riskForTargetCtr = netRiskPerContract * targetCtr;
+  const ifAsignOne = _assignmentPortfolioStats((strat === 'NP' || assignable) ? ss * 100 * targetCtr : 0).pct;
 
   let em=0, emPct=0, svR=null, pPctM=null;
   if(px>0&&iv>0){
@@ -1472,7 +1493,8 @@ function calcTrade(i){
 
   return{i,strat,ticker,ss,sl,ctr,prem,dte,ap,pn,capR,maxL,maxLR,sw,useSup,sup,
     ror,rorN,ann,annN,pS,pF,ev,evW,rr,be,ivr,iv,delta,ivDelta,px,em,emPct,svR,pPctM,
-    assignable,maxCtr,maxRolls,ifLimit,liq,initialRiskPct,chainRisk,chainRiskPct,assignNominal,ifAsignNow,ifAsignAfter};
+    assignable,maxCtr,maxRolls,ifLimit,liq,initialRiskPct,chainRisk,chainRiskPct,assignNominal,ifAsignNow,ifAsignAfter,
+    targetRiskPct,targetCtr,targetRiskUsd,netRiskPerContract,maxContractsByRisk,spreadWidthForTarget,riskForTargetCtr,ifAsignOne};
 }
 
 function renderResult(r,i){
@@ -1514,6 +1536,12 @@ function renderResult(r,i){
   const sysFails = sysChecks.filter(x=>!x.pass);
   const sysVerdict = sysFails.length ? 'NO ENTRAR / AJUSTAR' : 'CABE EN SISTEMA';
   const sysVerdictCol = sysFails.length ? '#f04545' : '#3fb68b';
+  const sizingWarn = r.maxContractsByRisk != null && r.maxContractsByRisk < r.ctr;
+  const targetCtrWarn = r.targetRiskUsd != null && r.riskForTargetCtr > r.targetRiskUsd;
+  const sizingCol = (sizingWarn || targetCtrWarn || (r.ifAsignOne != null && r.ifAsignOne > r.ifLimit)) ? '#f0a500' : '#3fb68b';
+  const sizingWidths = r.spreadWidthForTarget.length
+    ? r.spreadWidthForTarget.map(x=>`${x.ctr}c: $${x.width.toFixed(2)}`).join(' · ')
+    : '';
   const sysHtml = `
     <div style="border:1px solid ${sysVerdictCol}55;background:${sysVerdictCol}0d;border-radius:8px;padding:10px 12px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px">
@@ -1527,9 +1555,25 @@ function renderResult(r,i){
         </div>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-family:'Courier New',monospace">
-        <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Riesgo inicial</span><b style="color:#c9d1d9">${_fmtUsd0(r.capR)}${r.initialRiskPct!=null?' · '+r.initialRiskPct.toFixed(1)+'%':''}</b></div>
+        <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Riesgo inicial neto</span><b style="color:#c9d1d9">${_fmtUsd0(r.maxL)}${r.initialRiskPct!=null?' · '+r.initialRiskPct.toFixed(1)+'%':''}</b></div>
         <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Cadena peor caso</span><b style="color:#c9d1d9">${_fmtUsd0(r.chainRisk)}${r.chainRiskPct!=null?' · '+r.chainRiskPct.toFixed(1)+'%':''}</b></div>
         <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">ifAsign tras entrar</span><b style="color:${sysState.color}">${r.ifAsignAfter!=null?r.ifAsignAfter.toFixed(0)+'%':'—'} · ${_fmtUsd0(r.assignNominal)} nuevo</b></div>
+      </div>
+      <div style="border-top:1px solid #1e2d3d;margin-top:9px;padding-top:9px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px">
+          <div style="font-family:'Courier New',monospace;font-size:8px;letter-spacing:1px;text-transform:uppercase;color:${sizingCol}">Sizing de entrada</div>
+          <div style="font-family:'Courier New',monospace;font-size:10px;font-weight:800;color:${sizingCol}">
+            ${r.maxContractsByRisk!=null ? `${r.maxContractsByRisk} ctto máx. por riesgo` : 'Liquidez no definida'}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-family:'Courier New',monospace">
+          <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Riesgo objetivo</span><b style="color:#c9d1d9">${r.targetRiskPct.toFixed(2)}%${r.targetRiskUsd!=null?' · '+_fmtUsd0(r.targetRiskUsd):''}</b></div>
+          <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">Riesgo neto/ctto</span><b style="color:#c9d1d9">${_fmtUsd0(r.netRiskPerContract)}</b></div>
+          <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">${r.targetCtr} ctto objetivo</span><b style="color:${targetCtrWarn?'#f04545':'#3fb68b'}">${_fmtUsd0(r.riskForTargetCtr)}</b></div>
+          <div><span style="display:block;color:#5a7a9a;font-size:7px;text-transform:uppercase">ifAsign ${r.targetCtr} ctto</span><b style="color:${_ifAsignState(r.ifAsignOne,r.ifLimit).color}">${r.ifAsignOne!=null?r.ifAsignOne.toFixed(0)+'%':'—'}</b></div>
+        </div>
+        ${sizingWidths ? `<div style="font-size:8px;color:#5a7a9a;margin-top:7px;line-height:1.45">Ancho PCS orientativo para consumir el riesgo objetivo neto: <b style="color:#c9d1d9">${sizingWidths}</b></div>` : ''}
+        ${(sizingWarn || targetCtrWarn) ? `<div style="font-size:8px;color:#f0a500;margin-top:7px;line-height:1.45">Ajuste recomendado: reduce contratos, estrecha el spread o acepta menos riesgo antes de abrir.</div>` : ''}
       </div>
       ${sysFails.length?`<div style="font-size:8px;color:#f0a500;margin-top:8px;line-height:1.4">Revisar: ${sysFails.map(x=>x.label).join(' · ')}</div>`:''}
     </div>`;
@@ -4688,6 +4732,22 @@ function buildActCard(a, idx, today){
       })() : ''}
     </div>` : '';
 
+  const heroPnlStr = strat === 'ACC' ? accPnlStr : (_combinedPnl != null ? `${_combinedPnl>=0?'+':''}$${_combinedPnl.toFixed(0)}` : pnlStr);
+  const heroPnlCol = heroPnlStr === '—' ? '#5a7a9a' : heroPnlStr.startsWith('-') ? '#f04545' : '#3fb68b';
+  const heroTpStr = strat === 'ACC' ? accPnlPctStr : (combinedPct!=null ? `${combinedPct>=0?'+':''}${combinedPct.toFixed(1)}% ID` : (tpPct!=null ? `${tpPct.toFixed(1)}% TP` : '—'));
+  const portfolioStats = _assignmentPortfolioStats(0);
+  const portfolioIf = portfolioStats.pct;
+  const manageItems = [];
+  if(tpAlertOn) manageItems.push({tone:'good',label:'Tomar profit',txt:`TP >= ${tpTarget}%`});
+  if(dteLeft!=null && dteLeft>=0 && dteLeft<=7) manageItems.push({tone:'warn',label:'Expira pronto',txt:`${dteLeft}d`});
+  else if(dteLeft!=null && dteLeft>=0 && dteLeft<=21) manageItems.push({tone:'warn',label:'Revisar 20DTE',txt:'zona gestion'});
+  if(dteLeft!=null && dteLeft<=21 && tpPct!=null && tpPct<0) manageItems.push({tone:'bad',label:'Roll?',txt:'P&L negativo'});
+  if(assignPct!=null && assignPct>=50) manageItems.push({tone:'bad',label:'No añadir',txt:'ifAsign alto'});
+  else if(portfolioIf!=null && portfolioIf>=120) manageItems.push({tone:'warn',label:'Medir tamaño',txt:'cartera cargada'});
+  if(!manageItems.length) manageItems.push({tone:'idle',label:'Mantener',txt:'sin accion urgente'});
+  const toneColor = t => t==='good'?'#3fb68b':t==='bad'?'#f04545':t==='warn'?'#f0a500':'#5a7a9a';
+  const manageHtml = manageItems.map(m=>`<span class="act-manage-pill act-manage-${m.tone}" style="border-color:${toneColor(m.tone)}44;background:${toneColor(m.tone)}10;color:${toneColor(m.tone)}"><b>${m.label}</b><small>${m.txt}</small></span>`).join('');
+
   return `
   <div class="${cardClass}" id="act_card_${idx}">
     <div class="act-card-header">
@@ -4702,6 +4762,25 @@ function buildActCard(a, idx, today){
         <span class="act-dte-pill" style="${dtePillStyle}">${dteText}</span>
         <span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a">${a.exp||''}</span>
       </div>
+    </div>
+
+    <div class="act-hero">
+      <div class="act-hero-cell act-hero-main">
+        <span>P&L gestion</span>
+        <b style="color:${heroPnlCol}">${heroPnlStr}</b>
+        <small>${heroTpStr}</small>
+      </div>
+      <div class="act-hero-cell">
+        <span>ifAsign op.</span>
+        <b style="color:${assignCol}">${assignExp.amount>0?_fmtUsd0(assignExp.amount):'$0'}</b>
+        <small>${assignPct!=null?assignPct.toFixed(1)+'% liquidez':assignExp.source}</small>
+      </div>
+      <div class="act-hero-cell">
+        <span>Tiempo</span>
+        <b style="color:${dteLeft!=null && dteLeft<=21 ? '#f0a500' : '#c9d1d9'}">${dteText}</b>
+        <small>${timeElapsed!=null?timeElapsed.toFixed(0)+'% consumido':(a.exp||'—')}</small>
+      </div>
+      <div class="act-hero-actions">${manageHtml}</div>
     </div>
 
     <!-- Main KV grid — ACC vs opciones -->

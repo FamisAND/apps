@@ -320,8 +320,8 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 .d-snap-add{background:#4a9eff;border:none;color:#0a0e14;font-family:'Courier New',monospace;font-size:9px;font-weight:700;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap}
 
 /* ── ACTIVAS ─────────────────────────────────────────────── */
-.act-card{background:#0d1117;border:1px solid #1e2d3d;border-radius:6px;padding:14px 16px;transition:border-color .2s}
-.act-card:hover{border-color:#2a4a6a}
+.act-card{background:linear-gradient(180deg,#0f151d 0%,#0b1017 100%);border:1px solid #1e2d3d;border-radius:8px;padding:14px 16px;transition:border-color .2s,box-shadow .2s}
+.act-card:hover{border-color:#2a4a6a;box-shadow:0 10px 24px #00000022}
 .act-card.expired{border-color:#f04545aa}
 .act-card.near-exp{border-color:#f0a500aa}
 .act-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
@@ -340,6 +340,16 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 .act-v.green{color:#3fb68b}
 .act-v.red{color:#f04545}
 .act-v.amber{color:#f0a500}
+.act-hero{display:grid;grid-template-columns:1.15fr .95fr .7fr 1.4fr;gap:8px;margin:0 0 10px;padding:9px 10px;background:#070b10;border:1px solid #1e2d3d;border-radius:6px;align-items:stretch}
+.act-hero-cell{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.act-hero-cell span{font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:.7px}
+.act-hero-cell b{font-family:'Courier New',monospace;font-size:15px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act-hero-cell small{font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act-hero-main b{font-size:18px}
+.act-hero-actions{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap;min-width:0}
+.act-manage-pill{display:inline-flex;flex-direction:column;gap:1px;min-width:76px;max-width:120px;padding:4px 7px;border:1px solid;border-radius:4px;font-family:'Courier New',monospace;text-transform:uppercase}
+.act-manage-pill b{font-size:8px;line-height:1;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act-manage-pill small{font-size:7px;line-height:1.15;color:inherit;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none}
 /* Legacy: por si quedan refs */
 .act-eff-bar{height:4px;border-radius:2px;background:#1e2d3d;margin-top:6px;margin-bottom:10px;position:relative;overflow:hidden}
 .act-eff-time{position:absolute;height:100%;background:#2a4a6a;border-radius:2px;transition:width .3s}
@@ -422,6 +432,10 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
   .act-ticker{ font-size:14px; }
   .act-id, .act-badge{ font-size:8px; }
   .act-dte-pill{ font-size:9px; }
+  .act-hero{ grid-template-columns:1fr 1fr; gap:6px; padding:8px; }
+  .act-hero-actions{ grid-column:1/-1; justify-content:flex-start; }
+  .act-hero-main b{ font-size:16px; }
+  .act-hero-cell b{ font-size:13px; }
 
   /* Grid de activas: 2 columnas en lugar de auto-fill */
   .act-grid{
@@ -548,6 +562,8 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 
   /* Cards de op-abiertas: más compactas */
   .act-grid{grid-template-columns:repeat(auto-fill,minmax(72px,1fr)) !important;gap:4px !important;}
+  .act-hero{grid-template-columns:1fr !important;}
+  .act-hero-actions{grid-column:auto;}
 
   /* Modales */
   [class*="overlay"][style*="position:fixed"] > div,
