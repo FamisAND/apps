@@ -4332,6 +4332,17 @@ function _lastAccountLiquidity(){
   return last ? { value: parseFloat(last.val) || 0, label: 'NAV ' + (last.date || '') } : { value: 0, label: 'sin liquidez' };
 }
 
+function _configuredAccountCash(){
+  const cfgCash = parseFloat(CFG.cashAvail || 0) || 0;
+  return cfgCash > 0 ? { value: cfgCash, label: 'Cash config.' } : { value: 0, label: 'cash sin configurar' };
+}
+
+function _lastAccountNav(){
+  const snaps = (SNAPS || []).filter(s => parseFloat(s.val) > 0).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const last = snaps[snaps.length - 1];
+  return last ? { value: parseFloat(last.val) || 0, label: 'NAV ' + (last.date || '') } : { value: 0, label: 'sin NAV' };
+}
+
 function _fmtUsd0(v){
   return '$' + (parseFloat(v) || 0).toLocaleString('es-ES', { maximumFractionDigits: 0 });
 }
@@ -4420,13 +4431,14 @@ function _assignmentPortfolioStats(extraAmount){
   const potential = rows.reduce((s,r)=>s+r.potential,0);
   const definedRisk = rows.reduce((s,r)=>s+r.definedRisk,0);
   const spot = rows.reduce((s,r)=>s+r.spot,0);
-  const liq = _lastAccountLiquidity();
+  const cashInfo = _configuredAccountCash();
+  const navInfo = _lastAccountNav();
   const total = current + (parseFloat(extraAmount)||0);
-  const pct = liq.value > 0 ? total / liq.value * 100 : null;
-  const potentialPct = liq.value > 0 ? potential / liq.value * 100 : null;
-  const definedPct = liq.value > 0 ? definedRisk / liq.value * 100 : null;
-  const spotPct = liq.value > 0 ? spot / liq.value * 100 : null;
-  return { rows, current, total, pct, potential, potentialPct, definedRisk, definedPct, spot, spotPct, liquidity: liq };
+  const pct = cashInfo.value > 0 ? total / cashInfo.value * 100 : null;
+  const potentialPct = navInfo.value > 0 ? potential / navInfo.value * 100 : null;
+  const definedPct = navInfo.value > 0 ? definedRisk / navInfo.value * 100 : null;
+  const spotPct = navInfo.value > 0 ? spot / navInfo.value * 100 : null;
+  return { rows, current, total, pct, potential, potentialPct, definedRisk, definedPct, spot, spotPct, liquidity: cashInfo, nav: navInfo };
 }
 
 function renderActivas(){
@@ -4531,11 +4543,10 @@ function renderActivas(){
   },0);
   const assignStats = _assignmentPortfolioStats(0);
   const cash = assignStats.liquidity.value || 0;
+  const nav = assignStats.nav.value || 0;
   const definedPct = assignStats.definedPct;
   const potentialPct = assignStats.potentialPct;
   const realPct = assignStats.pct;
-  const totalDirectional = assignStats.current + assignStats.spot;
-  const totalDirectionalPct = cash>0 ? totalDirectional / cash * 100 : null;
   const metricState = (pct, bands) => {
     if(pct == null) return { color:'#5a7a9a', label:'sin dato', bg:'#0a1421' };
     for(const b of bands){ if(pct <= b.max) return b; }
@@ -4561,12 +4572,6 @@ function renderActivas(){
     {max:120,color:'#e69138',label:'agresivo',bg:'#2a1b0c'},
     {max:Infinity,color:'#f04545',label:'rojo',bg:'#2a0f12'}
   ]);
-  const directionalState = metricState(totalDirectionalPct, [
-    {max:100,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
-    {max:200,color:'#f0a500',label:'vigilar',bg:'#2b220d'},
-    {max:300,color:'#e69138',label:'alta',bg:'#2a1b0c'},
-    {max:Infinity,color:'#f04545',label:'muy alta',bg:'#2a0f12'}
-  ]);
   if(riskPanel){
     const topRows = assignStats.rows
       .filter(r=>r.amount>0)
@@ -4588,10 +4593,9 @@ function renderActivas(){
       </div>`;
     riskPanel.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch">
-        ${metricCard('Riesgo definido', assignStats.definedRisk, definedPct, definedState, 'Verticales cubiertas: ancho - credito')}
-        ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas como test de stress')}
-        ${metricCard('ifAsign real/naked', assignStats.current, realPct, realState, 'Puts sin proteccion activa')}
-        ${metricCard('Spot + naked', totalDirectional, totalDirectionalPct, directionalState, 'Acciones compradas + puts naked')}
+        ${metricCard('Riesgo definido', assignStats.definedRisk, definedPct, definedState, 'Verticales cubiertas vs NAV')}
+        ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas vs NAV')}
+        ${metricCard('ifAsign real/naked', assignStats.current, realPct, realState, 'Puts sin proteccion vs cash')}
       </div>
       <div style="display:grid;grid-template-columns:1fr .85fr;gap:12px;align-items:stretch;margin-top:10px">
         <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px">
@@ -4601,6 +4605,7 @@ function renderActivas(){
         <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.5">
           <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#4a9eff;margin-bottom:8px">Liquidez</div>
           <div>${assignStats.liquidity.label}: <b style="color:#c9d1d9">${cash?_fmtUsd0(cash):'--'}</b></div>
+          <div>${assignStats.nav.label}: <b style="color:#c9d1d9">${nav?_fmtUsd0(nav):'--'}</b></div>
           <div>El ifAsign real solo sube cuando la put vendida queda sin put comprada de cobertura.</div>
         </div>
       </div>`;
