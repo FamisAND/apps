@@ -4830,7 +4830,7 @@ function _invoicePrintStyles(){
     table{width:100%;border-collapse:collapse;margin-bottom:20px;}th{background:#1a1a1a;color:#fff;padding:8px 12px;text-align:left;font-size:11px;}
     tr:nth-child(even){background:#f9f9f9;}.totals{text-align:right;border-top:2px solid #1a1a1a;padding-top:12px;}
     .total-row{margin-bottom:4px;}.total-final{font-size:18px;font-weight:900;margin-top:8px;}
-    @media print{body{padding:20px;}@page{margin:15mm;}}
+    @media print{@page{size:A4;margin:0;}body{padding:18mm;}}
   `;
 }
 
@@ -4906,7 +4906,7 @@ async function downloadInvoicePDF(){
   }
 }
 
-function printInvoice(){
+function _printInvoiceLegacy(){
   const co=db.company||{};
   const cl=db.clients.find(c=>c.id===_invClientId)||{};
   const key=curKey('remesas');
@@ -5012,6 +5012,49 @@ function printInvoice(){
 // ══════════════════════════
 // MI PANEL (worker view)
 // ══════════════════════════
+function printInvoice(){
+  const data=_collectInvoiceData();
+  if(!data.entries.length){toast('No hay líneas para facturar','red');return;}
+  _markInvoiceGenerated(data);
+  const html=_buildInvoiceHtml(data,true);
+  const w=window.open('','_blank');
+  if(w && !w.closed){
+    try{
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      toast('✓ Factura abierta para imprimir');
+      return;
+    }catch(err){
+      console.error('Error escribiendo en ventana:',err);
+      try{w.close();}catch{}
+    }
+  }
+
+  const existing=document.getElementById('_invoicePrintFrame');
+  if(existing)existing.remove();
+  const iframe=document.createElement('iframe');
+  iframe.id='_invoicePrintFrame';
+  iframe.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  document.body.appendChild(iframe);
+
+  const doc=iframe.contentWindow.document;
+  doc.open();
+  doc.write(_buildInvoiceHtml(data,false));
+  doc.close();
+
+  setTimeout(()=>{
+    try{
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      toast('✓ Diálogo de impresión abierto');
+    }catch(err){
+      console.error('Fallo al imprimir:',err);
+      toast('No se pudo abrir el diálogo. Usa Descargar PDF.','red');
+    }
+  },400);
+}
+
 function renderMiPanel(){
   const adminPanel=document.getElementById('adminPanel');
   const miPanelContent=document.getElementById('miPanelContent');
