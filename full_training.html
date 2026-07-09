@@ -4828,15 +4828,18 @@ function _invoicePrintStyles(){
     .parties{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:28px;padding:16px;background:#f9f9f9;border-radius:4px;}
     .party-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#999;font-weight:700;margin-bottom:6px;}
     .party-name{font-size:14px;font-weight:700;margin-bottom:2px;}.party-detail{color:#555;line-height:1.5;}
-    table{width:100%;border-collapse:collapse;margin-bottom:20px;color:#111;}th{background:#1a1a1a;color:#fff;padding:8px 12px;text-align:left;font-size:11px;}
-    td{color:#111;background:#fff;}tr:nth-child(even) td{background:#f9f9f9;}.totals{text-align:right;border-top:2px solid #1a1a1a;padding-top:12px;color:#000;}
-    strong{color:#000;}.total-row{margin-bottom:4px;color:#000;}.total-final{font-size:18px;font-weight:900;margin-top:8px;color:#000;}
+    .invoice-page table{width:100%;border-collapse:collapse;margin-bottom:20px;color:#111!important;}
+    .invoice-page th{background:#1a1a1a!important;color:#fff!important;padding:8px 12px!important;text-align:left;font-size:11px;}
+    .invoice-page td{color:#111!important;background:#fff!important;opacity:1!important;border-bottom:none!important;}
+    .invoice-page tr:nth-child(even) td{background:#f9f9f9!important;}.totals{text-align:right;border-top:2px solid #1a1a1a;padding-top:12px;color:#000;}
+    strong{color:#000!important;}.total-row{margin-bottom:4px;color:#000!important;}.total-final{font-size:18px;font-weight:900;margin-top:8px;color:#000!important;}
     @media print{@page{size:A4;margin:0;}body{padding:18mm;}.invoice-page{padding:0;}}
   `;
 }
 
 function _buildInvoiceBody(data){
-  const linesHtml=data.lines.map(l=>`<tr><td style="padding:8px 12px">${esc(l.concept)}</td><td style="padding:8px 12px;text-align:right">1</td><td style="padding:8px 12px;text-align:right">${l.base.toFixed(2)} €</td><td style="padding:8px 12px;text-align:right">${l.igiAmt.toFixed(2)} €</td><td style="padding:8px 12px;text-align:right;font-weight:700">${l.total.toFixed(2)} €</td></tr>`).join('');
+  const td='padding:8px 12px;color:#111!important;background:#fff!important;opacity:1!important;border-bottom:none!important;';
+  const linesHtml=data.lines.map(l=>`<tr><td style="${td}">${esc(l.concept)}</td><td style="${td}text-align:right">1</td><td style="${td}text-align:right">${l.base.toFixed(2)} €</td><td style="${td}text-align:right">${l.igiAmt.toFixed(2)} €</td><td style="${td}text-align:right;font-weight:700">${l.total.toFixed(2)} €</td></tr>`).join('');
   return `
   <div class="invoice-page">
   <div class="hdr"><div><div class="logo"><span>FULL</span> TRAINING</div><div style="color:#666;margin-top:4px;font-size:11px">${esc(data.fromAddr)}${data.fromCity?', '+esc(data.fromCity):''}</div>${data.fromNif?`<div style="color:#666;font-size:11px">NIF: ${esc(data.fromNif)}</div>`:''}</div>
