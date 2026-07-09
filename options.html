@@ -235,7 +235,9 @@
       <div style="margin-bottom:14px">
         <div class="cfg-col-hdr" style="color:#f0a500;margin-bottom:8px">Riesgo de asignación</div>
         <div style="font-size:9px;color:#2a4a6a;margin-bottom:8px">Estrategias que generan riesgo real de asignación y cuentan contra el cash.</div>
-        <div id="gc_riskStratWrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <div style="font-size:9px;color:#2a4a6a;line-height:1.45">
+          ifAsign se calcula automaticamente desde las patas de cada estrategia: PC/short put cuenta nominal, PL/long put protege.
+        </div>
       </div>
       <div>
         <div class="cfg-col-hdr" style="color:#f04545;margin-bottom:8px">Risk total</div>
@@ -435,48 +437,21 @@
 
 <!-- ACTIVAS CONFIG MODAL -->
 <div class="cfg-overlay" id="actCfgOverlay">
-  <div class="cfg-modal" style="width:560px">
+  <div class="cfg-modal" style="width:440px">
     <div class="cfg-title">Configuración de Op Abiertas</div>
     <!-- Cash disponible -->
     <div style="margin-bottom:16px">
       <div class="cfg-col-hdr" style="color:#4a9eff;margin-bottom:8px">Cash disponible en cuenta ($)</div>
-      <div style="display:flex;align-items:center;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <input type="number" id="acfg_cash" step="100" placeholder="ej: 25000"
           style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:11px;padding:5px 8px;border-radius:3px;outline:none;width:160px"/>
-        <span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a">Se usa para calcular apalancamiento y cobertura de asignaciones</span>
+        <span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;flex:1;min-width:180px">Base del ifAsign, sizing y cobertura de asignaciones.</span>
       </div>
     </div>
 
-    <!-- Estrategias con riesgo de asignación -->
-    <div style="margin-bottom:16px">
-      <div class="cfg-col-hdr" style="color:#f0a500;margin-bottom:6px">Riesgo de asignación</div>
-      <div style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;margin-bottom:8px">
-        Marca las estrategias que generan riesgo real de asignación y deben contar contra el cash disponible.<br>
-        CC y Acciones suelen excluirse porque las acciones ya están en cartera.
-      </div>
-      <div id="acfg_riskStratWrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div style="border:1px solid #1e2d3d;background:#0a1421;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-family:&quot;Courier New&quot;,monospace;font-size:8px;color:#5a7a9a;line-height:1.45">
+      Las patas, TP y Risk total se editan en la configuracion global. ifAsign se calcula automaticamente por short puts y coberturas.
     </div>
-
-    <!-- Estrategias que cuentan en Risk total -->
-    <div style="margin-bottom:16px">
-      <div class="cfg-col-hdr" style="color:#f04545;margin-bottom:6px">Incluir en Risk total</div>
-      <div style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;margin-bottom:8px">
-        Marca las estrategias cuyo maxRisk cuenta en el total de capital en riesgo.<br>
-        Las Acciones suelen excluirse ya que su coste se muestra por separado.
-      </div>
-      <div id="acfg_riskTotalWrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-    </div>
-    <div style="border-top:1px solid #1e2d3d;margin:14px 0;"></div>
-
-    <!-- TP objetivo -->
-    <div style="margin-bottom:16px">
-      <div class="cfg-col-hdr" style="color:#3fb68b;margin-bottom:10px">TP objetivo por estrategia (%)</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="actCfgTpGrid">
-        <!-- filled dynamically by openActCfg() -->
-      </div>
-    </div>
-
-
 
     <div class="cfg-btns">
       <button class="cfg-cancel" onclick="closeActCfg()">Cancelar</button>
@@ -1007,7 +982,6 @@ let CFG = {
   customStrats: [],
   stratOtroSet: ['CCS','DPS','BWB','JL','IC','0DTE','112'],
   cashAvail: 0,
-  riskStrats: ['NP','PCS','CCS','DPS','IC','BWB','JL','112','0DTE'],
   riskTotalStrats: ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE']
 };
 try{ const s=localStorage.getItem('ot_cfg'); if(s){ const p=JSON.parse(s); if(p.NP&&p.PCS) CFG=p; } }catch(e){}
@@ -1068,7 +1042,6 @@ function saveCfg(){
     customStrats:  CFG.customStrats  || [],
     stratOtroSet:  CFG.stratOtroSet  || [],
     cashAvail:     CFG.cashAvail     || 0,
-    riskStrats:      CFG.riskStrats      || ['NP','PCS','CCS','DPS','IC','BWB','JL','112','0DTE'],
     riskTotalStrats: CFG.riskTotalStrats || ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE'],
     tpTargets: CFG.tpTargets || { NP:50, PCS:50, CC:80, '0DTE':50, CCS:60, DPS:50, IC:50, OTRO:50 }
   };
@@ -4371,38 +4344,89 @@ function _ifAsignState(pct, limit){
   return { color:'#f04545', label:'bloqueado', bg:'#2a0f12' };
 }
 
-function _shortPutAssignmentFromLegs(a){
+function _putRiskProfile(a){
+  const empty = { definedRisk:0, potential:0, real:0, spot:0, source:'sin put vendido' };
+  if(!a) return empty;
+  if(a.strat === 'ACC'){
+    const shares = parseFloat(a.contracts)||0;
+    const px = parseFloat(a.priceCurrent);
+    const spot = Number.isFinite(px) && px > 0 && shares > 0 ? px * shares : (parseFloat(a.maxRisk)||0);
+    return Object.assign({}, empty, { spot, source:'acciones' });
+  }
+
   const ctr = parseInt(a.contracts, 10) || 1;
-  if(!Array.isArray(a.legs) || !a.legs.length) return null;
-  const shortPuts = a.legs.filter(l => l && l.kind === 'short_put' && Number.isFinite(parseFloat(l.strike)));
-  if(!shortPuts.length) return 0;
-  return shortPuts.reduce((s,l) => s + (parseFloat(l.strike) * 100 * ctr), 0);
+  let spStrikes = [];
+  let lpCount = 0;
+  let source = 'estrategia';
+  if(Array.isArray(a.legs) && a.legs.length){
+    source = 'patas';
+    a.legs.forEach(l=>{
+      if(!l) return;
+      if(l.kind === 'short_put' && Number.isFinite(parseFloat(l.strike))) spStrikes.push(parseFloat(l.strike));
+      if(l.kind === 'long_put') lpCount++;
+    });
+  } else {
+    const legs = (typeof _stratLegsOf === 'function') ? _stratLegsOf(a.strat) : {SP:0,LP:0};
+    const spCount = Math.max(0, parseInt(legs.SP, 10) || 0);
+    lpCount = Math.max(0, parseInt(legs.LP, 10) || 0);
+    const strikeRaw = a.strike != null ? String(a.strike).split('-')[0] : '';
+    const strike = parseFloat(strikeRaw);
+    if(Number.isFinite(strike) && strike > 0){
+      spStrikes = Array.from({length:spCount},()=>strike);
+    }
+  }
+  if(!spStrikes.length) return empty;
+
+  spStrikes.sort((x,y)=>y-x);
+  const nakedCount = Math.max(0, spStrikes.length - lpCount);
+  const nakedStrikes = spStrikes.slice(0, nakedCount);
+  const protectedStrikes = spStrikes.slice(nakedCount);
+  const real = nakedStrikes.reduce((s,x)=>s+x*100*ctr,0);
+  const potential = protectedStrikes.reduce((s,x)=>s+x*100*ctr,0);
+
+  const premTotal = a.pCredito != null ? Math.abs(premiumStorageToTotal(a.pCredito, ctr)) : 0;
+  let definedRisk = 0;
+  if(potential > 0){
+    definedRisk = parseFloat(a.maxRisk)||0;
+    if(!definedRisk && Array.isArray(a.legs)){
+      const shortPut = Math.max(...spStrikes);
+      const longPuts = a.legs.filter(l=>l && l.kind==='long_put' && Number.isFinite(parseFloat(l.strike))).map(l=>parseFloat(l.strike));
+      const longPut = longPuts.length ? Math.min(...longPuts) : null;
+      if(Number.isFinite(shortPut) && Number.isFinite(longPut)){
+        definedRisk = Math.max(0, Math.abs(shortPut-longPut)*100*ctr - premTotal);
+      }
+    }
+  }
+  return {
+    definedRisk,
+    potential,
+    real,
+    spot:0,
+    source: real>0 && potential>0 ? source+' mixta' : real>0 ? 'naked/real' : 'vertical cubierta'
+  };
 }
 
 function _activeAssignmentExposure(a){
-  if(!a || a.strat === 'ACC') return { amount:0, source:'acciones ya compradas' };
-  const legsAmt = _shortPutAssignmentFromLegs(a);
-  if(legsAmt != null) return { amount: legsAmt, source: legsAmt > 0 ? 'put vendido' : 'sin put vendido' };
-  const ctr = parseInt(a.contracts, 10) || 1;
-  const strikeRaw = a.strike != null ? String(a.strike).split('-')[0] : '';
-  const strike = parseFloat(strikeRaw);
-  if(Number.isFinite(strike) && strike > 0) return { amount: strike * 100 * ctr, source:'strike' };
-  const premTotal = a.pCredito != null ? Math.abs(premiumStorageToTotal(a.pCredito, ctr)) : 0;
-  if(a.strat === 'NP' && a.maxRisk) return { amount: (parseFloat(a.maxRisk)||0) + premTotal, source:'maxRisk+prima' };
-  return { amount: parseFloat(a.maxRisk)||0, source:'aprox. maxRisk' };
+  const p = _putRiskProfile(a);
+  return { amount:p.real + p.potential, source:p.source };
 }
 
 function _assignmentPortfolioStats(extraAmount){
-  const assignableStrats = new Set(['NP','PCS','DPS','BWB','JL','IC','112','0DTE']);
   const rows = (ACTIVAS || []).map(a => {
-    const exp = assignableStrats.has(a.strat) ? _activeAssignmentExposure(a) : { amount:0, source:'excluido' };
-    return { a, amount: exp.amount || 0, source: exp.source };
+    const p = _putRiskProfile(a);
+    return { a, amount:(p.real+p.potential)||0, real:p.real||0, potential:p.potential||0, definedRisk:p.definedRisk||0, spot:p.spot||0, source:p.source };
   });
-  const current = rows.reduce((s,r)=>s+r.amount,0);
+  const current = rows.reduce((s,r)=>s+r.real,0);
+  const potential = rows.reduce((s,r)=>s+r.potential,0);
+  const definedRisk = rows.reduce((s,r)=>s+r.definedRisk,0);
+  const spot = rows.reduce((s,r)=>s+r.spot,0);
   const liq = _lastAccountLiquidity();
   const total = current + (parseFloat(extraAmount)||0);
   const pct = liq.value > 0 ? total / liq.value * 100 : null;
-  return { rows, current, total, pct, liquidity: liq };
+  const potentialPct = liq.value > 0 ? potential / liq.value * 100 : null;
+  const definedPct = liq.value > 0 ? definedRisk / liq.value * 100 : null;
+  const spotPct = liq.value > 0 ? spot / liq.value * 100 : null;
+  return { rows, current, total, pct, potential, potentialPct, definedRisk, definedPct, spot, spotPct, liquidity: liq };
 }
 
 function renderActivas(){
@@ -4483,25 +4507,16 @@ function renderActivas(){
   });
 
 
-  // Risk if assigned (only options — ACC positions are already bought, no assignment risk)
-  const _riskSet      = new Set(CFG.riskStrats      || ['NP','PCS','CCS','DPS','IC','BWB','JL','112','0DTE']);
+  // Risk layers: defined vertical risk, covered short-put stress, real naked puts and spot.
   const _riskTotSet   = new Set(CFG.riskTotalStrats || ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE']);
-  const totalRiskAssign = ACTIVAS.filter(a=>_riskSet.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
-  const totalRiskACC    = ACTIVAS.filter(a=>!_riskSet.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
-  const totalRisk       = ACTIVAS.filter(a=>_riskTotSet.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
-  const totalRiskExcl   = ACTIVAS.filter(a=>!_riskTotSet.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
+  const totalRiskExcl = ACTIVAS.filter(a=>!_riskTotSet.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
   const totalUnreal = ACTIVAS.reduce((s,a)=>{
-    // Caso ACC: P&L = (precio_actual - precio_compra) × nº acciones
     if(a.strat === 'ACC'){
       if(a.priceCurrent==null || a.precioCompra==null) return s;
       return s + (a.priceCurrent - a.precioCompra) * (a.contracts||1);
     }
-    // Caso opciones: pCredito guardado en /100 ($/share = pCredito × 100)
     if(a.priceCurrent==null||!a.pCredito) return s;
     const ctr=a.contracts||1;
-    // Math.abs SOLO si direction es debit/credit explícito. Sin ella, usar
-    // valores signed para preservar legacy (Sergio codifica pérdidas con
-    // pCredito negativo en ACC).
     const _useAbs = (a.entryDirection === 'debit' || a.entryDirection === 'credit');
     const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
     const pc_share  = _useAbs ? Math.abs((a.pCredito||0) * 100) : ((a.pCredito||0) * 100);
@@ -4512,64 +4527,88 @@ function renderActivas(){
       const diffPerShare  = _isLong ? (pCur_abs - primaApertura) : (primaApertura - pCur_abs);
       return s + (diffPerShare * 100 * ctr) - (a.comi||0);
     }
-    // Legacy signed (fórmula original): (pc - pd - pCur) × 100 × ctr − comi
     return s + ((pc_share - pd_share - pCur_abs) * 100 * ctr) - (a.comi||0);
   },0);
   const assignStats = _assignmentPortfolioStats(0);
-  const totalAssignNom = assignStats.current;
   const cash = assignStats.liquidity.value || 0;
-  const coverage = cash>0 ? (totalAssignNom/cash*100) : null;
-  const ifState = _ifAsignState(coverage, 150);
+  const definedPct = assignStats.definedPct;
+  const potentialPct = assignStats.potentialPct;
+  const realPct = assignStats.pct;
+  const totalDirectional = assignStats.current + assignStats.spot;
+  const totalDirectionalPct = cash>0 ? totalDirectional / cash * 100 : null;
+  const metricState = (pct, bands) => {
+    if(pct == null) return { color:'#5a7a9a', label:'sin dato', bg:'#0a1421' };
+    for(const b of bands){ if(pct <= b.max) return b; }
+    return bands[bands.length-1];
+  };
+  const definedState = metricState(definedPct, [
+    {max:20,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
+    {max:35,color:'#7fc9a6',label:'bien',bg:'#10251f'},
+    {max:45,color:'#f0a500',label:'alto ok',bg:'#2b220d'},
+    {max:55,color:'#e69138',label:'muy cargado',bg:'#2a1b0c'},
+    {max:Infinity,color:'#f04545',label:'pasado',bg:'#2a0f12'}
+  ]);
+  const potentialState = metricState(potentialPct, [
+    {max:200,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
+    {max:350,color:'#7fc9a6',label:'normal',bg:'#10251f'},
+    {max:500,color:'#f0a500',label:'alto',bg:'#2b220d'},
+    {max:650,color:'#e69138',label:'muy alto',bg:'#2a1b0c'},
+    {max:Infinity,color:'#f04545',label:'demasiado',bg:'#2a0f12'}
+  ]);
+  const realState = metricState(realPct, [
+    {max:50,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
+    {max:80,color:'#f0a500',label:'vigilar',bg:'#2b220d'},
+    {max:120,color:'#e69138',label:'agresivo',bg:'#2a1b0c'},
+    {max:Infinity,color:'#f04545',label:'rojo',bg:'#2a0f12'}
+  ]);
   if(riskPanel){
     const topRows = assignStats.rows
       .filter(r=>r.amount>0)
       .sort((a,b)=>b.amount-a.amount)
       .slice(0,5)
       .map(r=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid #0d1117">
-        <span style="color:#5a7a9a">${r.a.activo||'—'} · ${r.a.strat||'—'} · ${r.source}</span>
+        <span style="color:#5a7a9a">${r.a.activo||'--'} · ${r.a.strat||'--'} · ${r.source}</span>
         <strong style="color:#c9d1d9">${_fmtUsd0(r.amount)}</strong>
       </div>`).join('');
-    riskPanel.innerHTML = `
-      <div style="display:grid;grid-template-columns:1.05fr .95fr;gap:12px;align-items:stretch">
-        <div style="background:${ifState.bg};border:1px solid ${ifState.color}66;border-radius:8px;padding:14px 16px;box-shadow:0 0 22px ${ifState.color}18">
-          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
-            <div>
-              <div style="font-family:'Courier New',monospace;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:${ifState.color};margin-bottom:6px">ifAsign ratio</div>
-              <div style="font-family:'Courier New',monospace;font-size:32px;line-height:1;font-weight:800;color:${ifState.color}">${coverage!=null?coverage.toFixed(0)+'%':'—'}</div>
-            </div>
-            <div style="text-align:right;font-family:'Courier New',monospace">
-              <div style="font-size:10px;color:${ifState.color};font-weight:700;text-transform:uppercase">${ifState.label}</div>
-              <div style="font-size:8px;color:#5a7a9a;margin-top:5px">límite operativo: 150%</div>
-            </div>
-          </div>
-          <div style="height:8px;background:#060a0f;border:1px solid #1e2d3d;border-radius:999px;overflow:hidden;margin:12px 0 8px">
-            <div style="height:100%;width:${Math.min(100, coverage!=null?coverage/150*100:0)}%;background:${ifState.color}"></div>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">
-            <span>Asignación potencial: <b style="color:#c9d1d9">${_fmtUsd0(totalAssignNom)}</b></span>
-            <span>${assignStats.liquidity.label}: <b style="color:#c9d1d9">${cash?_fmtUsd0(cash):'—'}</b></span>
-          </div>
+    const metricCard = (title, val, pct, st, hint) => `
+      <div style="background:${st.bg};border:1px solid ${st.color}55;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:7px">
+          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:${st.color}">${title}</div>
+          <div style="font-size:8px;color:${st.color};font-weight:800;text-transform:uppercase">${st.label}</div>
         </div>
+        <div style="font-size:22px;line-height:1;font-weight:800;color:${st.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pct!=null?pct.toFixed(0)+'%':'--'}</div>
+        <div style="font-size:9px;color:#c9d1d9;margin-top:4px">${_fmtUsd0(val)}</div>
+        <div style="font-size:7px;color:#5a7a9a;margin-top:5px;line-height:1.35">${hint}</div>
+      </div>`;
+    riskPanel.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch">
+        ${metricCard('Riesgo definido', assignStats.definedRisk, definedPct, definedState, 'Verticales cubiertas: ancho - credito')}
+        ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas como test de stress')}
+        ${metricCard('ifAsign real/naked', assignStats.current, realPct, realState, 'Puts sin proteccion activa')}
+        ${metricCard('Spot + naked', totalDirectional, totalDirectionalPct, realState, 'Acciones compradas + puts naked')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr .85fr;gap:12px;align-items:stretch;margin-top:10px">
         <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px">
-          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#f0a500;margin-bottom:8px">Mayor exposición si asignan</div>
-          ${topRows || '<div style="color:#5a7a9a;padding:10px 0">Sin puts vendidos con asignación potencial.</div>'}
+          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#f0a500;margin-bottom:8px">Mayor exposicion short put</div>
+          ${topRows || '<div style="color:#5a7a9a;padding:10px 0">Sin puts vendidos con asignacion potencial.</div>'}
+        </div>
+        <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.5">
+          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#4a9eff;margin-bottom:8px">Liquidez</div>
+          <div>${assignStats.liquidity.label}: <b style="color:#c9d1d9">${cash?_fmtUsd0(cash):'--'}</b></div>
+          <div>El ifAsign real solo sube cuando la put vendida queda sin put comprada de cobertura.</div>
         </div>
       </div>`;
   }
-  let coverageStr = '';
-  if(coverage!=null){
-    const covCol = coverage>100?'#f04545':coverage>80?'#f0a500':'#3fb68b';
-    const covTxt = coverage>100?'⚠ sin cobertura':coverage>80?'⚠ alto':'✓';
-    coverageStr = ` · Asign: ${coverage.toFixed(0)}% cash <span style="color:${covCol}">${covTxt}</span>`;
+  if(sumEl){
+    const finalParts = [];
+    if(assignStats.definedRisk>0) finalParts.push(`Riesgo definido: $${assignStats.definedRisk.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
+    if(assignStats.potential>0) finalParts.push(`ifPot: $${assignStats.potential.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
+    if(assignStats.current>0) finalParts.push(`ifReal: $${assignStats.current.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
+    if(totalRiskExcl>0) finalParts.push(`<span style="color:#2a4a6a">+$${totalRiskExcl.toLocaleString('es-ES',{maximumFractionDigits:0})} excl.</span>`);
+    const finalRiskStr = finalParts.join(' · ') || 'Sin riesgo';
+    const finalCoverage = realPct!=null ? ` · ifReal: ${realPct.toFixed(0)}% NAV <span style="color:${realState.color}">${realState.label}</span>` : '';
+    sumEl.innerHTML = `${ACTIVAS.length} pos · ${finalRiskStr} · P&L est: ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}${finalCoverage}`;
   }
-  // Build summary: separate options risk from stock value
-  const riskParts = [];
-  if(totalRisk>0)       riskParts.push(`Risk: $${totalRisk.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
-  if(totalAssignNom>0) riskParts.push(`ifAsign: $${totalAssignNom.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
-  if(totalRiskExcl>0)   riskParts.push(`<span style="color:#2a4a6a">+$${totalRiskExcl.toLocaleString('es-ES',{maximumFractionDigits:0})} excl.</span>`);
-  const riskStr = riskParts.join(' · ') || 'Sin riesgo';
-  if(sumEl) sumEl.innerHTML = `${ACTIVAS.length} pos · ${riskStr} · P&L est: ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}${coverageStr}`;
-
   grid.innerHTML = sorted.map(({a,i})=>buildActCard(a,i,today)).join('');
 
   // Attach price input listeners — use closure to capture correct original index
@@ -4790,7 +4829,7 @@ function buildActCard(a, idx, today){
       <div class="act-kv"><span class="act-k">Acciones</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k">P. Compra</span><span class="act-v">${a.precioCompra!=null?'$'+a.precioCompra.toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Coste total</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
-      <div class="act-kv"><span class="act-k">Risk asignación</span><span class="act-v" style="color:#5a7a9a">${(new Set(CFG.riskStrats||[])).has(strat)?"$"+(a.maxRisk||0).toLocaleString():"$0 — excluido"}</span></div>
+      <div class="act-kv"><span class="act-k">ifAsign</span><span class="act-v" style="color:#5a7a9a">$0 — acciones ya compradas</span></div>
       <div class="act-kv">
         <span class="act-k">Precio actual</span>
         <input class="act-price-input" id="act_price_${idx}" type="number" step="0.01" placeholder="0.00"
@@ -7189,54 +7228,8 @@ function getAllStrats(){
 }
 
 function openActCfg(){
-  const all = getAllStrats();
-  const tp = CFG.tpTargets || {};
-
-  // Build TP grid
-  const grid = document.getElementById('actCfgTpGrid');
-  if(grid){
-    grid.innerHTML = all.map(s=>`
-      <div class="cfg-field">
-        <label style="color:${s.isOtro?'#8b8b9a':'#5a7a9a'}">${s.code}</label>
-        <input type="number" id="acfg_tp_${s.code}" value="${s.tp}" step="5" min="0" max="100"/>
-      </div>`).join('');
-  }
-
-  // Build strat list
-  renderActCfgStratList(all);
-
-  // Load cash
   const cashEl = document.getElementById('acfg_cash');
   if(cashEl) cashEl.value = CFG.cashAvail||0;
-
-  // Populate riskStrats checkboxes
-  const riskWrap = document.getElementById('acfg_riskStratWrap');
-  if(riskWrap){
-    const all = getAllStrats();
-    const riskSet = new Set(CFG.riskStrats || ['NP','PCS','CCS','DPS','IC','BWB','JL','112','0DTE']);
-    riskWrap.innerHTML = all.map(s=>{
-      const checked = riskSet.has(s.code);
-      const col = checked ? '#f0a500' : '#2a4a6a';
-      return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-family:'Courier New',monospace;font-size:9px;color:${col};padding:4px 8px;border:1px solid ${checked?'#f0a50044':'#1e2d3d'};border-radius:3px;background:${checked?'#f0a50011':'transparent'}">
-        <input type="checkbox" id="acfg_risk_${s.code}" ${checked?'checked':''} onchange="refreshRiskStratStyle('${s.code}','risk')">
-        ${s.code}
-      </label>`;
-    }).join('');
-  }
-  const riskTotalWrap = document.getElementById('acfg_riskTotalWrap');
-  if(riskTotalWrap){
-    const all = getAllStrats();
-    const riskTotSet = new Set(CFG.riskTotalStrats || ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE']);
-    riskTotalWrap.innerHTML = all.map(s=>{
-      const checked = riskTotSet.has(s.code);
-      const col = checked ? '#f04545' : '#2a4a6a';
-      return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-family:'Courier New',monospace;font-size:9px;color:${col};padding:4px 8px;border:1px solid ${checked?'#f0454544':'#1e2d3d'};border-radius:3px;background:${checked?'#f0454511':'transparent'}">
-        <input type="checkbox" id="acfg_riskTotal_${s.code}" ${checked?'checked':''} onchange="refreshRiskStratStyle('${s.code}','riskTotal')">
-        ${s.code}
-      </label>`;
-    }).join('');
-  }
-
   document.getElementById('actCfgOverlay').classList.add('on');
 }
 
@@ -7257,27 +7250,10 @@ function removeCustomStrat(code){
 }
 
 function saveActCfg(){
-  const all = getAllStrats();
-  // Read TP values from inputs
-  const newTp = {};
-  all.forEach(s=>{
-    const v = +document.getElementById('acfg_tp_'+s.code)?.value;
-    if(!isNaN(v)) newTp[s.code] = v;
-  });
-  // stratOtroSet now managed in Estrategias tab — preserve current value
-  CFG.tpTargets   = newTp;
-  // CFG.stratOtroSet unchanged (managed in Estrategias tab)
-  CFG.cashAvail   = +document.getElementById('acfg_cash')?.value||0;
-  // Save riskStrats
-  const _allForRisk = getAllStrats();
-  CFG.riskStrats      = _allForRisk.filter(s=>document.getElementById('acfg_risk_'+s.code)?.checked).map(s=>s.code);
-  CFG.riskTotalStrats = _allForRisk.filter(s=>document.getElementById('acfg_riskTotal_'+s.code)?.checked).map(s=>s.code);
+  CFG.cashAvail = +document.getElementById('acfg_cash')?.value||0;
   try{ localStorage.setItem('ot_cfg', JSON.stringify(CFG)); }catch(e){}
   closeActCfg();
-  refreshStratSelects();
   renderActivas();
-  // Force dashboard to recompute stratGroups with new config
-  HIST.forEach(e=>{ delete e.stratGroup; }); // clear cached stratGroups
   renderDash();
 }
 
@@ -7448,10 +7424,12 @@ function generateAnalysis(){
   // Activas
   const nAct = ACTIVAS.length;
   const riskTot       = ACTIVAS.reduce((s,a)=>s+(a.maxRisk||0),0);
-  const _riskSetAn     = new Set(CFG.riskStrats      || ['NP','PCS','CCS','DPS','IC','BWB','JL','112','0DTE']);
   const _riskTotSetAn  = new Set(CFG.riskTotalStrats || ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE']);
-  const riskTotAssign  = ACTIVAS.filter(a=>_riskSetAn.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
-  const riskTotACC     = ACTIVAS.filter(a=>!_riskSetAn.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
+  const anAssignStats  = _assignmentPortfolioStats(0);
+  const riskTotAssign  = anAssignStats.current;
+  const riskTotPot     = anAssignStats.potential;
+  const riskTotDefined = anAssignStats.definedRisk;
+  const riskTotACC     = anAssignStats.spot;
   const riskTotTotal   = ACTIVAS.filter(a=>_riskTotSetAn.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
   const cash = CFG.cashAvail||0;
   const leverage = cash>0 ? riskTotAssign/cash*100 : null;
@@ -7567,9 +7545,11 @@ function generateAnalysis(){
     ${block('Exposición', '#f0a500',
       row('Cash disponible', cash>0?'$'+cash.toLocaleString('es-ES',{maximumFractionDigits:0}):'No configurado', cash>0?'#c9d1d9':'#2a4a6a') +
       row('Risk total (configurado)', riskTotTotal>0?'$'+riskTotTotal.toLocaleString('es-ES',{maximumFractionDigits:0}):'$0', '#f04545') +
-      row('Risk asignación', riskTotAssign>0?'$'+riskTotAssign.toLocaleString('es-ES',{maximumFractionDigits:0}):'$0', '#c9d1d9') +
+      row('Riesgo definido verticales', riskTotDefined>0?'$'+riskTotDefined.toLocaleString('es-ES',{maximumFractionDigits:0}):'$0', '#c9d1d9') +
+      row('ifAsign potencial bruto', riskTotPot>0?'$'+riskTotPot.toLocaleString('es-ES',{maximumFractionDigits:0}):'$0', '#f0a500') +
+      row('ifAsign real/naked', riskTotAssign>0?'$'+riskTotAssign.toLocaleString('es-ES',{maximumFractionDigits:0}):'$0', '#e69138') +
       row('Valor acciones', riskTotACC>0?'$'+riskTotACC.toLocaleString('es-ES',{maximumFractionDigits:0}):'$0', '#4a9eff') +
-      row('Apalancamiento (opciones)', leverage!=null?num(leverage,0,'','%'):'—', leverage!=null?c(100-leverage,20,0):'#5a7a9a') +
+      row('ifReal / cash', leverage!=null?num(leverage,0,'','%'):'—', leverage!=null?c(120-leverage,40,0):'#5a7a9a') +
       (cash>0&&riskTotAssign>0?row('Cash restante vs asign.', '$'+(cash-riskTotAssign).toLocaleString('es-ES',{maximumFractionDigits:0}), (cash-riskTotAssign)>=0?'#3fb68b':'#f04545'):'') +
       row('Mejor activo', sortedA[0]?sortedA[0][0]:'—', '#3fb68b', sortedA[0]?money(sortedA[0][1].pnl*100):'')
     )}
@@ -8458,7 +8438,6 @@ function openGlobalCfg(){
 
   // ── Activas ──
   setV('gc_cash', o.cashAvail||0);
-  _gcBuildRiskWrap('gc_riskStratWrap',  'riskStrats',      '#f0a500');
   _gcBuildRiskWrap('gc_riskTotalWrap',  'riskTotalStrats', '#f04545');
 
   // ── Estrategias ──
@@ -8502,7 +8481,7 @@ function _gcBuildRiskWrap(wrId, cfgKey, col){
 function _gcRiskToggle(el){
   const key  = el.dataset.key;
   const code = el.dataset.code;
-  const col  = key==='riskStrats'?'#f0a500':'#f04545';
+  const col  = '#f04545';
   const lbl  = el.closest('label');
   if(lbl){
     lbl.style.color       = el.checked ? col : '#2a4a6a';
@@ -8610,7 +8589,6 @@ function gcDeleteStrat(code){
   _gcBuildCustomList();
   _gcBuildTpGrid();
   _gcBuildOtroWrap();
-  _gcBuildRiskWrap('gc_riskStratWrap',  'riskStrats',      '#f0a500');
   _gcBuildRiskWrap('gc_riskTotalWrap',  'riskTotalStrats', '#f04545');
   refreshStratSelects();
 }
@@ -8659,7 +8637,6 @@ function saveGlobalCfg(){
     const checks = document.querySelectorAll(`#${wrId} input[type=checkbox]`);
     CFG[cfgKey] = [...checks].filter(c=>c.checked).map(c=>c.dataset.code);
   };
-  _readRisk('gc_riskStratWrap',  'riskStrats');
   _readRisk('gc_riskTotalWrap',  'riskTotalStrats');
 
   // TP targets
