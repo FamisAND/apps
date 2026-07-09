@@ -4873,6 +4873,78 @@ function _loadScriptOnce(src){
   });
 }
 
+function _pdfMoney(v){
+  return (parseFloat(v)||0).toFixed(2)+' €';
+}
+
+function _drawFullTrainingInvoicePdf(data){
+  const pdf=new jspdf.jsPDF({unit:'mm',format:'a4'});
+  const W=pdf.internal.pageSize.getWidth();
+  const H=pdf.internal.pageSize.getHeight();
+  const M=18;
+  const right=W-M;
+  const black=[20,20,20], gray=[80,80,80], mute=[150,150,150], light=[248,248,248], yellow=[245,192,0];
+  pdf.setFillColor(255,255,255);
+  pdf.rect(0,0,W,H,'F');
+
+  pdf.setFont('helvetica','bold'); pdf.setFontSize(19); pdf.setTextColor(...yellow); pdf.text('FULL',M,26);
+  pdf.setTextColor(...black); pdf.text(' TRAINING',M+20,26);
+  pdf.setFont('helvetica','normal'); pdf.setFontSize(9.5); pdf.setTextColor(...gray);
+  pdf.text(String(data.fromAddr||''),M,33);
+  if(data.fromCity) pdf.text(String(data.fromCity),M,38);
+  if(data.fromNif) pdf.text('NIF: '+String(data.fromNif),M,43);
+
+  pdf.setFont('helvetica','bold'); pdf.setFontSize(24); pdf.setTextColor(...black); pdf.text('FACTURA',right,26,{align:'right'});
+  pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.setTextColor(...gray);
+  pdf.text('Nº '+String(data.num||''),right,34,{align:'right'});
+  pdf.text(String(data.date||''),right,40,{align:'right'});
+
+  const partyY=58;
+  pdf.setFillColor(...light); pdf.roundedRect(M,partyY,W-M*2,34,1.5,1.5,'F');
+  const colW=(W-M*2-18)/2, leftX=M+5, recvX=M+5+colW+18;
+  pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); pdf.setTextColor(...mute);
+  pdf.text('EMISOR',leftX,partyY+8); pdf.text('RECEPTOR',recvX,partyY+8);
+  pdf.setFontSize(11); pdf.setTextColor(...black);
+  pdf.text(String(data.fromName||''),leftX,partyY+15); pdf.text(String(data.toName||''),recvX,partyY+15);
+  pdf.setFont('helvetica','normal'); pdf.setFontSize(9.5); pdf.setTextColor(...gray);
+  [data.fromAddr,data.fromCity,data.fromNif?'NIF: '+data.fromNif:''].filter(Boolean).forEach((t,i)=>pdf.text(String(t),leftX,partyY+21+i*5));
+  [data.toAddr,data.toCity,data.toNif?'NIF: '+data.toNif:''].filter(Boolean).forEach((t,i)=>pdf.text(String(t),recvX,partyY+21+i*5));
+
+  const tableY=106;
+  const widths=[88,20,35,35,31];
+  const xs=[M,M+widths[0],M+widths[0]+widths[1],M+widths[0]+widths[1]+widths[2],M+widths[0]+widths[1]+widths[2]+widths[3]];
+  pdf.setFillColor(...black); pdf.rect(M,tableY,W-M*2,9,'F');
+  pdf.setFont('helvetica','bold'); pdf.setFontSize(8.5); pdf.setTextColor(255,255,255);
+  pdf.text('Descripción',xs[0]+3,tableY+6);
+  pdf.text('Uds.',xs[1]+widths[1]-3,tableY+6,{align:'right'});
+  pdf.text('Base',xs[2]+widths[2]-3,tableY+6,{align:'right'});
+  pdf.text('IGI '+data.igi+'%',xs[3]+widths[3]-3,tableY+6,{align:'right'});
+  pdf.text('Total',xs[4]+widths[4]-3,tableY+6,{align:'right'});
+
+  pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.setTextColor(...black);
+  let y=tableY+18;
+  data.lines.forEach((l,idx)=>{
+    if(idx%2===1){ pdf.setFillColor(...light); pdf.rect(M,y-6,W-M*2,9,'F'); }
+    const descLines=pdf.splitTextToSize(String(l.concept||''),widths[0]-6);
+    pdf.text(descLines,xs[0]+3,y);
+    pdf.text('1',xs[1]+widths[1]-3,y,{align:'right'});
+    pdf.text(_pdfMoney(l.base),xs[2]+widths[2]-3,y,{align:'right'});
+    pdf.text(_pdfMoney(l.igiAmt),xs[3]+widths[3]-3,y,{align:'right'});
+    pdf.setFont('helvetica','bold'); pdf.text(_pdfMoney(l.total),xs[4]+widths[4]-3,y,{align:'right'});
+    pdf.setFont('helvetica','normal');
+    y+=Math.max(9,descLines.length*5+4);
+  });
+
+  y+=8; pdf.setDrawColor(...black); pdf.setLineWidth(.5); pdf.line(M,y,right,y); y+=10;
+  pdf.setFontSize(10); pdf.setTextColor(...black);
+  pdf.setFont('helvetica','normal'); pdf.text('Base imponible: ',right-35,y,{align:'right'});
+  pdf.setFont('helvetica','bold'); pdf.text(_pdfMoney(data.subtotal),right,y,{align:'right'});
+  y+=6; pdf.setFont('helvetica','normal'); pdf.text('IGI '+data.igi+'%: ',right-35,y,{align:'right'});
+  pdf.setFont('helvetica','bold'); pdf.text(_pdfMoney(data.igiTotal),right,y,{align:'right'});
+  y+=10; pdf.setFontSize(18); pdf.text('TOTAL: '+_pdfMoney(data.subtotal+data.igiTotal),right,y,{align:'right'});
+  return pdf;
+}
+
 async function downloadInvoicePDF(){
   const data=_collectInvoiceData();
   if(!data.entries.length){toast('No hay líneas para facturar','red');return;}
@@ -4880,28 +4952,9 @@ async function downloadInvoicePDF(){
   const oldTxt=btn?.textContent;
   if(btn){btn.disabled=true;btn.textContent='Generando PDF...';}
   try{
-    await _loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
     await _loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-    const tmp=document.createElement('div');
-    tmp.style.cssText='position:fixed;left:-10000px;top:0;width:794px;background:#fff;color:#000;z-index:-1;font-family:Arial,sans-serif;font-size:12px;box-sizing:border-box;';
-    tmp.innerHTML=`<style>${_invoicePrintStyles()}</style>${_buildInvoiceBody(data)}`;
-    document.body.appendChild(tmp);
-    const canvas=await html2canvas(tmp,{scale:2,backgroundColor:'#fff'});
-    const img=canvas.toDataURL('image/png');
-    const pdf=new jspdf.jsPDF({unit:'mm',format:'a4'});
-    const pageW=pdf.internal.pageSize.getWidth();
-    const pageH=pdf.internal.pageSize.getHeight();
-    const margin=10;
-    const w=pageW-margin*2;
-    const h=w*(canvas.height/canvas.width);
-    if(h>pageH-margin*2){
-      const fitW=(pageH-margin*2)/(canvas.height/canvas.width);
-      pdf.addImage(img,'PNG',(pageW-fitW)/2,margin,fitW,pageH-margin*2);
-    }else{
-      pdf.addImage(img,'PNG',margin,margin,w,h);
-    }
+    const pdf=_drawFullTrainingInvoicePdf(data);
     pdf.save(`Factura-${data.num||new Date().toISOString().slice(0,10)}.pdf`);
-    document.body.removeChild(tmp);
     _markInvoiceGenerated(data);
     toast('✓ PDF descargado');
   }catch(err){
