@@ -737,7 +737,8 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
     </div>
     <div style="display:flex;justify-content:flex-end;gap:12px;padding:8px 0;border-top:1px solid var(--border);" id="inv_totals"></div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="printInvoice()">🖨 Imprimir / Guardar PDF</button>
+      <button class="btn btn-primary" onclick="downloadInvoicePDF()">⬇ Descargar PDF</button>
+      <button class="btn btn-ghost" onclick="printInvoice()">🖨 Imprimir</button>
       <button class="btn btn-ghost" onclick="closeModal('invoiceModal')">Cancelar</button>
     </div>
   </div>
@@ -4775,6 +4776,135 @@ function renderInvoiceLines(entries,igi){
 }
 
 document.addEventListener('input',e=>{if(e.target.id==='inv_igi'){const key=curKey('remesas');const entries=(db.months[key]?.entries||[]).filter(x=>x.clientId===_invClientId);renderInvoiceLines(entries,parseFloat(e.target.value)||4.5);}});
+
+function _collectInvoiceData(){
+  const cl=db.clients.find(c=>c.id===_invClientId)||{};
+  const key=curKey('remesas');
+  const entries=(db.months[key]?.entries||[]).filter(e=>e.clientId===_invClientId);
+  const igi=parseFloat(document.getElementById('inv_igi').value)||4.5;
+  const num=(document.getElementById('inv_num').value||'').trim();
+  const date=document.getElementById('inv_date').value;
+  const totalWithIGI=entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+  const subtotal=totalWithIGI/(1+igi/100);
+  const igiTotal=totalWithIGI-subtotal;
+  const lines=entries.map((e,i)=>{
+    const sv=db.services.find(s=>s.id===e.serviceId);
+    const p=parseFloat(e.price)||0;
+    const base=p/(1+igi/100);
+    const igiAmt=p-base;
+    return {
+      concept: document.getElementById(`inv_concept_${i}`)?.value||sv?.name||'Servicio',
+      base,
+      igiAmt,
+      total:p
+    };
+  });
+  return {
+    key, cl, entries, igi, num, date, totalWithIGI, subtotal, igiTotal, lines,
+    fromName:document.getElementById('inv_from_name').value,
+    fromNif:document.getElementById('inv_from_nif').value,
+    fromAddr:document.getElementById('inv_from_addr').value,
+    fromCity:document.getElementById('inv_from_city').value,
+    toName:document.getElementById('inv_to_name').value,
+    toNif:document.getElementById('inv_to_nif').value,
+    toAddr:document.getElementById('inv_to_addr').value,
+    toCity:document.getElementById('inv_to_city').value
+  };
+}
+
+function _markInvoiceGenerated(data){
+  const mEntries=db.months[data.key]?.entries||[];
+  mEntries.filter(e=>e.clientId===_invClientId).forEach(e=>e.invNum=data.num);
+  if(db.company)db.company.igi=data.igi;
+  save();
+}
+
+function _invoicePrintStyles(){
+  return `
+    *{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;padding:40px;background:#fff;}
+    .hdr{display:flex;justify-content:space-between;margin-bottom:32px;}.logo{font-size:22px;font-weight:900;letter-spacing:.04em;}
+    .logo span{color:#F5C000;}.inv-title{font-size:28px;font-weight:900;color:#1a1a1a;}.inv-num{color:#666;font-size:13px;margin-top:4px;}
+    .parties{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:28px;padding:16px;background:#f9f9f9;border-radius:4px;}
+    .party-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#999;font-weight:700;margin-bottom:6px;}
+    .party-name{font-size:14px;font-weight:700;margin-bottom:2px;}.party-detail{color:#555;line-height:1.5;}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px;}th{background:#1a1a1a;color:#fff;padding:8px 12px;text-align:left;font-size:11px;}
+    tr:nth-child(even){background:#f9f9f9;}.totals{text-align:right;border-top:2px solid #1a1a1a;padding-top:12px;}
+    .total-row{margin-bottom:4px;}.total-final{font-size:18px;font-weight:900;margin-top:8px;}
+    @media print{body{padding:20px;}@page{margin:15mm;}}
+  `;
+}
+
+function _buildInvoiceBody(data){
+  const linesHtml=data.lines.map(l=>`<tr><td style="padding:8px 12px">${esc(l.concept)}</td><td style="padding:8px 12px;text-align:right">1</td><td style="padding:8px 12px;text-align:right">${l.base.toFixed(2)} €</td><td style="padding:8px 12px;text-align:right">${l.igiAmt.toFixed(2)} €</td><td style="padding:8px 12px;text-align:right;font-weight:700">${l.total.toFixed(2)} €</td></tr>`).join('');
+  return `
+  <div class="hdr"><div><div class="logo"><span>FULL</span> TRAINING</div><div style="color:#666;margin-top:4px;font-size:11px">${esc(data.fromAddr)}${data.fromCity?', '+esc(data.fromCity):''}</div>${data.fromNif?`<div style="color:#666;font-size:11px">NIF: ${esc(data.fromNif)}</div>`:''}</div>
+  <div style="text-align:right"><div class="inv-title">FACTURA</div><div class="inv-num">Nº ${esc(data.num)}</div><div style="color:#666;margin-top:4px">${esc(data.date)}</div></div></div>
+  <div class="parties">
+    <div><div class="party-lbl">Emisor</div><div class="party-name">${esc(data.fromName)}</div><div class="party-detail">${[data.fromAddr,data.fromCity,data.fromNif?'NIF: '+data.fromNif:''].filter(Boolean).map(esc).join('<br>')}</div></div>
+    <div><div class="party-lbl">Receptor</div><div class="party-name">${esc(data.toName)}</div><div class="party-detail">${[data.toAddr,data.toCity,data.toNif?'NIF: '+data.toNif:''].filter(Boolean).map(esc).join('<br>')}</div></div>
+  </div>
+  <table><thead><tr><th>Descripción</th><th style="text-align:right">Uds.</th><th style="text-align:right">Base</th><th style="text-align:right">IGI ${data.igi}%</th><th style="text-align:right">Total</th></tr></thead>
+  <tbody>${linesHtml}</tbody></table>
+  <div class="totals">
+    <div class="total-row">Base imponible: <strong>${data.subtotal.toFixed(2)} €</strong></div>
+    <div class="total-row">IGI ${data.igi}%: <strong>${data.igiTotal.toFixed(2)} €</strong></div>
+    <div class="total-final">TOTAL: ${(data.subtotal+data.igiTotal).toFixed(2)} €</div>
+  </div>`;
+}
+
+function _buildInvoiceHtml(data, autoPrint=false){
+  const printScript=autoPrint?`<script>window.onload=()=>{setTimeout(()=>{window.print();},300);}<\/script>`:'';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura ${esc(data.num)}</title><style>${_invoicePrintStyles()}</style></head><body>${_buildInvoiceBody(data)}${printScript}</body></html>`;
+}
+
+function _loadScriptOnce(src){
+  return new Promise((resolve,reject)=>{
+    const found=[...document.scripts].find(s=>s.src===src);
+    if(found){ resolve(); return; }
+    const s=document.createElement('script');
+    s.src=src; s.onload=resolve; s.onerror=reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function downloadInvoicePDF(){
+  const data=_collectInvoiceData();
+  if(!data.entries.length){toast('No hay líneas para facturar','red');return;}
+  const btn=(typeof event!=='undefined' && event?.target) ? event.target : null;
+  const oldTxt=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent='Generando PDF...';}
+  try{
+    await _loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    await _loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    const tmp=document.createElement('div');
+    tmp.style.cssText='position:fixed;left:-10000px;top:0;width:794px;background:#fff;color:#000;z-index:-1;font-family:Arial,sans-serif;font-size:12px;padding:40px;box-sizing:border-box;';
+    tmp.innerHTML=`<style>${_invoicePrintStyles()}</style>${_buildInvoiceBody(data)}`;
+    document.body.appendChild(tmp);
+    const canvas=await html2canvas(tmp,{scale:2,backgroundColor:'#fff'});
+    const img=canvas.toDataURL('image/png');
+    const pdf=new jspdf.jsPDF({unit:'mm',format:'a4'});
+    const pageW=pdf.internal.pageSize.getWidth();
+    const pageH=pdf.internal.pageSize.getHeight();
+    const margin=10;
+    const w=pageW-margin*2;
+    const h=w*(canvas.height/canvas.width);
+    if(h>pageH-margin*2){
+      const fitW=(pageH-margin*2)/(canvas.height/canvas.width);
+      pdf.addImage(img,'PNG',(pageW-fitW)/2,margin,fitW,pageH-margin*2);
+    }else{
+      pdf.addImage(img,'PNG',margin,margin,w,h);
+    }
+    pdf.save(`Factura-${data.num||new Date().toISOString().slice(0,10)}.pdf`);
+    document.body.removeChild(tmp);
+    _markInvoiceGenerated(data);
+    toast('✓ PDF descargado');
+  }catch(err){
+    console.error('PDF factura:',err);
+    toast('No se pudo descargar el PDF. Usa Imprimir > Guardar como PDF.','red');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=oldTxt;}
+  }
+}
 
 function printInvoice(){
   const co=db.company||{};
