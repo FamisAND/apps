@@ -4435,7 +4435,7 @@ function _assignmentPortfolioStats(extraAmount){
   const navInfo = _lastAccountNav();
   const total = current + (parseFloat(extraAmount)||0);
   const pct = cashInfo.value > 0 ? total / cashInfo.value * 100 : null;
-  const potentialPct = navInfo.value > 0 ? potential / navInfo.value * 100 : null;
+  const potentialPct = cashInfo.value > 0 ? potential / cashInfo.value * 100 : null;
   const definedPct = navInfo.value > 0 ? definedRisk / navInfo.value * 100 : null;
   const spotPct = navInfo.value > 0 ? spot / navInfo.value * 100 : null;
   return { rows, current, total, pct, potential, potentialPct, definedRisk, definedPct, spot, spotPct, liquidity: cashInfo, nav: navInfo };
@@ -4594,7 +4594,7 @@ function renderActivas(){
     riskPanel.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch">
         ${metricCard('Riesgo definido', assignStats.definedRisk, definedPct, definedState, 'Verticales cubiertas vs NAV')}
-        ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas vs NAV')}
+        ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas vs cash')}
         ${metricCard('ifAsign real/naked', assignStats.current, realPct, realState, 'Puts sin proteccion vs cash')}
       </div>
       <div style="display:grid;grid-template-columns:1fr .85fr;gap:12px;align-items:stretch;margin-top:10px">
