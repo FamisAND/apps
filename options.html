@@ -232,7 +232,7 @@
         <label>Cash disponible en cuenta ($)</label>
         <input type="number" id="gc_cash" step="100" placeholder="ej: 25000"/>
       </div>
-      <div style="margin-bottom:14px">
+      <div style="display:none">
         <div class="cfg-col-hdr" style="color:#f0a500;margin-bottom:8px">Riesgo de asignación</div>
         <div style="font-size:9px;color:#2a4a6a;margin-bottom:8px">Estrategias que generan riesgo real de asignación y cuentan contra el cash.</div>
         <div style="font-size:9px;color:#2a4a6a;line-height:1.45">
@@ -4561,6 +4561,12 @@ function renderActivas(){
     {max:120,color:'#e69138',label:'agresivo',bg:'#2a1b0c'},
     {max:Infinity,color:'#f04545',label:'rojo',bg:'#2a0f12'}
   ]);
+  const directionalState = metricState(totalDirectionalPct, [
+    {max:100,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
+    {max:200,color:'#f0a500',label:'vigilar',bg:'#2b220d'},
+    {max:300,color:'#e69138',label:'alta',bg:'#2a1b0c'},
+    {max:Infinity,color:'#f04545',label:'muy alta',bg:'#2a0f12'}
+  ]);
   if(riskPanel){
     const topRows = assignStats.rows
       .filter(r=>r.amount>0)
@@ -4585,7 +4591,7 @@ function renderActivas(){
         ${metricCard('Riesgo definido', assignStats.definedRisk, definedPct, definedState, 'Verticales cubiertas: ancho - credito')}
         ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas como test de stress')}
         ${metricCard('ifAsign real/naked', assignStats.current, realPct, realState, 'Puts sin proteccion activa')}
-        ${metricCard('Spot + naked', totalDirectional, totalDirectionalPct, realState, 'Acciones compradas + puts naked')}
+        ${metricCard('Spot + naked', totalDirectional, totalDirectionalPct, directionalState, 'Acciones compradas + puts naked')}
       </div>
       <div style="display:grid;grid-template-columns:1fr .85fr;gap:12px;align-items:stretch;margin-top:10px">
         <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px">
@@ -4606,7 +4612,7 @@ function renderActivas(){
     if(assignStats.current>0) finalParts.push(`ifReal: $${assignStats.current.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
     if(totalRiskExcl>0) finalParts.push(`<span style="color:#2a4a6a">+$${totalRiskExcl.toLocaleString('es-ES',{maximumFractionDigits:0})} excl.</span>`);
     const finalRiskStr = finalParts.join(' · ') || 'Sin riesgo';
-    const finalCoverage = realPct!=null ? ` · ifReal: ${realPct.toFixed(0)}% NAV <span style="color:${realState.color}">${realState.label}</span>` : '';
+    const finalCoverage = realPct!=null ? ` · ifReal: ${realPct.toFixed(0)}% liq <span style="color:${realState.color}">${realState.label}</span>` : '';
     sumEl.innerHTML = `${ACTIVAS.length} pos · ${finalRiskStr} · P&L est: ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}${finalCoverage}`;
   }
   grid.innerHTML = sorted.map(({a,i})=>buildActCard(a,i,today)).join('');
