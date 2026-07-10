@@ -6956,12 +6956,11 @@ async function tobDownloadCuestionarioEditable(){
   section('1. Datos basicos', 'Sirven para identificar el formulario y contextualizar el objetivo.');
   twoFields({label:'Nombre y apellidos',name:'datos_nombre',value:cli.nombre||''},{label:'Telefono / email',name:'datos_contacto',value:cli.contacto||''});
   twoFields({label:'Fecha de nacimiento',name:'datos_nacimiento',value:cli.nacimiento||''},{label:'Fecha de hoy',name:'datos_fecha',value:new Date().toISOString().slice(0,10)});
-  twoFields({label:'Peso actual (kg)',name:'datos_peso'},{label:'Altura (cm)',name:'datos_altura'});
   textField('Motivo principal de la consulta', 'datos_motivo', {h:34, multi:true, help:'Ej: perder grasa, ganar masa, digestion, ordenar comidas...'});
 
   section('2. Objetivo', 'Marca lo principal y explica como sabremos que vamos bien.');
   checks('Objetivo principal (marca una opcion)', ['Perder grasa','Recomposicion corporal','Ganar musculo','Mantener peso','Rendimiento deportivo','Salud general'], 'objetivo_principal');
-  twoFields({label:'Peso objetivo si existe',name:'objetivo_peso'},{label:'Plazo aproximado',name:'objetivo_plazo'});
+  textField('Peso objetivo si existe', 'objetivo_peso', {h:18});
   textField('Que esperas conseguir exactamente?', 'objetivo_detalle', {h:36, multi:true});
   textField('Que te ha funcionado antes y que no?', 'objetivo_historial', {h:36, multi:true});
 
@@ -6969,7 +6968,7 @@ async function tobDownloadCuestionarioEditable(){
   textField('Patologias, lesiones, medicacion o condiciones medicas', 'salud_patologias', {h:38, multi:true});
   textField('Alergias alimentarias reales', 'salud_alergias', {h:28, multi:true, help:'Indica alimento y reaccion.'});
   textField('Intolerancias o alimentos que te sientan mal', 'salud_intolerancias', {h:34, multi:true});
-  textField('Digestiones, hambre, ansiedad, atracones o relacion con la comida', 'salud_relacion_comida', {h:38, multi:true});
+  textField('Digestiones, hambre, ansiedad, atracones o relacion con la comida', 'salud_relacion_comida', {h:46, multi:true, help:'Busca patrones: hinchazon, estrenimiento, gases, hambre nocturna, ansiedad por dulce, comer sin hambre...'});
 
   section('4. Alimentacion habitual', 'Describe un dia normal. Si fines de semana cambian mucho, explicalo.');
   checks('Comidas que haces normalmente', ['Desayuno','Media manana','Comida','Merienda','Cena','Recena','Picoteos'], 'habitos_comidas');
@@ -6988,8 +6987,7 @@ async function tobDownloadCuestionarioEditable(){
   section('6. Preferencias del plan', 'Ayuda a construir un menu que puedas seguir.');
   checks('Tipo de dieta', ['Omnivora','Vegetariana','Vegana','Pescetariana','Flexible / sin preferencia'], 'pref_dieta');
   checks('Repetir platos', ['Me da igual repetir','Puedo repetir 2-3 dias','Necesito variedad','Prefiero menu muy simple'], 'pref_repetir');
-  textField('Presupuesto, supermercado habitual o limitaciones practicas', 'pref_practico', {h:34, multi:true});
-  textField('Notas finales o cualquier cosa que debamos saber', 'pref_notas', {h:52, multi:true});
+  textField('Notas finales o cualquier cosa que deba saber', 'pref_notas', {h:52, multi:true});
 
   form.updateFieldAppearances(font);
   const bytes = await doc.save();
