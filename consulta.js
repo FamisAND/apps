@@ -6901,11 +6901,11 @@ async function tobDownloadCuestionarioEditable(){
   function header(compact=false){
     draw('FULL', M, H-28, 16, true, rgb(0.96,0.65,0.05));
     draw(' TRAINING', M+39, H-28, 16, true, BK);
-    draw('Cuestionario nutricional editable', W-M, H-28, 11, true, BK);
+    draw('Cuestionario nutricional editable v2', M, H-46, 12, true, BK);
     if(!compact){
-      draw('Rellena los campos con calma. Si algo no aplica, escribe "No aplica". Cuanto mas concreto seas, mejor podremos ajustar el plan.', M, H-52, 8, false, GR);
-      y = H - 78;
-    } else y = H - 52;
+      draw('Rellena los campos con calma. Si algo no aplica, escribe "No aplica". Cuanto mas concreto seas, mejor podre ajustar el plan.', M, H-62, 8, false, GR);
+      y = H - 88;
+    } else y = H - 64;
   }
   function pageBreak(min=90){ if(y < min){ page = doc.addPage([W,H]); header(true); } }
   function section(title, hint=''){
