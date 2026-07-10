@@ -3,7 +3,8 @@
  *
  * Estrategia:
  *   - Pre-cachea HTMLs, CSS y JS estáticos en la instalación.
- *   - Para los recursos del propio sitio: cache-first con fallback a red.
+ *   - Para HTML/CSS/JS propios: red primero, caché si no hay conexión.
+ *   - Para otros recursos propios: caché primero con actualización en segundo plano.
  *   - Para llamadas externas (api.github.com, fonts.googleapis.com,
  *     CDNs de Chart.js, OpenRouter, Groq, Gemini): NUNCA cachear, dejar
  *     que vayan a red directo. Los datos son privados / dinámicos.
@@ -21,7 +22,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v223';
+const CACHE_VERSION = 'mis-dashboards-v224';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).
@@ -49,9 +50,6 @@ const PRECACHE_URLS = [
   './manifest.json',
 ];
 
-// CSS de los modales del nuevo menú Configuración (.cfg-row hover)
-// Inline, no requiere CSS adicional.
-
 // Hosts externos que NO se cachean (datos dinámicos o llamadas a APIs).
 const NO_CACHE_HOSTS = [
   'api.github.com',
@@ -71,6 +69,21 @@ const NO_CACHE_HOSTS = [
   'www.alphavantage.co',
   'api.twelvedata.com',
 ];
+
+const NETWORK_FIRST_EXTENSIONS = ['.html', '.js', '.css', '.json'];
+
+function shouldNetworkFirst(req, url) {
+  if (req.mode === 'navigate') return true;
+  return NETWORK_FIRST_EXTENSIONS.some(ext => url.pathname.endsWith(ext));
+}
+
+function putCache(req, response) {
+  if (response && response.ok && response.type === 'basic') {
+    const clone = response.clone();
+    caches.open(CACHE_VERSION).then(cache => cache.put(req, clone));
+  }
+  return response;
+}
 
 // ─── INSTALL ───────────────────────────────────────────────
 self.addEventListener('install', event => {
@@ -116,16 +129,21 @@ self.addEventListener('fetch', event => {
   // Solo cachear nuestro propio origen.
   if (url.origin !== self.location.origin) return;
 
-  // Cache-first con fallback a red. Si la red devuelve OK, actualizar caché.
+  // HTML/CSS/JS: red primero para evitar que el dashboard muestre versiones viejas.
+  if (shouldNetworkFirst(req, url)) {
+    event.respondWith(
+      fetch(req)
+        .then(response => putCache(req, response))
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Resto de recursos propios: caché primero y actualización en segundo plano.
   event.respondWith(
     caches.match(req).then(cached => {
       const fetchPromise = fetch(req).then(response => {
-        // Solo cachear respuestas OK (200-299) y de tipo basic (no opaque).
-        if (response && response.ok && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_VERSION).then(cache => cache.put(req, clone));
-        }
-        return response;
+        return putCache(req, response);
       }).catch(() => cached); // si red falla, devolver caché si la hay
 
       return cached || fetchPromise;
