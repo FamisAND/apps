@@ -6879,6 +6879,130 @@ function tobQuestReset(){
 //   4. PRs: máximo por ejercicio + en qué rutina lo hizo
 // Requiere SheetJS (cargado vía CDN xlsx.full.min.js en el <head>).
 // ═════════════════════════════════════════════════════════════════
+async function tobDownloadCuestionarioEditable(){
+  if(!tobCurrentFichaId){ tobToast('Abre la ficha del cliente', 'red'); return; }
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
+  if(!window.PDFLib){ tobToast('pdf-lib no cargado', 'red'); return; }
+
+  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
+  const form = doc.getForm();
+  const W = 595, H = 842, M = 42;
+  const OR = rgb(0.93,0.45,0.12), BK = rgb(0.08,0.08,0.08), GR = rgb(0.38,0.38,0.38), LT = rgb(0.95,0.95,0.95);
+  let page = doc.addPage([W,H]);
+  let y = H - 42;
+  let fieldN = 0;
+
+  function safe(t){ return typeof tobPdfSafe === 'function' ? tobPdfSafe(String(t||'')) : String(t||''); }
+  function draw(t,x,y0,size=9,bold=false,color=BK){ page.drawText(safe(t), {x,y:y0,size,font:bold?fontB:font,color}); }
+  function header(compact=false){
+    draw('FULL', M, H-28, 16, true, rgb(0.96,0.65,0.05));
+    draw(' TRAINING', M+39, H-28, 16, true, BK);
+    draw('Cuestionario nutricional editable', W-M, H-28, 11, true, BK);
+    if(!compact){
+      draw('Rellena los campos con calma. Si algo no aplica, escribe "No aplica". Cuanto mas concreto seas, mejor podremos ajustar el plan.', M, H-52, 8, false, GR);
+      y = H - 78;
+    } else y = H - 52;
+  }
+  function pageBreak(min=90){ if(y < min){ page = doc.addPage([W,H]); header(true); } }
+  function section(title, hint=''){
+    pageBreak(90);
+    page.drawRectangle({x:M,y:y-2,width:W-M*2,height:18,color:BK});
+    draw(title, M+8, y+3, 9, true, rgb(1,1,1));
+    y -= 24;
+    if(hint){ draw(hint, M, y, 7.5, false, GR); y -= 12; }
+  }
+  function textField(label, name, opts={}){
+    pageBreak((opts.h||22)+42);
+    draw(label, M, y, 8.5, true, BK);
+    if(opts.help) draw(opts.help, M+190, y, 7, false, GR);
+    y -= 14;
+    const tf = form.createTextField(name || ('q_'+(++fieldN)));
+    if(opts.value != null && opts.value !== '') tf.setText(safe(opts.value));
+    if(opts.multi) tf.enableMultiline();
+    tf.addToPage(page, {x:M, y:y-(opts.h||18)+4, width:opts.w||W-M*2, height:opts.h||18, borderColor:rgb(.65,.65,.65), borderWidth:.6, backgroundColor:opts.bg||rgb(1,1,1)});
+    y -= (opts.h||18) + 10;
+  }
+  function twoFields(a,b){
+    pageBreak(58);
+    const gap=14, w=(W-M*2-gap)/2;
+    draw(a.label,M,y,8.5,true,BK); draw(b.label,M+w+gap,y,8.5,true,BK);
+    y-=14;
+    const f1=form.createTextField(a.name||('q_'+(++fieldN))); if(a.value) f1.setText(safe(a.value));
+    const f2=form.createTextField(b.name||('q_'+(++fieldN))); if(b.value) f2.setText(safe(b.value));
+    f1.addToPage(page,{x:M,y:y-14,width:w,height:18,borderColor:rgb(.65,.65,.65),borderWidth:.6});
+    f2.addToPage(page,{x:M+w+gap,y:y-14,width:w,height:18,borderColor:rgb(.65,.65,.65),borderWidth:.6});
+    y-=32;
+  }
+  function checks(title, items, name){
+    pageBreak(58);
+    draw(title, M, y, 8.5, true, BK); y -= 14;
+    let x=M;
+    items.forEach((it,i)=>{
+      pageBreak(48);
+      const cb=form.createCheckBox(`${name}_${i}`);
+      cb.addToPage(page,{x,y:y-1,width:9,height:9,borderColor:rgb(.45,.45,.45),borderWidth:.6});
+      draw(it, x+14, y, 8, false, BK);
+      x += Math.min(175, Math.max(96, it.length*4.2+30));
+      if(x > W-M-120){ x=M; y-=15; }
+    });
+    y -= 20;
+  }
+
+  header(false);
+  section('1. Datos basicos', 'Sirven para identificar el formulario y contextualizar el objetivo.');
+  twoFields({label:'Nombre y apellidos',name:'datos_nombre',value:cli.nombre||''},{label:'Telefono / email',name:'datos_contacto',value:cli.contacto||''});
+  twoFields({label:'Fecha de nacimiento',name:'datos_nacimiento',value:cli.nacimiento||''},{label:'Fecha de hoy',name:'datos_fecha',value:new Date().toISOString().slice(0,10)});
+  twoFields({label:'Peso actual (kg)',name:'datos_peso'},{label:'Altura (cm)',name:'datos_altura'});
+  textField('Motivo principal de la consulta', 'datos_motivo', {h:34, multi:true, help:'Ej: perder grasa, ganar masa, digestion, ordenar comidas...'});
+
+  section('2. Objetivo', 'Marca lo principal y explica como sabremos que vamos bien.');
+  checks('Objetivo principal (marca una opcion)', ['Perder grasa','Recomposicion corporal','Ganar musculo','Mantener peso','Rendimiento deportivo','Salud general'], 'objetivo_principal');
+  twoFields({label:'Peso objetivo si existe',name:'objetivo_peso'},{label:'Plazo aproximado',name:'objetivo_plazo'});
+  textField('Que esperas conseguir exactamente?', 'objetivo_detalle', {h:36, multi:true});
+  textField('Que te ha funcionado antes y que no?', 'objetivo_historial', {h:36, multi:true});
+
+  section('3. Salud y restricciones', 'Importante para evitar propuestas que no sean adecuadas.');
+  textField('Patologias, lesiones, medicacion o condiciones medicas', 'salud_patologias', {h:38, multi:true});
+  textField('Alergias alimentarias reales', 'salud_alergias', {h:28, multi:true, help:'Indica alimento y reaccion.'});
+  textField('Intolerancias o alimentos que te sientan mal', 'salud_intolerancias', {h:34, multi:true});
+  textField('Digestiones, hambre, ansiedad, atracones o relacion con la comida', 'salud_relacion_comida', {h:38, multi:true});
+
+  section('4. Alimentacion habitual', 'Describe un dia normal. Si fines de semana cambian mucho, explicalo.');
+  checks('Comidas que haces normalmente', ['Desayuno','Media manana','Comida','Merienda','Cena','Recena','Picoteos'], 'habitos_comidas');
+  textField('Recordatorio 24h: que comiste ayer desde que te levantaste hasta dormir?', 'habitos_24h', {h:62, multi:true});
+  textField('Horarios habituales de comidas', 'habitos_horarios', {h:24, multi:true});
+  textField('Alimentos que NO quieres comer', 'habitos_no', {h:28, multi:true});
+  textField('Alimentos que te gustan y quieres mantener', 'habitos_si', {h:28, multi:true});
+
+  section('5. Estilo de vida', 'Esto ayuda a que el plan sea realista, no perfecto en papel e imposible en tu dia.');
+  checks('Quien cocina normalmente?', ['Yo','Pareja/familia','Como fuera','Meal prep','Depende del dia'], 'vida_cocina');
+  checks('Tiempo disponible para cocinar', ['Muy poco','15 min','30 min','45+ min','Cocino por tandas'], 'vida_tiempo');
+  textField('Trabajo, horarios y nivel de movimiento diario', 'vida_trabajo', {h:34, multi:true});
+  textField('Entrenamiento actual y dias por semana', 'vida_entreno', {h:34, multi:true});
+  twoFields({label:'Horas de sueno habituales',name:'vida_sueno'},{label:'Nivel de estres 1-10',name:'vida_estres'});
+
+  section('6. Preferencias del plan', 'Ayuda a construir un menu que puedas seguir.');
+  checks('Tipo de dieta', ['Omnivora','Vegetariana','Vegana','Pescetariana','Flexible / sin preferencia'], 'pref_dieta');
+  checks('Repetir platos', ['Me da igual repetir','Puedo repetir 2-3 dias','Necesito variedad','Prefiero menu muy simple'], 'pref_repetir');
+  textField('Presupuesto, supermercado habitual o limitaciones practicas', 'pref_practico', {h:34, multi:true});
+  textField('Notas finales o cualquier cosa que debamos saber', 'pref_notas', {h:52, multi:true});
+
+  form.updateFieldAppearances(font);
+  const bytes = await doc.save();
+  const blob = new Blob([bytes], {type:'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(cli.nombre||'cliente').replace(/[^a-zA-Z0-9]/g,'_')}_cuestionario_editable.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+  tobToast('✓ Cuestionario editable descargado', 'green');
+}
+
 function tobExportClienteExcel(cliId){
   if(typeof XLSX === 'undefined'){
     tobToast('SheetJS no carregat — recarrega la pàgina', 'red');
