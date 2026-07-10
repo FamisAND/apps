@@ -418,6 +418,7 @@
         <option value="tp">TP %</option>
         <option value="apertura">Apertura</option>
       </select>
+      <button id="actViewToggle" onclick="toggleActivasCompact()" title="Alternar vista compacta/detalle" style="background:#4a9eff11;border:1px solid #4a9eff44;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer">Vista rapida</button>
     <button onclick="openActCfg()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#f0a500';this.style.color='#f0a500'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">⚙ Config</button>
     <button onclick="openTtPriceUpdate()" title="Actualizar priceCurrent desde positions.csv de Tastytrade" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#22c55e';this.style.color='#22c55e'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">↻ Tastytrade</button>
     <button onclick="openActModal(null)"   style="background:transparent;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:3px;cursor:pointer">+ Nueva posición</button>
@@ -533,7 +534,7 @@
       <div class="cfg-field"><label>Apertura</label><input type="date" id="am_apertura"/></div>
       <div class="cfg-field"><label>Expiración</label><input type="date" id="am_exp"/></div>
       <div class="cfg-field"><label>Max Risk ($)</label><input type="number" id="am_maxrisk" placeholder="5000" step="50" oninput="this.dataset.autocalc='0'" title="Se calcula automáticamente desde las patas (strikes + prima). Edítalo para fijarlo manualmente."/></div>
-      <div class="cfg-field"><label id="am_pcred_label">Prima total posición ($)</label><input type="number" id="am_pcred" placeholder="250" step="0.01" title="Prima total de la posición completa. El sistema la convierte internamente según el número de contratos."/></div>
+      <div class="cfg-field"><label id="am_pcred_label">Prima total posición (puntos)</label><input type="number" id="am_pcred" placeholder="ej: 3 contratos x 1.00 = 3.00" step="0.01" title="Prima total en puntos de la posición completa. Ejemplo: 3 contratos a 1.00 = 3.00."/></div>
       <input type="hidden" id="am_pdeb" value="0"/>
       <input type="hidden" id="am_strike" value=""/>
       <div class="cfg-field"><label title="Delta neto de la posición. Para spreads: delta vendido − delta comprado. Para IC: suma de ambos spreads.">Delta neto</label><input type="number" id="am_delta" placeholder="ej: -0.08" step="0.01" title="Delta vendido − delta comprado. Para IC suma ambos spreads."/></div>
@@ -3093,12 +3094,12 @@ let _pnlDesglose = false; // true=por estrategia, false=total
 function premiumTotalToStorage(total, contracts){
   const t = parseFloat(total);
   const c = Math.max(1, parseFloat(contracts) || 1);
-  return Number.isFinite(t) ? t / (10000 * c) : null;
+  return Number.isFinite(t) ? t / (100 * c) : null;
 }
 function premiumStorageToTotal(stored, contracts){
   const v = parseFloat(stored);
   const c = Math.max(1, parseFloat(contracts) || 1);
-  return Number.isFinite(v) ? v * 10000 * c : null;
+  return Number.isFinite(v) ? v * 100 * c : null;
 }
 
 function togglePnlDesglose(){
@@ -4273,6 +4274,23 @@ function computeCapitalByMonth(allEntries){
 // ACTIVAS — posiciones abiertas
 // ══════════════════════════════════════════════════════════════════
 let ACTIVAS = [];
+let ACT_COMPACT_VIEW = (localStorage.getItem('ot_act_compact') || '1') !== '0';
+let ACT_EXPANDED_IDX = null;
+
+function toggleActivasCompact(){
+  ACT_COMPACT_VIEW = !ACT_COMPACT_VIEW;
+  ACT_EXPANDED_IDX = null;
+  try{ localStorage.setItem('ot_act_compact', ACT_COMPACT_VIEW ? '1' : '0'); }catch(e){}
+  renderActivas();
+}
+
+function actCardClick(ev, idx){
+  const tag = (ev.target && ev.target.tagName || '').toLowerCase();
+  if(['button','input','select','textarea','a'].includes(tag) || ev.target.closest?.('button,input,select,textarea,a')) return;
+  if(!ACT_COMPACT_VIEW) return;
+  ACT_EXPANDED_IDX = ACT_EXPANDED_IDX === idx ? null : idx;
+  renderActivas();
+}
 
 function activasLoad(){
   try{
@@ -4447,7 +4465,9 @@ function renderActivas(){
   const empty = document.getElementById('activasEmpty');
   const sumEl = document.getElementById('actSummary');
   const riskPanel = document.getElementById('actRiskPanel');
+  const viewBtn = document.getElementById('actViewToggle');
   if(!grid) return;
+  if(viewBtn) viewBtn.textContent = ACT_COMPACT_VIEW ? 'Ver detalle' : 'Vista rapida';
 
   // today must be declared BEFORE sort uses it
   const today = new Date(); today.setHours(0,0,0,0);
@@ -4620,6 +4640,7 @@ function renderActivas(){
     const finalCoverage = realPct!=null ? ` · ifReal: ${realPct.toFixed(0)}% liq <span style="color:${realState.color}">${realState.label}</span>` : '';
     sumEl.innerHTML = `${ACTIVAS.length} pos · ${finalRiskStr} · P&L est: ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}${finalCoverage}`;
   }
+  grid.classList.toggle('act-grid-compact', ACT_COMPACT_VIEW);
   grid.innerHTML = sorted.map(({a,i})=>buildActCard(a,i,today)).join('');
 
   // Attach price input listeners — use closure to capture correct original index
@@ -4698,6 +4719,7 @@ function buildActCard(a, idx, today){
   const tpTarget = (CFG.tpTargets||{})[strat] || 50;
   const tpAlertOn = tpPct!=null && tpPct >= tpTarget;
   if(tpAlertOn) cardClass += ' act-tp-alert';
+  if(ACT_COMPACT_VIEW && ACT_EXPANDED_IDX !== idx) cardClass += ' act-compact';
 
   const assignExp = _activeAssignmentExposure(a);
   const liqInfo = _lastAccountLiquidity();
@@ -4799,7 +4821,7 @@ function buildActCard(a, idx, today){
   const manageHtml = manageItems.map(m=>`<span class="act-manage-pill act-manage-${m.tone}" style="border-color:${toneColor(m.tone)}44;background:${toneColor(m.tone)}10;color:${toneColor(m.tone)}"><b>${m.label}</b><small>${m.txt}</small></span>`).join('');
 
   return `
-  <div class="${cardClass}" id="act_card_${idx}">
+  <div class="${cardClass}" id="act_card_${idx}" onclick="actCardClick(event, ${idx})">
     <div class="act-card-header">
       <div style="display:flex;align-items:center;gap:8px">
         <span class="act-badge act-badge-${stratGroup}">${stratLabel}</span>
@@ -4861,7 +4883,7 @@ function buildActCard(a, idx, today){
       })():''}
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
       <div class="act-kv"><span class="act-k" title="Nominal que podría exigir la cuenta si se quita cobertura y/o asignan puts vendidos">ifAsign</span><span class="act-v" style="color:${assignCol}">${assignLabel}</span></div>
-      <div class="act-kv"><span class="act-k">Prima total</span><span class="act-v">${a.pCredito!=null?'$'+Math.abs(premiumStorageToTotal(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
+      <div class="act-kv"><span class="act-k">Prima pts</span><span class="act-v">${a.pCredito!=null?Math.abs(premiumStorageToTotal(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
       <div class="act-kv"><span class="act-k">IV</span><span class="act-v">${a.iv!=null?a.iv+'%':'—'}</span></div>
@@ -5345,8 +5367,79 @@ function parseTtPositionsCsv(text){
     headers.forEach((h, j) => { obj[h] = cells[j] || ''; });
     rows.push(obj);
   }
-  // Filtrar solo opciones y equity
-  return rows.filter(r => r.Type === 'OPTION' || r.Type === 'EQUITY');
+  // Filtrar solo opciones y equity, tolerando nombres distintos de Tastytrade.
+  return rows.filter(r => ['OPTION','EQUITY','STOCK'].includes(ttType(r)));
+}
+
+function ttNormKey(k){
+  return String(k || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function ttGet(row, names){
+  if(!row) return '';
+  const wanted = names.map(ttNormKey);
+  for(const key of Object.keys(row)){
+    if(wanted.includes(ttNormKey(key))) return row[key];
+  }
+  return '';
+}
+
+function ttNum(v){
+  if(v == null) return NaN;
+  const s = String(v).trim().replace(/\$/g,'').replace(/\s/g,'').replace(/,/g,'.');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function ttType(row){
+  return String(ttGet(row, ['Type','Instrument Type','Asset Type']) || '').trim().toUpperCase();
+}
+
+function ttSymbol(row){
+  return String(ttGet(row, ['Symbol','Underlying Symbol','Root Symbol']) || '').trim();
+}
+
+function ttTickerFromSymbol(sym){
+  const m = String(sym || '').trim().match(/^([A-Z.]+)\s*/i);
+  return m ? m[1].toUpperCase() : '';
+}
+
+function ttOptionMid(row){
+  const mid = ttNum(ttGet(row, ['Mid','Mark','Mark Price','Theo Price','Theo']));
+  if(Number.isFinite(mid)) return mid;
+  const bid = ttNum(ttGet(row, ['Bid','Bid Price']));
+  const ask = ttNum(ttGet(row, ['Ask','Ask Price']));
+  if(Number.isFinite(bid) && Number.isFinite(ask)) return (bid + ask) / 2;
+  return ttNum(ttGet(row, ['Last','Last Price','Close Price']));
+}
+
+function ttCallPut(row){
+  const cp = String(ttGet(row, ['Call/Put','Put/Call','Option Type','OptionType']) || '').trim().toUpperCase();
+  if(cp.startsWith('C')) return 'C';
+  if(cp.startsWith('P')) return 'P';
+  const sym = ttSymbol(row).toUpperCase();
+  const m = sym.match(/\d{6}([CP])\d{8}/);
+  return m ? m[1] : '';
+}
+
+function ttStrike(row){
+  const direct = ttNum(ttGet(row, ['Strike Price','Strike']));
+  if(Number.isFinite(direct)) return direct;
+  const sym = ttSymbol(row).toUpperCase();
+  const m = sym.match(/\d{6}[CP](\d{8})/);
+  return m ? parseInt(m[1], 10) / 1000 : NaN;
+}
+
+function ttQuantity(row){
+  return ttNum(ttGet(row, ['Quantity','Qty','Position Quantity']));
+}
+
+function ttExpDate(row){
+  const direct = parseExpDate(ttGet(row, ['Exp Date','Expiration Date','Expiration']));
+  if(direct) return direct;
+  const sym = ttSymbol(row).toUpperCase();
+  const m = sym.match(/(\d{2})(\d{2})(\d{2})[CP]\d{8}/);
+  return m ? '20'+m[1]+'-'+m[2]+'-'+m[3] : null;
 }
 
 // Parser CSV simple que respeta comillas
@@ -5386,9 +5479,9 @@ function buildTtProposals(positions){
 
     // Caso especial: ACC (acciones)
     if(act.strat === 'ACC'){
-      const eq = positions.find(p => p.Type === 'EQUITY' && (p.Symbol||'').trim() === act.activo);
+      const eq = positions.find(p => ['EQUITY','STOCK'].includes(ttType(p)) && ttTickerFromSymbol(ttSymbol(p)) === String(act.activo||'').toUpperCase());
       if(eq){
-        const ulp = parseFloat(eq['Underlying Last Price']) || parseFloat(eq.Mid);
+        const ulp = ttNum(ttGet(eq, ['Underlying Last Price','Last','Last Price','Mark','Mid']));
         if(Number.isFinite(ulp)){
           proposal.newPrice = ulp;
           proposal.status = 'ok';
@@ -5409,15 +5502,14 @@ function buildTtProposals(positions){
     // Para opciones: buscar patas del CSV con mismo ticker + exp
     // Tastytrade Symbol: "GE    260618C00280000" → expira 2026-06-18
     const candidates = positions.filter(p => {
-      if(p.Type !== 'OPTION') return false;
-      const sym = (p.Symbol || '').trim();
+      if(ttType(p) !== 'OPTION') return false;
+      const sym = ttSymbol(p);
       // El ticker en el CSV viene seguido de espacios y la fecha (ej: "GE    260618C...")
       // Verificamos que empieza por nuestro ticker seguido de espacio o número
-      const tickerPattern = new RegExp('^'+act.activo.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\s|\\d)');
-      if(!tickerPattern.test(sym)) return false;
+      if(ttTickerFromSymbol(sym) !== String(act.activo||'').toUpperCase()) return false;
       // Verificar exp (siempre, si está disponible en la activa)
       if(act.exp){
-        const expDateCSV = parseExpDate(p['Exp Date']);
+        const expDateCSV = ttExpDate(p);
         if(expDateCSV !== act.exp) return false;
       }
       return true;
@@ -5436,8 +5528,8 @@ function buildTtProposals(positions){
       let allFound = true;
       act.legs.forEach(leg => {
         const found = candidates.find(c => {
-          const cStrike = parseFloat(c['Strike Price']);
-          const cIsCall = (c['Call/Put']||'').toUpperCase().startsWith('C');
+          const cStrike = ttStrike(c);
+          const cIsCall = ttCallPut(c) === 'C';
           const legIsCall = leg.kind && leg.kind.includes('call');
           return Math.abs(cStrike - leg.strike) < 0.01 && cIsCall === legIsCall;
         });
@@ -5491,6 +5583,15 @@ function buildTtProposals(positions){
 // Convierte "Jun 18, 2026" a "2026-06-18"
 function parseExpDate(dateStr){
   if(!dateStr) return null;
+  const iso = String(dateStr).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(iso) return iso[1]+'-'+iso[2]+'-'+iso[3];
+  const slash = String(dateStr).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if(slash){
+    const y = slash[3].length === 2 ? '20'+slash[3] : slash[3];
+    return y+'-'+slash[1].padStart(2,'0')+'-'+slash[2].padStart(2,'0');
+  }
+  const compact = String(dateStr).trim().match(/^(\d{2})(\d{2})(\d{2})$/);
+  if(compact) return '20'+compact[1]+'-'+compact[2]+'-'+compact[3];
   const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
   const m = dateStr.match(/(\w{3})\s+(\d{1,2}),?\s+(\d{4})/);
   if(!m) return null;
@@ -5505,7 +5606,7 @@ function computeSpreadPrice(matched, strat){
   // Para cada pata: si es short → suma, si es long → resta
   let total = 0;
   for(const m of matched){
-    const mid = parseFloat(m.csv.Mid);
+    const mid = ttOptionMid(m.csv);
     if(!Number.isFinite(mid)) return null;
     const isShort = m.leg.kind && m.leg.kind.startsWith('short');
     total += isShort ? mid : -mid;
@@ -5520,8 +5621,8 @@ function computeSpreadPrice(matched, strat){
 function computeSpreadPriceAuto(candidates, strat){
   let total = 0;
   for(const c of candidates){
-    const mid = parseFloat(c.Mid);
-    const qty = parseFloat(c.Quantity);
+    const mid = ttOptionMid(c);
+    const qty = ttQuantity(c);
     if(!Number.isFinite(mid) || !Number.isFinite(qty)) return null;
     // Quantity negativa = pata short = sumar al precio de cierre
     // Quantity positiva = pata long = restar
@@ -6201,9 +6302,9 @@ function toggleActModalFields(){
   const pcredLabel = document.getElementById('am_pcred_label');
   if(pcredLabel && !isAcc){
     const dir = (typeof _stratDirectionOf === 'function') ? _stratDirectionOf(strat) : null;
-    const txt = dir === 'debit'  ? 'Prima total pagada ($)'
-              : dir === 'credit' ? 'Prima total cobrada ($)'
-              : 'Prima total posición ($)';
+    const txt = dir === 'debit'  ? 'Prima total pagada (puntos)'
+              : dir === 'credit' ? 'Prima total cobrada (puntos)'
+              : 'Prima total posición (puntos)';
     pcredLabel.textContent = txt;
   }
   // El campo precioCompra solo se muestra para ACC
@@ -9721,13 +9822,58 @@ function semaphoreClick(key){
 // ══════════════════════════════════════════════════════════════
 let _rollIdx = null;
 
+function premiumTotalPointsToShare(totalPoints, contracts){
+  const t = parseFloat(totalPoints);
+  const c = Math.max(1, parseFloat(contracts) || 1);
+  return Number.isFinite(t) ? t / c : 0;
+}
+
+function rollLegDefaultCloseCommission(a, pata){
+  const legInfo = rollLegOriginalCred(a, pata);
+  if(legInfo && Array.isArray(a.legs)){
+    const killSet = new Set(legInfo.kinds);
+    const sum = a.legs
+      .filter(l => l && killSet.has(l.kind) && Number.isFinite(parseFloat(l.comi)))
+      .reduce((s,l)=>s + parseFloat(l.comi), 0);
+    if(sum > 0) return sum;
+  }
+  if(pata === 'todo' && Array.isArray(a.legs) && a.legs.length){
+    const sum = a.legs
+      .filter(l => l && Number.isFinite(parseFloat(l.comi)))
+      .reduce((s,l)=>s + parseFloat(l.comi), 0);
+    if(sum > 0) return sum;
+  }
+  return parseFloat(a.comi || 0) || 1.24;
+}
+
+function rollBuildReplacementLegs(oldLegs, legInfo, newCredShare, newStrike){
+  if(!legInfo || !Array.isArray(oldLegs) || !oldLegs.length) return [];
+  const killSet = new Set(legInfo.kinds);
+  const rolled = oldLegs.filter(l => l && killSet.has(l.kind));
+  if(!rolled.length) return [];
+  const oldSigned = rolled.reduce((s,l)=>{
+    const sign = String(l.kind || '').startsWith('short_') ? 1 : -1;
+    return s + sign * (Math.abs(parseFloat(l.prima) || 0));
+  }, 0);
+  const factor = oldSigned ? (newCredShare / oldSigned) : null;
+  const strikeNum = parseFloat(String(newStrike || '').split('-')[0]);
+  return rolled.map((l, ix) => {
+    const isShort = String(l.kind || '').startsWith('short_');
+    const rawPrima = Math.abs(parseFloat(l.prima) || 0);
+    const prima = factor != null ? Math.abs(rawPrima * factor) : (ix === 0 && isShort ? Math.abs(newCredShare) : rawPrima);
+    const next = Object.assign({}, l, { prima: Number.isFinite(prima) ? +prima.toFixed(4) : l.prima });
+    if(Number.isFinite(strikeNum) && rolled.length === 1) next.strike = strikeNum;
+    return next;
+  });
+}
+
 function openRollModal(idx){
   _rollIdx = idx;
   const a = ACTIVAS[idx];
   document.getElementById('rollTitle').textContent = (a.activo||'—') + ' #' + (a.idOp||'—') + ' · ' + (a.strat||'');
   document.getElementById('roll_cierre').value   = new Date().toISOString().split('T')[0];
   document.getElementById('roll_pcl').value      = a.priceCurrent!=null ? a.priceCurrent : '';
-  document.getElementById('roll_comi_close').value = '1.24';
+  document.getElementById('roll_comi_close').value = rollLegDefaultCloseCommission(a, 'todo').toFixed(2);
   document.getElementById('roll_newexp').value   = a.exp || '';
   document.getElementById('roll_newcred').value  = '';
   document.getElementById('roll_comi_open').value= '1.24';
@@ -9790,6 +9936,11 @@ function rollSelectPata(btn){
     b.style.color       = active ? '#c084fc' : '#5a7a9a';
   });
   // Re-calcular preview con la pata seleccionada (el crédito original cambia)
+  if(_rollIdx != null){
+    const a = ACTIVAS[_rollIdx];
+    const comiEl = document.getElementById('roll_comi_close');
+    if(comiEl) comiEl.value = rollLegDefaultCloseCommission(a, _getRollPata()).toFixed(2);
+  }
   rollCalc();
 }
 
@@ -9855,7 +10006,7 @@ function rollCalc(){
   const nextCtr   = ctr + addCtr;
   const newCredTotal = parseFloat(document.getElementById('roll_newcred').value)||0;
   const canAddCtr = pata === 'todo';
-  const newCred_share = nextCtr > 0 ? newCredTotal / (100 * nextCtr) : 0;
+  const newCred_share = premiumTotalPointsToShare(newCredTotal, nextCtr);
 
   // P&L of leg being closed: ($/share × 100 shares × contratos) - comi
   const pnlClose = (pc_share - pcl_share) * 100 * ctr - comiCl;
@@ -9902,7 +10053,7 @@ function confirmRoll(){
   const addCtr    = Math.max(0, parseInt(document.getElementById('roll_add_contracts')?.value || '0', 10) || 0);
   const nextCtr   = ctr + addCtr;
   const newCredTotal = parseFloat(document.getElementById('roll_newcred').value)||0;
-  const newCred_share = nextCtr > 0 ? newCredTotal / (100 * nextCtr) : 0;
+  const newCred_share = premiumTotalPointsToShare(newCredTotal, nextCtr);
 
   if(!cierre){ toast('Introduce la fecha de cierre.', 'red'); return; }
   if(!newExp){ toast('Introduce la nueva expiración.', 'red'); return; }
@@ -9990,8 +10141,10 @@ function confirmRoll(){
     // el resto + newCred. Las supervivientes mantienen sus datos.
     const killSet = new Set(legInfo.kinds);
     const survivors = a.legs.filter(l => !killSet.has(l.kind));
+    const replacements = rollBuildReplacementLegs(a.legs, legInfo, newCred_share, newStrike);
     const survivCred = legsSumCredit(survivors);
-    nextLegs = survivors.length ? survivors : undefined;
+    nextLegs = survivors.concat(replacements);
+    if(!nextLegs.length) nextLegs = undefined;
     nextPCredito = ((survivCred || 0) + newCred_share) / 100;
   } else if(pata === 'todo'){
     // Roll completo: la posición es nueva, los legs viejos ya no aplican.
@@ -10154,8 +10307,8 @@ function _initCsvDragDrop(){
         <input type="date" id="roll_newexp" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima total nueva posición/pata ($)</label>
-        <input type="number" id="roll_newcred" step="0.01" placeholder="ej: 180 o -60" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima total nueva posición/pata (puntos)</label>
+        <input type="number" id="roll_newcred" step="0.01" placeholder="ej: 3 contratos x 1.00 = 3.00" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
         <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Contratos añadidos</label>
