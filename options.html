@@ -2028,11 +2028,11 @@ function computeEntry(e){
   // comi se introduce en $ reales, por eso se divide por 100 para llevarla a la misma escala.
   const totalNeto = e.totalNetoOvr != null ? e.totalNetoOvr :
     (_pNetoPerCtr!=null ? _pNetoPerCtr * contracts - (e.comi||0)/100 : null);
-  // ── Profit Op % = ROI REAL = totalNeto $ / (maxRisk × contratos) × 100 ──
+  // ── Profit Op % = ROI REAL = totalNeto $ / maxRisk total × 100 ──
   // Nunca capado — un spread puede perder >100% si se gestiona mal, o ganar más por roll, etc.
   // NOTA: los profitOpOvr legacy del spreadsheet vienen multiplicados ×100 de más
   // (fórmula histórica pNeto*10000/maxRisk). Los dividimos por 100 para alinear al ROI real.
-  const capitalComprometido = maxRisk != null ? maxRisk * contracts : null;
+  const capitalComprometido = maxRisk != null ? maxRisk : null;
   const profitOp = e.profitOpOvr != null ? (e.profitOpOvr / 100) :
     (totalNeto != null && capitalComprometido && capitalComprometido>0)
       ? (totalNeto / capitalComprometido * 100)
@@ -2142,7 +2142,7 @@ function renderStats(){
   let totalPnlOps=0, totalRisk=0;
   profitEntries.forEach(e=>{
     totalPnlOps += (e.totalNeto||0);
-    totalRisk   += (e.maxRisk||0) * (e.contracts||1);
+    totalRisk   += (e.maxRisk||0);
   });
   // ROI global: totalPnlOps en escala /100, totalRisk en $ reales → ×100 al porcentaje
   const roiGlobal = totalRisk>0 ? (totalPnlOps/totalRisk*100) * 100 : 0;
@@ -2389,7 +2389,7 @@ function renderHist(){
       const avgOf = k => { const a=nums(k); return a.length ? a.reduce((s,x)=>s+x,0)/a.length : null; };
       const sumOf = k => { const a=nums(k); return a.length ? a.reduce((s,x)=>s+x,0) : null; };
       // Max Risk total (expuesto en el ID) — suma de (maxRisk × contracts) de cada pierna
-      const maxRiskTotal = g.entries.reduce((s,e)=>s + (e.maxRisk||0)*(e.contracts||1), 0);
+      const maxRiskTotal = g.entries.reduce((s,e)=>s + (e.maxRisk||0), 0);
       // Delta / IV / IVR medios
       const avgDelta = (()=>{ const a=nums('delta').map(Math.abs); return a.length? a.reduce((s,x)=>s+x,0)/a.length : null; })();  // delta en positivo
       const avgIv    = avgOf('iv');
@@ -2454,7 +2454,7 @@ function renderHist(){
       g.entries.forEach(e=>{
         const subClass = e.totalNeto>0?'row-win':e.totalNeto<0?'row-loss':'row-neutral';
         const badge = mk(e.strat);
-        const mrVal = e.maxRisk!=null ? '$'+(e.maxRisk*(e.contracts||1)).toLocaleString('es-ES',{maximumFractionDigits:0}) : '—';
+        const mrVal = e.maxRisk!=null ? '$'+(e.maxRisk).toLocaleString('es-ES',{maximumFractionDigits:0}) : '—';
         rows += `<tr class="h-sub-row ${subClass}" data-idop="${gkey}">
           <td style="padding-left:24px;color:#5a7a9a">${e.idOp||e.id}</td>
           <td>${e.activo||'—'}</td>
@@ -2513,7 +2513,7 @@ function renderHist(){
         const cls = et>=0?'c-green':et>=-15?'c-amber':'c-red';
         return `<td class="${cls}" title="TP ${e.tp.toFixed(0)}% − tiempo ${e.timePct.toFixed(0)}% = ET ${et.toFixed(0)}">${ic} ${et>=0?'+':''}${et.toFixed(0)}</td>`;
       })()}
-      <td class="c-amber">${e.maxRisk?'$'+(e.maxRisk*(e.contracts||1)).toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</td>
+      <td class="c-amber">${e.maxRisk?'$'+(e.maxRisk).toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</td>
       <td class="c-muted">${e.delta!=null?fmtN(Math.abs(e.delta)):fmtN(e.delta)}</td>
       <td class="c-muted">${e.iv?e.iv+'%':'—'}</td>
       <td class="${e.ivr>=50?'c-green':e.ivr>=30?'c-amber':'c-red'}">${e.ivr?e.ivr+'%':'—'}</td>
@@ -2806,7 +2806,7 @@ function hfCompute(){
   // Total neto en $ reales: pts × mult × contratos − comi total
   const totalNeto = pNeto!=null ? (pNeto * mult * contracts - comi) : null;
   // ROI real
-  const capital = maxRisk * contracts;
+  const capital = maxRisk;
   const profitOp = (totalNeto!=null && capital>0) ? (totalNeto / capital * 100) : null;
 
   const fmtN = (v,dec=2,suf='')=>{
@@ -2947,7 +2947,7 @@ function saveEntry(){
       const tpRaw = primaApertura > 0 ? diffPerPt / primaApertura : 0;
       entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
       if(entry.maxRisk){
-        entry.profitOpOvr = parseFloat((totalNetoUSD / (entry.maxRisk * _ctr) * 100).toFixed(2));
+        entry.profitOpOvr = parseFloat((totalNetoUSD / entry.maxRisk * 100).toFixed(2));
       }
     } else {
       // Sin pCredito o pCierre completos → no podemos sobreescribir; dejamos
@@ -3000,7 +3000,7 @@ function saveEntry(){
     const tpRaw = pc_pts > 0 ? diffPerPt / pc_pts : 0;
     entry.tpOvr = parseFloat((Math.min(1, Math.max(-1, tpRaw)) * 100).toFixed(2));
     if(entry.maxRisk){
-      entry.profitOpOvr = parseFloat((totalNeto / (entry.maxRisk * ctr) * 100).toFixed(2));
+      entry.profitOpOvr = parseFloat((totalNeto / entry.maxRisk * 100).toFixed(2));
     }
   }
 
@@ -3051,7 +3051,7 @@ function exportCSV(){
     e.idOp||'',e.activo||'',e.strat||'',e.contracts||1,
     e.apertura||'',e.exp||'',e.cierre||'',
     e.dteIni!=null?e.dteIni:'',e.tiempoOp!=null?e.tiempoOp:'',
-    e.maxRisk!=null?(e.maxRisk*(e.contracts||1)):'',
+    e.maxRisk!=null?e.maxRisk:'',
     e.delta!=null?e.delta:'',e.iv!=null?e.iv:'',e.ivr!=null?e.ivr:'',
     e.pCredito!=null?e.pCredito:'',e.pDebito!=null?e.pDebito:'',e.pCierre!=null?e.pCierre:'',
     e.tp!=null?e.tp.toFixed(2):'',e.comi!=null?e.comi:'',
@@ -3589,7 +3589,7 @@ function groupByID(rawData){
     const put = g.put || g.entries[0];
     const totalNeto = g.entries.reduce((s,e)=>s+(e.totalNeto||0),0);
     const pNeto     = g.entries.reduce((s,e)=>s+(e.pNeto||0),0);
-    const maxRiskTotal = put.maxRisk ? put.maxRisk*(put.contracts||1) : null;
+    const maxRiskTotal = put.maxRisk ? put.maxRisk : null;
     const profitOp  = (maxRiskTotal&&maxRiskTotal>0) ? (totalNeto/maxRiskTotal*100) : null;
     // Use latest cierre date among all entries
     const cierre = g.entries.map(e=>e.cierre||'').filter(Boolean).sort().pop() || put.cierre;
@@ -4903,7 +4903,7 @@ function buildActCard(a, idx, today){
       </div>
       <div class="act-kv"><span class="act-k">P&L estim. bruto</span><span class="${pnlClass}">${pnlStr}</span></div>
       <div class="act-kv"><span class="act-k">TP posición</span><span class="act-v ${tpPct!=null?(tpPct>=50?'green':tpPct>=0?'amber':'red'):''}">${tpPct!=null?tpPct.toFixed(1)+'%':'—'}</span></div>
-      ${(()=>{ const _risk = (a.maxRisk||0) * (a.contracts||1); const _prof = (_risk>0 && pnlEst!=null) ? (pnlEst/_risk*100) : null; const _pc = _prof!=null?(_prof>=15?'green':_prof>=0?'amber':'red'):''; return `<div class="act-kv"><span class="act-k" title="P&L abierto dividido por el riesgo definido actual">P&L/Risk abierto</span><span class="act-v ${_pc}">${_prof!=null?(_prof>=0?'+':'')+_prof.toFixed(1)+'%':'—'}</span></div>`; })()}
+      ${(()=>{ const _risk = a.maxRisk||0; const _open = (_risk>0 && pnlEst!=null) ? (pnlEst/_risk*100) : null; const _id = (_risk>0 && _combinedPnl!=null && closedLegs.length) ? (_combinedPnl/_risk*100) : null; const _pc = _open!=null?(_open>=15?'green':_open>=0?'amber':'red'):''; const _idTxt = _id!=null ? `<small style="display:block;color:${_id>=0?'#3fb68b':'#f04545'};font-size:8px;margin-top:2px">ID ${_id>=0?'+':''}${_id.toFixed(1)}%</small>` : ''; return `<div class="act-kv"><span class="act-k" title="P&L abierto e ID completo divididos por el Max Risk total de la operación">P&L/Risk</span><span class="act-v ${_pc}">${_open!=null?(_open>=0?'+':'')+_open.toFixed(1)+'%':'—'}${_idTxt}</span></div>`; })()}
     </div>
 
     <!-- Temporal efficiency — rediseñado para tomar decisiones rápido -->
@@ -6640,7 +6640,7 @@ function _confirmClosePositionImpl(){
     pNetoOvr:  parseFloat(pneto.toFixed(2)),
     totalNetoOvr: parseFloat(totalneto.toFixed(2)),
     // profitOpOvr: usa los $ reales para el ratio
-    profitOpOvr: a.maxRisk ? parseFloat((totalNetoFallback/(a.maxRisk*ctr)*100).toFixed(2)) : null,
+    profitOpOvr: a.maxRisk ? parseFloat((totalNetoFallback/a.maxRisk*100).toFixed(2)) : null,
     tpOvr:     parseFloat(tp.toFixed(2)),
     dteIni:    dteIni,
     tiempoOp:  tOp
@@ -10119,7 +10119,7 @@ function confirmRoll(){
     nota:        '',
     pNetoOvr:    parseFloat(pNetoOvrPrima.toFixed(4)),
     totalNetoOvr:parseFloat(totalNetoOvrPrima.toFixed(4)),
-    profitOpOvr: a.maxRisk ? parseFloat((pnlClose/(a.maxRisk*ctr)*100).toFixed(2)) : null,
+    profitOpOvr: a.maxRisk ? parseFloat((pnlClose/a.maxRisk*100).toFixed(2)) : null,
     tpOvr:       parseFloat(tpClose.toFixed(2)),
     dteIni:      dteIni,
     tiempoOp:    tOp,
