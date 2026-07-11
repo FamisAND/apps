@@ -534,7 +534,7 @@
       <div class="cfg-field"><label>Apertura</label><input type="date" id="am_apertura"/></div>
       <div class="cfg-field"><label>Expiración</label><input type="date" id="am_exp"/></div>
       <div class="cfg-field"><label>Max Risk ($)</label><input type="number" id="am_maxrisk" placeholder="5000" step="50" oninput="this.dataset.autocalc='0'" title="Se calcula automáticamente desde las patas (strikes + prima). Edítalo para fijarlo manualmente."/></div>
-      <div class="cfg-field"><label id="am_pcred_label">Prima total posición (puntos)</label><input type="number" id="am_pcred" placeholder="ej: 3 contratos x 1.00 = 3.00" step="0.01" title="Prima total en puntos de la posición completa. Ejemplo: 3 contratos a 1.00 = 3.00."/></div>
+      <div class="cfg-field"><label id="am_pcred_label">Prima por contrato/spread</label><input type="number" id="am_pcred" placeholder="ej: si Tasty marca 4.87, pon 4.87" step="0.01" title="Precio unitario por contrato o spread. El HTML multiplica por 100 y por el numero de contratos."/></div>
       <input type="hidden" id="am_pdeb" value="0"/>
       <input type="hidden" id="am_strike" value=""/>
       <div class="cfg-field"><label title="Delta neto de la posición. Para spreads: delta vendido − delta comprado. Para IC: suma de ambos spreads.">Delta neto</label><input type="number" id="am_delta" placeholder="ej: -0.08" step="0.01" title="Delta vendido − delta comprado. Para IC suma ambos spreads."/></div>
@@ -4808,10 +4808,13 @@ function buildActCard(a, idx, today){
       })() : ''}
     </div>` : '';
 
-  const heroPnlVal = strat === 'ACC' ? accPnlUsd : (_combinedPnl != null ? _combinedPnl : pnlEst);
+  const heroPnlVal = strat === 'ACC' ? accPnlUsd : pnlEst;
   const heroPnlStr = heroPnlVal != null ? `${heroPnlVal>=0?'+':''}$${heroPnlVal.toFixed(0)}` : '—';
   const heroPnlCol = heroPnlVal == null ? '#5a7a9a' : heroPnlVal < 0 ? '#f04545' : '#3fb68b';
-  const heroTpStr = strat === 'ACC' ? accPnlPctStr : (combinedPct!=null ? `${combinedPct>=0?'+':''}${combinedPct.toFixed(1)}% TP ID` : (tpPct!=null ? `${tpPct.toFixed(1)}% TP pos.` : '—'));
+  const idTotalStr = (_combinedPnl!=null && closedLegs.length) ? `ID ${_combinedPnl>=0?'+':''}$${_combinedPnl.toFixed(0)}` : '';
+  const heroTpStr = strat === 'ACC'
+    ? accPnlPctStr
+    : [tpPct!=null ? `${tpPct.toFixed(1)}% TP abierto` : '—', idTotalStr].filter(Boolean).join(' · ');
   const portfolioStats = _assignmentPortfolioStats(0);
   const portfolioIf = portfolioStats.pct;
   const manageItems = [];
@@ -4843,7 +4846,7 @@ function buildActCard(a, idx, today){
 
     <div class="act-hero">
       <div class="act-hero-cell act-hero-main">
-        <span>P&L gestion</span>
+        <span>P&L abierto</span>
         <b style="color:${heroPnlCol}">${heroPnlStr}</b>
         <small>${heroTpStr}</small>
       </div>
@@ -4935,7 +4938,7 @@ function buildActCard(a, idx, today){
     </div>
     `}
 
-    ${a.nota ? `<div class="act-note" style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${esc(a.nota)}</div>` : ''}
+    ${(a.nota && (!ACT_COMPACT_VIEW || ACT_EXPANDED_IDX === idx)) ? `<div class="act-note" style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${esc(a.nota)}</div>` : ''}
 
     <!-- Action buttons -->
     <div class="act-btns">
@@ -6317,9 +6320,9 @@ function toggleActModalFields(){
   const pcredLabel = document.getElementById('am_pcred_label');
   if(pcredLabel && !isAcc){
     const dir = (typeof _stratDirectionOf === 'function') ? _stratDirectionOf(strat) : null;
-    const txt = dir === 'debit'  ? 'Prima total pagada (puntos)'
-              : dir === 'credit' ? 'Prima total cobrada (puntos)'
-              : 'Prima total posición (puntos)';
+    const txt = dir === 'debit'  ? 'Prima pagada por contrato/spread'
+              : dir === 'credit' ? 'Prima cobrada por contrato/spread'
+              : 'Prima por contrato/spread';
     pcredLabel.textContent = txt;
   }
   // El campo precioCompra solo se muestra para ACC
@@ -9837,8 +9840,7 @@ let _rollIdx = null;
 
 function premiumTotalPointsToShare(totalPoints, contracts){
   const t = parseFloat(totalPoints);
-  const c = Math.max(1, parseFloat(contracts) || 1);
-  return Number.isFinite(t) ? t / c : 0;
+  return Number.isFinite(t) ? t : 0;
 }
 
 function rollLegDefaultCloseCommission(a, pata){
@@ -10146,7 +10148,7 @@ function confirmRoll(){
   //   nueva pata desde el modal de edición).
   // Si fue un roll 'todo' o sin legs: comportamiento clásico — newCred sustituye
   //   todo el pCredito y vaciamos a.legs (la posición es nueva).
-  const newCred_storage = newCred_share / 100;
+  const newCred_storage = premiumTotalToStorage(newCred_share, nextCtr);
   let nextLegs = a.legs;
   let nextPCredito = newCred_storage;
   if(legInfo && Array.isArray(a.legs) && a.legs.length){
@@ -10158,7 +10160,7 @@ function confirmRoll(){
     const survivCred = legsSumCredit(survivors);
     nextLegs = survivors.concat(replacements);
     if(!nextLegs.length) nextLegs = undefined;
-    nextPCredito = ((survivCred || 0) + newCred_share) / 100;
+    nextPCredito = premiumTotalToStorage((survivCred || 0) + newCred_share, nextCtr);
   } else if(pata === 'todo'){
     // Roll completo: la posición es nueva, los legs viejos ya no aplican.
     nextLegs = undefined;
@@ -10320,8 +10322,8 @@ function _initCsvDragDrop(){
         <input type="date" id="roll_newexp" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima total nueva posición/pata (puntos)</label>
-        <input type="number" id="roll_newcred" step="0.01" placeholder="ej: 3 contratos x 1.00 = 3.00" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima nueva por contrato/spread</label>
+        <input type="number" id="roll_newcred" step="0.01" placeholder="ej: si cobras 1.00, pon 1.00" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
         <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Contratos añadidos</label>
