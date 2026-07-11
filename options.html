@@ -5061,7 +5061,7 @@ function legsAdd(containerId, leg){
 // (el am_legs vive en el modal "Nueva posición activa", el hf_legs en el
 // modal del historial).
 const LEGS_FIELD_MAP = {
-  'am_legs_container': { delta:'am_delta', prima:'am_pcred', comi:'am_comi', primaScale:'total' },
+  'am_legs_container': { delta:'am_delta', prima:'am_pcred', comi:'am_comi', primaScale:1 },
   'hf_legs_container': { delta:'hf_delta', prima:'hf_pCredito', comi:'hf_comiOpen', primaScale:100 }
 };
 
@@ -5428,6 +5428,22 @@ function ttOptionMid(row){
   return ttNum(ttGet(row, ['Last','Last Price','Close Price']));
 }
 
+function ttRoundPrice(v){
+  const n = parseFloat(v);
+  if(!Number.isFinite(n)) return null;
+  const a = Math.abs(n);
+  const dec = a > 0 && a < 0.01 ? 5 : a < 0.1 ? 4 : 2;
+  return parseFloat(n.toFixed(dec));
+}
+
+function ttFmtPrice(v){
+  const n = parseFloat(v);
+  if(!Number.isFinite(n)) return '';
+  const a = Math.abs(n);
+  const dec = a > 0 && a < 0.01 ? 5 : a < 0.1 ? 4 : 2;
+  return n.toFixed(dec);
+}
+
 function ttCallPut(row){
   const cp = String(ttGet(row, ['Call/Put','Put/Call','Option Type','OptionType']) || '').trim().toUpperCase();
   if(cp.startsWith('C')) return 'C';
@@ -5584,7 +5600,7 @@ function buildTtProposals(positions){
 
     // Si no hay ambigüedad, asumir que TODAS las patas candidatas son de esta activa
     proposal.matchedLegs = candidates.map(c => ({csv: c, leg: null}));
-    proposal.newPrice = computeSpreadPriceAuto(candidates, act.strat);
+    proposal.newPrice = computeSpreadPriceAuto(candidates, act.strat, act);
     if(proposal.newPrice == null){
       proposal.status = 'fail';
       proposal.notes = candidates.length+' patas auto, pero no calculé precio';
@@ -5630,24 +5646,26 @@ function computeSpreadPrice(matched, strat){
     total += isShort ? mid : -mid;
   }
   // Mid de Tastytrade ya viene en $/share. No hay que multiplicar.
-  return Math.round(total * 100) / 100;
+  return ttRoundPrice(total);
 }
 
 // Auto-detección de net price cuando no tenemos legs registradas.
 // Heurística por número de patas y signo de Quantity.
 // Devuelve precio en $/share.
-function computeSpreadPriceAuto(candidates, strat){
+function computeSpreadPriceAuto(candidates, strat, act){
   let total = 0;
+  const ctr = Math.max(1, parseFloat(act && act.contracts) || 1);
   for(const c of candidates){
     const mid = ttOptionMid(c);
     const qty = ttQuantity(c);
     if(!Number.isFinite(mid) || !Number.isFinite(qty)) return null;
     // Quantity negativa = pata short = sumar al precio de cierre
     // Quantity positiva = pata long = restar
-    total += (qty < 0 ? mid : -mid);
+    const weight = Math.max(1, Math.abs(qty) / ctr);
+    total += (qty < 0 ? mid : -mid) * weight;
   }
   // Mid ya viene en $/share, no convertir
-  return Math.round(total * 100) / 100;
+  return ttRoundPrice(total);
 }
 
 // Pintar tabla de propuestas
@@ -5678,8 +5696,9 @@ function renderTtProposals(proposals){
   proposals.forEach((p, i) => {
     const sCol = STATUS_COLORS[p.status] || '#5a7a9a';
     const sLbl = STATUS_LABELS[p.status] || p.status;
-    const cur = p.currentPrice!=null ? p.currentPrice.toFixed(2) : '—';
-    const nxt = p.newPrice!=null ? p.newPrice.toFixed(2) : '';
+    const cur = p.currentPrice!=null ? ttFmtPrice(p.currentPrice) : '—';
+    const nxt = p.newPrice!=null ? ttFmtPrice(p.newPrice) : '';
+    const step = p.newPrice!=null && Math.abs(p.newPrice) < 0.1 ? '0.0001' : '0.01';
     // El checkbox solo viene marcado por defecto si la propuesta es 'ok'.
     // Para los demás estados no se marca, pero el usuario puede marcarlo manualmente
     // si rellena un valor a mano.
@@ -5693,7 +5712,7 @@ function renderTtProposals(proposals){
         <td style="padding:5px 6px;color:#5a7a9a">${p.exp||''}</td>
         <td style="padding:5px 6px;text-align:right;color:#5a7a9a">${cur}</td>
         <td style="padding:5px 6px;text-align:right">
-          <input type="number" step="0.01" class="ttUpdPriceInput" data-i="${i}" value="${nxt}"
+          <input type="number" step="${step}" class="ttUpdPriceInput" data-i="${i}" value="${nxt}"
             placeholder="-"
             style="background:#0a0e14;border:1px solid #1e2d3d;color:#4a9eff;font-family:inherit;font-size:10px;padding:3px 5px;border-radius:3px;outline:none;width:75px;text-align:right"
             onfocus="this.style.borderColor='#4a9eff'" onblur="this.style.borderColor='#1e2d3d'">
