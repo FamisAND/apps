@@ -9,8 +9,21 @@
 <meta name="theme-color" content="#060a0f">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
-<link rel="stylesheet" href="options.css">
+<link rel="stylesheet" href="options.css?v=20260711-strat-fix">
 <link rel="stylesheet" href="design-system.css">
+<style>
+.strat-picker{padding:10px 20px 6px;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px;max-height:132px;overflow-y:auto;border-bottom:1px solid #101b28}
+.strat-pick-card{background:#0a1018;border:1px solid #1e2d3d;border-radius:6px;padding:7px 8px;cursor:pointer;min-height:72px;box-sizing:border-box;transition:border-color .16s,background .16s,box-shadow .16s}
+.strat-pick-card:hover{border-color:#3b5874;background:#0d1520}
+.strat-pick-card.active{border-color:#4a9eff;background:#0d1724;box-shadow:0 0 0 1px #4a9eff33 inset}
+.strat-pick-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.strat-pick-code{font-family:'Courier New',monospace;font-size:12px;font-weight:700;letter-spacing:.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strat-pick-state{font-family:'Courier New',monospace;font-size:7px;text-transform:uppercase;letter-spacing:.5px;border:1px solid;border-radius:999px;padding:1px 5px;white-space:nowrap}
+.strat-pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 7px}
+.strat-pick-metric span{display:block;font-family:'Courier New',monospace;font-size:6px;color:#3a5468;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.strat-pick-metric b{display:block;font-family:'Courier New',monospace;font-size:10px;color:#c9d1d9;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strat-pick-foot{display:none}
+</style>
 </head>
 <body class="theme-opt">
 <noscript style="position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;z-index:99999;font-family:sans-serif;text-align:center;line-height:1.6;">📈 <strong style="margin-left:10px">Options</strong> necesita JavaScript activado para funcionar.</noscript>
@@ -323,7 +336,7 @@
   <div id="stratPicker" class="strat-picker"></div>
 
   <!-- KPIs -->
-  <div class="d-kpi-grid" id="stratKpis" style="padding:14px 20px 0;grid-template-columns:repeat(6,1fr)"></div>
+  <div class="d-kpi-grid" id="stratKpis" style="padding:12px 20px 0;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))"></div>
 
   <!-- Charts — same layout as main dashboard minus scatter -->
   <div style="padding:0 20px 20px">
@@ -8268,6 +8281,17 @@ function renderStratDash(){
   // (un PCS arriesga el width × 100, un NP arriesga el strike × 100)
   const totalCapital = data.reduce((s,e)=>s + (e.maxRisk||0)*(e.contracts||1), 0);
   const roiCapital = totalCapital>0 ? (totalPnl/totalCapital*100) : null;
+  const etRows = data.filter(e=>e.et!=null);
+  const avgEt = etRows.length ? etRows.reduce((s,e)=>s+(e.et||0),0)/etRows.length : null;
+  let qualityScore = 0;
+  if(totalPnl > 0) qualityScore += 20;
+  if(wr >= 55) qualityScore += 20; else if(wr >= 45) qualityScore += 10;
+  if(pf != null && pf >= 1.5) qualityScore += 20; else if(pf != null && pf >= 1) qualityScore += 10;
+  if(em != null && em > 0) qualityScore += 20;
+  if(avgEt != null && avgEt >= 0) qualityScore += 10;
+  if(recoveryFactor != null && recoveryFactor >= 1) qualityScore += 10;
+  const qualityLabel = qualityScore >= 80 ? 'CORE' : qualityScore >= 60 ? 'OK' : qualityScore >= 40 ? 'VIGILAR' : 'REVISAR';
+  const qualityColor = qualityScore >= 80 ? '#3fb68b' : qualityScore >= 60 ? '#4a9eff' : qualityScore >= 40 ? '#f0a500' : '#f04545';
 
   // Tooltips PF y EM
   const pfTooltip = stats ? [
@@ -8289,30 +8313,26 @@ function renderStratDash(){
   ].join('\n') : '';
 
   document.getElementById('stratKpis').innerHTML = `
-    <div class="d-kpi"><div class="d-kpi-lbl">P&L total</div><div class="d-kpi-val" style="color:${col(totalPnl)}">${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toLocaleString('es-ES',{maximumFractionDigits:0})}</div><div class="d-kpi-sub">${data.length} ops · ${period==='all'?'historial':period}</div></div>
-    <div class="d-kpi" title="ROI sobre capital comprometido:&#10;  Σ P&L $ / Σ (MaxRisk × contratos)&#10;&#10;Capital total expuesto: $${totalCapital.toLocaleString('es-ES',{maximumFractionDigits:0})}&#10;&#10;Normaliza estrategias con perfiles de&#10;capital muy distintos (un PCS arriesga el&#10;width × 100, un NP el strike × 100)." style="cursor:help">
-      <div class="d-kpi-lbl">ROI s/ capital <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
-      <div class="d-kpi-val" style="color:${roiCapital!=null?(roiCapital>=0?'#3fb68b':'#f04545'):'#5a7a9a'}">${roiCapital!=null?(roiCapital>=0?'+':'')+roiCapital.toFixed(2)+'%':'—'}</div>
-      <div class="d-kpi-sub">P&L / capital expuesto</div>
-    </div>
-    <div class="d-kpi"><div class="d-kpi-lbl">P&L medio/op</div><div class="d-kpi-val" style="color:${col(avgPnlPerTrade)}">${avgPnlPerTrade>=0?'+':''}$${Math.abs(avgPnlPerTrade).toFixed(0)}</div><div class="d-kpi-sub">por operativa</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Win rate</div><div class="d-kpi-val" style="color:${wr>=70?'#3fb68b':wr>=50?'#f0a500':'#f04545'}">${wr.toFixed(1)}%</div><div class="d-kpi-sub">${wins.length}W · ${losses.length}L</div></div>
-    <div class="d-kpi" title="${pfTooltip.replace(/"/g,'&quot;')}" style="cursor:help">
-      <div class="d-kpi-lbl">Profit Factor <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
-      <div class="d-kpi-val" style="color:${pf!=null?(pf>=1.5?'#3fb68b':pf>=1?'#f0a500':'#f04545'):'#5a7a9a'}">${pf!=null?pf.toFixed(2):'—'}</div>
-      <div class="d-kpi-sub">wins / |losses|</div>
-    </div>
+    <div class="d-kpi" style="border-color:${qualityColor}55;background:${qualityColor}0d"><div class="d-kpi-lbl">Lectura operativa</div><div class="d-kpi-val" style="color:${qualityColor}">${qualityLabel}</div><div class="d-kpi-sub">score ${qualityScore}/100</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Resultado neto</div><div class="d-kpi-val" style="color:${col(totalPnl)}">${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toLocaleString('es-ES',{maximumFractionDigits:0})}</div><div class="d-kpi-sub">${data.length} ops · ${period==='all'?'historial':period}</div></div>
     <div class="d-kpi" title="${emTooltip.replace(/"/g,'&quot;')}" style="cursor:help">
-      <div class="d-kpi-lbl">Esp. Matemática <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
+      <div class="d-kpi-lbl">Edge por op <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
       <div class="d-kpi-val" style="color:${em>=0?'#3fb68b':'#f04545'}">${em!=null?(em>=0?'+$':'-$')+Math.abs(em).toFixed(0):'—'}</div>
-      <div class="d-kpi-sub">$ esperados/op</div>
+      <div class="d-kpi-sub">esperanza real</div>
     </div>
-    <div class="d-kpi"><div class="d-kpi-lbl">TP medio</div><div class="d-kpi-val" style="color:#4a9eff">${avgTp.toFixed(1)}%</div><div class="d-kpi-sub">prima capturada</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Días medio</div><div class="d-kpi-val">${avgDays.toFixed(0)}d</div><div class="d-kpi-sub">en posición</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Racha máx W/L</div><div class="d-kpi-val"><span style="color:#3fb68b">${maxStrW}W</span> <span style="color:#2a4a6a">/</span> <span style="color:#f04545">${maxStrL}L</span></div><div class="d-kpi-sub">consecutivas</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Consistency</div><div class="d-kpi-val" style="color:${consistency!=null?(consistency>=70?'#3fb68b':consistency>=50?'#f0a500':'#f04545'):'#5a7a9a'}">${consistency!=null?consistency.toFixed(0)+'%':'—'}</div><div class="d-kpi-sub">meses positivos</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Recovery Factor</div><div class="d-kpi-val" style="color:${recoveryFactor!=null?(recoveryFactor>=2?'#3fb68b':recoveryFactor>=1?'#f0a500':'#f04545'):'#5a7a9a'}">${recoveryFactor!=null?recoveryFactor.toFixed(2):'—'}</div><div class="d-kpi-sub">P&L / max DD</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Max Drawdown</div><div class="d-kpi-val" style="color:#f04545">${maxDD>0?'-$'+maxDD.toFixed(0):'$0'}</div><div class="d-kpi-sub">racha bajista máx</div></div>`;
+    <div class="d-kpi" title="${pfTooltip.replace(/"/g,'&quot;')}" style="cursor:help">
+      <div class="d-kpi-lbl">Calidad P/L <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
+      <div class="d-kpi-val" style="color:${pf!=null?(pf>=1.5?'#3fb68b':pf>=1?'#f0a500':'#f04545'):'#5a7a9a'}">${pf!=null?pf.toFixed(2):'—'}</div>
+      <div class="d-kpi-sub">profit factor</div>
+    </div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Fiabilidad</div><div class="d-kpi-val" style="color:${wr>=70?'#3fb68b':wr>=50?'#f0a500':'#f04545'}">${wr.toFixed(1)}%</div><div class="d-kpi-sub">${wins.length}W · ${losses.length}L</div></div>
+    <div class="d-kpi" title="ROI sobre capital comprometido:&#10;  Σ P&L $ / Σ (MaxRisk × contratos)&#10;&#10;Capital total expuesto: $${totalCapital.toLocaleString('es-ES',{maximumFractionDigits:0})}&#10;&#10;Normaliza estrategias con perfiles de&#10;capital muy distintos (un PCS arriesga el&#10;width × 100, un NP el strike × 100)." style="cursor:help">
+      <div class="d-kpi-lbl">Uso de capital <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
+      <div class="d-kpi-val" style="color:${roiCapital!=null?(roiCapital>=0?'#3fb68b':'#f04545'):'#5a7a9a'}">${roiCapital!=null?(roiCapital>=0?'+':'')+roiCapital.toFixed(2)+'%':'—'}</div>
+      <div class="d-kpi-sub">retorno sobre riesgo</div>
+    </div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Eficiencia tiempo</div><div class="d-kpi-val" style="color:${avgEt!=null?(avgEt>=0?'#3fb68b':'#f04545'):'#5a7a9a'}">${avgEt!=null?(avgEt>=0?'+':'')+avgEt.toFixed(0):'—'}</div><div class="d-kpi-sub">ET medio · ${avgDays.toFixed(0)}d</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Dolor maximo</div><div class="d-kpi-val" style="color:#f04545">${maxDD>0?'-$'+maxDD.toFixed(0):'$0'}</div><div class="d-kpi-sub">RF ${recoveryFactor!=null?recoveryFactor.toFixed(2):'—'} · racha ${maxStrL}L</div></div>`;
 
   // Group by month
   const byM = {};
