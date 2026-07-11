@@ -230,17 +230,17 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 .strat-cmp-tbl tr:hover td{background:#0d1520}
 .strat-cmp-tbl tr.cmp-selected td{background:#4a9eff11;border-left:2px solid #4a9eff}
 .cmp-pos{color:#3fb68b}.cmp-neg{color:#f04545}.cmp-neu{color:#5a7a9a}.cmp-amber{color:#f0a500}
-.strat-picker{padding:10px 20px 6px;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px;max-height:132px;overflow-y:auto;border-bottom:1px solid #101b28}
-.strat-pick-card{background:#0a1018;border:1px solid #1e2d3d;border-radius:6px;padding:7px 8px;cursor:pointer;min-height:72px;box-sizing:border-box;transition:border-color .16s,background .16s,box-shadow .16s}
-.strat-pick-card:hover{border-color:#3b5874;background:#0d1520}
-.strat-pick-card.active{border-color:#4a9eff;background:#0d1724;box-shadow:0 0 0 1px #4a9eff33 inset}
-.strat-pick-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
-.strat-pick-code{font-family:'Courier New',monospace;font-size:12px;font-weight:700;letter-spacing:.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.strat-pick-state{font-family:'Courier New',monospace;font-size:7px;text-transform:uppercase;letter-spacing:.5px;border:1px solid;border-radius:999px;padding:1px 5px;white-space:nowrap}
-.strat-pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 7px}
-.strat-pick-metric span{display:block;font-family:'Courier New',monospace;font-size:6px;color:#3a5468;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-.strat-pick-metric b{display:block;font-family:'Courier New',monospace;font-size:10px;color:#c9d1d9;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.strat-pick-foot{display:none}
+.strat-picker{padding:14px 20px 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.strat-pick-card{background:#0b121b;border:1px solid #203247;border-radius:7px;padding:10px 11px;cursor:pointer;transition:border-color .16s,box-shadow .16s,background .16s}
+.strat-pick-card:hover{border-color:#3b5874;box-shadow:0 8px 20px #00000024}
+.strat-pick-card.active{background:#0d1724;border-color:#4a9eff;box-shadow:0 0 0 1px #4a9eff22 inset}
+.strat-pick-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.strat-pick-code{font-family:'Courier New',monospace;font-size:14px;font-weight:700;letter-spacing:1px}
+.strat-pick-state{font-family:'Courier New',monospace;font-size:7px;text-transform:uppercase;letter-spacing:.8px;border:1px solid;border-radius:999px;padding:2px 6px;white-space:nowrap}
+.strat-pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px}
+.strat-pick-metric span{display:block;font-family:'Courier New',monospace;font-size:7px;color:#3a5468;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.strat-pick-metric b{display:block;font-family:'Courier New',monospace;font-size:12px;color:#c9d1d9;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strat-pick-foot{margin-top:8px;padding-top:7px;border-top:1px solid #172536;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:flex;justify-content:space-between;gap:8px}
 .h-badge{display:inline-block;font-size:7px;letter-spacing:1px;text-transform:uppercase;padding:2px 6px;border-radius:2px;border:1px solid;white-space:nowrap}
 .h-badge-np{color:#4a9eff;border-color:#4a9eff33;background:#4a9eff0d}
 .h-badge-pcs{color:#c084fc;border-color:#c084fc33;background:#c084fc0d}
