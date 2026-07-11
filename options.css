@@ -322,17 +322,17 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 /* ── ACTIVAS ─────────────────────────────────────────────── */
 .act-card{background:linear-gradient(180deg,#0f151d 0%,#0b1017 100%);border:1px solid #1e2d3d;border-radius:8px;padding:14px 16px;transition:border-color .2s,box-shadow .2s}
 .act-card:hover{border-color:#2a4a6a;box-shadow:0 10px 24px #00000022}
-.act-grid-compact{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:8px!important;align-items:start}
-.act-card.act-compact{padding:9px 10px;cursor:pointer}
+.act-grid-compact{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px!important;align-items:start}
+.act-card.act-compact{padding:10px 12px;cursor:pointer;min-height:118px}
 .act-card.act-compact .act-card-header{margin-bottom:7px;gap:6px}
 .act-card.act-compact .act-ticker{font-size:13px}
 .act-card.act-compact .act-id{font-size:8px;margin-left:2px}
 .act-card.act-compact .act-badge{font-size:7px;padding:1px 5px;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.act-card.act-compact .act-hero{grid-template-columns:1fr 1fr 52px;margin-bottom:0;padding:7px 8px;gap:6px}
-.act-card.act-compact .act-hero-actions,.act-card.act-compact .act-grid,.act-card.act-compact .act-et-block,.act-card.act-compact .act-btns,.act-card.act-compact .act-closed-legs{display:none!important}
+.act-card.act-compact .act-hero{grid-template-columns:1.15fr 1fr 60px;margin-bottom:0;padding:8px 9px;gap:8px}
+.act-card.act-compact .act-hero-actions,.act-card.act-compact .act-grid,.act-card.act-compact .act-et-block,.act-card.act-compact .act-btns,.act-card.act-compact .act-closed-legs,.act-card.act-compact .act-note{display:none!important}
 .act-card.act-compact .act-hero-cell b{font-size:13px}
 .act-card.act-compact .act-hero-main b{font-size:15px}
-.act-card.act-compact .act-hero-cell span{font-size:6px}
+.act-card.act-compact .act-hero-cell span{font-size:6px;letter-spacing:.5px}
 .act-card.act-compact .act-hero-cell small{font-size:7px}
 .act-card.expired{border-color:#f04545aa}
 .act-card.near-exp{border-color:#f0a500aa}

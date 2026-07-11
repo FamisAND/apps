@@ -3101,6 +3101,10 @@ function premiumStorageToTotal(stored, contracts){
   const c = Math.max(1, parseFloat(contracts) || 1);
   return Number.isFinite(v) ? v * 100 * c : null;
 }
+function premiumStoredToPoints(stored, contracts){
+  const pts = premiumStorageToTotal(stored, contracts);
+  return Number.isFinite(pts) ? pts : 0;
+}
 
 function togglePnlDesglose(){
   _pnlDesglose = !_pnlDesglose;
@@ -3677,8 +3681,8 @@ function getDashData(){
       // usar Math.abs + fórmula long/short correcta. Si no, fórmula legacy signed.
       const _useAbs1 = a.entryDirection === 'debit' || a.entryDirection === 'credit';
       const _isLong1 = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
-      const pc_share = _useAbs1 ? Math.abs((a.pCredito||0) * 100) : ((a.pCredito||0)*100);
-      const pd_share = Math.abs(a.pDebito||0)*100;
+      const pc_share = _useAbs1 ? Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1)) : premiumStoredToPoints(a.pCredito, a.contracts||1);
+      const pd_share = Math.abs(premiumStoredToPoints(a.pDebito, a.contracts||1));
       const cur      = _useAbs1 ? Math.abs(a.priceCurrent||0) : (a.priceCurrent||0);
       const ctr = a.contracts||1;
       // P&L bruto en $: signed legacy o direction-aware según _useAbs1
@@ -3700,7 +3704,7 @@ function getDashData(){
       const synth = {
         idOp:a.idOp, activo:a.activo, strat:a.strat, stratGroup:a.strat||'NP',
         contracts:ctr, apertura:a.apertura, cierre:today2+'-28',
-        maxRisk:mr, pCredito:a.pCredito, pDebito:a.pDebito, pCierre:cur/100,
+        maxRisk:mr, pCredito:a.pCredito, pDebito:a.pDebito, pCierre:premiumTotalToStorage(cur, ctr),
         totalNeto:pneto, pNeto:pneto/ctr, profitOp:profitOp2,
         tp:tp2, _unrealized: true
       };
@@ -4501,8 +4505,8 @@ function renderActivas(){
         // Direction-aware (v168+)
         const _useAbs = op.entryDirection === 'debit' || op.entryDirection === 'credit';
         const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(op) : false;
-        const pc_share = _useAbs ? Math.abs((op.pCredito||0)*100) : ((op.pCredito||0)*100);
-        const pd_share = Math.abs(op.pDebito||0) * 100;
+        const pc_share = _useAbs ? Math.abs(premiumStoredToPoints(op.pCredito, op.contracts||1)) : premiumStoredToPoints(op.pCredito, op.contracts||1);
+        const pd_share = Math.abs(premiumStoredToPoints(op.pDebito, op.contracts||1));
         const cur      = _useAbs ? Math.abs(op.priceCurrent||0) : (op.priceCurrent||0);
         if(_useAbs){
           const _primaAp = _isLong ? (pc_share + pd_share) : (pc_share - pd_share);
@@ -4519,8 +4523,8 @@ function renderActivas(){
         // Direction-aware (v168+)
         const _useAbs = op.entryDirection === 'debit' || op.entryDirection === 'credit';
         const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(op) : false;
-        const pc_share = _useAbs ? Math.abs((op.pCredito||0)*100) : ((op.pCredito||0)*100);
-        const pd_share = Math.abs(op.pDebito||0) * 100;
+        const pc_share = _useAbs ? Math.abs(premiumStoredToPoints(op.pCredito, op.contracts||1)) : premiumStoredToPoints(op.pCredito, op.contracts||1);
+        const pd_share = Math.abs(premiumStoredToPoints(op.pDebito, op.contracts||1));
         const cur      = _useAbs ? Math.abs(op.priceCurrent||0) : (op.priceCurrent||0);
         if(_useAbs){
           const _primaAp = _isLong ? (pc_share + pd_share) : (pc_share - pd_share);
@@ -4551,8 +4555,8 @@ function renderActivas(){
     const ctr=a.contracts||1;
     const _useAbs = (a.entryDirection === 'debit' || a.entryDirection === 'credit');
     const _isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
-    const pc_share  = _useAbs ? Math.abs((a.pCredito||0) * 100) : ((a.pCredito||0) * 100);
-    const pd_share  = Math.abs((a.pDebito||0) * 100);
+    const pc_share  = _useAbs ? Math.abs(premiumStoredToPoints(a.pCredito, ctr)) : premiumStoredToPoints(a.pCredito, ctr);
+    const pd_share  = Math.abs(premiumStoredToPoints(a.pDebito, ctr));
     const pCur_abs  = _useAbs ? Math.abs(a.priceCurrent||0) : (a.priceCurrent||0);
     if(_useAbs){
       const primaApertura = _isLong ? (pc_share + pd_share) : (pc_share - pd_share);
@@ -4682,8 +4686,8 @@ function buildActCard(a, idx, today){
   // Para legacy (sin entryDirection o 'neutral'), formula signed original.
   const _aUseAbs = (a.entryDirection === 'debit' || a.entryDirection === 'credit');
   const _aIsLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
-  const pc   = _aUseAbs ? Math.abs((a.pCredito||0) * 100) : ((a.pCredito||0) * 100);
-  const pd   = Math.abs(a.pDebito||0) * 100;
+  const pc   = _aUseAbs ? Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1)) : premiumStoredToPoints(a.pCredito, a.contracts||1);
+  const pd   = Math.abs(premiumStoredToPoints(a.pDebito, a.contracts||1));
   const pCur = a.priceCurrent;  // $/share
   let pnlEst=null, tpPct=null, pnlClass='act-v', pnlStr='—';
   if(pCur!=null && pc){
@@ -4804,9 +4808,10 @@ function buildActCard(a, idx, today){
       })() : ''}
     </div>` : '';
 
-  const heroPnlStr = strat === 'ACC' ? accPnlStr : (_combinedPnl != null ? `${_combinedPnl>=0?'+':''}$${_combinedPnl.toFixed(0)}` : pnlStr);
-  const heroPnlCol = heroPnlStr === '—' ? '#5a7a9a' : heroPnlStr.startsWith('-') ? '#f04545' : '#3fb68b';
-  const heroTpStr = strat === 'ACC' ? accPnlPctStr : (combinedPct!=null ? `${combinedPct>=0?'+':''}${combinedPct.toFixed(1)}% ID` : (tpPct!=null ? `${tpPct.toFixed(1)}% TP` : '—'));
+  const heroPnlVal = strat === 'ACC' ? accPnlUsd : (_combinedPnl != null ? _combinedPnl : pnlEst);
+  const heroPnlStr = heroPnlVal != null ? `${heroPnlVal>=0?'+':''}$${heroPnlVal.toFixed(0)}` : '—';
+  const heroPnlCol = heroPnlVal == null ? '#5a7a9a' : heroPnlVal < 0 ? '#f04545' : '#3fb68b';
+  const heroTpStr = strat === 'ACC' ? accPnlPctStr : (combinedPct!=null ? `${combinedPct>=0?'+':''}${combinedPct.toFixed(1)}% TP ID` : (tpPct!=null ? `${tpPct.toFixed(1)}% TP pos.` : '—'));
   const portfolioStats = _assignmentPortfolioStats(0);
   const portfolioIf = portfolioStats.pct;
   const manageItems = [];
@@ -4883,7 +4888,7 @@ function buildActCard(a, idx, today){
       })():''}
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
       <div class="act-kv"><span class="act-k" title="Nominal que podría exigir la cuenta si se quita cobertura y/o asignan puts vendidos">ifAsign</span><span class="act-v" style="color:${assignCol}">${assignLabel}</span></div>
-      <div class="act-kv"><span class="act-k">Prima pts</span><span class="act-v">${a.pCredito!=null?Math.abs(premiumStorageToTotal(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
+      <div class="act-kv"><span class="act-k" title="Prima de apertura en puntos por spread/contrato, comparable con el precio de Tasty">Prima/spread</span><span class="act-v">${a.pCredito!=null?Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
       <div class="act-kv"><span class="act-k">IV</span><span class="act-v">${a.iv!=null?a.iv+'%':'—'}</span></div>
@@ -4895,7 +4900,7 @@ function buildActCard(a, idx, today){
       </div>
       <div class="act-kv"><span class="act-k">P&L estim. bruto</span><span class="${pnlClass}">${pnlStr}</span></div>
       <div class="act-kv"><span class="act-k">TP posición</span><span class="act-v ${tpPct!=null?(tpPct>=50?'green':tpPct>=0?'amber':'red'):''}">${tpPct!=null?tpPct.toFixed(1)+'%':'—'}</span></div>
-      ${(()=>{ const _mr = a.maxRisk||0; const _prof = (_mr>0 && _combinedPnl!=null) ? (_combinedPnl*100/_mr*100) : null; const _pc = _prof!=null?(_prof>=30?'green':_prof>=0?'amber':'red'):''; return `<div class="act-kv"><span class="act-k">Profit/Risk ID</span><span class="act-v ${_pc}">${_prof!=null?(_prof>=0?'+':'')+_prof.toFixed(1)+'%':'—'}</span></div>`; })()}
+      ${(()=>{ const _risk = (a.maxRisk||0) * (a.contracts||1); const _prof = (_risk>0 && _combinedPnl!=null) ? (_combinedPnl/_risk*100) : null; const _pc = _prof!=null?(_prof>=15?'green':_prof>=0?'amber':'red'):''; return `<div class="act-kv"><span class="act-k" title="P&L total de la operativa dividido por el riesgo definido actual">P&L/Risk</span><span class="act-v ${_pc}">${_prof!=null?(_prof>=0?'+':'')+_prof.toFixed(1)+'%':'—'}</span></div>`; })()}
     </div>
 
     <!-- Temporal efficiency — rediseñado para tomar decisiones rápido -->
@@ -4930,7 +4935,7 @@ function buildActCard(a, idx, today){
     </div>
     `}
 
-    ${a.nota ? `<div style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${esc(a.nota)}</div>` : ''}
+    ${a.nota ? `<div class="act-note" style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${esc(a.nota)}</div>` : ''}
 
     <!-- Action buttons -->
     <div class="act-btns">
@@ -5367,8 +5372,8 @@ function parseTtPositionsCsv(text){
     headers.forEach((h, j) => { obj[h] = cells[j] || ''; });
     rows.push(obj);
   }
-  // Filtrar solo opciones y equity, tolerando nombres distintos de Tastytrade.
-  return rows.filter(r => ['OPTION','EQUITY','STOCK'].includes(ttType(r)));
+  // Filtrar solo posiciones que el panel sabe casar con operaciones abiertas.
+  return rows.filter(r => ['OPTION','FUTURES_OPTION','FUTURE_OPTION','EQUITY','STOCK'].includes(ttType(r)));
 }
 
 function ttNormKey(k){
@@ -5386,7 +5391,9 @@ function ttGet(row, names){
 
 function ttNum(v){
   if(v == null) return NaN;
-  const s = String(v).trim().replace(/\$/g,'').replace(/\s/g,'').replace(/,/g,'.');
+  let s = String(v).trim().replace(/\$/g,'').replace(/\s/g,'').replace(/%$/,'');
+  if(s.includes(',') && s.includes('.')) s = s.replace(/,/g,'');
+  else s = s.replace(',', '.');
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : NaN;
 }
@@ -5400,8 +5407,13 @@ function ttSymbol(row){
 }
 
 function ttTickerFromSymbol(sym){
-  const m = String(sym || '').trim().match(/^([A-Z.]+)\s*/i);
-  return m ? m[1].toUpperCase() : '';
+  const raw = String(sym || '').trim().toUpperCase();
+  const futDot = raw.match(/^\.\s*\/([A-Z0-9]+?)([FGHJKMNQUVXZ]\d)\b/);
+  if(futDot) return '/' + futDot[1];
+  const fut = raw.match(/^\/([A-Z0-9]+?)([FGHJKMNQUVXZ]\d)\b/);
+  if(fut) return '/' + fut[1];
+  const m = raw.match(/^([A-Z.]+)\s*/);
+  return m ? m[1] : '';
 }
 
 function ttOptionMid(row){
@@ -5418,7 +5430,7 @@ function ttCallPut(row){
   if(cp.startsWith('C')) return 'C';
   if(cp.startsWith('P')) return 'P';
   const sym = ttSymbol(row).toUpperCase();
-  const m = sym.match(/\d{6}([CP])\d{8}/);
+  const m = sym.match(/\d{6}([CP])(?:\d{8}|[\d.]+)/);
   return m ? m[1] : '';
 }
 
@@ -5426,8 +5438,10 @@ function ttStrike(row){
   const direct = ttNum(ttGet(row, ['Strike Price','Strike']));
   if(Number.isFinite(direct)) return direct;
   const sym = ttSymbol(row).toUpperCase();
-  const m = sym.match(/\d{6}[CP](\d{8})/);
-  return m ? parseInt(m[1], 10) / 1000 : NaN;
+  const occ = sym.match(/\d{6}[CP](\d{8})/);
+  if(occ) return parseInt(occ[1], 10) / 1000;
+  const fut = sym.match(/\d{6}[CP]([\d.]+)/);
+  return fut ? ttNum(fut[1]) : NaN;
 }
 
 function ttQuantity(row){
@@ -5438,7 +5452,7 @@ function ttExpDate(row){
   const direct = parseExpDate(ttGet(row, ['Exp Date','Expiration Date','Expiration']));
   if(direct) return direct;
   const sym = ttSymbol(row).toUpperCase();
-  const m = sym.match(/(\d{2})(\d{2})(\d{2})[CP]\d{8}/);
+  const m = sym.match(/(\d{2})(\d{2})(\d{2})[CP](?:\d{8}|[\d.]+)/);
   return m ? '20'+m[1]+'-'+m[2]+'-'+m[3] : null;
 }
 
@@ -5502,7 +5516,8 @@ function buildTtProposals(positions){
     // Para opciones: buscar patas del CSV con mismo ticker + exp
     // Tastytrade Symbol: "GE    260618C00280000" → expira 2026-06-18
     const candidates = positions.filter(p => {
-      if(ttType(p) !== 'OPTION') return false;
+      const pType = ttType(p);
+      if(!['OPTION','FUTURES_OPTION','FUTURE_OPTION'].includes(pType)) return false;
       const sym = ttSymbol(p);
       // El ticker en el CSV viene seguido de espacios y la fecha (ej: "GE    260618C...")
       // Verificamos que empieza por nuestro ticker seguido de espacio o número
@@ -6419,8 +6434,8 @@ function openActCloseModal(idx){
   // Magnitudes en $/share (escala usada en el modal de cierre).
   // Math.abs hace robusta la conversión frente a signos negativos que el
   // usuario haya podido introducir al abrir un débito como -0.78, etc.
-  const pc_share = Math.abs((a.pCredito||0) * 100);
-  const pd_share = Math.abs((a.pDebito||0) * 100);
+  const pc_share = Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1));
+  const pd_share = Math.abs(premiumStoredToPoints(a.pDebito, a.contracts||1));
   const ctr = a.contracts||1;
   // Magnitud neta de la prima de entrada (cobrada si crédito · pagada si débito)
   const primaEntradaMag = pc_share + pd_share;  // se suman porque ambas son outflow/inflow del mismo signo
@@ -6474,11 +6489,9 @@ function updateCloseCalc(){
   // Dirección — débito vs crédito. Cambia las fórmulas de P&L y TP.
   const isLong = _entryIsLong(a);
 
-  // pCredito está en escala /100 (ej: 0.0123 = $1.23/share). Math.abs lo
-  // hace robusto a signos negativos que el usuario haya introducido al
-  // abrir un débito (-0.78). La dirección la decide isLong, no el signo.
-  const pc_share  = Math.abs((a.pCredito||0) * 100);
-  const pd_share  = Math.abs((a.pDebito||0)  * 100);
+  // Prima de apertura en puntos por spread/contrato, comparable con Tasty.
+  const pc_share  = Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1));
+  const pd_share  = Math.abs(premiumStoredToPoints(a.pDebito, a.contracts||1));
   const pcl_share = Math.abs(+document.getElementById('acm_pcierre').value||0);
   // Comisión: la apertura viene de la posición activa (a.comi),
   // el usuario introduce la de cierre, y la total es la suma.
@@ -6560,12 +6573,12 @@ function _confirmClosePositionImpl(){
   // Dirección — mismas reglas que updateCloseCalc.
   const isLong = _entryIsLong(a);
   // Magnitudes en $/share. Math.abs robusto al signo del input.
-  const pc_share  = Math.abs((a.pCredito||0) * 100);
-  const pd_share  = Math.abs((a.pDebito||0)  * 100);
+  const pc_share  = Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1));
+  const pd_share  = Math.abs(premiumStoredToPoints(a.pDebito, a.contracts||1));
   const pcl_share = Math.abs(+document.getElementById('acm_pcierre').value||0);
   // pCierre en escala /100 para guardar en histórico (mismo formato que pCredito).
   // Conservamos el signo que entró por compatibilidad con datos viejos.
-  const pcl_storage = (+document.getElementById('acm_pcierre').value||0) / 100;
+  const pcl_storage = premiumTotalToStorage((+document.getElementById('acm_pcierre').value||0), a.contracts||1);
   // Comisiones: apertura ya estaba en a.comi, cierre la introduce el usuario.
   const comiOpen  = +(a.comi||0);
   const comiClose = +document.getElementById('acm_comi_close').value||1.24;
@@ -6784,8 +6797,8 @@ function openActLegCloseModal(idx){
 
   // Resumen posición
   const ctr = a.contracts || 1;
-  const pc_share = (a.pCredito||0) * 100;
-  const pd_share = Math.abs(a.pDebito||0) * 100;
+  const pc_share = premiumStoredToPoints(a.pCredito, ctr);
+  const pd_share = Math.abs(premiumStoredToPoints(a.pDebito, ctr));
   const credTotal = pc_share - pd_share;
   document.getElementById('alcm_open_summary').innerHTML = `
     <div style="font-size:9px;color:#3a5468;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Posición actual</div>
@@ -9972,7 +9985,7 @@ const ROLL_PATA_TO_KINDS = {
 
 // Calcula el crédito original ($/share neto, sign-aware) de la pata que se
 // está rolando, a partir de a.legs[]. Si la pata es 'todo' o si no hay
-// detalle de legs suficiente, devuelve null (el caller usa a.pCredito*100).
+// detalle de legs suficiente, devuelve null (el caller usa la prima mostrada).
 // Retorna { pcShare: number, kinds: string[] } o null.
 function rollLegOriginalCred(a, pata){
   if(pata === 'todo') return null;
@@ -9997,7 +10010,7 @@ function rollCalc(){
   // Crédito original: si la pata rolada coincide con detalle de a.legs,
   // usamos el crédito de SOLO esa pata; si no, el crédito total de la posición.
   const legInfo = rollLegOriginalCred(a, pata);
-  const pc_share  = legInfo ? legInfo.pcShare : (a.pCredito||0) * 100;
+  const pc_share  = legInfo ? legInfo.pcShare : premiumStoredToPoints(a.pCredito, a.contracts||1);
   const pcl_share = parseFloat(document.getElementById('roll_pcl').value)||0;  // $/share
   const comiCl    = parseFloat(document.getElementById('roll_comi_close').value)||0;
   const comiOp    = parseFloat(document.getElementById('roll_comi_open').value)||0;
@@ -10037,7 +10050,7 @@ function confirmRoll(){
   // Crédito original: si la pata rolada coincide con detalle de a.legs, usamos
   // el crédito SOLO de esa pata. Si no, el crédito total de la posición.
   const legInfo   = rollLegOriginalCred(a, pata);
-  const pc_share  = legInfo ? legInfo.pcShare : (a.pCredito||0) * 100;
+  const pc_share  = legInfo ? legInfo.pcShare : premiumStoredToPoints(a.pCredito, a.contracts||1);
   const pcl_share = parseFloat(document.getElementById('roll_pcl').value)||0;  // $/share
   const comiCl    = parseFloat(document.getElementById('roll_comi_close').value)||0;
   const comiOp    = parseFloat(document.getElementById('roll_comi_open').value)||0;
@@ -10073,10 +10086,10 @@ function confirmRoll(){
   const tOp        = (openD&&closeD) ? Math.ceil((closeD-openD)/(86400000)) : null;
 
   // Para guardar en hist mantenemos escala /100 (formato pCredito antiguo)
-  const pcl_storage = pcl_share / 100;
+  const pcl_storage = premiumTotalToStorage(pcl_share, ctr);
   // pCredito guardado en HIST: si tenemos info de pata por legs, guardamos
   // el crédito SOLO de esa pata (más correcto para auditoría). Si no, el total.
-  const pcredHist_storage = legInfo ? (pc_share / 100) : (a.pCredito||0);
+  const pcredHist_storage = legInfo ? premiumTotalToStorage(pc_share, ctr) : (a.pCredito||0);
   // totalNetoOvr en escala "prima" (/100), pNetoOvr per contract en escala "prima"
   const totalNetoOvrPrima = pnlClose / 100;
   const pNetoOvrPrima = totalNetoOvrPrima / ctr;
