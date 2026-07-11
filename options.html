@@ -434,6 +434,7 @@
         <option value="apertura">Apertura</option>
       </select>
       <button id="actViewToggle" onclick="toggleActivasCompact()" title="Alternar vista compacta/detalle" style="background:#4a9eff11;border:1px solid #4a9eff44;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer">Vista rapida</button>
+    <button onclick="openRoadmapCfg()" title="Hoja de ruta de gestión por DTE y profit" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:10px;font-weight:800;padding:4px 8px;border-radius:999px;cursor:pointer" onmouseover="this.style.borderColor='#4a9eff';this.style.color='#4a9eff'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">?</button>
     <button onclick="openActCfg()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#f0a500';this.style.color='#f0a500'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">⚙ Config</button>
     <button onclick="openTtPriceUpdate()" title="Actualizar priceCurrent desde positions.csv de Tastytrade" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#22c55e';this.style.color='#22c55e'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">↻ Tastytrade</button>
     <button onclick="openActModal(null)"   style="background:transparent;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:3px;cursor:pointer">+ Nueva posición</button>
@@ -472,6 +473,29 @@
     <div class="cfg-btns">
       <button class="cfg-cancel" onclick="closeActCfg()">Cancelar</button>
       <button class="cfg-save" onclick="saveActCfg()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ROADMAP MODAL -->
+<div class="cfg-overlay" id="roadmapOverlay">
+  <div class="cfg-modal" style="width:95vw;max-width:1180px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px">
+      <div>
+        <div class="cfg-title" style="margin-bottom:4px">Hoja de ruta · Gestion por DTE / Profit</div>
+        <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.45">
+          Las etiquetas de Op Abiertas se calculan con la primera regla que encaja por DTE restante y TP/profit capturado.
+        </div>
+      </div>
+      <button onclick="addRoadmapRule()" style="background:#4a9eff11;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap">+ Regla</button>
+    </div>
+    <div id="roadmapRules"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px">
+      <button onclick="resetRoadmapRules()" style="background:transparent;border:1px solid #e6913855;color:#e69138;font-family:'Courier New',monospace;font-size:9px;padding:6px 10px;border-radius:3px;cursor:pointer">Restaurar hoja base</button>
+      <div class="cfg-btns" style="margin:0">
+        <button class="cfg-cancel" onclick="closeRoadmapCfg()">Cancelar</button>
+        <button class="cfg-save" onclick="saveRoadmapCfg()">Guardar hoja</button>
+      </div>
     </div>
   </div>
 </div>
@@ -990,6 +1014,29 @@ const TODAY = new Date().toISOString().split('T')[0];
 const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── CONFIG / THRESHOLDS ──────────────────────────────────────
+const DEFAULT_ROADMAP_RULES = [
+  {dteMin:46,dteMax:60,profitMin:-999,profitMax:999,action:'Setup valido',situation:'Entrada 45 DTE aprox.',comment:'Aqui manda el setup, no abrir por abrir',tone:'idle'},
+  {dteMin:35,dteMax:45,profitMin:50,profitMax:999,action:'Cerrar / parcial',situation:'Profit rapido',comment:'Si llega rapido, no hace falta esperar',tone:'good'},
+  {dteMin:35,dteMax:45,profitMin:30,profitMax:50,action:'Mantener',situation:'Precio lateral / comodo',comment:'Aun queda prima temporal',tone:'idle'},
+  {dteMin:35,dteMax:45,profitMin:0,profitMax:30,action:'Mantener y vigilar',situation:'Profit bajo',comment:'Todavia no hace falta tocar',tone:'warn'},
+  {dteMin:35,dteMax:45,profitMin:-999,profitMax:0,action:'No anadir',situation:'Tesis debilitada',comment:'Valorar cierre o roll defensivo',tone:'bad'},
+  {dteMin:22,dteMax:34,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit bueno',comment:'Zona ideal de salida',tone:'good'},
+  {dteMin:22,dteMax:34,profitMin:30,profitMax:50,action:'Mantener',situation:'Profit medio',comment:'Puedes dejar trabajar theta',tone:'idle'},
+  {dteMin:22,dteMax:34,profitMin:0,profitMax:30,action:'Mantener',situation:'Profit bajo pero precio bien',comment:'No hay motivo para rolear',tone:'idle'},
+  {dteMin:22,dteMax:34,profitMin:-999,profitMax:0,action:'Preparar gestion',situation:'Strike amenazado',comment:'Vigilar roll si la tesis sigue viva',tone:'warn'},
+  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit 50-70%',comment:'Salida limpia',tone:'good'},
+  {dteMin:15,dteMax:21,profitMin:25,profitMax:50,action:'Mantener',situation:'Precio comodo',comment:'No cierres solo porque llego 21 DTE',tone:'idle'},
+  {dteMin:15,dteMax:21,profitMin:0,profitMax:25,action:'Vigilar',situation:'Profit bajo pero OTM',comment:'Puede no haber desintegrado aun',tone:'warn'},
+  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Revisar roll',situation:'Delta/strike amenazado',comment:'No automatico, pero toca decidir',tone:'bad'},
+  {dteMin:8,dteMax:14,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit 50%+',comment:'A partir de aqui no conviene alargar mucho',tone:'good'},
+  {dteMin:8,dteMax:14,profitMin:0,profitMax:50,action:'Decidir',situation:'Precio comodo pero profit bajo',comment:'Mantener solo si delta sigue baja',tone:'warn'},
+  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'Roll / cerrar',situation:'Cerca del strike',comment:'Ya no me gusta esperar demasiado',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'Profit alto',comment:'No arriesgar una buena operacion por migajas',tone:'good'},
+  {dteMin:4,dteMax:7,profitMin:0,profitMax:70,action:'Cerrar o rolear',situation:'Gamma cerca',comment:'No quieres gamma risk fuerte',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:-999,profitMax:0,action:'Gestionar/cerrar',situation:'Perdida abierta',comment:'No esperes milagros',tone:'bad'},
+  {dteMin:0,dteMax:3,profitMin:0,profitMax:999,action:'Cerrar si compensa',situation:'Spread casi muerto',comment:'Evita sustos tontos',tone:'warn'},
+  {dteMin:0,dteMax:3,profitMin:-999,profitMax:0,action:'Cerrar / gestionar',situation:'ITM o dudoso',comment:'No dejar a vencimiento sin control',tone:'bad'}
+];
 let CFG = {
   NP:  { ann:20, prob:75, ivr:35, psig:12 },
   PCS: { ann:15, prob:68, ivr:30, psig:8  },
@@ -998,9 +1045,13 @@ let CFG = {
   customStrats: [],
   stratOtroSet: ['CCS','DPS','BWB','JL','IC','0DTE','112'],
   cashAvail: 0,
-  riskTotalStrats: ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE']
+  riskTotalStrats: ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE'],
+  roadmapRules: DEFAULT_ROADMAP_RULES
 };
 try{ const s=localStorage.getItem('ot_cfg'); if(s){ const p=JSON.parse(s); if(p.NP&&p.PCS) CFG=p; } }catch(e){}
+if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length){
+  CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+}
 function toggleUnrealized(){
   CFG.showUnrealized = !CFG.showUnrealized;
   try{ const s=JSON.parse(localStorage.getItem('ot_cfg')||'{}'); s.showUnrealized=CFG.showUnrealized; localStorage.setItem('ot_cfg',JSON.stringify(s)); }catch(e){}
@@ -4311,6 +4362,95 @@ function actCardClick(ev, idx){
   renderActivas();
 }
 
+function roadmapRules(){
+  if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length){
+    CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+  }
+  return CFG.roadmapRules;
+}
+
+function openRoadmapCfg(){
+  renderRoadmapRules();
+  document.getElementById('roadmapOverlay')?.classList.add('on');
+}
+
+function closeRoadmapCfg(){
+  document.getElementById('roadmapOverlay')?.classList.remove('on');
+}
+
+function renderRoadmapRules(){
+  const wrap = document.getElementById('roadmapRules');
+  if(!wrap) return;
+  const rules = roadmapRules();
+  const inp = (i,k,w='70px',type='number') => `<input data-rm-i="${i}" data-rm-k="${k}" type="${type}" value="${esc(rules[i][k] ?? '')}" style="width:${w};background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">`;
+  const toneSel = (i) => {
+    const cur = rules[i].tone || 'idle';
+    return `<select data-rm-i="${i}" data-rm-k="tone" style="width:86px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">
+      ${['good','idle','warn','bad'].map(t=>`<option value="${t}" ${cur===t?'selected':''}>${t}</option>`).join('')}
+    </select>`;
+  };
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:64px 64px 78px 78px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
+      <span>DTE min</span><span>DTE max</span><span>Profit min</span><span>Profit max</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
+    </div>
+    ${rules.map((r,i)=>`
+      <div style="display:grid;grid-template-columns:64px 64px 78px 78px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px">
+        ${inp(i,'dteMin','64px')} ${inp(i,'dteMax','64px')} ${inp(i,'profitMin','78px')} ${inp(i,'profitMax','78px')}
+        ${inp(i,'action','120px','text')} ${inp(i,'situation','160px','text')} ${inp(i,'comment','100%','text')} ${toneSel(i)}
+        <button onclick="removeRoadmapRule(${i})" title="Eliminar regla" style="background:transparent;border:1px solid #f0454544;color:#f04545;border-radius:3px;cursor:pointer;padding:4px 7px">×</button>
+      </div>`).join('')}`;
+}
+
+function readRoadmapRulesFromDom(){
+  const rules = roadmapRules().map(r=>({...r}));
+  document.querySelectorAll('[data-rm-i]').forEach(el=>{
+    const i = +el.dataset.rmI;
+    const k = el.dataset.rmK;
+    if(!rules[i]) return;
+    if(['dteMin','dteMax','profitMin','profitMax'].includes(k)){
+      rules[i][k] = Number.isFinite(parseFloat(el.value)) ? parseFloat(el.value) : 0;
+    } else {
+      rules[i][k] = el.value;
+    }
+  });
+  return rules;
+}
+
+function addRoadmapRule(){
+  CFG.roadmapRules = readRoadmapRulesFromDom();
+  CFG.roadmapRules.push({dteMin:0,dteMax:60,profitMin:0,profitMax:100,action:'Nueva regla',situation:'',comment:'',tone:'idle'});
+  renderRoadmapRules();
+}
+
+function removeRoadmapRule(i){
+  CFG.roadmapRules = readRoadmapRulesFromDom().filter((_,idx)=>idx!==i);
+  renderRoadmapRules();
+}
+
+function resetRoadmapRules(){
+  CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+  renderRoadmapRules();
+}
+
+function saveRoadmapCfg(){
+  CFG.roadmapRules = readRoadmapRulesFromDom();
+  try{ localStorage.setItem('ot_cfg', JSON.stringify(CFG)); }catch(e){}
+  closeRoadmapCfg();
+  renderActivas();
+}
+
+function roadmapRecommendation(dteLeft, tpPct, strat){
+  if(strat === 'ACC') return null;
+  if(dteLeft == null || tpPct == null) return null;
+  const dte = Math.max(0, dteLeft);
+  const p = tpPct;
+  const n = (v, fallback) => Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback;
+  return roadmapRules().find(r =>
+    dte >= n(r.dteMin,0) && dte <= n(r.dteMax,999) &&
+    p >= n(r.profitMin,-999) && p <= n(r.profitMax,999)
+  ) || null;
+}
+
 function activasLoad(){
   try{
     const d=localStorage.getItem('ot_activas');
@@ -4833,15 +4973,19 @@ function buildActCard(a, idx, today){
   const portfolioStats = _assignmentPortfolioStats(0);
   const portfolioIf = portfolioStats.pct;
   const manageItems = [];
-  if(tpAlertOn) manageItems.push({tone:'good',label:'Tomar profit',txt:`TP >= ${tpTarget}%`});
-  if(dteLeft!=null && dteLeft>=0 && dteLeft<=7) manageItems.push({tone:'warn',label:'Expira pronto',txt:`${dteLeft}d`});
-  else if(dteLeft!=null && dteLeft>=0 && dteLeft<=21) manageItems.push({tone:'warn',label:'Revisar 20DTE',txt:'zona gestion'});
-  if(dteLeft!=null && dteLeft<=21 && tpPct!=null && tpPct<0) manageItems.push({tone:'bad',label:'Roll?',txt:'P&L negativo'});
+  const road = roadmapRecommendation(dteLeft, tpPct, strat);
+  if(road){
+    manageItems.push({tone:road.tone||'idle',label:road.action||'Revisar',txt:road.situation||`${dteText} · ${tpPct!=null?tpPct.toFixed(0)+'%':'--'}`,title:road.comment||''});
+  }
+  if(!road && tpAlertOn) manageItems.push({tone:'good',label:'Tomar profit',txt:`TP >= ${tpTarget}%`});
+  if(!road && dteLeft!=null && dteLeft>=0 && dteLeft<=7) manageItems.push({tone:'warn',label:'Expira pronto',txt:`${dteLeft}d`});
+  else if(!road && dteLeft!=null && dteLeft>=0 && dteLeft<=21) manageItems.push({tone:'warn',label:'Revisar 20DTE',txt:'zona gestion'});
+  if(!road && dteLeft!=null && dteLeft<=21 && tpPct!=null && tpPct<0) manageItems.push({tone:'bad',label:'Roll?',txt:'P&L negativo'});
   if(assignPct!=null && assignPct>=50) manageItems.push({tone:'bad',label:'No añadir',txt:'ifAsign alto'});
   else if(portfolioIf!=null && portfolioIf>=120) manageItems.push({tone:'warn',label:'Medir tamaño',txt:'cartera cargada'});
   if(!manageItems.length) manageItems.push({tone:'idle',label:'Mantener',txt:'sin accion urgente'});
   const toneColor = t => t==='good'?'#3fb68b':t==='bad'?'#f04545':t==='warn'?'#f0a500':'#5a7a9a';
-  const manageHtml = manageItems.map(m=>`<span class="act-manage-pill act-manage-${m.tone}" style="border-color:${toneColor(m.tone)}44;background:${toneColor(m.tone)}10;color:${toneColor(m.tone)}"><b>${m.label}</b><small>${m.txt}</small></span>`).join('');
+  const manageHtml = manageItems.map(m=>`<span class="act-manage-pill act-manage-${m.tone}" title="${esc(m.title||'')}" style="border-color:${toneColor(m.tone)}44;background:${toneColor(m.tone)}10;color:${toneColor(m.tone)}"><b>${esc(m.label)}</b><small>${esc(m.txt)}</small></span>`).join('');
 
   return `
   <div class="${cardClass}" id="act_card_${idx}" onclick="actCardClick(event, ${idx})">
@@ -7446,6 +7590,9 @@ function refreshStratSelects(){
 
 document.getElementById('actCfgOverlay').addEventListener('click', e=>{
   if(e.target===e.currentTarget) closeActCfg();
+});
+document.getElementById('roadmapOverlay').addEventListener('click', e=>{
+  if(e.target===e.currentTarget) closeRoadmapCfg();
 });
 document.getElementById('snapOverlay').addEventListener('click', e=>{
   if(e.target===e.currentTarget) closeSnapModal();
