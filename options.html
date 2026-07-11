@@ -4903,7 +4903,7 @@ function buildActCard(a, idx, today){
       </div>
       <div class="act-kv"><span class="act-k">P&L estim. bruto</span><span class="${pnlClass}">${pnlStr}</span></div>
       <div class="act-kv"><span class="act-k">TP posición</span><span class="act-v ${tpPct!=null?(tpPct>=50?'green':tpPct>=0?'amber':'red'):''}">${tpPct!=null?tpPct.toFixed(1)+'%':'—'}</span></div>
-      ${(()=>{ const _risk = (a.maxRisk||0) * (a.contracts||1); const _prof = (_risk>0 && _combinedPnl!=null) ? (_combinedPnl/_risk*100) : null; const _pc = _prof!=null?(_prof>=15?'green':_prof>=0?'amber':'red'):''; return `<div class="act-kv"><span class="act-k" title="P&L total de la operativa dividido por el riesgo definido actual">P&L/Risk</span><span class="act-v ${_pc}">${_prof!=null?(_prof>=0?'+':'')+_prof.toFixed(1)+'%':'—'}</span></div>`; })()}
+      ${(()=>{ const _risk = (a.maxRisk||0) * (a.contracts||1); const _prof = (_risk>0 && pnlEst!=null) ? (pnlEst/_risk*100) : null; const _pc = _prof!=null?(_prof>=15?'green':_prof>=0?'amber':'red'):''; return `<div class="act-kv"><span class="act-k" title="P&L abierto dividido por el riesgo definido actual">P&L/Risk abierto</span><span class="act-v ${_pc}">${_prof!=null?(_prof>=0?'+':'')+_prof.toFixed(1)+'%':'—'}</span></div>`; })()}
     </div>
 
     <!-- Temporal efficiency — rediseñado para tomar decisiones rápido -->
