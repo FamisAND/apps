@@ -10928,7 +10928,30 @@ function tobMcRenderGrid(){
           scheduleDndRender();
         },
         onAdd: (ev) => {
-          syncCellState(ev.to);
+          // Cuando viene del panel lateral, Sortable inserta un clon con clase
+          // .tob-mc-side-item. Lo pasamos explícitamente al estado del menú,
+          // porque syncCellState solo lee .tob-mc-cell-item ya renderizados.
+          const fromSide = ev.from && ev.from.id === 'tobMcSidePanel';
+          if(fromSide){
+            const recId = ev.item && ev.item.dataset ? ev.item.dataset.rec : '';
+            const day = +ev.to.dataset.day;
+            const meal = ev.to.dataset.meal;
+            if(recId && Number.isInteger(day) && meal){
+              if(!tobMcState.data[sem]) tobMcState.data[sem] = {};
+              if(!tobMcState.data[sem][day]) tobMcState.data[sem][day] = {};
+              if(!Array.isArray(tobMcState.data[sem][day][meal])) tobMcState.data[sem][day][meal] = [];
+              const currentItems = Array.from(ev.to.children)
+                .filter(el => el.classList && (
+                  el.classList.contains('tob-mc-cell-item') ||
+                  el.classList.contains('tob-mc-side-item')
+                ));
+              const insertAt = Math.max(0, currentItems.indexOf(ev.item));
+              tobMcState.data[sem][day][meal].splice(insertAt, 0, recId);
+            }
+            if(ev.item && ev.item.parentNode) ev.item.parentNode.removeChild(ev.item);
+          } else {
+            syncCellState(ev.to);
+          }
           scheduleDndRender();
         }
       });
