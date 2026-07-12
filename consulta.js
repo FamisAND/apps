@@ -6375,6 +6375,7 @@ function tobQuestLoad(){
   const tags = cli.cuestionario ? tobQuestEnsureTags(cli) : (q.tags || {});
   tobQuestRenderChips(tags);
   tobQuestRenderRecordatori();
+  tobQuestRefreshFoodOptions();
   tobQuestUpdateGuides();
   tobUpdateCuestionarioBadge();
 }
@@ -6406,6 +6407,29 @@ function tobQuestRenderRecordatori(){
       <div class="tob-quest-chips">${chips}</div>
     </div>`;
   }).join('');
+}
+
+// Opciones para los campos de alimentos del cuestionario. Se alimenta del
+// catálogo real para evitar texto libre ambiguo que luego la IA interprete mal.
+function tobQuestRefreshFoodOptions(){
+  const dl = document.getElementById('qFoodCatalogOptions');
+  if(!dl) return;
+  const seen = new Set();
+  const values = [];
+  const add = (v) => {
+    const s = String(v || '').trim();
+    const key = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(!s || seen.has(key)) return;
+    seen.add(key);
+    values.push(s);
+  };
+  TOB_QUEST_ALIM_PRESETS.forEach(add);
+  (tobMenusDB.ingredientes || []).forEach(i => add(i.nombre));
+  (tobMenusDB.recetas || []).forEach(r => {
+    if(r && r.origen !== 'ingrediente') add(r.nombre);
+  });
+  const opts = values.sort((a,b) => a.localeCompare(b, 'es', { sensitivity:'base' })).slice(0, 900);
+  dl.innerHTML = opts.map(v => `<option value="${tobEsc(v)}"></option>`).join('');
 }
 
 // Toggle de un chip del recordatori. Se guarda en q.recChips[mealId].
@@ -10661,6 +10685,19 @@ function tobMcCheckCompat(rec, cli){
   const q = cli.cuestionario;
   const tags = q.tags || {};
   const razones = [];
+  const normFoodText = (s) => String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const foodNeedleHits = (haystack, needle) => {
+    const n = normFoodText(needle);
+    if(n.length < 3) return false;
+    if(haystack.includes(n)) return true;
+    const tokens = n.split(/\s+/).filter(t => t.length >= 4);
+    return tokens.length > 0 && tokens.every(t => haystack.includes(t));
+  };
 
   // 1. Aliments X / alergias / aliments que sienten mal — ahora son listas
   //    de chips. Match por nombre en ingredientes y nombre de receta.
@@ -10668,16 +10705,16 @@ function tobMcCheckCompat(rec, cli){
   const textosNegativos = [
     ...(tags.alimX || []), ...(tags.alergies || []), ...(tags.sentenMal || []),
     q.alimX, q.alergias, q.sientenMal
-  ].filter(Boolean).join(',').toLowerCase()
-    .split(/[,;\n]/).map(s => s.trim()).filter(s => s.length >= 3);
+  ].filter(Boolean).join(',')
+    .split(/[,;\n]/).map(s => s.trim()).filter(s => normFoodText(s).length >= 3);
   if(textosNegativos.length){
-    const haystack = (rec.nombre || '').toLowerCase() + ' ' +
+    const haystack = normFoodText((rec.nombre || '') + ' ' +
       (rec.ingredientes||[]).map(it => {
         const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-        return ing ? ing.nombre.toLowerCase() : (it._nombreFallback || '').toLowerCase();
-      }).join(' ');
+        return ing ? ing.nombre : (it._nombreFallback || '');
+      }).join(' '));
     textosNegativos.forEach(neg => {
-      if(haystack.includes(neg)) razones.push('contiene ' + neg);
+      if(foodNeedleHits(haystack, neg)) razones.push('contiene ' + neg);
     });
   }
 
@@ -12497,6 +12534,36 @@ quan el client NO ha especificat res, o és un àpat principal sense recordatori
 - Prioritza receptes preferides (★).
 - Usa només id de la llista de dalt.
 - Si un nom suggereix clarament un àpat (Tostada, Bocadillo, Sandvitx → esmorzar/berenar), utilitza-la encara que no estigui classificada en aquest àpat.`;
+const TOB_AI_MENU_RULES_NO_AJUSTES =
+`Ets el dietista de Sergio. Munta el menú triant receptes del catàleg, però NO pots tocar quantitats.
+
+REGLA 1 — cuestionario manda:
+- Revisa alergias, patologías, intolerancias, alimentos que no quiere, alimentos que le sientan mal y alimentos preferidos antes de elegir recetas.
+- Si una receta contiene algo prohibido o que le sienta mal, NO la uses. Busca otra receta compatible.
+- Si el recordatorio habitual de un àpat indica alimentos concretos, respeta esa estructura.
+
+REGLA 2 — solo selección de recetas:
+- Usa únicamente ids de la lista de recetas disponible.
+- PROHIBIDO devolver "ajustes", "factor", "ing", gramos, raciones o cambios de cantidad.
+- No inventes recetas, no inventes ids y no modifiques ingredientes.
+- Si falta kcal o proteína, cambia la selección de recetas o combina principal + acompañamiento compatible.
+- Si aun así no cuadra perfecto, prioriza compatibilidad y deja el ajuste fino al dietista.
+
+REGLA 3 — calidad del menú:
+- Prioriza recetas favoritas (★) cuando encajen con el cuestionario.
+- Varía fuentes proteicas durante la semana.
+- Si el nombre sugiere claramente un àpat (tostada, bocadillo, smoothie, tortilla, ensalada...), puedes usarlo aunque esté poco clasificado.
+- Un menú aceptable es compatible, lógico y revisable; no sacrifiques salud/preferencias por cuadrar números.`;
+
+function tobAiRulesForGeneration(cfg){
+  const raw = (cfg && cfg.menuRules ? String(cfg.menuRules) : '').trim();
+  if(!raw) return TOB_AI_MENU_RULES_NO_AJUSTES;
+  if(/ajustes|factor|"ing"|grams|gramos|racions|raciones|quantitats|cantidades/i.test(raw)){
+    return TOB_AI_MENU_RULES_NO_AJUSTES;
+  }
+  return raw + '\n\n' + TOB_AI_MENU_RULES_NO_AJUSTES;
+}
+
 // ─── Configuració d'IA — multi-clau (una per proveïdor) ───────────────
 // El cfg guarda les claus de TOTS els proveïdors per a què Sergio pugui
 // canviar entre Gemini / Anthropic / Groq / OpenRouter sense haver de
@@ -12594,16 +12661,9 @@ async function tobAiOpenConfig(){
   tobAiProviderChange();
   document.getElementById('tobAiTestResult').textContent = '';
   const rulesEl = document.getElementById('tobAiMenuRules');
-  if(rulesEl) rulesEl.value = cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT;
-  // Passades de correcció — clamp a [0, 3] amb default 3.
-  // Bug previ: "parseInt(mp,10) || 3" feia que el 0 es convertís en 3 (perquè
-  // 0 és falsy). Ara distingim entre NaN i valor numèric vàlid.
+  if(rulesEl) rulesEl.value = tobAiRulesForGeneration(cfg);
   const mpEl = document.getElementById('tobAiMaxPasadas');
-  if(mpEl){
-    const parsed = parseInt(cfg.maxPasadas, 10);
-    const finalVal = isFinite(parsed) ? Math.max(0, Math.min(3, parsed)) : 3;
-    mpEl.value = String(finalVal);
-  }
+  if(mpEl) mpEl.value = '0';
   tobAiRenderFallbackList();
   document.getElementById('tobAiConfigBg').classList.add('on');
 }
@@ -12701,7 +12761,7 @@ function tobAiFallbackMove(prov, delta){
 }
 function tobAiResetMenuRules(){
   const el = document.getElementById('tobAiMenuRules');
-  if(el) el.value = TOB_AI_MENU_RULES_DEFAULT;
+  if(el) el.value = TOB_AI_MENU_RULES_NO_AJUSTES;
 }
 function tobAiProviderChange(){
   const p = document.getElementById('tobAiProvider').value;
@@ -12739,16 +12799,14 @@ function tobAiSaveConfigFromModal(){
   const models = Object.assign({}, existing.models || {});
   keys[provider]   = newKey;
   models[provider] = newModel;
-  // Passades de correcció — clamp 0-3.
-  const mpRaw = parseInt(document.getElementById('tobAiMaxPasadas')?.value, 10);
-  const maxPasadas = Math.max(0, Math.min(3, isFinite(mpRaw) ? mpRaw : 3));
+  const maxPasadas = 0;
   const cfg = {
     provider,
     keys,
     models,
     // Solo se guarda si difiere del default (así futuras mejoras del
     // default llegan a quien no lo haya tocado).
-    menuRules: (rules && rules !== TOB_AI_MENU_RULES_DEFAULT.trim()) ? rules : '',
+    menuRules: (rules && rules !== TOB_AI_MENU_RULES_NO_AJUSTES.trim()) ? rules : '',
     maxPasadas,
     // Preservar l'ordre de fallback configurat per l'usuari
     fallbackOrder: existing.fallbackOrder || _tobAiNormalizedOrder(existing),
@@ -13605,7 +13663,7 @@ async function tobMcGenerarIA(){
     const sys = 'Ets un dietista-nutricionista expert. Crees menús setmanals personalitzats, '
       + 'variats i equilibrats. Respons NOMÉS amb un objecte JSON vàlid, sense text addicional.';
     // Reglas editables desde ⚙ IA (con sustitución de {kcal}/{margen}/{prot}).
-    const rules = (cfg.menuRules || TOB_AI_MENU_RULES_DEFAULT)
+    const rules = tobAiRulesForGeneration(cfg)
       .replace(/\{margen\}/g, margen)
       .replace(/\{kcal\}/g, Math.round(kcal))
       .replace(/\{prot\}/g, prot ? Math.round(prot) : 'la indicada');
@@ -13622,7 +13680,7 @@ async function tobMcGenerarIA(){
       'Ex: rec_x|Truita francesa|320k|18p|P|ings:ous 100g,oli 5g',
       'Marques davant del nom: ★ = preferida del client (prioritza-la). ∙ = ingredient simple (iogurt, fruita, fruits secs).',
       'Rol del plat: P=principal · A=acompanyament · D=postre · B=bàsic/esmorzar · ?=sense classificar.',
-      'Camp "ings": els ingredients principals de la recepta. Quan emetis "ing" als ajustes, fes servir EXACTAMENT els noms que apareixen aquí (ex: si veus "ings:pollastre 150g", emet "ing":{"pollastre":200}).',
+      'Camp "ings": els ingredients principals de la recepta. Serveix NOMÉS per comprovar compatibilitat amb el cuestionario; NO pots canviar grams ni racions.',
       '',
       'IMPORTANT — USA EL NOM COM A PISTA quan el rol és "?" o quan el catàleg sembla curt:',
       '· Si una recepta es diu "Tostada amb tomàquet", "Pa amb formatge", "Bocadillo de pollastre", "Sandvitx vegetal" → encaixa perfectament a ESMORZAR (i sovint a BERENAR/SOPAR).',
@@ -13639,38 +13697,11 @@ async function tobMcGenerarIA(){
       'Cada dia és un objecte {comida_id:[id_recepta,…]}.',
       'Exemple d\'un dia: {' + comidas.map(c => '"' + c.id + '":["ID_RECEPTA"]').join(',') + '}',
       '',
-      'CAMP "ajustes" (al mateix nivell que les setmanes) — IMPORTANT, ÚSAL si fa falta per quadrar:',
-      '{',
-      '  "ID_RECEPTA": {',
-      '    "factor": 1.5,                              ← OPCIONAL · escala TOTA la recepta',
-      '    "ing":    { "pollastre": 200, "arros": 80 },← OPCIONAL · grams d\'INGREDIENTS específics (per ració)',
-      '    "motiu":  "pujar prot sense afegir kcal innecessàries"',
-      '  }',
-      '}',
-      '',
-      'Quan usar "factor" vs "ing":',
-      '· FACTOR (escala tota la recepta) → quan vols pujar TOT (kcal+prot+greixos) coherentment.',
-      '  Ex: dia de descans, plat senzill, vols ració més gran en general.',
-      '  Rangs útils: 0.6 a 1.8. Prefereix valors limpios: 0.5, 1, 1.5, 2 (decimals si donen grams nets).',
-      '',
-      '· ING (grams d\'ingredients individuals) → quan vols pujar NOMÉS la proteïna.',
-      '  Ex: falten 20 g prot al dia — millor pujar el pollastre de 150 a 200 g',
-      '  que escalar tot el plat (que afegiria kcal innecessàries de verdures/sallses).',
-      '  Usa noms genèrics en cat/cas (pollastre, salmó, lluç, tonyina, vedella, arròs, pasta',
-      '  ous, llenties, formatge…). El parser fa match suau contra els ingredients reals.',
-      '  Grams permesos: fins ~2× del valor base de cada ingredient (es talla automàticament si et passes).',
-      '',
-      'PRIORITAT (segons criteri del dietista):',
-      '  1r. Si falta proteïna → "ing" amb el protein source del plat principal',
-      '  2n. Si falten kcal però la prote ja està → "ing" amb l\'acompanyament (arròs, pasta, patata…)',
-      '  3r. Si tot va escalat coherentment → "factor"',
-      'PROHIBIT afegir un ingredient simple solt (un iogurt random) al final del dia per quadrar.',
-      '',
-      '· Aplica a TOTES les aparicions d\'aquesta recepta al menú.',
-      '· Pots combinar factor + ing en el mateix ajust si fa falta.',
-      '· Pots tenir tants ajustes com vulguis (un per recepta).',
-      '· REGLA: si un dia es queda > 10% per sota de l\'objectiu de kcal o prot, AJUSTA abans de tancar el dia.',
-      '· Si tot el menú quadra sense ajustar, omet "ajustes" o posa-l\'ho buit ({}).'
+      'PROHIBIT ABSOLUTAMENT retornar "ajustes", "factor", "ing", "grams", "racions" o qualsevol canvi de quantitat.',
+      'La teva feina és TRIAR receptes correctes del catàleg. Les racions les ajustarà manualment el dietista després.',
+      'Si un dia no quadra perfecte en kcal/proteïna, millora la selecció de receptes o combinació de plats, però mai canviïs quantitats.',
+      'PRIORITAT MÀXIMA: no fallar en compatibilitat amb el cuestionario. Al·lèrgies, aliments no volguts, aliments que senten malament i estructura habitual dels àpats manen per sobre de quadrar macros.',
+      'Si no hi ha una opció perfecta, tria la més compatible i deixa que el dietista ajusti manualment.'
     ].join('\n');
 
     tobToast('🤖 La IA está generando el menú… puede tardar unos segundos', '');
@@ -13733,7 +13764,7 @@ async function tobMcGenerarIA(){
       // Bolcar ajustos emesos per la IA — només per a receptes que estan al menú
       // i amb factor dins del rang permès. Marquem fuente:'ia' per traçabilitat.
       tobMcState.ajustes = tobMcState.ajustes || {};
-      const ajRaw = (pj && typeof pj === 'object' && pj.ajustes && typeof pj.ajustes === 'object') ? pj.ajustes : null;
+      const ajRaw = null; // La IA no puede tocar cantidades; ignoramos cualquier ajuste devuelto.
       if(ajRaw){
         const usadosNow = new Set();
         Object.values(tobMcState.data||{}).forEach(sem =>
@@ -13788,6 +13819,7 @@ async function tobMcGenerarIA(){
       tobMcPruneAjustes();
       return n;
     };
+    tobMcState.ajustes = {};
     let puestos = aplicar(parsed);
     if(!puestos){
       // Diagnòstic ràpid per a Sergio quan veu aquest error:
@@ -13848,11 +13880,7 @@ async function tobMcGenerarIA(){
         { role:'assistant', content:raw }
       ];
       // Pasadas configurables des de ⚙ IA (default 3, mínim 0 = sense correcció).
-      const MAX_PASADAS = Math.max(0, Math.min(3,
-        parseInt(cfg.maxPasadas, 10) != null && isFinite(parseInt(cfg.maxPasadas, 10))
-          ? parseInt(cfg.maxPasadas, 10)
-          : 3
-      ));
+      const MAX_PASADAS = 0; // La IA no corrige cantidades; los ajustes de ración son manuales.
       let passada = 0;
       let fueras = detectarFueras();
       while(fueras.length && passada < MAX_PASADAS){

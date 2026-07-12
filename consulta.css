@@ -876,6 +876,10 @@ details[open] > .tob-quest-summary::before{transform:rotate(90deg);}
 .tob-hb-hist-row.current .tob-hb-hist-main b{color:var(--acc);}
 .tob-hb-hist-meta{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--mute);margin-top:2px;}
 .tob-hb-hist-empty{font-family:'DM Mono',monospace;font-size:.78rem;color:var(--mute);padding:10px 0;text-align:center;}
+.tob-quest-input-hint{
+  margin-top:4px;color:var(--mute2);font-size:.68rem;line-height:1.35;
+  font-family:'DM Mono',monospace;letter-spacing:.01em;
+}
 
 /* ── Llista d'ordre d'intent (fallback IA) ── */
 .tob-ai-fallback-list{

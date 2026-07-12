@@ -496,8 +496,8 @@
       <textarea class="tob-input" id="tobAiMenuRules" rows="11" spellcheck="false" style="font-family:'DM Mono',monospace;font-size:.72rem;line-height:1.5;"></textarea>
     </div>
     <div style="margin-top:12px;">
-      <label class="tob-lbl">Passades de correcció màx <span class="tob-quest-h-sub">(quants reintents fa la IA si el menú no quadra — més passades = millor qualitat però més requests a l'API)</span></label>
-      <select class="tob-select" id="tobAiMaxPasadas" style="max-width:280px;">
+      <label class="tob-lbl" style="display:none;">Passades de correcció màx <span class="tob-quest-h-sub">(desactivat: la IA no pot tocar racions)</span></label>
+      <select class="tob-select" id="tobAiMaxPasadas" style="max-width:280px;display:none;">
         <option value="0">0 — sin corrección (1 request/menú)</option>
         <option value="1">1 — una passada (1-2 requests/menú)</option>
         <option value="2">2 — dues passades (1-3 requests/menú)</option>
@@ -1000,18 +1000,22 @@
             <div class="tob-quest-chip-block">
               <label class="tob-lbl">Aliments ✗ (no menjar)</label>
               <div class="tob-quest-chips" id="qChipsAlimX"></div>
-              <input class="tob-input" id="qAlimXNew" placeholder="prohibits o que no li agraden..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alimX',event)">
+              <input class="tob-input" id="qAlimXNew" list="qFoodCatalogOptions" placeholder="buscar en tu catálogo y Enter..." style="margin-top:6px;" onfocus="tobQuestRefreshFoodOptions()" oninput="tobQuestRefreshFoodOptions()" onkeydown="tobQuestAddListChip('alimX',event)">
+              <div class="tob-quest-input-hint">Mejor seleccionar nombres del catálogo para que la IA no interprete de más.</div>
             </div>
             <div class="tob-quest-chip-block">
               <label class="tob-lbl">Aliments ✓ (preferits)</label>
               <div class="tob-quest-chips" id="qChipsAlimOk"></div>
-              <input class="tob-input" id="qAlimOkNew" placeholder="lo que sí come con gusto..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('alimOk',event)">
+              <input class="tob-input" id="qAlimOkNew" list="qFoodCatalogOptions" placeholder="buscar en tu catálogo y Enter..." style="margin-top:6px;" onfocus="tobQuestRefreshFoodOptions()" oninput="tobQuestRefreshFoodOptions()" onkeydown="tobQuestAddListChip('alimOk',event)">
+              <div class="tob-quest-input-hint">Prioriza alimentos o recetas reales de la base para reducir dudas.</div>
             </div>
           </div>
           <div class="tob-quest-chip-block">
             <label class="tob-lbl">Aliments que li senten malament</label>
             <div class="tob-quest-chips" id="qChipsSentenMal"></div>
-            <input class="tob-input" id="qSentenMalNew" placeholder="ex: ceba crua, llegums..." style="margin-top:6px;" onkeydown="tobQuestAddListChip('sentenMal',event)">
+            <input class="tob-input" id="qSentenMalNew" list="qFoodCatalogOptions" placeholder="buscar en tu catálogo y Enter..." style="margin-top:6px;" onfocus="tobQuestRefreshFoodOptions()" oninput="tobQuestRefreshFoodOptions()" onkeydown="tobQuestAddListChip('sentenMal',event)">
+            <div class="tob-quest-input-hint">Si existe en el catálogo, usa ese nombre exacto.</div>
+            <datalist id="qFoodCatalogOptions"></datalist>
           </div>
         </div>
 
