@@ -854,6 +854,16 @@
   <!-- KPIs -->
   <div class="d-kpi-grid" id="dKpis"></div>
 
+  <!-- Proyección limpia -->
+  <div class="d-card" id="dProjectionCard" style="margin:12px 20px 0;display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <div class="d-card-title" style="margin:0">Proyección limpia de cuenta</div>
+      <span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;text-transform:uppercase;letter-spacing:.8px">sin 0DTE · sin ROST/SNOW · sin abiertas</span>
+    </div>
+    <div id="dProjectionGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px"></div>
+    <div id="dProjectionNote" style="font-family:'Courier New',monospace;font-size:8px;color:#3a5468;line-height:1.45;margin-top:9px"></div>
+  </div>
+
   <!-- Row 1: P&L mensual | ROI cuenta acumulado -->
   <div class="d-grid-2" style="align-items:stretch">
     <div class="d-card" style="display:flex;flex-direction:column">
@@ -3792,6 +3802,117 @@ function getDashData(){
   return { data, byMonth, months, avg, groupMode };
 }
 
+function _dashUsd(v){
+  if(v==null || !Number.isFinite(v)) return '—';
+  const sign = v >= 0 ? '+' : '-';
+  return sign + '$' + Math.abs(v).toLocaleString('es-ES',{maximumFractionDigits:0});
+}
+function _dashPct(v){
+  if(v==null || !Number.isFinite(v)) return '—';
+  return (v>=0?'+':'') + v.toFixed(1) + '%';
+}
+function _dashLastSnap(){
+  if(!SNAPS || !SNAPS.length) return null;
+  return [...SNAPS].filter(s=>s && s.val).sort((a,b)=>(a.date||'').localeCompare(b.date||'')).pop() || null;
+}
+function _dashOpenUnrealizedUsd(a){
+  if(!a) return null;
+  const strat = a.strat || '';
+  const pCur = a.priceCurrent;
+  if(strat === 'ACC'){
+    if(a.precioCompra == null || pCur == null) return null;
+    const qty = a.contracts || 1;
+    return (parseFloat(pCur) - parseFloat(a.precioCompra)) * qty;
+  }
+  if(pCur == null || !a.pCredito) return null;
+  const ctr = a.contracts || 1;
+  const useAbs = a.entryDirection === 'debit' || a.entryDirection === 'credit';
+  const isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a) : false;
+  const pc = useAbs ? Math.abs(premiumStoredToPoints(a.pCredito, ctr)) : premiumStoredToPoints(a.pCredito, ctr);
+  const pd = Math.abs(premiumStoredToPoints(a.pDebito, ctr));
+  const cur = useAbs ? Math.abs(parseFloat(pCur) || 0) : (parseFloat(pCur) || 0);
+  let pnl;
+  if(useAbs){
+    const primaAp = isLong ? (pc + pd) : (pc - pd);
+    const diff = isLong ? (cur - primaAp) : (primaAp - cur);
+    pnl = diff * 100 * ctr - (a.comi || 0);
+  } else {
+    pnl = (pc - pd - cur) * 100 * ctr - (a.comi || 0);
+  }
+  return Number.isFinite(pnl) ? pnl : null;
+}
+function _dashCleanProjectionRows(){
+  const excludedTickers = new Set(['ROST','SNOW']);
+  const isExcluded = (e) => {
+    const tk = String(e.activo || '').toUpperCase().trim();
+    const sg = String(e.strat || e.stratGroup || '').toUpperCase().trim();
+    if(excludedTickers.has(tk)) return true;
+    if(sg === '0DTE') return true;
+    if(e.dteIni === 0) return true;
+    return false;
+  };
+  const raw = HIST.map(computeEntry).filter(e => e.cierre && !isExcluded(e));
+  return groupByID(raw).filter(e => e.cierre && !isExcluded(e));
+}
+function renderCleanProjection(){
+  const card = document.getElementById('dProjectionCard');
+  const grid = document.getElementById('dProjectionGrid');
+  const note = document.getElementById('dProjectionNote');
+  if(!card || !grid) return;
+  const clean = _dashCleanProjectionRows();
+  const snap = _dashLastSnap();
+  const openPnls = (typeof ACTIVAS !== 'undefined' ? ACTIVAS : []).map(_dashOpenUnrealizedUsd).filter(v=>v!=null);
+  const openPnl = openPnls.reduce((s,v)=>s+v,0);
+  const nav = snap ? snap.val : null;
+  const navSinAbiertas = nav != null ? nav - openPnl : null;
+
+  if(!clean.length && nav == null){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  const byMonth = {};
+  clean.forEach(e=>{
+    const m = (e.cierre || '').slice(0,7);
+    if(!m) return;
+    if(!byMonth[m]) byMonth[m] = 0;
+    byMonth[m] += (e.totalNeto || 0) * 100;
+  });
+  const months = Object.keys(byMonth).sort();
+  const vals = months.map(m=>byMonth[m]);
+  const avgAll = vals.length ? vals.reduce((s,v)=>s+v,0) / vals.length : null;
+  const recentVals = vals.slice(-3);
+  const avgRecent = recentVals.length ? recentVals.reduce((s,v)=>s+v,0) / recentVals.length : avgAll;
+  const totalClean = clean.reduce((s,e)=>s+(e.totalNeto||0),0) * 100;
+  const stats = computeStats(clean);
+  const wr = stats ? stats.id.wr * 100 : null;
+  const pf = stats ? stats.id.pf : null;
+  const baseNav = navSinAbiertas != null ? navSinAbiertas : nav;
+  const proj3 = baseNav != null && avgRecent != null ? baseNav + avgRecent * 3 : null;
+  const proj6 = baseNav != null && avgRecent != null ? baseNav + avgRecent * 6 : null;
+  const proj12 = baseNav != null && avgRecent != null ? baseNav + avgRecent * 12 : null;
+  const rhythmPct = baseNav && avgRecent != null ? (avgRecent / baseNav * 100) : null;
+  const color = v => v == null ? 'db' : (v >= 0 ? 'dg' : 'dr');
+  const openColor = openPnl >= 0 ? 'dg' : 'dr';
+  const navDiffTxt = openPnl === 0 ? 'sin impacto abierto' : (openPnl > 0 ? 'abiertas suman al NAV' : 'abiertas restan al NAV');
+
+  grid.innerHTML = `
+    <div class="d-kpi"><div class="d-kpi-lbl">NAV sin abiertas</div><div class="d-kpi-val db">${navSinAbiertas!=null?'$'+navSinAbiertas.toLocaleString('es-ES',{maximumFractionDigits:0}):'Sin snap'}</div><div class="d-kpi-sub">NAV actual - P&L latente</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">P&L abierto ahora</div><div class="d-kpi-val ${openColor}">${_dashUsd(openPnl)}</div><div class="d-kpi-sub">${openPnls.length} posiciones con precio</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Ritmo limpio reciente</div><div class="d-kpi-val ${color(avgRecent)}">${_dashUsd(avgRecent)}</div><div class="d-kpi-sub">${_dashPct(rhythmPct)} mensual vs NAV limpio</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Media limpia histórica</div><div class="d-kpi-val ${color(avgAll)}">${_dashUsd(avgAll)}</div><div class="d-kpi-sub">${months.length} meses · ${clean.length} IDs</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Calidad limpia</div><div class="d-kpi-val ${wr!=null && wr>=55?'dg':wr!=null&&wr>=45?'da':'dr'}">${wr!=null?wr.toFixed(1)+'%':'—'}</div><div class="d-kpi-sub">WR ID · PF ${pf!=null?pf.toFixed(2):'—'}</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">P&L limpio total</div><div class="d-kpi-val ${color(totalClean)}">${_dashUsd(totalClean)}</div><div class="d-kpi-sub">cerradas filtradas</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Proy. 3 meses</div><div class="d-kpi-val db">${proj3!=null?'$'+proj3.toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</div><div class="d-kpi-sub">desde NAV limpio</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Proy. 6 meses</div><div class="d-kpi-val db">${proj6!=null?'$'+proj6.toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</div><div class="d-kpi-sub">ritmo últimos 3 meses</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Proy. 12 meses</div><div class="d-kpi-val db">${proj12!=null?'$'+proj12.toLocaleString('es-ES',{maximumFractionDigits:0}):'—'}</div><div class="d-kpi-sub">sin reinvertir/compuesto</div></div>
+  `;
+  if(note){
+    note.textContent = 'Filtro aplicado: se excluyen 0DTE, ROST, SNOW y posiciones abiertas. La proyección usa el ritmo medio de los últimos 3 meses limpios; si no hay 3 meses, usa los disponibles. ' + navDiffTxt + '.';
+  }
+}
+
 // ── KPIs ──────────────────────────────────────────────────────
 function renderKpis(d){
   const { data, avg } = d;
@@ -3936,6 +4057,7 @@ function renderDash(){
   const d = getDashData();
   const { data:allData, byMonth, months, avg } = d;
   renderKpis(d);
+  renderCleanProjection();
   renderSnapList();
   if(!months.length) return;
 
