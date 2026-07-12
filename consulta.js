@@ -10893,28 +10893,31 @@ function tobMcRenderGrid(){
   grid.innerHTML = html;
   tobHydrateFotos('#tobMcGrid');
 
-  // Habilitar drag&drop en cada celda
+  // Habilitar drag&drop en cada celda.
+  const syncCellState = (cellEl) => {
+    if(!cellEl || !cellEl.classList || !cellEl.classList.contains('tob-mc-cell')) return;
+    const day = +cellEl.dataset.day;
+    const meal = cellEl.dataset.meal;
+    if(!Number.isInteger(day) || !meal) return;
+    if(!tobMcState.data[sem]) tobMcState.data[sem] = {};
+    if(!tobMcState.data[sem][day]) tobMcState.data[sem][day] = {};
+    tobMcState.data[sem][day][meal] = Array.from(cellEl.children)
+      .filter(el => el.classList && (
+        el.classList.contains('tob-mc-cell-item') ||
+        el.classList.contains('tob-mc-side-item')
+      ))
+      .map(el => el.dataset.rec)
+      .filter(Boolean);
+  };
+  const scheduleDndRender = () => {
+    clearTimeout(_tobMcDndRenderTimer);
+    _tobMcDndRenderTimer = setTimeout(() => {
+      _tobMcDndRenderTimer = null;
+      tobMcRenderGrid();
+      tobMcUpdateAllTotals();
+    }, 0);
+  };
   if(typeof Sortable !== 'undefined'){
-    const syncCellState = (cellEl) => {
-      if(!cellEl || !cellEl.classList || !cellEl.classList.contains('tob-mc-cell')) return;
-      const day = +cellEl.dataset.day;
-      const meal = cellEl.dataset.meal;
-      if(!Number.isInteger(day) || !meal) return;
-      if(!tobMcState.data[sem]) tobMcState.data[sem] = {};
-      if(!tobMcState.data[sem][day]) tobMcState.data[sem][day] = {};
-      tobMcState.data[sem][day][meal] = Array.from(cellEl.children)
-        .filter(el => el.classList && el.classList.contains('tob-mc-cell-item'))
-        .map(el => el.dataset.rec)
-        .filter(Boolean);
-    };
-    const scheduleDndRender = () => {
-      clearTimeout(_tobMcDndRenderTimer);
-      _tobMcDndRenderTimer = setTimeout(() => {
-        _tobMcDndRenderTimer = null;
-        tobMcRenderGrid();
-        tobMcUpdateAllTotals();
-      }, 0);
-    };
     grid.querySelectorAll('.tob-mc-cell').forEach(cell => {
       new Sortable(cell, {
         group: { name: 'menu', pull: true, put: true },
@@ -10923,6 +10926,7 @@ function tobMcRenderGrid(){
         filter: '.tob-mc-cell-sum',   // el resumen de la celda no se arrastra
         draggable: '.tob-mc-cell-item',
         onEnd: (ev) => {
+          if(ev.from && ev.from.id === 'tobMcSidePanel') return;
           syncCellState(ev.from);
           syncCellState(ev.to);
           scheduleDndRender();
@@ -10954,6 +10958,56 @@ function tobMcRenderGrid(){
           }
           scheduleDndRender();
         }
+      });
+    });
+  } else {
+    grid.querySelectorAll('.tob-mc-cell-item').forEach((item, ix) => {
+      item.draggable = true;
+      item.addEventListener('dragstart', ev => {
+        const cell = item.closest('.tob-mc-cell');
+        if(!cell || !ev.dataTransfer) return;
+        ev.dataTransfer.effectAllowed = 'move';
+        ev.dataTransfer.setData('application/x-tob-rec', item.dataset.rec || '');
+        ev.dataTransfer.setData('application/x-tob-from', JSON.stringify({
+          day: +cell.dataset.day,
+          meal: cell.dataset.meal,
+          ix
+        }));
+      });
+    });
+    grid.querySelectorAll('.tob-mc-cell').forEach(cell => {
+      cell.addEventListener('dragover', ev => {
+        if(ev.dataTransfer){
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = 'move';
+        }
+      });
+      cell.addEventListener('drop', ev => {
+        if(!ev.dataTransfer) return;
+        const recId = ev.dataTransfer.getData('application/x-tob-rec') || ev.dataTransfer.getData('text/plain');
+        if(!recId) return;
+        ev.preventDefault();
+        const day = +cell.dataset.day;
+        const meal = cell.dataset.meal;
+        if(!Number.isInteger(day) || !meal) return;
+        if(!tobMcState.data[sem]) tobMcState.data[sem] = {};
+        if(!tobMcState.data[sem][day]) tobMcState.data[sem][day] = {};
+        if(!Array.isArray(tobMcState.data[sem][day][meal])) tobMcState.data[sem][day][meal] = [];
+        let from = null;
+        try { from = JSON.parse(ev.dataTransfer.getData('application/x-tob-from') || 'null'); } catch(e){}
+        if(from && Number.isInteger(from.day) && from.meal){
+          const src = tobMcState.data[sem]?.[from.day]?.[from.meal];
+          if(Array.isArray(src)) src.splice(from.ix, 1);
+        }
+        const items = Array.from(cell.querySelectorAll('.tob-mc-cell-item'));
+        let insertAt = items.length;
+        for(let i = 0; i < items.length; i++){
+          const rect = items[i].getBoundingClientRect();
+          if(ev.clientY < rect.top + rect.height / 2){ insertAt = i; break; }
+        }
+        if(from && from.day === day && from.meal === meal && from.ix < insertAt) insertAt--;
+        tobMcState.data[sem][day][meal].splice(insertAt, 0, recId);
+        scheduleDndRender();
       });
     });
   }
@@ -11183,6 +11237,16 @@ function tobMcRenderSidePanel(){
       animation: 150,
       ghostClass: 'tob-sortable-ghost',
       draggable: '.tob-mc-side-item'   // el separador no se arrastra
+    });
+  } else {
+    panel.querySelectorAll('.tob-mc-side-item').forEach(item => {
+      item.draggable = true;
+      item.addEventListener('dragstart', ev => {
+        if(!ev.dataTransfer) return;
+        ev.dataTransfer.effectAllowed = 'copy';
+        ev.dataTransfer.setData('application/x-tob-rec', item.dataset.rec || '');
+        ev.dataTransfer.setData('text/plain', item.dataset.rec || '');
+      });
     });
   }
 }
