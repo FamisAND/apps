@@ -8238,7 +8238,7 @@ async function tobRecDownloadPdf(id){
     const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
     const nom = ing ? ing.nombre : (it._nombreFallback || 'Ingrediente');
     const g = (+it.gramos || 0) / rac;
-    return `<li><span>${esc(nom)}</span><b>${g ? Math.round(g) + ' g' : ''}</b></li>`;
+    return `<li><span>${esc(nom)}</span><b>${esc(tobQtyUnitLabel(nom, g))}</b></li>`;
   }).join('');
   const pasosRaw = Array.isArray(r.instrucciones)
     ? r.instrucciones
@@ -8622,6 +8622,60 @@ function tobIngDefaultGrams(ing){
   return 30;
 }
 
+function tobQtyGramLabel(grams){
+  const g = +grams || 0;
+  if(g <= 0) return '';
+  if(g >= 1000) return (g / 1000).toFixed(g >= 10000 ? 1 : 2).replace('.', ',') + ' kg';
+  return Math.round(g) + ' g';
+}
+
+function tobIngUnitMeta(nombre){
+  const n = tobIngNormName(nombre);
+  if(!n) return null;
+  const has = (...ws) => ws.some(w => n.includes(w));
+  if(/\b(huevo|huevos|ou|ous)\b/.test(n)) return { g:60, one:'huevo', many:'huevos', exact:true };
+  if(has('atun', 'tonyina', 'bonito', 'caballa', 'sardina') && has('conserva', 'lata')) return { g:80, one:'lata', many:'latas' };
+  if(/\b(yogur|iogurt|skyr)\b/.test(n)) return { g:125, one:'yogur', many:'yogures' };
+  if(has('tortita', 'tortilla wrap', 'wrap')) return { g:60, one:'unidad', many:'unidades' };
+  if(has('pan de molde', 'pa de motlle', 'tostada', 'torrada', 'biscote')) return { g:30, one:'rebanada', many:'rebanadas' };
+  if(has('calabacin', 'carbasso', 'zucchini')) return { g:250, one:'calabacin', many:'calabacines' };
+  if(has('berenjena', 'alberginia')) return { g:300, one:'berenjena', many:'berenjenas' };
+  if(has('pimiento', 'pebrot')) return { g:150, one:'pimiento', many:'pimientos' };
+  if(has('tomate', 'tomaquet')) return { g:150, one:'tomate', many:'tomates' };
+  if(has('cebolla', 'ceba')) return { g:150, one:'cebolla', many:'cebollas' };
+  if(has('zanahoria', 'pastanaga')) return { g:80, one:'zanahoria', many:'zanahorias' };
+  if(has('pepino', 'cogombre')) return { g:250, one:'pepino', many:'pepinos' };
+  if(has('lechuga', 'enciam')) return { g:300, one:'lechuga', many:'lechugas' };
+  if(has('brocoli', 'broquil')) return { g:300, one:'brocoli', many:'brocolis' };
+  if(has('coliflor')) return { g:700, one:'coliflor', many:'coliflores' };
+  if(has('patata')) return { g:180, one:'patata', many:'patatas' };
+  if(has('boniato', 'moniato')) return { g:220, one:'boniato', many:'boniatos' };
+  if(has('manzana', 'poma')) return { g:180, one:'manzana', many:'manzanas' };
+  if(has('platano', 'banana')) return { g:120, one:'platano', many:'platanos' };
+  if(has('naranja', 'taronja')) return { g:180, one:'naranja', many:'naranjas' };
+  if(/\bpera\b/.test(n)) return { g:170, one:'pera', many:'peras' };
+  if(/\bkiwi\b/.test(n)) return { g:75, one:'kiwi', many:'kiwis' };
+  if(has('aguacate', 'alvocat')) return { g:150, one:'aguacate', many:'aguacates' };
+  if(has('limon', 'llimona')) return { g:100, one:'limon', many:'limones' };
+  return null;
+}
+
+function tobQtyUnitLabel(nombre, grams){
+  const g = +grams || 0;
+  const gramsTxt = tobQtyGramLabel(g);
+  if(!gramsTxt) return '';
+  const meta = tobIngUnitMeta(nombre);
+  if(!meta || !meta.g) return gramsTxt;
+  const raw = g / meta.g;
+  if(raw < 0.25) return gramsTxt;
+  const nearest = Math.round(raw);
+  const rounded = Math.abs(raw - nearest) <= 0.12 ? nearest : Math.round(raw * 10) / 10;
+  const unit = Math.abs(rounded - 1) < 0.001 ? meta.one : meta.many;
+  const countTxt = String(rounded).replace('.', ',');
+  const approx = meta.exact || Math.abs(raw - rounded) <= 0.12 ? '' : ' aprox.';
+  return countTxt + ' ' + unit + approx + ' (' + gramsTxt + ')';
+}
+
 function tobRecSuggestIngGrams(){
   const picker = document.getElementById('tobRecIngPicker');
   const gramsEl = document.getElementById('tobRecIngGramos');
@@ -8641,7 +8695,7 @@ function tobRecRenderIngSuggestions(raw){
   box.innerHTML = matches.map(ing => {
     const g = tobIngDefaultGrams(ing);
     return `<div class="opt" onclick="tobRecPickIngSuggestion('${tobEsc(ing.id)}')">
-      <span>${tobEsc(ing.nombre)}</span><span class="g">${g} g</span>
+      <span>${tobEsc(ing.nombre)}</span><span class="g">${tobEsc(tobQtyUnitLabel(ing.nombre, g))}</span>
     </div>`;
   }).join('');
   box.style.display = 'block';
@@ -8684,8 +8738,9 @@ function tobRecRenderIngredientesEdit(items){
     const macrosTxt = ing
       ? `${kcal} kcal · ${((+ing.proteina||0)*f).toFixed(0)}p / ${((+ing.hc||0)*f).toFixed(0)}h / ${((+ing.grasa||0)*f).toFixed(0)}g`
       : 'sin macros';
+    const qtyTxt = tobQtyUnitLabel(nombre, +it.gramos || 0);
     return `<div class="tob-rec-ing-row">
-      <div class="name">${tobEsc(nombre)}</div>
+      <div class="name">${tobEsc(nombre)}${qtyTxt ? `<div style="color:var(--mute2);font-size:.68rem;margin-top:2px;">${tobEsc(qtyTxt)}</div>` : ''}</div>
       <input class="tob-input gr" type="number" min="0" step="1" value="${it.gramos != null ? it.gramos : ''}" oninput="tobRecUpdateGramos(${ix}, this.value)" style="width:100%;padding:3px 6px;font-size:.7rem;text-align:right;">
       <div class="macros">${macrosTxt}</div>
       <button class="x" type="button" onclick="tobRecRemoveIngrediente(${ix})" title="Eliminar">×</button>
@@ -9627,7 +9682,8 @@ function tobMcAjusteResumen(aj){
   if(aj.ing && Object.keys(aj.ing).length){
     Object.keys(aj.ing).forEach(ingId => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ingId);
-      parts.push((ing ? ing.nombre : 'ingredient') + ' ' + Math.round(aj.ing[ingId]) + ' g');
+      const nom = ing ? ing.nombre : 'ingredient';
+      parts.push(nom + ' ' + tobQtyUnitLabel(nom, aj.ing[ingId]));
     });
   }
   if(Array.isArray(aj.ingRemoved) && aj.ingRemoved.length){
@@ -9639,7 +9695,8 @@ function tobMcAjusteResumen(aj){
   if(Array.isArray(aj.ingExtras) && aj.ingExtras.length){
     aj.ingExtras.forEach(ex => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
-      parts.push('+ ' + (ing ? ing.nombre : 'ingredient') + ' ' + Math.round(ex.gramos||0) + ' g');
+      const nom = ing ? ing.nombre : 'ingredient';
+      parts.push('+ ' + nom + ' ' + tobQtyUnitLabel(nom, ex.gramos||0));
     });
   }
   if(aj.instruccionesOverride && String(aj.instruccionesOverride).trim()){
@@ -9972,7 +10029,7 @@ function tobMcOpenAjuste(recId){
       const cur = (aj.ing && aj.ing[it.ingId] != null) ? Math.round(aj.ing[it.ingId]/rac) : '';
       return `<div class="tob-mc-aj-ing" data-row-ingid="${it.ingId}" style="${isRem?'opacity:.4;text-decoration:line-through;':''}">
         <span class="aj-ing-nm">${tobEsc(nom)}</span>
-        <span class="aj-ing-base">base ${Math.round(baseG/rac)} g</span>
+        <span class="aj-ing-base">base ${tobEsc(tobQtyUnitLabel(nom, baseG/rac))}</span>
         <input type="number" class="tob-input" data-ingid="${it.ingId}" data-base="${baseG}"
                placeholder="${Math.round(baseG/rac)}" value="${cur}" min="0" style="width:78px;${isRem?'pointer-events:none;':''}"
                oninput="tobMcAjustePreview()">
@@ -10038,7 +10095,7 @@ function tobMcAjusteSyncExtraPicker(){
   const gramsEl = document.getElementById('tobMcAjusteExtraGrams');
   if(!picker || !gramsEl) return;
   const ing = tobIngFindByText(picker.value);
-  if(ing && !gramsEl.value) gramsEl.placeholder = `${tobIngDefaultGrams(ing)} g`;
+  if(ing && !gramsEl.value) gramsEl.placeholder = tobQtyUnitLabel(ing.nombre, tobIngDefaultGrams(ing));
   tobMcAjusteRenderExtraSuggestions(picker.value);
 }
 
@@ -10052,7 +10109,7 @@ function tobMcAjusteRenderExtraSuggestions(raw){
   box.innerHTML = matches.map(ing => {
     const g = tobIngDefaultGrams(ing);
     return `<div class="opt" onclick="tobMcAjustePickExtraSuggestion('${tobEsc(ing.id)}')">
-      <span>${tobEsc(ing.nombre)}</span><span class="g">${g} g</span>
+      <span>${tobEsc(ing.nombre)}</span><span class="g">${tobEsc(tobQtyUnitLabel(ing.nombre, g))}</span>
     </div>`;
   }).join('');
   box.style.display = 'block';
@@ -11890,7 +11947,7 @@ async function tobMenuPdf(cliId, menuId){
     secsAmbDades.forEach(sec => {
       const items = porSeccion[sec].sort((a,b) => a.nom.localeCompare(b.nom,'ca',{sensitivity:'base'}));
       compraHtml += '<h4 class="mp-compra-sec">' + esc(tobMenuSeccionL(sec, L)) + '</h4><ul class="mp-compra">' +
-        items.map(c => `<li><span>${esc(c.nom)}</span><span class="mp-g">${c.g >= 1000 ? (c.g/1000).toFixed(2)+' kg' : Math.round(c.g)+' g'}</span></li>`).join('') +
+        items.map(c => `<li><span>${esc(c.nom)}</span><span class="mp-g">${esc(tobQtyUnitLabel(c.nom, c.g))}</span></li>`).join('') +
         '</ul>';
     });
     compraHtml += '</div>';
@@ -11915,14 +11972,14 @@ async function tobMenuPdf(cliId, menuId){
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
       const nom = ing ? ingNomL(ing) : (it._nombreFallback || '—');
       const g = tobMcEffGramos(it, aj) / racR;
-      return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
+      return `<li>${esc(nom)}${g ? ` · ${esc(tobQtyUnitLabel(nom, g))}` : ''}</li>`;
     });
     // Ingredients afegits només per a aquest menú
     const extraIngs = (aj && Array.isArray(aj.ingExtras) ? aj.ingExtras : []).map(ex => {
       const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === ex.ingId);
       const nom = ing ? ingNomL(ing) : (ex._nombreFallback || '—');
       const g = (+ex.gramos||0) / racR;
-      return `<li>${esc(nom)}${g ? ` · ${Math.round(g)} g` : ''}</li>`;
+      return `<li>${esc(nom)}${g ? ` · ${esc(tobQtyUnitLabel(nom, g))}` : ''}</li>`;
     });
     const ings = [...baseIngs, ...extraIngs].join('');
     // Pasos: si hi ha override manual, fer-lo servir. Si no, els originals
