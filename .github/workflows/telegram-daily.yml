@@ -16,6 +16,10 @@ on:
         required: false
         default: 'false'
 
+concurrency:
+  group: telegram-daily-summary
+  cancel-in-progress: false
+
 jobs:
   send:
     runs-on: ubuntu-latest

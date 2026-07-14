@@ -116,6 +116,21 @@ async function main() {
 
   const txt = renderMessage(ctx, sections, urgent, notif);
 
+  // Bloqueo anti-duplicados: primero marcamos el día como enviado y solo
+  // después mandamos Telegram. Antes se hacía al revés; si GitHub rechazaba
+  // el guardado por conflicto de SHA, el siguiente run dentro de la ventana
+  // volvía a enviar otro mensaje.
+  let lockSha = sha;
+  try {
+    notif._lastSent = madridDateStr;
+    notif._lastSentAt = now.toISOString();
+    lockSha = await saveAppData(PAT, data, sha, `chore(__notif): lock daily telegram ${madridDateStr}`);
+    console.log('✓ Bloqueo diario guardado:', madridDateStr);
+  } catch(e){
+    console.error('No pude guardar el bloqueo diario. No envío para evitar duplicado:', e.message);
+    process.exit(1);
+  }
+
   const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -128,15 +143,15 @@ async function main() {
   if (!d.ok) { console.error('Telegram error:', d); process.exit(1); }
   console.log('✓ Enviado. message_id:', d.result.message_id);
 
-  // Persistir __notif._lastSent para no reenviar hoy si el cron dispara otra
-  // vez dentro de la ventana. Si falla la escritura no es crítico — el
-  // siguiente run dentro de la ventana volverá a enviar y duplicará.
+  // Guardado informativo post-envío. Si falla no pasa nada: el bloqueo
+  // importante ya se escribió antes de enviar el mensaje.
   try {
-    notif._lastSent = madridDateStr;
-    await saveAppData(PAT, data, sha, `chore(__notif): _lastSent=${madridDateStr}`);
-    console.log('✓ __notif._lastSent guardado:', madridDateStr);
+    notif._lastMessageId = d.result.message_id;
+    notif._lastSentOkAt = new Date().toISOString();
+    await saveAppData(PAT, data, lockSha, `chore(__notif): telegram sent ${madridDateStr}`);
+    console.log('✓ __notif._lastMessageId guardado:', d.result.message_id);
   } catch(e){
-    console.warn('No pude guardar _lastSent (no bloquea):', e.message);
+    console.warn('No pude guardar metadata post-envío (no bloquea):', e.message);
   }
 }
 
