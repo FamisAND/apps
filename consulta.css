@@ -632,11 +632,12 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .mc-it-foto.icono{ font-size:1.45rem; line-height:1; }
 .tob-mc-side-item .thumb.icono{ font-size:1.3rem; line-height:1; }
 .tob-mc-side-item .thumb.mini.icono{ font-size:1rem; }
-.tob-mc-cell-item .mc-it-body{flex:1;min-width:0;padding-right:15px;}
+.tob-mc-cell-item .mc-it-body{flex:1;min-width:0;padding-right:20px;}
 .tob-mc-cell-item .mc-it-nm{font-size:.72rem;font-weight:700;line-height:1.22;color:var(--text);}
 .tob-mc-cell-item .mc-it-mac{font-size:.62rem;color:var(--acc2);margin-top:2px;font-weight:700;}
 .tob-mc-cell-item .x,
-.tob-mc-cell-item .swap{
+.tob-mc-cell-item .swap,
+.tob-mc-cell-item .copy{
   position:absolute;right:3px;background:transparent;border:none;cursor:pointer;
   width:17px;height:17px;display:flex;align-items:center;justify-content:center;
   border-radius:2px;line-height:1;padding:0;
@@ -645,6 +646,8 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-mc-cell-item .x:hover{background:#7a2424;color:#fff;}
 .tob-mc-cell-item .swap{top:22px;font-size:.66rem;opacity:.5;}
 .tob-mc-cell-item .swap:hover{opacity:1;background:var(--card);}
+.tob-mc-cell-item .copy{top:41px;font-size:.7rem;opacity:.55;color:var(--acc);}
+.tob-mc-cell-item .copy:hover{opacity:1;background:rgba(245,192,0,.12);}
 /* Resumen de macros de la celda (este àpat, este día) */
 .tob-mc-cell-sum{
   margin-top:auto;font-size:.62rem;color:var(--mute);

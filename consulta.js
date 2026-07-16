@@ -10921,6 +10921,7 @@ function tobMcRenderGrid(){
       const nomEff = tobMcRecNombre(r, aj);
       return `<div class="tob-mc-cell-item${ajustada?' ajustada':''}${stale?' stale':''}" data-rec="${recId}" onclick="tobMcOpenAjuste('${recId}')" title="${tobEsc(nomEff)} · ${kcalPer} kcal · ${protPer}g prot — clica per personalitzar">
         <button class="swap" onclick="event.stopPropagation();tobMcOpenSwap(${d},'${comida.id}',${ix})" title="Canviar per una alternativa">🔄</button>
+        <button class="copy" onclick="event.stopPropagation();" title="Arrastra desde aqui para duplicar esta receta">⧉</button>
         <button class="x" onclick="event.stopPropagation();tobMcRemoveItem(${d},'${comida.id}',${ix})" title="Eliminar">×</button>
         ${staleBadge}
         <div class="mc-it-foto placeholder icono" data-foto-rec="${recId}">${tobFoodEmoji(nomEff)}</div>
@@ -11011,17 +11012,47 @@ function tobMcRenderGrid(){
     }, 0);
   };
   if(typeof Sortable !== 'undefined'){
+    grid.querySelectorAll('.tob-mc-cell-item').forEach(item => {
+      item.addEventListener('pointerdown', ev => {
+        if(ev.target && ev.target.closest && ev.target.closest('.copy')) item.dataset.copyDrag = '1';
+        else delete item.dataset.copyDrag;
+      }, { capture:true });
+    });
     grid.querySelectorAll('.tob-mc-cell').forEach(cell => {
       new Sortable(cell, {
-        group: { name: 'menu', pull: true, put: true },
+        group: {
+          name: 'menu',
+          pull: (to, from, dragEl) => dragEl && dragEl.dataset && dragEl.dataset.copyDrag === '1' ? 'clone' : true,
+          put: true
+        },
         animation: 150,
         ghostClass: 'tob-sortable-ghost',
         filter: '.tob-mc-cell-sum',   // el resumen de la celda no se arrastra
         draggable: '.tob-mc-cell-item',
         onEnd: (ev) => {
           if(ev.from && ev.from.id === 'tobMcSidePanel') return;
+          const copyDrag = ev.item && ev.item.dataset && ev.item.dataset.copyDrag === '1';
+          if(copyDrag){
+            const recId = ev.item.dataset.rec || '';
+            const day = +(ev.to && ev.to.dataset ? ev.to.dataset.day : NaN);
+            const meal = ev.to && ev.to.dataset ? ev.to.dataset.meal : '';
+            if(recId && Number.isInteger(day) && meal){
+              if(!tobMcState.data[sem]) tobMcState.data[sem] = {};
+              if(!tobMcState.data[sem][day]) tobMcState.data[sem][day] = {};
+              if(!Array.isArray(tobMcState.data[sem][day][meal])) tobMcState.data[sem][day][meal] = [];
+              const sameCell = ev.from === ev.to;
+              let insertAt = Number.isInteger(ev.newDraggableIndex) ? ev.newDraggableIndex : ev.newIndex;
+              if(!Number.isInteger(insertAt)) insertAt = tobMcState.data[sem][day][meal].length;
+              if(sameCell && Number.isInteger(ev.oldDraggableIndex) && ev.oldDraggableIndex <= insertAt) insertAt++;
+              tobMcState.data[sem][day][meal].splice(Math.max(0, insertAt), 0, recId);
+            }
+            delete ev.item.dataset.copyDrag;
+            scheduleDndRender();
+            return;
+          }
           syncCellState(ev.from);
           syncCellState(ev.to);
+          if(ev.item && ev.item.dataset) delete ev.item.dataset.copyDrag;
           scheduleDndRender();
         },
         onAdd: (ev) => {
@@ -11047,7 +11078,8 @@ function tobMcRenderGrid(){
             }
             if(ev.item && ev.item.parentNode) ev.item.parentNode.removeChild(ev.item);
           } else {
-            syncCellState(ev.to);
+            const copyDrag = ev.item && ev.item.dataset && ev.item.dataset.copyDrag === '1';
+            if(!copyDrag) syncCellState(ev.to);
           }
           scheduleDndRender();
         }
@@ -11056,15 +11088,21 @@ function tobMcRenderGrid(){
   } else {
     grid.querySelectorAll('.tob-mc-cell-item').forEach((item, ix) => {
       item.draggable = true;
+      item.addEventListener('pointerdown', ev => {
+        if(ev.target && ev.target.closest && ev.target.closest('.copy')) item.dataset.copyDrag = '1';
+        else delete item.dataset.copyDrag;
+      }, { capture:true });
       item.addEventListener('dragstart', ev => {
         const cell = item.closest('.tob-mc-cell');
         if(!cell || !ev.dataTransfer) return;
-        ev.dataTransfer.effectAllowed = 'move';
+        const copyDrag = item.dataset.copyDrag === '1';
+        ev.dataTransfer.effectAllowed = copyDrag ? 'copyMove' : 'move';
         ev.dataTransfer.setData('application/x-tob-rec', item.dataset.rec || '');
         ev.dataTransfer.setData('application/x-tob-from', JSON.stringify({
           day: +cell.dataset.day,
           meal: cell.dataset.meal,
-          ix
+          ix,
+          copy: copyDrag
         }));
       });
     });
@@ -11072,7 +11110,8 @@ function tobMcRenderGrid(){
       cell.addEventListener('dragover', ev => {
         if(ev.dataTransfer){
           ev.preventDefault();
-          ev.dataTransfer.dropEffect = 'move';
+          const fromRaw = ev.dataTransfer.getData('application/x-tob-from') || '';
+          ev.dataTransfer.dropEffect = fromRaw.includes('"copy":true') ? 'copy' : 'move';
         }
       });
       cell.addEventListener('drop', ev => {
@@ -11088,7 +11127,7 @@ function tobMcRenderGrid(){
         if(!Array.isArray(tobMcState.data[sem][day][meal])) tobMcState.data[sem][day][meal] = [];
         let from = null;
         try { from = JSON.parse(ev.dataTransfer.getData('application/x-tob-from') || 'null'); } catch(e){}
-        if(from && Number.isInteger(from.day) && from.meal){
+        if(from && !from.copy && Number.isInteger(from.day) && from.meal){
           const src = tobMcState.data[sem]?.[from.day]?.[from.meal];
           if(Array.isArray(src)) src.splice(from.ix, 1);
         }
@@ -11098,7 +11137,7 @@ function tobMcRenderGrid(){
           const rect = items[i].getBoundingClientRect();
           if(ev.clientY < rect.top + rect.height / 2){ insertAt = i; break; }
         }
-        if(from && from.day === day && from.meal === meal && from.ix < insertAt) insertAt--;
+        if(from && !from.copy && from.day === day && from.meal === meal && from.ix < insertAt) insertAt--;
         tobMcState.data[sem][day][meal].splice(insertAt, 0, recId);
         scheduleDndRender();
       });
