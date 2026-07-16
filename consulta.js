@@ -8668,10 +8668,9 @@ function tobQtyUnitLabel(nombre, grams){
   if(!meta || !meta.g) return gramsTxt;
   const raw = g / meta.g;
   if(raw < 0.25) return gramsTxt;
-  const nearest = Math.round(raw);
-  const rounded = Math.abs(raw - nearest) <= 0.12 ? nearest : Math.round(raw * 10) / 10;
-  const unit = Math.abs(rounded - 1) < 0.001 ? meta.one : meta.many;
-  const countTxt = String(rounded).replace('.', ',');
+  const rounded = raw < 0.75 ? 0.5 : Math.max(1, Math.round(raw));
+  const unit = rounded === 1 ? meta.one : meta.many;
+  const countTxt = rounded === 0.5 ? '1/2' : String(rounded);
   const approx = meta.exact || Math.abs(raw - rounded) <= 0.12 ? '' : ' aprox.';
   return countTxt + ' ' + unit + approx + ' (' + gramsTxt + ')';
 }

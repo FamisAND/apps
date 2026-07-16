@@ -49,7 +49,7 @@
   </div>
   <div class="tob-tabs">
     <button class="tob-tab active" onclick="tobShowTab('clientes',this)">Clientes</button>
-    <button class="tob-tab" onclick="tobShowTab('plantillas',this)">Plantillas</button>
+    <button class="tob-tab" onclick="tobShowTab('plantillas',this)">Rutinas</button>
     <button class="tob-tab" onclick="tobShowTab('menus',this)">Menús</button>
     <button class="tob-tab" onclick="tobShowTab('ficha',this)" id="tobTabFicha" style="display:none">Ficha</button>
     <button class="tob-tab" onclick="tobShowTab('asignacion',this)" id="tobTabAsig" style="display:none">Rutina</button>
@@ -107,11 +107,11 @@
   </div>
 </div>
 
-<!-- ════════ PLANTILLAS ════════ -->
+<!-- ════════ RUTINAS ════════ -->
 <div id="tob-plantillas" class="tob-page">
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;">
     <div>
-      <div class="tob-h">Plantillas BIIO</div>
+      <div class="tob-h">Rutinas BIIO</div>
       <div class="tob-sub">Catálogo de mesociclos. Al asignar a cliente, se hace copia editable.</div>
     </div>
     <button class="tob-action" style="margin-left:auto;" onclick="tobOpenPlantillaModal()">+ Nueva plantilla</button>
@@ -119,7 +119,7 @@
 
   <div id="tobPlantillasGroups"></div>
   <div id="tobPlantillasEmpty" style="text-align:center;padding:30px;color:var(--mute2);display:none;">
-    Sin plantillas. Las plantillas BIIO se cargan automáticamente.
+    Sin rutinas. Las rutinas BIIO se cargan automáticamente.
   </div>
 </div>
 

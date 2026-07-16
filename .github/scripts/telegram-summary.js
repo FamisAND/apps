@@ -91,6 +91,14 @@ async function main() {
       console.log(`Ya enviado hoy (${madridDateStr}). Salida.`);
       return;
     }
+    if (notif._sendingDate === madridDateStr && notif._sendingAt) {
+      const sendingAgeMin = (now - new Date(notif._sendingAt)) / 60000;
+      if (Number.isFinite(sendingAgeMin) && sendingAgeMin < 55) {
+        console.log(`Envio ${madridDateStr} ya en curso desde hace ${sendingAgeMin.toFixed(1)} min. Salida.`);
+        return;
+      }
+      console.log(`Candado de envio antiguo (${sendingAgeMin.toFixed(1)} min). Se reintenta.`);
+    }
     // Día no incluido → no enviar.
     if (!cfgDays.includes(todayCode)) {
       console.log(`Hoy ${todayCode} no en days=[${cfgDays.join(',')}]. Salida.`);
@@ -116,48 +124,98 @@ async function main() {
 
   const txt = renderMessage(ctx, sections, urgent, notif);
 
-  // Bloqueo anti-duplicados: primero marcamos el día como enviado y solo
-  // después mandamos Telegram. Antes se hacía al revés; si GitHub rechazaba
-  // el guardado por conflicto de SHA, el siguiente run dentro de la ventana
-  // volvía a enviar otro mensaje.
   let lockSha = sha;
   try {
-    notif._lastSent = madridDateStr;
-    notif._lastSentAt = now.toISOString();
-    lockSha = await saveAppData(PAT, data, sha, `chore(__notif): lock daily telegram ${madridDateStr}`);
-    console.log('✓ Bloqueo diario guardado:', madridDateStr);
+    notif._sendingDate = madridDateStr;
+    notif._sendingAt = now.toISOString();
+    lockSha = await saveAppData(PAT, data, sha, `chore(__notif): start daily telegram ${madridDateStr}`);
+    console.log('Candado de envio guardado:', madridDateStr);
   } catch(e){
     console.error('No pude guardar el bloqueo diario. No envío para evitar duplicado:', e.message);
     process.exit(1);
   }
 
-  const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: notif.chat_id, text: txt,
-      parse_mode: 'HTML', disable_web_page_preview: true
-    })
-  });
-  const d = await res.json();
-  if (!d.ok) { console.error('Telegram error:', d); process.exit(1); }
-  console.log('✓ Enviado. message_id:', d.result.message_id);
-
-  // Guardado informativo post-envío. Si falla no pasa nada: el bloqueo
-  // importante ya se escribió antes de enviar el mensaje.
+  let sent;
   try {
-    notif._lastMessageId = d.result.message_id;
+    sent = await sendTelegramMessages(notif, txt);
+    console.log('Enviado. message_ids:', sent.map(x => x.message_id).join(', '));
+  } catch(e) {
+    console.error('Telegram error:', e.message || e);
+    try {
+      delete notif._sendingDate;
+      delete notif._sendingAt;
+      await saveAppData(PAT, data, lockSha, `chore(__notif): clear failed telegram lock ${madridDateStr}`);
+      console.log('Candado fallido limpiado para permitir reintento.');
+    } catch(e2) {
+      console.warn('No pude limpiar candado fallido:', e2.message);
+    }
+    process.exit(1);
+  }
+
+  try {
+    notif._lastSent = madridDateStr;
+    notif._lastSentAt = now.toISOString();
+    notif._lastMessageId = sent[sent.length - 1]?.message_id || null;
+    notif._lastMessageIds = sent.map(x => x.message_id);
     notif._lastSentOkAt = new Date().toISOString();
+    delete notif._sendingDate;
+    delete notif._sendingAt;
     await saveAppData(PAT, data, lockSha, `chore(__notif): telegram sent ${madridDateStr}`);
-    console.log('✓ __notif._lastMessageId guardado:', d.result.message_id);
+    console.log('__notif._lastSent guardado:', madridDateStr);
   } catch(e){
-    console.warn('No pude guardar metadata post-envío (no bloquea):', e.message);
+    console.error('Telegram se envio, pero no pude guardar _lastSent. Riesgo de duplicado:', e.message);
+    process.exit(1);
   }
 }
 
 // ───────────────────────────────────────────────────────────
 //  RENDER
 // ───────────────────────────────────────────────────────────
+function splitTelegramHtmlMessage(txt, maxLen = 3600) {
+  if (txt.length <= maxLen) return [txt];
+  const lines = txt.split('\n');
+  const chunks = [];
+  let cur = '';
+  for (const line of lines) {
+    const next = cur ? cur + '\n' + line : line;
+    if (next.length <= maxLen) {
+      cur = next;
+      continue;
+    }
+    if (cur) chunks.push(cur);
+    if (line.length <= maxLen) {
+      cur = line;
+    } else {
+      for (let i = 0; i < line.length; i += maxLen) chunks.push(line.slice(i, i + maxLen));
+      cur = '';
+    }
+  }
+  if (cur) chunks.push(cur);
+  if (chunks.length <= 1) return chunks;
+  return chunks.map((c, i) => `${c}\n\n(${i + 1}/${chunks.length})`);
+}
+
+async function sendTelegramMessages(notif, txt) {
+  const chunks = splitTelegramHtmlMessage(txt);
+  const sent = [];
+  for (const chunk of chunks) {
+    const res = await fetch(`https://api.telegram.org/bot${notif.bot_token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: notif.chat_id, text: chunk,
+        parse_mode: 'HTML', disable_web_page_preview: true
+      })
+    });
+    let d;
+    try { d = await res.json(); }
+    catch(e) { throw new Error(`Telegram HTTP ${res.status}: respuesta no JSON`); }
+    if (!d.ok) throw new Error(JSON.stringify(d).slice(0, 500));
+    sent.push(d.result);
+  }
+  return sent;
+}
+
 function renderMessage(ctx, sections, urgent, notif) {
   const out = [];
   const dt = new Intl.DateTimeFormat('es-ES', {
