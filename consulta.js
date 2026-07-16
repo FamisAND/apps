@@ -9569,7 +9569,7 @@ function tobMcMealBase(id){
 // propaga a graella, totals, PDF, recetari i llista de la compra.
 // ═════════════════════════════════════════════════════════════════
 const TOB_MC_FACTOR_MIN = 0.5;
-const TOB_MC_FACTOR_MAX = 1.8;   // permet a la IA quadrar dies molt curts sense substituir
+const TOB_MC_FACTOR_MAX = 2;     // permet duplicar ració sencera sense substituir
 const TOB_MC_ING_CAP    = 2.2;   // un ingredient no pot pujar més de +120%
 
 function tobMcClampFactor(f){
