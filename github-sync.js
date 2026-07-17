@@ -264,7 +264,6 @@ function clearCredentials(){
 const NO_LOCAL_STORAGE_SECTIONS = new Set([
   'tob_menus_catalog',   // consulta (abans training_online): viu a IndexedDB amb tobKvPut
   '__fin',               // APIs financeres (es llegeixen via fetchSection)
-  '__notif',             // config Telegram
   '__ia_config',         // config IA (clau API, model)
 ]);
 
@@ -383,7 +382,7 @@ async function updateSecuritySection(updater){
   return updated;
 }
 
-// Updater genérico para CUALQUIER sección de data.json (ej. __notif, __ia_config, etc).
+// Updater genérico para CUALQUIER sección de data.json (ej. __ia_config, __fin, etc).
 // El updater recibe la sección actual (objeto) y debe devolver la nueva (objeto entero).
 // En caso de conflicto (otra pestaña/dashboard pushó entremedias) se re-ejecuta el
 // updater contra el remoto FRESCO, de modo que nunca se revierten secciones ajenas.
@@ -405,7 +404,7 @@ async function updateSection(sectionName, updater){
   return lastUpdated;
 }
 
-// Lectura de una sección arbitraria (ej. __notif).
+// Lectura de una sección arbitraria (ej. __ia_config).
 async function fetchSection(sectionName){
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');

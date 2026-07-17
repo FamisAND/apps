@@ -12701,9 +12701,8 @@ function tobAiGetCfg(){
 }
 // ─── Sync cross-device de la config d'IA (secció '__ia_config') ──────
 // La config d'IA (proveïdor, claus API, models, regles) es desa a
-// localStorage PERÒ també a la secció '__ia_config' del data.json, igual
-// que fa la IA de notificacions amb '__notif'. Així el token funciona des
-// de qualsevol ordinador i no només des del que el va configurar.
+// localStorage PERÒ també a la secció '__ia_config' del data.json.
+// Així el token funciona des de qualsevol ordinador.
 //   · '__ia_config' és a NO_LOCAL_STORAGE_SECTIONS → pullAndApplyAll NO el
 //     bolca sol; el baixem explícitament amb tobAiSyncPull.
 const TOB_AI_SYNC_SECTION = '__ia_config';

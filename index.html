@@ -205,15 +205,6 @@
     <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;">// ⚙ CONFIGURACIÓN</div>
 
     <div style="display:flex;flex-direction:column;gap:6px;">
-      <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); openNotifModal();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
-        <span style="margin-right:10px">🔔</span>
-        <div style="flex:1">
-          <div style="font-weight:600;color:#67e8f9">Notificaciones</div>
-          <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace">Telegram daily · actualidad</div>
-        </div>
-        <span style="color:#0e7490">→</span>
-      </button>
-
       <button class="btn btn-ghost cfg-row" onclick="closeConfigMenu(); openApisModal();" style="text-align:left;padding:12px 14px;justify-content:flex-start;">
         <span style="margin-right:10px">🔌</span>
         <div style="flex:1">
@@ -270,7 +261,7 @@
     <div id="apisTabFin" style="padding:20px;">
       <div style="background:#020617;border:1px solid #06b6d4;padding:16px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
         <div style="color:#67e8f9;font-size:.78rem;line-height:1.55;">
-          API de datos financieros (opcional). Sólo se usa para mostrar precios de ETFs/acciones (SPY, QQQ, GLD…) en la sección <strong>Mercados</strong> del resumen Telegram. EUR/USD y crypto funcionan sin API. Cuantos más providers activos, más ETFs puedes recibir en cada update.
+          API de datos financieros (opcional). Se guarda por si quieres reutilizar proveedores de mercado en futuros paneles o análisis. EUR/USD y crypto funcionan sin API.
           <br><br>
           <strong>Proveedores comunes (gratis con registro):</strong>
           <span style="color:#22d3ee">finnhub.io</span> · <span style="color:#22d3ee">alphavantage.co</span> · <span style="color:#22d3ee">twelvedata.com</span> · <span style="color:#22d3ee">polygon.io</span> · <span style="color:#22d3ee">marketstack.com</span>
@@ -325,65 +316,6 @@
       </div>
     </div>
 
-  </div>
-</div>
-
-<!-- ════════ NOTIFICACIONES TELEGRAM (gated por contraseña maestra) ════════ -->
-<div id="notifModal" style="display:none;position:fixed;inset:0;background:rgba(0,3,8,.92);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);overflow-y:auto;">
-  <div style="background:#020617;border:1px solid #22d3ee;padding:24px;width:100%;max-width:560px;box-shadow:0 0 40px rgba(34,211,238,.3);clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%);">
-    <div style="font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase;font-size:.92rem;margin-bottom:18px;text-shadow:0 0 8px #22d3ee99;">// 🔔 NOTIFICACIONES TELEGRAM</div>
-
-    <!-- Pantalla 1: Password gate (login o setup) -->
-    <div id="notifGate">
-      <div id="notifGateInfo" style="color:#67e8f9;font-size:.78rem;line-height:1.55;margin-bottom:14px;"></div>
-      <div class="fld-lbl">Contraseña maestra</div>
-      <input type="password" class="inp" id="notifPwd" placeholder="••••••" autocomplete="off">
-      <div class="fld-lbl" id="notifPwd2Lbl" style="display:none">Repite la contraseña</div>
-      <input type="password" class="inp" id="notifPwd2" placeholder="••••••" autocomplete="off" style="display:none">
-      <div id="notifGateMsg" style="font-size:.78rem;font-family:'DM Mono',monospace;margin-top:10px;min-height:18px"></div>
-      <div style="display:flex;gap:8px;margin-top:14px;">
-        <button class="btn btn-ghost" style="flex:1;" onclick="closeNotifModal()">Cancelar</button>
-        <button class="btn" id="notifGateBtn" style="flex:1;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="notifGateSubmit()">Continuar</button>
-      </div>
-    </div>
-
-    <!-- Pantalla 2: Config form -->
-    <div id="notifForm" style="display:none;max-height:75vh;overflow-y:auto;padding-right:6px">
-
-      <!-- ── CONEXIÓN ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">CONEXIÓN</div>
-
-      <div class="fld-lbl">Bot token (de @BotFather)</div>
-      <input type="password" class="inp" id="notifBotToken" placeholder="123456:ABC-DEF..." autocomplete="off">
-
-      <div class="fld-lbl">Chat ID (de @userinfobot)</div>
-      <input type="text" class="inp" id="notifChatId" placeholder="123456789" autocomplete="off">
-
-      <div class="fld-lbl">Hora del resumen (Madrid/Andorra)</div>
-      <input type="time" class="inp" id="notifTime" value="09:00">
-
-      <div style="display:flex;align-items:center;gap:8px;margin-top:14px;color:#67e8f9;font-size:.85rem;">
-        <input type="checkbox" id="notifEnabled" checked style="accent-color:#22d3ee;">
-        <label for="notifEnabled" style="cursor:pointer;">Activado</label>
-      </div>
-
-      <!-- ── DÍAS DE ENVÍO ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">DÍAS DE ENVÍO</div>
-      <div id="notifDays" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-
-      <!-- ── SECCIONES ── -->
-      <div style="font-size:.7rem;color:#0e7490;font-family:'DM Mono',monospace;letter-spacing:.16em;text-transform:uppercase;margin:18px 0 8px;border-bottom:1px solid #06b6d433;padding-bottom:5px">SECCIONES DEL RESUMEN</div>
-      <div id="notifSections"></div>
-
-      <div id="notifFormMsg" style="display:none;margin-top:14px;font-size:.78rem;font-family:'DM Mono',monospace;"></div>
-
-      <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap;position:sticky;bottom:0;background:#020617;padding:10px 0 0;">
-        <button class="btn btn-ghost" style="flex:1;min-width:110px;" onclick="testNotifBot()">⚡ Probar envío</button>
-        <button class="btn btn-ghost" style="flex:1;min-width:110px;" onclick="previewNotifMessage()">👁 Preview</button>
-        <button class="btn btn-ghost" style="flex:1;min-width:110px;" onclick="closeNotifModal()">Cerrar</button>
-        <button class="btn" style="flex:1;min-width:110px;background:#020617;border:1px solid #22d3ee;color:#22d3ee;" onclick="saveNotifConfig()">💾 Guardar</button>
-      </div>
-    </div>
   </div>
 </div>
 
