@@ -128,8 +128,43 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
           <div class="card chart-wrap"><div class="sec-title">Evolución Patrimonio Total</div><canvas id="cTotal"></canvas></div>
           <div class="card chart-wrap"><div class="sec-title">Distribución actual</div><canvas id="cPie" style="max-height:220px;"></canvas></div>
         </div>
-        <div class="card chart-wrap" style="margin-bottom:18px;"><div class="sec-title">Evolución Carteras de Inversión</div><canvas id="cBloques"></canvas></div>
-        <div class="card chart-wrap" style="margin-bottom:18px;"><div class="sec-title">Rentabilidad Mensual Carteras (%)</div><canvas id="cRetornoBloques"></canvas></div>
+        <div class="card portfolio-analysis" style="margin-bottom:18px">
+          <div class="portfolio-analysis-header">
+            <div>
+              <div class="sec-title" style="margin:0">Carteras de inversión</div>
+              <div class="gastos-help" id="portfolioChartSummary">Total de las carteras activas</div>
+            </div>
+            <div class="portfolio-chart-controls">
+              <label>
+                <span>Vista</span>
+                <select id="portfolioChartPrimary" onchange="onPortfolioChartSelection()">
+                  <option value="__total">Total inversiones</option>
+                </select>
+              </label>
+              <label>
+                <span>Comparar con</span>
+                <select id="portfolioChartCompare" onchange="onPortfolioChartSelection()">
+                  <option value="__none">Sin comparación</option>
+                </select>
+              </label>
+              <button class="btn-ghost portfolio-chart-reset" onclick="resetPortfolioChartSelection()" title="Restablecer vista">↺</button>
+            </div>
+          </div>
+          <section class="portfolio-chart-section">
+            <div>
+              <div class="portfolio-chart-title">Evolución del capital</div>
+              <div class="gastos-help">Valor mensual de la vista seleccionada.</div>
+            </div>
+            <div class="portfolio-chart-canvas"><canvas id="cBloques"></canvas></div>
+          </section>
+          <section class="portfolio-chart-section">
+            <div>
+              <div class="portfolio-chart-title">Rentabilidad mensual</div>
+              <div class="gastos-help">Rentabilidad descontando las aportaciones del mes.</div>
+            </div>
+            <div class="portfolio-chart-canvas"><canvas id="cRetornoBloques"></canvas></div>
+          </section>
+        </div>
         <div class="card chart-wrap" id="cEmpresaWrap" style="margin-bottom:18px;display:none;"><div class="sec-title" id="cEmpresaTitle">Evolución Empresa</div><canvas id="cEmpresa"></canvas></div>
         <div class="card chart-wrap" style="margin-bottom:18px;"><div class="sec-title">Evolución Cuentas / Ahorro</div><canvas id="cBanco"></canvas></div>
         <div class="card chart-wrap" style="margin-bottom:18px;"><div class="sec-title">Variación Mensual (%)</div><canvas id="cVar"></canvas></div>
@@ -205,11 +240,18 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:8px">
               <div>
                 <div class="sec-title" style="margin:0">Evolución mensual</div>
-                <div class="gastos-help">Cada barra es un mes; la línea marca la media del periodo.</div>
+                <div class="gastos-help">Cada barra es un mes; la línea sigue la tendencia con una media móvil.</div>
               </div>
-              <select id="dashGastosLinesCat" onchange="renderDashGastosCharts()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
-                <option value="__total" selected>Total mensual</option>
-              </select>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <select id="dashGastosLinesCat" onchange="renderDashGastosCharts()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
+                  <option value="__total" selected>Total mensual</option>
+                </select>
+                <select id="dashGastosMovingAvg" onchange="renderDashGastosCharts()" title="Periodo de la media móvil" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
+                  <option value="3">Media móvil 3m</option>
+                  <option value="6" selected>Media móvil 6m</option>
+                  <option value="12">Media móvil 12m</option>
+                </select>
+              </div>
             </div>
             <div style="position:relative;height:280px"><canvas id="cGastosLines"></canvas></div>
           </div>
@@ -1058,6 +1100,60 @@ const GR={color:"#1e2d4a"};
 function sc(u){return{x:{ticks:{color:"#475569",font:{size:10}},grid:GR},y:{ticks:{color:"#475569",font:{size:10},callback:v=>u==="€"?fmt(v).replace(" €","")+"€":`${v}%`},grid:GR}};}
 // Config para zoom + pan en charts de series temporales (Ctrl+rueda, pinch, drag).
 const ZCFG={pan:{enabled:true,mode:'x',threshold:5},zoom:{wheel:{enabled:true,modifierKey:'ctrl'},pinch:{enabled:true},mode:'x'}};
+let portfolioChartPrimary='__total';
+let portfolioChartCompare='__none';
+
+function onPortfolioChartSelection(){
+  portfolioChartPrimary=document.getElementById('portfolioChartPrimary')?.value||'__total';
+  portfolioChartCompare=document.getElementById('portfolioChartCompare')?.value||'__none';
+  if(portfolioChartPrimary==='__all') portfolioChartCompare='__none';
+  const p=prof();
+  if(p) renderCharts(p);
+}
+function resetPortfolioChartSelection(){
+  portfolioChartPrimary='__total';
+  portfolioChartCompare='__none';
+  const p=prof();
+  if(p) renderCharts(p);
+}
+function populatePortfolioChartControls(assets){
+  const primary=document.getElementById('portfolioChartPrimary');
+  const compare=document.getElementById('portfolioChartCompare');
+  if(!primary||!compare) return;
+  const validIds=new Set(assets.map(a=>a.id));
+  if(portfolioChartPrimary!=='__total'&&portfolioChartPrimary!=='__all'&&!validIds.has(portfolioChartPrimary)){
+    portfolioChartPrimary='__total';
+  }
+  if(!validIds.has(portfolioChartCompare)||portfolioChartCompare===portfolioChartPrimary){
+    portfolioChartCompare='__none';
+  }
+  primary.innerHTML='<option value="__total">Total inversiones</option><option value="__all">Todas las carteras</option>';
+  compare.innerHTML='<option value="__none">Sin comparación</option>';
+  assets.forEach(a=>{
+    const primaryOption=document.createElement('option');
+    primaryOption.value=a.id;
+    primaryOption.textContent=a.name;
+    primary.appendChild(primaryOption);
+    const compareOption=document.createElement('option');
+    compareOption.value=a.id;
+    compareOption.textContent=a.name;
+    compare.appendChild(compareOption);
+  });
+  primary.value=portfolioChartPrimary;
+  compare.value=portfolioChartCompare;
+  compare.disabled=portfolioChartPrimary==='__all';
+}
+function selectPortfolioChartDatasets(totalDataset,individualDatasets){
+  if(portfolioChartPrimary==='__all') return individualDatasets;
+  const selected=portfolioChartPrimary==='__total'
+    ? [totalDataset]
+    : individualDatasets.filter(ds=>ds._assetId===portfolioChartPrimary);
+  if(portfolioChartCompare!=='__none'&&portfolioChartCompare!==portfolioChartPrimary){
+    const comparison=individualDatasets.find(ds=>ds._assetId===portfolioChartCompare);
+    if(comparison) selected.push(comparison);
+  }
+  return selected.length?selected:[totalDataset];
+}
 
 function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
@@ -1093,13 +1189,82 @@ function renderCharts(p){
     const inInv=invSections.some(sec=>sec.assets.find(x=>x.id===a.id));
     if(inInv&&!assetMap[a.id])assetMap[a.id]=a;
   }));
-  const bDS=Object.values(assetMap).map(a=>({label:a.name,data:ents.map(e=>{const act=entryActiveAssets(e,p);return act.find(x=>x.id===a.id)?parseFloat((e.assets||{})[a.id])||0:null;}),borderColor:a.color,backgroundColor:"transparent",borderWidth:1.6,pointRadius:2,tension:.3,spanGaps:false}));
-  charts["bloques"]=new Chart(document.getElementById("cBloques"),{type:"line",data:{labels:lbl,datasets:bDS},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
+  const investmentAssets=Object.values(assetMap);
+  populatePortfolioChartControls(investmentAssets);
+  const bDS=investmentAssets.map(a=>({
+    label:a.name,
+    _assetId:a.id,
+    data:ents.map(e=>{
+      const act=entryActiveAssets(e,p);
+      if(!act.find(x=>x.id===a.id)) return null;
+      const value=parseFloat((e.assets||{})[a.id]);
+      return Number.isFinite(value)?value:null;
+    }),
+    borderColor:a.color,
+    backgroundColor:"transparent",
+    borderWidth:1.8,
+    pointRadius:2,
+    pointHoverRadius:4,
+    tension:.3,
+    spanGaps:false
+  }));
+  const totalInvestmentValues=ents.map(e=>{
+    const activeIds=new Set(entryActiveAssets(e,p).map(a=>a.id));
+    let total=0,hasValue=false;
+    investmentAssets.forEach(a=>{
+      if(!activeIds.has(a.id)) return;
+      const value=parseFloat((e.assets||{})[a.id]);
+      if(Number.isFinite(value)){total+=value;hasValue=true;}
+    });
+    return hasValue?total:null;
+  });
+  const totalEvolutionDataset={
+    label:"Total inversiones",
+    data:totalInvestmentValues,
+    borderColor:"#60a5fa",
+    backgroundColor:"rgba(96,165,250,.08)",
+    borderWidth:2.5,
+    pointRadius:2.5,
+    pointHoverRadius:5,
+    tension:.3,
+    fill:true,
+    spanGaps:false
+  };
+  const evolutionDatasets=selectPortfolioChartDatasets(totalEvolutionDataset,bDS);
+  const primaryAsset=assetMap[portfolioChartPrimary];
+  const compareAsset=assetMap[portfolioChartCompare];
+  const summaryEl=document.getElementById('portfolioChartSummary');
+  if(summaryEl){
+    summaryEl.textContent=portfolioChartPrimary==='__all'
+      ? `${investmentAssets.length} carteras visibles`
+      : `${primaryAsset?.name||'Total de inversiones'}${compareAsset?` frente a ${compareAsset.name}`:''}`;
+  }
+  charts["bloques"]=new Chart(document.getElementById("cBloques"),{
+    type:"line",
+    data:{labels:lbl,datasets:evolutionDatasets},
+    options:{
+      ...opts,
+      maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{
+          display:evolutionDatasets.length>1,
+          position:'bottom',
+          labels:{color:"#64748b",font:{size:10},boxWidth:10,padding:12},
+          onClick:()=>{}
+        },
+        tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},
+        zoom:ZCFG
+      },
+      scales:sc("€")
+    }
+  });
 
   // ── Rentabilidad mensual por cartera ──
   dChart("retornoBloques");
   const retornoDS=Object.values(assetMap).map(a=>({
     label:a.name,
+    _assetId:a.id,
     data:ents.map((e,i)=>{
       if(i===0)return null;
       const curr=parseFloat((e.assets||{})[a.id])||0;
@@ -1142,68 +1307,33 @@ function renderCharts(p){
   });
   
   // Agregar línea de rentabilidad total como primera dataset
-  const allDatasets=[
-    {
-      label:"📊 Rentabilidad Total",
-      data:retornoTotal,
-      borderColor:"#60a5fa",
-      backgroundColor:"transparent",
-      borderWidth:2.5,
-      pointRadius:3,
-      pointBackgroundColor:"#60a5fa",
-      tension:.3,
-      spanGaps:true,
-      order:-1
-    },
-    ...retornoDS
-  ];
-  
-  let retornoChartInstance=null;
-  charts["retornoBloques"]=retornoChartInstance=new Chart(document.getElementById("cRetornoBloques"),{
+  const totalReturnDataset={
+    label:"Rentabilidad total",
+    data:retornoTotal,
+    borderColor:"#60a5fa",
+    backgroundColor:"rgba(96,165,250,.06)",
+    borderWidth:2.5,
+    pointRadius:3,
+    pointBackgroundColor:"#60a5fa",
+    tension:.3,
+    spanGaps:true,
+    fill:true,
+    order:-1
+  };
+  const returnDatasets=selectPortfolioChartDatasets(totalReturnDataset,retornoDS);
+  charts["retornoBloques"]=new Chart(document.getElementById("cRetornoBloques"),{
     type:"line",
-    data:{labels:lbl,datasets:allDatasets},
+    data:{labels:lbl,datasets:returnDatasets},
     options:{
       ...opts,
-      onClick:(evt,elements)=>{
-        // Si hace clic en la leyenda o dataset
-        if(elements.length>0){
-          const datasetIndex=elements[0].datasetIndex;
-          const isTotal=datasetIndex===0;
-          // Si clickea en "Rentabilidad Total", muestra solo esa
-          if(isTotal){
-            retornoChartInstance.data.datasets.forEach((ds,i)=>{
-              if(i===0)ds.hidden=false;
-              else ds.hidden=!ds.hidden;
-            });
-          }
-        }
-        retornoChartInstance.update();
-      },
+      maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{
-          labels:{color:"#475569",font:{size:10},boxWidth:10},
-          onClick:(e,legendItem,legend)=>{
-            const index=legendItem.datasetIndex;
-            const chart=legend.chart;
-            const isTotal=index===0;
-            
-            if(isTotal){
-              // Si clickea Total: muestra SOLO la total, oculta todas las demás
-              chart.data.datasets.forEach((ds,i)=>{
-                ds.hidden=(i!==0);
-              });
-            } else {
-              // Si clickea una cartera individual:
-              // Oculta la Total
-              chart.data.datasets[0].hidden=true;
-              // Oculta todas EXCEPTO la que clickeaste
-              chart.data.datasets.forEach((ds,i)=>{
-                if(i===0)ds.hidden=true;
-                else ds.hidden=(i!==index);
-              });
-            }
-            chart.update();
-          }
+          display:returnDatasets.length>1,
+          position:'bottom',
+          labels:{color:"#64748b",font:{size:10},boxWidth:10,padding:12},
+          onClick:()=>{}
         },
         tooltip:{...TT,callbacks:{label:c=>fPct(c.parsed.y)}},zoom:ZCFG
       },
@@ -2679,8 +2809,13 @@ function renderDashGastosCharts(){
 
   const selectedCat = seleccion === '__total' ? null : (catMap[seleccion] || {name:'?',color:'#94a3b8'});
   const selectedValues = dataPorMes.map(d => seleccion === '__total' ? d.totalMiParte : (d.porCat?.[seleccion] || 0));
-  const selectedValid = selectedValues.filter(v=>v>0);
-  const selectedMean = selectedValid.length ? selectedValid.reduce((s,v)=>s+v,0)/selectedValid.length : 0;
+  const movingWindow=Math.max(1,parseInt(document.getElementById('dashGastosMovingAvg')?.value||'6',10));
+  const movingAverage=selectedValues.map((_,index)=>{
+    const values=selectedValues
+      .slice(Math.max(0,index-movingWindow+1),index+1)
+      .filter(Number.isFinite);
+    return values.length?values.reduce((sum,value)=>sum+value,0)/values.length:null;
+  });
   const barColor = selectedCat?.color || '#3b82f6';
   const datasetsLines = [{
     label: selectedCat?.name || 'Total mensual',
@@ -2692,13 +2827,13 @@ function renderDashGastosCharts(){
     order:2
   },{
     type:'line',
-    label:`Media: ${fmt(selectedMean)}`,
-    data:dataPorMes.map(()=>selectedMean),
+    label:`Media móvil ${movingWindow}m`,
+    data:movingAverage,
     borderColor:'#94a3b8',
     borderWidth:2,
-    borderDash:[6,6],
-    pointRadius:0,
-    tension:0,
+    pointRadius:1.5,
+    pointHoverRadius:4,
+    tension:.3,
     fill:false,
     _isMean:true,
     order:1
@@ -2719,7 +2854,7 @@ function renderDashGastosCharts(){
           mode:'index', intersect:false,
           callbacks: {
             label: c => {
-              if(c.dataset._isMean) return null;
+              if(c.dataset._isMean) return `${c.dataset.label}: ${fmt(c.parsed.y)}`;
               return `${c.dataset.label}: ${fmt(c.parsed.y)}`;
             }
           }

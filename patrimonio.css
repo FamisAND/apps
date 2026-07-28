@@ -103,6 +103,19 @@ canvas{max-height:220px;}
 .gastos-kpi-label{font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:1px}
 .gastos-kpi-value{font-size:1.18rem;font-weight:700;margin-top:3px;color:#e2e8f0}
 .gastos-kpi-note{font-size:.63rem;color:#475569;margin-top:2px;white-space:normal}
+.portfolio-analysis{padding:0;overflow:hidden}
+.portfolio-analysis-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid #1e2d4a}
+.portfolio-chart-controls{display:flex;align-items:flex-end;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.portfolio-chart-controls label{display:grid;gap:4px}
+.portfolio-chart-controls label span{font-size:.58rem;color:#475569;text-transform:uppercase}
+.portfolio-chart-controls select{min-width:170px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:inherit;font-size:.72rem;padding:6px 9px;border-radius:6px;outline:none;cursor:pointer}
+.portfolio-chart-controls select:disabled{opacity:.45;cursor:not-allowed}
+.portfolio-chart-reset{width:32px;height:30px;padding:0;font-size:.9rem}
+.portfolio-chart-section{padding:15px 18px}
+.portfolio-chart-section+.portfolio-chart-section{border-top:1px solid #1e2d4a}
+.portfolio-chart-title{font-size:.72rem;font-weight:700;color:#cbd5e1}
+.portfolio-chart-canvas{position:relative;height:260px;margin-top:8px}
+.portfolio-chart-canvas canvas{max-height:none}
 .gastos-insights-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:12px;margin-bottom:14px}
 .gastos-insight-panel{background:#0a0e14;border:1px solid #1e2d3d;border-radius:10px;padding:13px 14px;min-width:0}
 .gastos-insight-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
@@ -228,6 +241,11 @@ textarea.inp{resize:vertical;min-height:70px;}
 @media (max-width: 640px) {
   body{font-size:14px;}
   .gastos-charts-grid{grid-template-columns:1fr}
+  .portfolio-analysis-header{display:grid;padding:14px 12px}
+  .portfolio-chart-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 32px;align-items:end;width:100%}
+  .portfolio-chart-controls select{width:100%;min-width:0}
+  .portfolio-chart-section{padding:14px 12px}
+  .portfolio-chart-canvas{height:230px}
   .gastos-insights-grid{grid-template-columns:1fr}
   .gastos-budget-config-row{grid-template-columns:minmax(0,1fr) 110px}
 
