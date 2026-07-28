@@ -318,6 +318,58 @@ function _tobEjEnGrafica(ej){
   return ej && ej.tipo !== 'circuito' && TOB_GRAFICAS_EJ_WHITELIST.has(ej.nombre);
 }
 
+function tobRutinaChartItems(rutina){
+  const items = [];
+  (rutina?.entrenos||[]).forEach(en => {
+    (en.ejercicios||[]).forEach(ej => {
+      if(ej.tipo === 'circuito'){
+        (ej.circuitoLineas||[]).forEach((lineName, lineIdx) => {
+          items.push({
+            key: `${ej.id}_line_${lineIdx}`,
+            name: lineName || `${ej.nombre} ${lineIdx + 1}`,
+            ej,
+            entId: en.id,
+            lineIdx
+          });
+        });
+      } else {
+        items.push({ key: ej.id, name: ej.nombre, ej, entId: en.id, lineIdx: null });
+      }
+    });
+  });
+  return items;
+}
+
+function tobEjRowsFromSesion(ses, ej, lineIdx){
+  if(!ses || !ej) return [];
+  const data = ses.ejs?.[ej.id];
+  if(!data) return [];
+  if(lineIdx != null){
+    const sr = data.lineas?.[lineIdx];
+    return sr ? [sr] : [];
+  }
+  return data.series || [];
+}
+
+function tobEjBestSetScoreFromSesion(ses, ej, lineIdx){
+  let best = null;
+  tobEjRowsFromSesion(ses, ej, lineIdx).forEach(sr => {
+    const kg = parseFloat(sr.kg);
+    const reps = parseFloat(sr.reps);
+    if(!Number.isFinite(kg) || !Number.isFinite(reps) || kg <= 0 || reps <= 0) return;
+    const e1rm = kg * (1 + reps / 30);
+    if(!best || e1rm > best.e1rm){
+      best = {
+        kg,
+        reps,
+        e1rm: Math.round(e1rm * 10) / 10,
+        volume: Math.round(kg * reps * 10) / 10
+      };
+    }
+  });
+  return best;
+}
+
 // Campos de medición (composición corporal — antropometría tipo ISAK,
 // formato del informe Full Training). [key interna, {ca, es, en}].
 // La etiqueta visible depende del idioma del cliente (cli.idioma).
@@ -419,7 +471,7 @@ const TOB_PDF_I18N = {
   'resum.kpi.estado':    { ca:'ESTAT',       es:'ESTADO',      en:'STATUS' },
   'resum.estado.en_curso':{ ca:'en curs',    es:'en curso',    en:'in progress' },
   'resum.records.titulo':{ ca:'RÈCORDS DE LA RUTINA', es:'RÉCORDS DE LA RUTINA', en:'ROUTINE RECORDS' },
-  'resum.progres.titulo':{ ca:'PROGRÉS PER EXERCICI - VOLUM (kg x reps)', es:'PROGRESO POR EJERCICIO - VOLUMEN (kg x reps)', en:'PROGRESS BY EXERCISE - VOLUME (kg x reps)' },
+  'resum.progres.titulo':{ ca:'PROGRÉS PER EXERCICI - FORÇA ESTIMADA', es:'PROGRESO POR EJERCICIO - FUERZA ESTIMADA', en:'PROGRESS BY EXERCISE - ESTIMATED STRENGTH' },
   'resum.progres.titulo_cont':{ ca:'PROGRÉS PER EXERCICI (cont.)', es:'PROGRESO POR EJERCICIO (cont.)', en:'PROGRESS BY EXERCISE (cont.)' },
   'resum.progres.titulo_vacio':{ ca:'PROGRÉS PER EXERCICI', es:'PROGRESO POR EJERCICIO', en:'PROGRESS BY EXERCISE' },
   'resum.progres.vacio_msg':{ ca:'Encara no hi ha sessions amb dades registrades en aquesta rutina.', es:'Aún no hay sesiones con datos registrados en esta rutina.', en:"No sessions with data have been recorded in this routine yet." },
@@ -466,7 +518,7 @@ const TOB_PDF_I18N = {
   'hist.rutinas.col.iteraciones':{ ca:'Iteracions',   es:'Iteraciones',  en:'Iterations' },
   // Unificat amb "PRs" en minúscula la 's' (convenció tipogràfica): més net que "PRS".
   'hist.rutinas.col.prs':        { ca:'PRs DE LA RUTINA', es:'PRs DE LA RUTINA', en:'ROUTINE PRs' },
-  'hist.progres.titulo':         { ca:'PROGRESSIÓ PER EXERCICI — VOLUM (kg × reps)', es:'PROGRESIÓN POR EJERCICIO — VOLUMEN (kg × reps)', en:'PROGRESS BY EXERCISE — VOLUME (kg × reps)' },
+  'hist.progres.titulo':         { ca:'PROGRESSIÓ PER EXERCICI — FORÇA ESTIMADA', es:'PROGRESIÓN POR EJERCICIO — FUERZA ESTIMADA', en:'PROGRESS BY EXERCISE — ESTIMATED STRENGTH' },
   'hist.progres.titulo_cont':    { ca:'PROGRESSIÓ PER EXERCICI (cont.)', es:'PROGRESIÓN POR EJERCICIO (cont.)', en:'PROGRESS BY EXERCISE (cont.)' },
   'hist.progres.subtitulo':      { ca:'Una línia per exercici · totes les sessions del client · pic marcat en taronja', es:'Una línea por ejercicio · todas las sesiones del cliente · pico marcado en naranja', en:'One line per exercise · all client sessions · peak marked in orange' },
   'hist.vacio_msg':              { ca:'Aquest client encara no té rutines ni mesures registrades.', es:'Este cliente aún no tiene rutinas ni mediciones registradas.', en:'This client has no recorded routines or measurements yet.' }
@@ -1632,23 +1684,17 @@ function tobRenderCharts(){
   Object.values(tobCharts).forEach(c => { try { c.destroy(); } catch(e){} });
   tobCharts = {};
 
-  // Recolectar TODOS los ejercicios principales (tipo normal) de TODOS los entrenos
-  const mainEjs = [];
-  (a.rutina?.entrenos||[]).forEach(en => {
-    (en.ejercicios||[]).forEach(ej => {
-      if(ej.tipo !== 'circuito') mainEjs.push({ej, entId: en.id});
-    });
-  });
+  const mainEjs = tobRutinaChartItems(a.rutina);
 
   if(!mainEjs.length){
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mute2);padding:30px;">Aún no hay ejercicios principales con datos.</div>';
     return;
   }
 
-  grid.innerHTML = mainEjs.map(({ej}) =>
+  grid.innerHTML = mainEjs.map(item =>
     `<div class="tob-chart-card">
-      <div class="hdr">${tobEsc(ej.nombre)}</div>
-      <div class="body"><canvas id="tobChart_${ej.id}"></canvas></div>
+      <div class="hdr">${tobEsc(item.name)}</div>
+      <div class="body"><canvas id="tobChart_${item.key}"></canvas></div>
     </div>`
   ).join('');
 
@@ -1657,29 +1703,30 @@ function tobRenderCharts(){
     try { Chart.register(ChartDataLabels); } catch(e){}
   }
 
-  mainEjs.forEach(({ej, entId}) => {
-    const canvas = document.getElementById('tobChart_' + ej.id);
+  mainEjs.forEach(({ej, entId, key, name, lineIdx}) => {
+    const canvas = document.getElementById('tobChart_' + key);
     if(!canvas) return;
     const datasets = [];
     a.iteraciones.forEach((it, idx) => {
       const color = TOB_IT_COLORS[idx % TOB_IT_COLORS.length];
       const points = [];
       const labels = [];
+      const meta = [];
       for(let mn = 1; mn <= tobNumMicroOf(a.rutina); mn++){
         const ses = it.sesiones[mn]?.[entId];
         if(!ses) continue;
-        const series = ses.ejs?.[ej.id]?.series;
-        if(!series || !series.length) continue;
-        const volume = series.reduce((sum, sr) => sum + (sr.kg||0) * (sr.reps||0), 0);
-        if(volume <= 0) continue;
-        points.push(volume);
+        const best = tobEjBestSetScoreFromSesion(ses, ej, lineIdx);
+        if(!best) continue;
+        points.push(best.e1rm);
         labels.push(ses.fecha || `µ${mn}`);
+        meta.push(best);
       }
       if(!points.length) return;
       datasets.push({
         label: 'It. ' + it.numero,
         data: points,
         _labels: labels,
+        _meta: meta,
         borderColor: color, borderWidth: 2.5,
         // Relleno en degradado igual que mediciones.
         backgroundColor: (c) => {
@@ -1711,13 +1758,16 @@ function tobRenderCharts(){
 
     // Re-alinear cada dataset a esos labels (con null para huecos)
     datasets.forEach(ds => {
-      const map = {};
+      const map = {}, metaMap = {};
       ds._labels.forEach((l, i) => {
         const key = /^\d{4}-\d{2}-\d{2}/.test(l) ? l.split('-').reverse().join('/') : l;
         map[key] = ds.data[i];
+        metaMap[key] = ds._meta[i];
       });
       ds.data = labels.map(l => map[l] != null ? map[l] : null);
+      ds._metaByLabel = labels.map(l => metaMap[l] || null);
       delete ds._labels;
+      delete ds._meta;
     });
 
     if(!datasets.length){
@@ -1728,7 +1778,7 @@ function tobRenderCharts(){
       return;
     }
 
-    tobCharts[ej.id] = new Chart(canvas, {
+    tobCharts[key] = new Chart(canvas, {
       type: 'line',
       data: { labels, datasets },
       options: {
@@ -1736,13 +1786,24 @@ function tobRenderCharts(){
         layout: { padding: { top: 20, right: 14, left: 4, bottom: 2 } },
         plugins: {
           legend: { labels: { color:'#cbd5e1', font:{size:10}, boxWidth:12 }, position:'top', align:'end' },
-          tooltip: { mode:'index', intersect:false },
+          tooltip: {
+            mode:'index',
+            intersect:false,
+            callbacks: {
+              label: ctx => {
+                const m = ctx.dataset._metaByLabel?.[ctx.dataIndex];
+                const val = ctx.parsed.y;
+                if(!m || val == null) return `${ctx.dataset.label}: ${val || '-'} kg est.`;
+                return `${ctx.dataset.label}: ${val} kg est. (${m.kg}kg x ${m.reps}, vol ${m.volume})`;
+              }
+            }
+          },
           datalabels: {
             color: ctx => ctx.dataset.borderColor,
             font: { size: 9, weight:'600' },
             align: 'top',
             offset: 6,
-            formatter: v => v == null ? '' : v
+            formatter: v => v == null ? '' : v + 'kg'
           }
         },
         scales: {
@@ -3469,14 +3530,11 @@ function tobCalcGlobalKPIs(cli){
         Object.entries(microSes).forEach(([entId, s]) => {
           const en = a.rutina?.entrenos.find(e => e.id === entId);
           if(!en) return;
-          en.ejercicios.forEach(ej => {
-            if(ej.tipo === 'circuito') return; // solo principales
-            const ses = s.ejs?.[ej.id];
-            if(!ses?.series) return;
-            ses.series.forEach(sr => {
+          tobRutinaChartItems({ entrenos: [en] }).forEach(item => {
+            tobEjRowsFromSesion(s, item.ej, item.lineIdx).forEach(sr => {
               if(sr.kg != null && sr.reps != null){
                 tonelaje += sr.kg * sr.reps;
-                if(!prByEj[ej.nombre] || sr.kg > prByEj[ej.nombre]) prByEj[ej.nombre] = sr.kg;
+                if(!prByEj[item.name] || sr.kg > prByEj[item.name]) prByEj[item.name] = sr.kg;
               }
             });
           });
@@ -3553,15 +3611,12 @@ function tobCalcAsigStats(a){
         let hasData = false;
         const en = a.rutina?.entrenos.find(e => e.id === entId);
         if(!en) return;
-        en.ejercicios.forEach(ej => {
-          if(ej.tipo === 'circuito') return;
-          const ses = s.ejs?.[ej.id];
-          if(!ses?.series) return;
-          ses.series.forEach(sr => {
+        tobRutinaChartItems({ entrenos: [en] }).forEach(item => {
+          tobEjRowsFromSesion(s, item.ej, item.lineIdx).forEach(sr => {
             if(sr.kg != null && sr.reps != null){
               tonelaje += sr.kg * sr.reps;
               hasData = true;
-              if(!maxByEj[ej.nombre] || sr.kg > maxByEj[ej.nombre]) maxByEj[ej.nombre] = sr.kg;
+              if(!maxByEj[item.name] || sr.kg > maxByEj[item.name]) maxByEj[item.name] = sr.kg;
             }
           });
         });
@@ -4879,18 +4934,15 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
   }
   page.drawText('FULL TRAINING - BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
 
-  // ─── GRÁFICAS — volumen por ejercicio (una línea por iteración) ───
-  const mainEjs = [];
-  (a.rutina?.entrenos||[]).forEach(en => {
-    (en.ejercicios||[]).forEach(ej => { if(ej.tipo !== 'circuito') mainEjs.push({ ej, entId: en.id }); });
-  });
+  // ─── GRÁFICAS — fuerza estimada por ejercicio (una línea por iteración) ───
+  const mainEjs = tobRutinaChartItems(a.rutina);
   const chartItems = [];
-  mainEjs.forEach(({ ej, entId }) => {
-    const cfg = tobBuildEjChartConfig(a, ej, entId, { cli });
+  mainEjs.forEach(({ ej, entId, lineIdx, name }) => {
+    const cfg = tobBuildEjChartConfig(a, ej, entId, { cli, lineIdx, itemName: name });
     if(cfg){
       cfg.options.responsive = false;
       cfg.options.plugins.legend = { display: true, labels: { color: '#444444', font: { size: 9 }, boxWidth: 14 } };
-      chartItems.push({ name: ej.nombre, cfg });
+      chartItems.push({ name, cfg });
     }
   });
 
@@ -4918,13 +4970,6 @@ async function tobBuildPdfResumenRutina(cli, a, pl){
         } catch(e){ console.warn('chart', slice[i].name, e); page.drawText(tobT('error.no_grafica', L), { x, y: yTop - chH/2, size: 9, font: fontO, color: GRAY }); }
       }
     }
-  }
-
-  if(a.notas){
-    page = doc.addPage([W, H]);
-    drawHeaderBar(page, fontB, BLACK, ORANGE, GRAY, tobT('resum.notas.titulo', L), rutinaShort, W, H);
-    let ny = H - 90;
-    tobWrapText(tobPdfSafe(a.notas), font, 11, W-80).forEach(l => { page.drawText(l, { x: 40, y: ny, size: 11, font, color: GRAY_DK }); ny -= 16; });
   }
 
   const pages = doc.getPages();
@@ -5352,12 +5397,11 @@ function tobCalcItStats(a, it){
       let hasData = false;
       const en = a.rutina?.entrenos.find(e => e.id === entId);
       if(!en) return;
-      en.ejercicios.forEach(ej => {
-        const ses = s.ejs?.[ej.id];
-        if(!ses) return;
-        ejSet.add(ej.nombre);
-        const arr = ses.series || ses.lineas || [];
-        arr.forEach(sr => {
+      tobRutinaChartItems({ entrenos: [en] }).forEach(item => {
+        const rows = tobEjRowsFromSesion(s, item.ej, item.lineIdx);
+        if(!rows.length) return;
+        ejSet.add(item.name);
+        rows.forEach(sr => {
           if(sr.kg != null && sr.reps != null){ tonelaje += sr.kg*sr.reps; hasData = true; }
         });
       });
@@ -5368,13 +5412,15 @@ function tobCalcItStats(a, it){
 }
 
 // Config Chart.js para un ejercicio principal en una asignación: una línea por iteración
-// Config Chart.js de "volumen por ejercicio" para un asignación.
+// Config Chart.js de "fuerza estimada por ejercicio" para una asignación.
 // opts.cli: si se pasa, incluye TODAS las asignaciones del cliente con la
 // misma plantilla — para que el PDF resumen muestre el historial completo
 // del cliente con esa rutina (si la ha hecho antes, salen también esos pesos).
 // Estilo: relleno en degradado (como las gráficas de mediciones) para que las
 // líneas se diferencien bien del grid.
 function tobBuildEjChartConfig(a, ej, entId, opts){
+  const lineIdx = opts && opts.lineIdx != null ? opts.lineIdx : null;
+  const itemName = opts?.itemName || ej?.nombre || 'Ejercicio';
   // Lista de asignaciones a graficar (con su índice cronológico global).
   let sameAsigs = [a];
   if(opts && opts.cli){
@@ -5393,14 +5439,14 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
       const color = TOB_IT_COLORS[globalIdx % TOB_IT_COLORS.length];
       globalIdx++;
       const points = [];
+      const metas = [];
       for(let mn=1; mn<=tobNumMicroOf(aa.rutina); mn++){
         const ses = it.sesiones[mn]?.[entId];
-        const series = ses?.ejs?.[ej.id]?.series;
-        if(!series || !series.length) continue;
-        const vol = series.reduce((s,sr) => s + (sr.kg||0)*(sr.reps||0), 0);
-        if(vol <= 0) continue;
+        const best = tobEjBestSetScoreFromSesion(ses, ej, lineIdx);
+        if(!best) continue;
         const label = ses.fecha ? ses.fecha.split('-').reverse().join('/') : `µ${mn}·R${aIdx+1}.${it.numero}`;
-        points.push({ label, val: vol });
+        points.push({ label, val: best.e1rm });
+        metas.push({ label, ...best });
         allLabels.add(label);
       }
       if(!points.length) return;
@@ -5409,7 +5455,7 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
         ? `R${aIdx+1} · It.${it.numero}` + (isCurrent ? ' (actual)' : '')
         : `It. ${it.numero}`;
       datasets.push({
-        label: dsLabel, _points: points, _color: color,
+        label: dsLabel, _points: points, _meta: metas, _color: color,
         borderColor: color,
         borderWidth: isCurrent ? 3 : 2.2,
         // Relleno en degradado igual que mediciones — más legible que barras
@@ -5437,9 +5483,13 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
     return new Date(`20${pa[2]}-${pa[1]}-${pa[0]}`).getTime() - new Date(`20${pb[2]}-${pb[1]}-${pb[0]}`).getTime();
   });
   datasets.forEach(ds => {
-    const map = {}; ds._points.forEach(p => { map[p.label] = p.val; });
+    const map = {}, metaMap = {};
+    ds._points.forEach(p => { map[p.label] = p.val; });
+    ds._meta.forEach(m => { metaMap[m.label] = m; });
     ds.data = labels.map(l => map[l] != null ? map[l] : null);
+    ds._metaByLabel = labels.map(l => metaMap[l] || null);
     delete ds._points;
+    delete ds._meta;
   });
   return {
     type: 'line', data: { labels, datasets },
@@ -5450,10 +5500,21 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
           labels: { color: '#444', font: { size: 9 }, boxWidth: 12, padding: 8 },
           position: 'top'
         },
+        tooltip: {
+          callbacks: {
+            title: items => `${itemName} · ${items?.[0]?.label || ''}`,
+            label: ctx => {
+              const m = ctx.dataset._metaByLabel?.[ctx.dataIndex];
+              const val = ctx.parsed.y;
+              if(!m || val == null) return `${ctx.dataset.label}: ${val || '-'} kg est.`;
+              return `${ctx.dataset.label}: ${val} kg est. (${m.kg}kg x ${m.reps}, vol ${m.volume})`;
+            }
+          }
+        },
         datalabels: window.ChartDataLabels ? {
           color: ctx => ctx.dataset.borderColor, font:{ size: 9, weight:'700' },
           align: 'top', offset: 5,
-          formatter: v => (v == null ? '' : v),
+          formatter: v => (v == null ? '' : v + 'kg'),
           textStrokeColor: '#ffffff', textStrokeWidth: 3
         } : undefined
       },
@@ -5467,7 +5528,7 @@ function tobBuildEjChartConfig(a, ej, entId, opts){
   };
 }
 
-// Config Chart.js de volumen por ejercicio cruzando TODAS las asignaciones del
+// Config Chart.js de fuerza estimada por ejercicio cruzando TODAS las asignaciones del
 // cliente (independientemente de la plantilla). Usa el nombre del ejercicio como
 // identificador unificador. Útil para el PDF Histórico: una línea por ejercicio
 // con toda la trayectoria histórica del cliente.
@@ -5481,11 +5542,9 @@ function tobBuildEjChartConfigByName(cli, ejNombre){
           if(!en) return;
           en.ejercicios.forEach(ej => {
             if(ej.nombre !== ejNombre || ej.tipo === 'circuito') return;
-            const series = s.ejs?.[ej.id]?.series;
-            if(!series || !series.length) return;
-            const vol = series.reduce((sum,sr) => sum + (sr.kg||0)*(sr.reps||0), 0);
-            if(vol <= 0 || !s.fecha) return;
-            points.push({ fecha: s.fecha, vol });
+            const best = tobEjBestSetScoreFromSesion(s, ej, null);
+            if(!best || !s.fecha) return;
+            points.push({ fecha: s.fecha, val: best.e1rm, ...best });
           });
         });
       });
@@ -5494,7 +5553,7 @@ function tobBuildEjChartConfigByName(cli, ejNombre){
   if(!points.length) return null;
   points.sort((a,b) => a.fecha.localeCompare(b.fecha));
   const labels = points.map(p => p.fecha.split('-').reverse().join('/'));
-  const data = points.map(p => p.vol);
+  const data = points.map(p => p.val);
   const maxVal = Math.max(...data);
   const color = '#f5a623';
   return {
@@ -5519,10 +5578,19 @@ function tobBuildEjChartConfigByName(cli, ejNombre){
       layout: { padding: { top: 22, right: 14, left: 4, bottom: 2 } },
       plugins: {
         legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const p = points[ctx.dataIndex];
+              if(!p) return `${ctx.parsed.y || '-'} kg est.`;
+              return `${ctx.parsed.y} kg est. (${p.kg}kg x ${p.reps}, vol ${p.volume})`;
+            }
+          }
+        },
         datalabels: window.ChartDataLabels ? {
           color: (c) => data[c.dataIndex] === maxVal ? color : '#555',
           font: (c) => ({ size: data[c.dataIndex] === maxVal ? 10 : 8, weight: '700' }),
-          align: 'top', offset: 4, formatter: v => v
+          align: 'top', offset: 4, formatter: v => v + 'kg'
         } : undefined
       },
       scales:{
@@ -9531,9 +9599,94 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let tobMcState = null;
 let _tobMcDndRenderTimer = null;
+let _tobMcCleanFingerprint = null;
+let _tobMcPendingLeave = null;
 const TOB_MC_DIAS = ['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
 const TOB_MC_DIA_FULL = ['Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte','Diumenge'];
 let _tobMcMomentoFiltro = '';  // filtro activo del panel lateral
+
+function tobMcFingerprint(){
+  if(!tobMcState) return '';
+  const value = id => document.getElementById(id)?.value || '';
+  return JSON.stringify({
+    cliId:tobMcState.cliId,
+    semanas:tobMcState.semanas,
+    comidasIds:tobMcState.comidasIds || [],
+    data:tobMcState.data || {},
+    ajustes:tobMcState.ajustes || {},
+    kcal:value('tobMcKcal'),
+    margen:value('tobMcMargen'),
+    proteina:value('tobMcProt')
+  });
+}
+
+function tobMcRefreshSaveState(){
+  const el = document.getElementById('tobMcSaveState');
+  if(!el) return;
+  if(!tobMcState){
+    el.textContent = '';
+    return;
+  }
+  const dirty = tobMcIsDirty();
+  el.textContent = dirty ? '● Sin guardar' : '✓ Guardado';
+  el.style.color = dirty ? '#f59e0b' : '#4ade80';
+}
+
+function tobMcMarkClean(){
+  _tobMcCleanFingerprint = tobMcFingerprint();
+  tobMcRefreshSaveState();
+}
+
+function tobMcIsDirty(){
+  return !!tobMcState && _tobMcCleanFingerprint != null &&
+    tobMcFingerprint() !== _tobMcCleanFingerprint;
+}
+
+function tobMcRequestLeave(action){
+  if(!tobMcIsDirty()){
+    action();
+    return;
+  }
+  _tobMcPendingLeave = action;
+  document.getElementById('tobMcUnsavedBg')?.classList.add('on');
+}
+
+function tobMcCancelLeave(){
+  _tobMcPendingLeave = null;
+  document.getElementById('tobMcUnsavedBg')?.classList.remove('on');
+}
+
+function tobMcRunPendingLeave(){
+  const action = _tobMcPendingLeave;
+  _tobMcPendingLeave = null;
+  document.getElementById('tobMcUnsavedBg')?.classList.remove('on');
+  if(action) action();
+}
+
+function tobMcDiscardAndLeave(){
+  _tobMcCleanFingerprint = tobMcFingerprint();
+  tobMcRunPendingLeave();
+}
+
+function tobMcSaveAndLeave(){
+  if(tobMcSave() !== false) tobMcRunPendingLeave();
+}
+
+function tobMcOnClienteSelectChange(){
+  const sel = document.getElementById('tobMcCliente');
+  if(!sel) return;
+  const nextId = sel.value;
+  const prevId = tobMcState?.cliId || '';
+  if(nextId !== prevId && tobMcIsDirty()){
+    sel.value = prevId;
+    tobMcRequestLeave(() => {
+      sel.value = nextId;
+      tobMcOnClienteChange();
+    });
+    return;
+  }
+  tobMcOnClienteChange();
+}
 
 // ── i18n del menú (ca/es): comidas, días y secciones del súper ──
 const TOB_MEAL_ES = { esmorzar:'Desayuno', mig_mati:'Media mañana', dinar:'Comida',
@@ -10609,6 +10762,7 @@ function tobMcOnClienteChange(){
     tobMcRenderSemanasTabs();
     tobMcRenderGrid();
     tobMcRenderSidePanel();
+    tobMcMarkClean();
     return;
   }
 
@@ -10636,6 +10790,7 @@ function tobMcOnClienteChange(){
   tobMcRenderSemanasTabs();
   tobMcRenderGrid();
   tobMcRenderSidePanel();
+  tobMcMarkClean();
 }
 
 function tobMcHideWorkspace(){
@@ -10645,6 +10800,8 @@ function tobMcHideWorkspace(){
   document.getElementById('tobMcClienteHint').textContent = '';
   document.getElementById('tobMcComidas').textContent = '—';
   tobMcState = null;
+  _tobMcCleanFingerprint = null;
+  tobMcRefreshSaveState();
 }
 
 // Renderiza el resumen del perfil alimentario del cliente (lectura).
@@ -11607,9 +11764,9 @@ function tobMcValidate(){
 }
 
 function tobMcSave(){
-  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return; }
+  if(!tobMcState){ tobToast('Selecciona un cliente primero', 'red'); return false; }
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
-  if(!cli){ tobToast('Cliente no encontrado', 'red'); return; }
+  if(!cli){ tobToast('Cliente no encontrado', 'red'); return false; }
   if(!cli.menus) cli.menus = [];
 
   const snapshot = {
@@ -11631,7 +11788,9 @@ function tobMcSave(){
   if(ix >= 0) cli.menus[ix] = snapshot;
   else cli.menus.unshift(snapshot);
   tobMcState._menuId = snapshot.id;
+  tobMcState._savedAt = snapshot.savedAt;
   tobSave();
+  tobMcMarkClean();
   // Refrescar la ficha del cliente (si está abierta) y la pestaña de menús
   if(typeof tobFichaRenderMenus === 'function') tobFichaRenderMenus();
   if(typeof tobMenusGuardadosRender === 'function') tobMenusGuardadosRender();
@@ -11650,6 +11809,7 @@ function tobMcSave(){
     });
     tobToast(`✓ Guardat · ⚠ ${v.conflicts.length} conflictes en ${Object.keys(perRec).length} receptes — revisa consola`, 'orange');
   }
+  return true;
 }
 
 function tobMcShowList(){
@@ -11701,6 +11861,10 @@ function _tobMcReindexData(data){
 }
 
 function tobMcLoadMenu(menuId){
+  if(tobMcIsDirty() && tobMcState?._menuId !== menuId){
+    tobMcRequestLeave(() => tobMcLoadMenu(menuId));
+    return;
+  }
   const cliSel = document.getElementById('tobMcCliente').value;
   const cli = tobDB.clientes.find(c => c.id === cliSel);
   const m = cli?.menus?.find(x => x.id === menuId);
@@ -11727,6 +11891,7 @@ function tobMcLoadMenu(menuId){
   tobMcRenderSemanasTabs();
   tobMcRenderGrid();
   tobMcRenderSidePanel();
+  tobMcMarkClean();
   tobToast(`✓ Menú del ${(m.savedAt||'').slice(0,10)} cargado`, 'green');
 }
 
@@ -14156,10 +14321,51 @@ tobMenuShowTab = function(name, btn){
   if(name === 'creador') tobMcInit();
 };
 
+// Protege el menú activo frente a cambios de pestaña o cierres accidentales.
+const _tobShowTabBeforeMenuGuard = tobShowTab;
+tobShowTab = function(name, btn){
+  const menusActive = document.getElementById('tob-menus')?.classList.contains('active');
+  if(menusActive && name !== 'menus' && tobMcIsDirty()){
+    tobMcRequestLeave(() => _tobShowTabBeforeMenuGuard(name, btn));
+    return;
+  }
+  return _tobShowTabBeforeMenuGuard(name, btn);
+};
+
+const _tobMenuShowTabBeforeGuard = tobMenuShowTab;
+tobMenuShowTab = function(name, btn){
+  const creator = document.getElementById('tob-mtab-creador');
+  const creatorVisible = creator && creator.style.display !== 'none';
+  if(creatorVisible && name !== 'creador' && tobMcIsDirty()){
+    tobMcRequestLeave(() => _tobMenuShowTabBeforeGuard(name, btn));
+    return;
+  }
+  return _tobMenuShowTabBeforeGuard(name, btn);
+};
+
 // Cerrar modal de listado clicando fuera
 document.addEventListener('DOMContentLoaded', () => {
   const bg = document.getElementById('tobMcListModalBg');
   if(bg) bg.addEventListener('click', e => { if(e.target === bg) bg.classList.remove('on'); });
+  const unsavedBg = document.getElementById('tobMcUnsavedBg');
+  if(unsavedBg) unsavedBg.addEventListener('click', e => {
+    if(e.target === unsavedBg) tobMcCancelLeave();
+  });
+
+  const refreshDirty = () => setTimeout(tobMcRefreshSaveState, 0);
+  const creator = document.getElementById('tob-mtab-creador');
+  if(creator){
+    creator.addEventListener('input', refreshDirty);
+    creator.addEventListener('change', refreshDirty);
+  }
+  const grid = document.getElementById('tobMcGrid');
+  if(grid) new MutationObserver(refreshDirty).observe(grid, {childList:true, subtree:true});
+});
+
+window.addEventListener('beforeunload', e => {
+  if(!tobMcIsDirty()) return;
+  e.preventDefault();
+  e.returnValue = '';
 });
 
 // Auto-init — tobMenusLoad es async (IndexedDB); esperamos a que cargue

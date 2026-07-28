@@ -95,6 +95,38 @@ body{background:#080d1a;color:#e2e8f0;font-family:'DM Sans','Segoe UI',sans-seri
 /* CHARTS */
 .chart-wrap{margin-bottom:16px;}
 canvas{max-height:220px;}
+.gastos-help{font-size:.68rem;color:#64748b;margin-top:3px;line-height:1.35}
+.gastos-charts-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.8fr);gap:14px;margin-bottom:18px}
+.gastos-charts-grid canvas{max-height:none}
+.gastos-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.gastos-kpi{background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:11px 12px;min-width:0}
+.gastos-kpi-label{font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:1px}
+.gastos-kpi-value{font-size:1.18rem;font-weight:700;margin-top:3px;color:#e2e8f0}
+.gastos-kpi-note{font-size:.63rem;color:#475569;margin-top:2px;white-space:normal}
+.gastos-insights-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:12px;margin-bottom:14px}
+.gastos-insight-panel{background:#0a0e14;border:1px solid #1e2d3d;border-radius:10px;padding:13px 14px;min-width:0}
+.gastos-insight-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.gastos-insight-title strong{font-size:.76rem;color:#cbd5e1}
+.gastos-insight-title span{font-size:.64rem;color:#475569;text-align:right}
+.gastos-budget-row{padding:8px 0;border-top:1px solid #111827}
+.gastos-budget-row:first-child{border-top:0;padding-top:0}
+.gastos-budget-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.7rem;margin-bottom:5px}
+.gastos-budget-name{display:flex;align-items:center;gap:6px;color:#cbd5e1;min-width:0}
+.gastos-budget-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.gastos-budget-values{color:#64748b;white-space:nowrap}
+.gastos-budget-track{height:5px;background:#111827;border-radius:4px;overflow:hidden}
+.gastos-budget-fill{height:100%;border-radius:4px}
+.gastos-change-row,.gastos-recurring-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #111827}
+.gastos-change-row:first-child,.gastos-recurring-row:first-child{border-top:0;padding-top:0}
+.gastos-change-main,.gastos-recurring-main{min-width:0}
+.gastos-change-name,.gastos-recurring-name{font-size:.71rem;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gastos-change-note,.gastos-recurring-note{font-size:.61rem;color:#475569;margin-top:2px}
+.gastos-change-value,.gastos-recurring-value{font-size:.72rem;font-weight:700;text-align:right;white-space:nowrap}
+.gastos-budget-config-list{max-height:52vh;overflow-y:auto;border-top:1px solid #111827}
+.gastos-budget-config-row{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:12px;align-items:center;padding:9px 2px;border-bottom:1px solid #111827}
+.gastos-budget-config-name{display:flex;align-items:center;gap:8px;font-size:.78rem;color:#cbd5e1;min-width:0}
+.gastos-budget-config-total{display:flex;justify-content:space-between;gap:12px;margin-top:10px;padding:9px 2px 0;font-size:.74rem;color:#64748b}
+#gastosTableWrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 /* TABLE */
 .tbl-wrap{overflow-x:auto;}
 table{width:100%;border-collapse:collapse;}
@@ -195,6 +227,9 @@ textarea.inp{resize:vertical;min-height:70px;}
 /* ════════ MOBILE (≤640px) ════════ */
 @media (max-width: 640px) {
   body{font-size:14px;}
+  .gastos-charts-grid{grid-template-columns:1fr}
+  .gastos-insights-grid{grid-template-columns:1fr}
+  .gastos-budget-config-row{grid-template-columns:minmax(0,1fr) 110px}
 
   /* ─── HEADER: 3 filas (logo+badge+actions, tabs scroll, hueco) ─── */
   .header{padding:0 10px !important;}

@@ -175,10 +175,13 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
           <div id="dashGastosSummary"></div>
         </div>
 
-        <!-- Gastos: media mensual + análisis -->
+        <!-- Gastos: resumen y análisis -->
         <div class="card" style="margin-bottom:18px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div class="sec-title" style="margin:0">📊 Análisis de gastos</div>
+            <div>
+              <div class="sec-title" style="margin:0">📊 Gastos de un vistazo</div>
+              <div class="gastos-help">Qué estás gastando, cómo cambia y dónde se concentra.</div>
+            </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <select id="dashGastosRange" onchange="onGastosRangeChange()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
                 <option value="custom">Custom</option>
@@ -191,20 +194,30 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
                 <input type="month" id="dashGastosTo" onchange="renderDashGastosCharts()"
                   style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.7rem;padding:4px 6px;border-radius:6px;outline:none;cursor:pointer">
               </div>
+              <button class="btn-ghost" style="font-size:.7rem;padding:5px 9px" onclick="showTab('gastos')">Gestionar gastos</button>
             </div>
           </div>
           <div id="dashGastosKpis"></div>
         </div>
 
-        <!-- Gráfica líneas evolución -->
-        <div class="card" style="margin-bottom:18px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-            <div class="sec-title" style="margin:0">Tendencia</div>
-            <select id="dashGastosLinesCat" onchange="renderDashGastosCharts()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
-              <option value="__total" selected>📊 Total mensual</option>
-            </select>
+        <div class="gastos-charts-grid">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+              <div>
+                <div class="sec-title" style="margin:0">Evolución mensual</div>
+                <div class="gastos-help">Cada barra es un mes; la línea marca la media del periodo.</div>
+              </div>
+              <select id="dashGastosLinesCat" onchange="renderDashGastosCharts()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
+                <option value="__total" selected>Total mensual</option>
+              </select>
+            </div>
+            <div style="position:relative;height:280px"><canvas id="cGastosLines"></canvas></div>
           </div>
-          <div style="position:relative;height:280px"><canvas id="cGastosLines"></canvas></div>
+          <div class="card">
+            <div class="sec-title" style="margin:0">En qué se va el dinero</div>
+            <div class="gastos-help">Media mensual por categoría dentro del periodo elegido.</div>
+            <div style="position:relative;height:280px"><canvas id="cGastosCats"></canvas></div>
+          </div>
         </div>
       </div>
     </div>
@@ -260,6 +273,7 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
             <button onclick="navGastosMonth(-1)" title="Mes siguiente" style="background:transparent;border:none;color:#94a3b8;cursor:pointer;padding:4px 8px;font-size:.9rem;border-radius:5px" onmouseover="this.style.background='#1e2d3d'" onmouseout="this.style.background='transparent'">›</button>
           </div>
           <button class="btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="openCategoriasConfig()">⚙ Categorías</button>
+          <button class="btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="openGastosBudgetModal()">◎ Presupuestos</button>
           <button class="btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="openSinCategorizarModal()" title="Lista global de gastos sin categoría">🏷️ Sin categorizar</button>
           <button class="btn-primary" style="font-size:.72rem;padding:5px 10px" onclick="document.getElementById('gastosFileInput').click()">+ Subir extracto</button>
           <input type="file" id="gastosFileInput" accept=".xls,.xlsx" multiple style="display:none" onchange="onGastosFileChange(event)">
@@ -268,6 +282,9 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
 
       <!-- Resumen -->
       <div id="gastosSummary"></div>
+
+      <!-- Presupuesto, cambios y recurrentes -->
+      <div id="gastosInsights"></div>
 
       <!-- Lista de archivos subidos -->
       <div id="gastosFilesList"></div>
@@ -280,6 +297,20 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
         <div style="font-size:2rem;margin-bottom:8px">💰</div>
         <div style="font-size:.86rem;margin-bottom:6px">Sin gastos registrados</div>
         <div style="font-size:.72rem;color:#334155;line-height:1.5">Sube un extracto bancario (.xls) para empezar.<br>Soportado: Andbank y bancos con formato similar.</div>
+      </div>
+    </div>
+
+    <!-- MODAL PRESUPUESTOS DE GASTOS -->
+    <div id="gastosBudgetOverlay" class="modal-bg hidden">
+      <div class="modal" style="max-width:620px">
+        <div style="font-weight:700;font-size:.95rem;margin-bottom:4px">◎ Presupuesto mensual</div>
+        <div style="font-size:.72rem;color:#64748b;line-height:1.45;margin-bottom:14px">Define solo las categorías que quieras controlar. Los importes se comparan con tu parte real del gasto; las cuentas comunes cuentan al 50%.</div>
+        <div id="gastosBudgetList" class="gastos-budget-config-list"></div>
+        <div id="gastosBudgetTotal" class="gastos-budget-config-total"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+          <button class="btn-ghost" onclick="closeGastosBudgetModal()">Cancelar</button>
+          <button class="btn-primary" onclick="saveGastosBudgets()">Guardar presupuestos</button>
+        </div>
       </div>
     </div>
 
@@ -1314,8 +1345,12 @@ function gastosInit(p){
         {id:'cat_transfer',   name:'Transferencias entre cuentas', color:'#475569'}
       ],
       reglas: {},
+      presupuestos: {},
       meses: {}
     };
+  }
+  if(!p.gastos.presupuestos || typeof p.gastos.presupuestos !== 'object'){
+    p.gastos.presupuestos = {};
   }
 }
 
@@ -1357,6 +1392,217 @@ function calcGastosMes(md){
     porCuenta[accountKey].count+=1;
   });
   return{archivoMap,totalGastos,totalMiParte,totalComun,totalTransfer,porCategoria,porCuenta};
+}
+
+function normalizarConceptoRecurrente(t){
+  return String(t?.concepto || t?.conceptoOrig || t?.operacion || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\b/g,' ')
+    .replace(/\b(?:ref|operacion|autoriza(?:cion)?|targeta|tarjeta|card)\s*[:#-]?\s*\w+\b/g,' ')
+    .replace(/\b\d{4,}\b/g,' ')
+    .replace(/[^\p{L}\p{N}]+/gu,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function gastosHistoricalKeys(p, monthKey, maxMonths){
+  return Object.keys(p.gastos?.meses||{})
+    .filter(k=>k<=monthKey && (p.gastos.meses[k]?.transacciones||[]).length)
+    .sort()
+    .slice(-(maxMonths||12));
+}
+
+function detectGastosRecurrentes(p, monthKey){
+  const monthKeys = gastosHistoricalKeys(p, monthKey, 12);
+  const groups = {};
+  monthKeys.forEach(mk=>{
+    const md = p.gastos.meses[mk];
+    const archMap = {};
+    (md.archivos||[]).forEach(a=>{archMap[a.id]=a;});
+    (md.transacciones||[]).forEach(t=>{
+      if(t.excluido || t.importe>=0 || isTransferCategoria(t.categoriaId)) return;
+      const key = normalizarConceptoRecurrente(t);
+      if(key.length<4) return;
+      const raw = String(t.concepto || t.conceptoOrig || t.operacion || '').trim();
+      const amount = Math.abs(t.importe)*gastoCuentaFactor(archMap[t.archivoId]||{});
+      if(!groups[key]) groups[key]={key,months:{},names:{},cats:{}};
+      groups[key].months[mk]=(groups[key].months[mk]||0)+amount;
+      groups[key].names[raw]=(groups[key].names[raw]||0)+1;
+      const cid=t.categoriaId||'sin_cat';
+      groups[key].cats[cid]=(groups[key].cats[cid]||0)+1;
+    });
+  });
+
+  return Object.values(groups).map(g=>{
+    const keys=Object.keys(g.months).sort();
+    if(keys.length<3) return null;
+    const monthNumbers=keys.map(k=>{const [y,m]=k.split('-').map(Number);return y*12+m;});
+    const gaps=monthNumbers.slice(1).map((n,i)=>n-monthNumbers[i]).sort((a,b)=>a-b);
+    const medianGap=gaps.length?gaps[Math.floor(gaps.length/2)]:1;
+    if(medianGap>3) return null;
+    const values=keys.map(k=>g.months[k]);
+    const avg=values.reduce((s,v)=>s+v,0)/values.length;
+    const deviation=Math.sqrt(values.reduce((s,v)=>s+Math.pow(v-avg,2),0)/values.length);
+    const variation=avg?deviation/avg:0;
+    const name=Object.entries(g.names).sort((a,b)=>b[1]-a[1])[0]?.[0]||g.key;
+    const categoryId=Object.entries(g.cats).sort((a,b)=>b[1]-a[1])[0]?.[0]||'sin_cat';
+    const frequency=medianGap<=1?'Mensual':medianGap===2?'Cada ~2 meses':'Trimestral';
+    const stability=variation<=.12?'importe estable':variation<=.35?'importe variable':'importe muy variable';
+    return {name,categoryId,avg,count:keys.length,frequency,stability,score:keys.length*2-Math.min(variation,1)};
+  }).filter(Boolean).sort((a,b)=>b.score-a.score || b.avg-a.avg).slice(0,6);
+}
+
+function gastosCategoryChanges(p, monthKey, current){
+  const previousKeys = Object.keys(p.gastos?.meses||{})
+    .filter(k=>k<monthKey && (p.gastos.meses[k]?.transacciones||[]).length)
+    .sort()
+    .slice(-6);
+  if(!previousKeys.length) return {previousKeys,items:[]};
+  const previousAverage={};
+  previousKeys.forEach(k=>{
+    const byCat=calcGastosMes(p.gastos.meses[k]).porCategoria;
+    Object.entries(byCat).forEach(([cid,value])=>{previousAverage[cid]=(previousAverage[cid]||0)+value;});
+  });
+  Object.keys(previousAverage).forEach(cid=>{previousAverage[cid]/=previousKeys.length;});
+  const categoryIds=new Set([...Object.keys(previousAverage),...Object.keys(current?.porCategoria||{})]);
+  const items=[...categoryIds].map(categoryId=>{
+    const actual=current?.porCategoria?.[categoryId]||0;
+    const average=previousAverage[categoryId]||0;
+    const delta=actual-average;
+    return {categoryId,actual,average,delta,pct:average?delta/average*100:null};
+  }).filter(x=>Math.abs(x.delta)>=10)
+    .sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta))
+    .slice(0,5);
+  return {previousKeys,items};
+}
+
+function openGastosBudgetModal(){
+  const p=prof(); if(!p) return;
+  gastosInit(p);
+  const list=document.getElementById('gastosBudgetList');
+  const categories=(p.gastos.categorias||[]).filter(c=>!isTransferCategoria(c.id));
+  list.innerHTML=categories.map(c=>`
+    <label class="gastos-budget-config-row">
+      <span class="gastos-budget-config-name"><span class="gastos-budget-dot" style="background:${c.color}"></span>${esc(c.name)}</span>
+      <span style="position:relative">
+        <input class="inp" type="number" min="0" step="10" inputmode="decimal" data-budget-cat="${c.id}" value="${p.gastos.presupuestos[c.id]||''}" placeholder="Sin límite" oninput="updateGastosBudgetPreview()" style="padding-right:26px;text-align:right">
+        <span style="position:absolute;right:10px;top:8px;color:#475569;font-size:.75rem;pointer-events:none">€</span>
+      </span>
+    </label>
+  `).join('');
+  updateGastosBudgetPreview();
+  document.getElementById('gastosBudgetOverlay').classList.remove('hidden');
+}
+function updateGastosBudgetPreview(){
+  const values=[...document.querySelectorAll('#gastosBudgetList [data-budget-cat]')]
+    .map(input=>Number(input.value)||0).filter(v=>v>0);
+  const total=values.reduce((s,v)=>s+v,0);
+  document.getElementById('gastosBudgetTotal').innerHTML=`
+    <span>${values.length?values.length+' categorías controladas':'Ninguna categoría configurada'}</span>
+    <strong style="color:#e2e8f0">${values.length?fmt(total)+' / mes':'—'}</strong>`;
+}
+function closeGastosBudgetModal(){
+  document.getElementById('gastosBudgetOverlay').classList.add('hidden');
+}
+function saveGastosBudgets(){
+  const p=prof(); if(!p) return;
+  gastosInit(p);
+  const next={};
+  document.querySelectorAll('#gastosBudgetList [data-budget-cat]').forEach(input=>{
+    const value=Number(input.value);
+    if(Number.isFinite(value) && value>0) next[input.dataset.budgetCat]=value;
+  });
+  p.gastos.presupuestos=next;
+  save();
+  closeGastosBudgetModal();
+  renderGastos();
+  renderDashGastosCharts();
+  toast('Presupuestos guardados','green');
+}
+
+function renderGastosInsights(p, monthKey, monthData){
+  const el=document.getElementById('gastosInsights');
+  if(!el) return;
+  const current=calcGastosMes(monthData||{archivos:[],transacciones:[]});
+  const hasCurrentExpenses=(monthData?.transacciones||[]).some(t=>!t.excluido && t.importe<0 && !isTransferCategoria(t.categoriaId));
+  const cats=p.gastos.categorias||[];
+  const catMap={sin_cat:{name:'Sin categorizar',color:'#64748b'}};
+  cats.forEach(c=>{catMap[c.id]=c;});
+
+  const budgets=Object.entries(p.gastos.presupuestos||{})
+    .filter(([cid,value])=>value>0 && catMap[cid] && !isTransferCategoria(cid))
+    .map(([categoryId,budget])=>({
+      categoryId,budget,actual:current.porCategoria[categoryId]||0,
+      cat:catMap[categoryId]
+    })).sort((a,b)=>(b.actual/b.budget)-(a.actual/a.budget));
+  const budgetTotal=budgets.reduce((s,x)=>s+x.budget,0);
+  const budgetActual=budgets.reduce((s,x)=>s+x.actual,0);
+  const budgetPct=budgetTotal?budgetActual/budgetTotal*100:0;
+  const budgetColor=budgetPct>100?'#f87171':budgetPct>=85?'#fbbf24':'#4ade80';
+  const budgetHtml=budgets.length?`
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px">
+      <strong style="font-size:1.05rem;color:${budgetColor}">${fmt(budgetActual)} / ${fmt(budgetTotal)}</strong>
+      <span style="font-size:.68rem;color:${budgetColor}">${budgetPct.toFixed(0)}%</span>
+    </div>
+    ${budgets.map(x=>{
+      const pct=x.budget?x.actual/x.budget*100:0;
+      const color=pct>100?'#f87171':pct>=85?'#fbbf24':x.cat.color;
+      return `<div class="gastos-budget-row">
+        <div class="gastos-budget-meta">
+          <span class="gastos-budget-name"><span class="gastos-budget-dot" style="background:${x.cat.color}"></span>${esc(x.cat.name)}</span>
+          <span class="gastos-budget-values" style="color:${color}">${fmt(x.actual)} / ${fmt(x.budget)}</span>
+        </div>
+        <div class="gastos-budget-track"><div class="gastos-budget-fill" style="width:${Math.min(pct,100)}%;background:${color}"></div></div>
+      </div>`;
+    }).join('')}`:`
+    <div style="font-size:.72rem;color:#64748b;line-height:1.45;margin-bottom:10px">Aún no has definido límites. Puedes controlar solo las categorías que te interesen.</div>
+    <button class="btn-ghost" style="font-size:.7rem;padding:5px 9px" onclick="openGastosBudgetModal()">Configurar presupuesto</button>`;
+
+  const changes=hasCurrentExpenses?gastosCategoryChanges(p,monthKey,current):{previousKeys:[],items:[]};
+  const changesHtml=!hasCurrentExpenses
+    ? `<div style="font-size:.72rem;color:#64748b;line-height:1.45">Este mes todavía no tiene gastos para comparar.</div>`
+    : changes.items.length?changes.items.map(x=>{
+    const cat=catMap[x.categoryId]||catMap.sin_cat;
+    const up=x.delta>0;
+    const color=up?'#f87171':'#4ade80';
+    const comparison=x.pct==null?'categoría nueva':`${up?'+':''}${x.pct.toFixed(0)}%`;
+    return `<div class="gastos-change-row">
+      <div class="gastos-change-main">
+        <div class="gastos-change-name"><span class="gastos-budget-dot" style="display:inline-block;background:${cat.color};margin-right:6px"></span>${esc(cat.name)}</div>
+        <div class="gastos-change-note">${fmt(x.actual)} este mes · media ${fmt(x.average)}</div>
+      </div>
+      <div class="gastos-change-value" style="color:${color}">${up?'+':''}${fmt(x.delta)}<div style="font-size:.58rem;font-weight:400">${comparison}</div></div>
+    </div>`;
+  }).join(''):`<div style="font-size:.72rem;color:#64748b;line-height:1.45">${changes.previousKeys.length?'No hay cambios relevantes frente a los meses anteriores.':'Harán falta más meses para comparar categorías.'}</div>`;
+
+  const recurrents=detectGastosRecurrentes(p,monthKey);
+  const recurringHtml=recurrents.length?recurrents.map(x=>{
+    const cat=catMap[x.categoryId]||catMap.sin_cat;
+    return `<div class="gastos-recurring-row">
+      <div class="gastos-recurring-main">
+        <div class="gastos-recurring-name">${esc(x.name)}</div>
+        <div class="gastos-recurring-note"><span style="color:${cat.color}">${esc(cat.name)}</span> · ${x.frequency.toLowerCase()} · ${x.count} apariciones · ${x.stability}</div>
+      </div>
+      <div class="gastos-recurring-value" style="color:#e2e8f0">~${fmt(x.avg)}</div>
+    </div>`;
+  }).join(''):`<div style="font-size:.72rem;color:#64748b;line-height:1.45">Todavía no hay suficientes repeticiones para detectar gastos recurrentes.</div>`;
+
+  el.innerHTML=`
+    <div class="gastos-insights-grid">
+      <section class="gastos-insight-panel">
+        <div class="gastos-insight-title"><strong>Presupuesto del mes</strong><button class="btn-ghost" style="font-size:.65rem;padding:3px 7px" onclick="openGastosBudgetModal()">Editar</button></div>
+        ${budgetHtml}
+      </section>
+      <section class="gastos-insight-panel">
+        <div class="gastos-insight-title"><strong>Qué ha cambiado</strong><span>frente a la media de hasta 6 meses</span></div>
+        ${changesHtml}
+      </section>
+      <section class="gastos-insight-panel" style="grid-column:1/-1">
+        <div class="gastos-insight-title"><strong>Gastos recurrentes detectados</strong><span>lectura automática; no modifica movimientos</span></div>
+        ${recurringHtml}
+      </section>
+    </div>`;
 }
 
 let _pendingFiles = [];      // archivos en cola para configurar
@@ -1401,6 +1647,7 @@ function renderGastos(){
 
   if(!monthData || !(monthData.transacciones||[]).length){
     summaryEl.innerHTML = '';
+    renderGastosInsights(p, monthKey, monthData);
     filesEl.innerHTML   = '';
     tableEl.innerHTML   = '';
     emptyEl.style.display = 'block';
@@ -1467,6 +1714,7 @@ function renderGastos(){
       </div>`:''}
     </div>
   `;
+  renderGastosInsights(p, monthKey, monthData);
 
   // Render archivos
   filesEl.innerHTML = `
@@ -2098,6 +2346,7 @@ function deleteCategoria(id){
     (md.transacciones||[]).forEach(t=>{ if(t.categoriaId===id) t.categoriaId=''; });
   });
   Object.keys(p.gastos.reglas||{}).forEach(k=>{ if(p.gastos.reglas[k]===id) delete p.gastos.reglas[k]; });
+  if(p.gastos.presupuestos) delete p.gastos.presupuestos[id];
   save();
   renderCategoriasConfig();
 }
@@ -2277,15 +2526,12 @@ function renderDashGastosCharts(){
 
   if(!monthKeys.length){
     kpiEl.innerHTML = `<div style="color:#475569;font-size:.78rem;text-align:center;padding:14px 0">Sin gastos registrados aún.</div>`;
-    // Limpiar gráficas si existen
-    ['gastosLines'].forEach(k=>{ if(charts[k]){ charts[k].destroy(); delete charts[k]; }});
+    ['gastosLines','gastosCats'].forEach(k=>{ if(charts[k]){ charts[k].destroy(); delete charts[k]; }});
     return;
   }
 
-  // Poblar selector de años con datos (solo si aún no está poblado dinámicamente)
   populateGastosRangeSelect(monthKeys);
 
-  // Filtrar rango según selección
   const rangeSel = document.getElementById('dashGastosRange')?.value || 'all';
   let filteredKeys = monthKeys;
   if(rangeSel === 'custom'){
@@ -2297,17 +2543,14 @@ function renderDashGastosCharts(){
       return true;
     });
   } else if(rangeSel !== 'all'){
-    // Es un año, ej: "2025"
-    const yr = rangeSel;
-    filteredKeys = monthKeys.filter(k => k.startsWith(yr + '-'));
+    filteredKeys = monthKeys.filter(k => k.startsWith(rangeSel + '-'));
   }
   if(!filteredKeys.length){
     kpiEl.innerHTML = `<div style="color:#475569;font-size:.78rem;text-align:center;padding:14px 0">No hay datos en el rango seleccionado.</div>`;
-    ['gastosLines'].forEach(k=>{ if(charts[k]){ charts[k].destroy(); delete charts[k]; }});
+    ['gastosLines','gastosCats'].forEach(k=>{ if(charts[k]){ charts[k].destroy(); delete charts[k]; }});
     return;
   }
 
-  // Helper: calcular gastos por categoría (mi parte) de un mes
   const cats = p.gastos.categorias;
   const catMap = {}; cats.forEach(c=>{catMap[c.id]=c;});
   catMap['sin_cat'] = {id:'sin_cat', name:'Sin categorizar', color:'#64748b'};
@@ -2318,47 +2561,40 @@ function renderDashGastosCharts(){
     return {totalMiParte:r.totalMiParte, porCat:r.porCategoria};
   };
 
-  // Por mes
   const dataPorMes = filteredKeys.map(mk => ({mk, ...calcMes(mk)}));
-  // Filtrar meses sin gastos para los KPIs
   const mesesConGasto = dataPorMes.filter(d=>d.totalMiParte>0);
-
-  // KPIs: media, mediana, max, min
   const totales = mesesConGasto.map(d=>d.totalMiParte);
   const media = totales.length ? totales.reduce((s,v)=>s+v,0)/totales.length : 0;
-  const max = totales.length ? Math.max(...totales) : 0;
-  const min = totales.length ? Math.min(...totales) : 0;
-  const sortedT = [...totales].sort((a,b)=>a-b);
-  const mediana = totales.length ? (totales.length%2 ? sortedT[Math.floor(totales.length/2)] : (sortedT[totales.length/2-1]+sortedT[totales.length/2])/2) : 0;
-  const avgLast = (n) => {
-    const vals = mesesConGasto.slice(-n).map(d=>d.totalMiParte);
-    return vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : 0;
-  };
-  const media3 = avgLast(3), media6 = avgLast(6), media12 = avgLast(12);
   const lastMonthData = mesesConGasto[mesesConGasto.length-1] || null;
   const prevForTrend = mesesConGasto.slice(Math.max(0, mesesConGasto.length-7), Math.max(0, mesesConGasto.length-1));
   const prevTrendAvg = prevForTrend.length ? prevForTrend.reduce((s,d)=>s+d.totalMiParte,0)/prevForTrend.length : 0;
   const trendDiff = lastMonthData && prevTrendAvg ? lastMonthData.totalMiParte - prevTrendAvg : null;
   const trendPct = trendDiff!=null && prevTrendAvg ? trendDiff/prevTrendAvg*100 : null;
 
-  // Mejor categoría (la que más gasto acumulado tiene en el rango)
   const acumPorCat = {};
   dataPorMes.forEach(d=>{
     Object.entries(d.porCat||{}).forEach(([cid,v])=>{
       acumPorCat[cid] = (acumPorCat[cid]||0) + v;
     });
   });
-  const totalAcum = Object.values(acumPorCat).reduce((s,v)=>s+v,0);
-  // Mayor categoría: ignorar 'sin_cat' (sin categorizar) para que muestre algo útil
-  const topCat = Object.entries(acumPorCat)
-    .filter(([cid,_]) => cid !== 'sin_cat')
-    .sort((a,b)=>b[1]-a[1])[0];
-  const topCatName = topCat ? (catMap[topCat[0]]?.name||'—') : '—';
-  const topCatPct = topCat && totalAcum>0 ? (topCat[1]/totalAcum*100) : 0;
+  const latestTopCat = lastMonthData ? Object.entries(lastMonthData.porCat||{})
+    .filter(([cid])=>cid!=='sin_cat')
+    .sort((a,b)=>b[1]-a[1])[0] : null;
+  const latestTopName = latestTopCat ? (catMap[latestTopCat[0]]?.name||'—') : '—';
+  const latestTopPct = latestTopCat && lastMonthData.totalMiParte
+    ? latestTopCat[1]/lastMonthData.totalMiParte*100 : 0;
+  const configuredBudgets = Object.entries(p.gastos.presupuestos||{})
+    .filter(([cid,value])=>value>0 && catMap[cid] && !isTransferCategoria(cid));
+  const configuredBudgetTotal = configuredBudgets.reduce((sum,[,value])=>sum+value,0);
+  const latestBudgetActual = lastMonthData
+    ? configuredBudgets.reduce((sum,[cid])=>sum+(lastMonthData.porCat?.[cid]||0),0)
+    : 0;
+  const latestBudgetPct = configuredBudgetTotal ? latestBudgetActual/configuredBudgetTotal*100 : null;
+  const latestBudgetColor = latestBudgetPct==null?'#64748b':latestBudgetPct>100?'#f87171':latestBudgetPct>=85?'#fbbf24':'#4ade80';
 
   const alerts = [];
   if(lastMonthData && trendPct!=null && Math.abs(trendPct)>=20){
-    alerts.push({color:trendPct>0?'#f87171':'#4ade80',text:`${monthKeyToLabel(lastMonthData.mk)} está ${trendPct>0?'por encima':'por debajo'} de la media 6m: ${trendPct>0?'+':''}${trendPct.toFixed(0)}% (${fmt(trendDiff)})`});
+    alerts.push({color:trendPct>0?'#f87171':'#4ade80',text:`${monthKeyToLabel(lastMonthData.mk)} está ${trendPct>0?'por encima':'por debajo'} de los 6 meses anteriores: ${trendPct>0?'+':''}${trendPct.toFixed(0)}% (${fmt(trendDiff)})`});
   }
   const sinCat = lastMonthData?.porCat?.sin_cat || 0;
   if(sinCat>0 && lastMonthData.totalMiParte>0){
@@ -2379,33 +2615,36 @@ function renderDashGastosCharts(){
   }
 
   kpiEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:8px">
-      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
-        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Media mensual</div>
-        <div style="font-size:1.3rem;font-weight:700;color:#f87171;margin-top:2px">-${fmt(media)}</div>
-        <div style="font-size:.62rem;color:#334155">${mesesConGasto.length} ${mesesConGasto.length===1?'mes':'meses'}</div>
+    <div class="gastos-kpi-grid">
+      <div class="gastos-kpi">
+        <div class="gastos-kpi-label">Último mes · ${lastMonthData?monthKeyToLabel(lastMonthData.mk):'—'}</div>
+        <div class="gastos-kpi-value" style="color:#f87171">${lastMonthData?'-'+fmt(lastMonthData.totalMiParte):'—'}</div>
+        <div class="gastos-kpi-note">Tu parte real del gasto</div>
       </div>
-      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
-        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Mediana</div>
-        <div style="font-size:1.1rem;font-weight:600;color:#94a3b8;margin-top:2px">-${fmt(mediana)}</div>
+      <div class="gastos-kpi">
+        <div class="gastos-kpi-label">Media 6 meses anteriores</div>
+        <div class="gastos-kpi-value">${prevTrendAvg?'-'+fmt(prevTrendAvg):'—'}</div>
+        <div class="gastos-kpi-note">Sin contar el último mes</div>
       </div>
-      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
-        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Máximo / Mínimo</div>
-        <div style="font-size:.86rem;color:#94a3b8;margin-top:2px"><span style="color:#f87171">${fmt(max)}</span> · <span style="color:#4ade80">${fmt(min)}</span></div>
+      <div class="gastos-kpi">
+        <div class="gastos-kpi-label">Último mes vs referencia</div>
+        <div class="gastos-kpi-value" style="color:${trendDiff==null?'#64748b':trendDiff>0?'#f87171':'#4ade80'}">${trendDiff==null?'—':(trendDiff>0?'+':'')+fmt(trendDiff)}</div>
+        <div class="gastos-kpi-note">${trendPct==null?'Aún sin comparación':(trendPct>0?'+':'')+trendPct.toFixed(1)+'%'}</div>
       </div>
-      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
-        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Mayor categoría</div>
-        <div style="font-size:.86rem;font-weight:600;margin-top:2px;color:${topCat?(catMap[topCat[0]]?.color||'#94a3b8'):'#475569'}">${topCatName}</div>
-        <div style="font-size:.62rem;color:#475569">${topCat?fmt(topCat[1])+' · '+topCatPct.toFixed(0)+'%':''}</div>
+      <div class="gastos-kpi">
+        <div class="gastos-kpi-label">Mayor categoría del último mes</div>
+        <div class="gastos-kpi-value" style="font-size:1rem;color:${latestTopCat?(catMap[latestTopCat[0]]?.color||'#94a3b8'):'#64748b'}">${esc(latestTopName)}</div>
+        <div class="gastos-kpi-note">${latestTopCat?fmt(latestTopCat[1])+' · '+latestTopPct.toFixed(0)+'% del mes':'Sin datos'}</div>
       </div>
-      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
-        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Media 3 / 6 / 12m</div>
-        <div style="font-size:.82rem;color:#94a3b8;margin-top:4px"><span style="color:#f87171">${fmt(media3)}</span> · ${fmt(media6)} · ${fmt(media12)}</div>
+      <div class="gastos-kpi">
+        <div class="gastos-kpi-label">Media del periodo</div>
+        <div class="gastos-kpi-value">-${fmt(media)}</div>
+        <div class="gastos-kpi-note">${mesesConGasto.length} ${mesesConGasto.length===1?'mes analizado':'meses analizados'}</div>
       </div>
-      <div style="background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:10px 12px">
-        <div style="font-size:.62rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Último vs media 6m</div>
-        <div style="font-size:1rem;font-weight:700;margin-top:2px;color:${trendDiff==null?'#64748b':trendDiff>0?'#f87171':'#4ade80'}">${trendDiff==null?'—':(trendDiff>0?'+':'')+fmt(trendDiff)}</div>
-        <div style="font-size:.62rem;color:#475569">${trendPct==null?'sin comparación':(trendPct>0?'+':'')+trendPct.toFixed(1)+'%'}</div>
+      <div class="gastos-kpi" ${configuredBudgetTotal?'':`onclick="openGastosBudgetModal()" style="cursor:pointer"`}>
+        <div class="gastos-kpi-label">Presupuesto por categorías</div>
+        <div class="gastos-kpi-value" style="color:${latestBudgetColor}">${latestBudgetPct==null?'Sin configurar':latestBudgetPct.toFixed(0)+'%'}</div>
+        <div class="gastos-kpi-note">${latestBudgetPct==null?'Pulsa para definirlo':fmt(latestBudgetActual)+' de '+fmt(configuredBudgetTotal)}</div>
       </div>
     </div>
     ${alerts.length?`<div style="display:grid;gap:6px;margin:8px 0 10px">
@@ -2413,39 +2652,23 @@ function renderDashGastosCharts(){
     </div>`:''}
   `;
 
-  // Limpiar gráficas previas
-  ['gastosLines'].forEach(k=>{ if(charts[k]){ charts[k].destroy(); delete charts[k]; }});
-
-  // Determinar qué categorías usar (las que tengan gastos en el rango, ordenadas por importancia)
+  ['gastosLines','gastosCats'].forEach(k=>{ if(charts[k]){ charts[k].destroy(); delete charts[k]; }});
   const catsConGasto = Object.entries(acumPorCat)
     .sort((a,b)=>b[1]-a[1])
     .map(([cid,_])=>cid);
-
   const labels = filteredKeys.map(monthKeyToLabel);
-
-  // Calcular media por categoría (solo meses con dato > 0 en esa categoría)
-  const mediaPorCat = {};
-  catsConGasto.forEach(cid => {
-    const valores = dataPorMes.map(d => d.porCat?.[cid] || 0).filter(v => v > 0);
-    mediaPorCat[cid] = valores.length ? valores.reduce((s,v)=>s+v,0)/valores.length : 0;
-  });
-
-  // Poblar selector de categorías (incluye todas las que tengan gasto, ordenadas)
   const lineCatSel = document.getElementById('dashGastosLinesCat');
   const previousValue = lineCatSel?.value || '__total';
   if(lineCatSel){
-    // Limpiar y repoblar
-    lineCatSel.innerHTML = '<option value="__total">📊 Total mensual</option>';
+    lineCatSel.innerHTML = '<option value="__total">Total mensual</option>';
     catsConGasto.forEach(cid => {
       const cat = catMap[cid] || {name:'?'};
-      // Ignorar 'sin_cat' del listado para no contaminar
       if(cid === 'sin_cat') return;
       const opt = document.createElement('option');
       opt.value = cid;
       opt.textContent = cat.name;
       lineCatSel.appendChild(opt);
     });
-    // Restaurar selección si todavía existe esa cat
     if(previousValue === '__total' || catsConGasto.includes(previousValue)){
       lineCatSel.value = previousValue;
     } else {
@@ -2454,65 +2677,35 @@ function renderDashGastosCharts(){
   }
   const seleccion = lineCatSel?.value || '__total';
 
-  // Construir datasets según selección
-  const datasetsLines = [];
-  // Total mensual (media de todos los totales con valor)
-  const totalesValidos = dataPorMes.map(d=>d.totalMiParte).filter(v=>v>0);
-  const mediaTotalMes = totalesValidos.length ? totalesValidos.reduce((s,v)=>s+v,0)/totalesValidos.length : 0;
-
-  if(seleccion === '__total'){
-    // Línea principal: total mensual
-    datasetsLines.push({
-      label: 'Total mensual',
-      data: dataPorMes.map(d => d.totalMiParte),
-      borderColor: '#f87171',
-      backgroundColor: '#f8717122',
-      borderWidth: 2.5,
-      pointRadius: 4,
-      tension: 0.3,
-      fill: false
-    });
-    // Línea punteada de la media
-    datasetsLines.push({
-      label: `Media: ${fmt(mediaTotalMes)}`,
-      data: dataPorMes.map(()=>mediaTotalMes),
-      borderColor: '#f8717188',
-      borderWidth: 1.5,
-      borderDash: [6,6],
-      pointRadius: 0,
-      tension: 0,
-      fill: false,
-      _isMean: true
-    });
-  } else {
-    // Categoría aislada
-    const cat = catMap[seleccion] || {name:'?', color:'#94a3b8'};
-    const media = mediaPorCat[seleccion] || 0;
-    datasetsLines.push({
-      label: cat.name,
-      data: dataPorMes.map(d => d.porCat?.[seleccion] || 0),
-      borderColor: cat.color,
-      backgroundColor: cat.color + '22',
-      borderWidth: 2.5,
-      pointRadius: 4,
-      tension: 0.3,
-      fill: false
-    });
-    datasetsLines.push({
-      label: `Media: ${fmt(media)}`,
-      data: dataPorMes.map(()=>media),
-      borderColor: cat.color + '88',
-      borderWidth: 1.5,
-      borderDash: [6,6],
-      pointRadius: 0,
-      tension: 0,
-      fill: false,
-      _isMean: true
-    });
-  }
+  const selectedCat = seleccion === '__total' ? null : (catMap[seleccion] || {name:'?',color:'#94a3b8'});
+  const selectedValues = dataPorMes.map(d => seleccion === '__total' ? d.totalMiParte : (d.porCat?.[seleccion] || 0));
+  const selectedValid = selectedValues.filter(v=>v>0);
+  const selectedMean = selectedValid.length ? selectedValid.reduce((s,v)=>s+v,0)/selectedValid.length : 0;
+  const barColor = selectedCat?.color || '#3b82f6';
+  const datasetsLines = [{
+    label: selectedCat?.name || 'Total mensual',
+    data: selectedValues,
+    backgroundColor: selectedValues.map((_,i)=>i===selectedValues.length-1?'#f59e0b':barColor+'aa'),
+    borderColor: selectedValues.map((_,i)=>i===selectedValues.length-1?'#fbbf24':barColor),
+    borderWidth:1,
+    borderRadius:5,
+    order:2
+  },{
+    type:'line',
+    label:`Media: ${fmt(selectedMean)}`,
+    data:dataPorMes.map(()=>selectedMean),
+    borderColor:'#94a3b8',
+    borderWidth:2,
+    borderDash:[6,6],
+    pointRadius:0,
+    tension:0,
+    fill:false,
+    _isMean:true,
+    order:1
+  }];
 
   charts['gastosLines'] = new Chart(document.getElementById('cGastosLines'), {
-    type: 'line',
+    type: 'bar',
     data: { labels, datasets: datasetsLines },
     options: {
       responsive: true,
@@ -2534,7 +2727,44 @@ function renderDashGastosCharts(){
       },
       scales: {
         x: { ticks:{color:'#475569', font:{size:10}}, grid:{color:'#0f1d2e'} },
-        y: { ticks:{color:'#475569', font:{size:10}, callback:v=>fmt(v)}, grid:{color:'#0f1d2e'} }
+        y: { beginAtZero:true,ticks:{color:'#475569', font:{size:10}, callback:v=>fmt(v)}, grid:{color:'#0f1d2e'} }
+      }
+    }
+  });
+
+  const catRows = Object.entries(acumPorCat)
+    .filter(([cid,total])=>cid!=='sin_cat' && total>0)
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,8);
+  const monthsDivisor = Math.max(1, mesesConGasto.length);
+  const catAvgTotal = catRows.reduce((sum,[,value])=>sum+value/monthsDivisor,0);
+  charts['gastosCats'] = new Chart(document.getElementById('cGastosCats'), {
+    type:'bar',
+    data:{
+      labels:catRows.map(([cid])=>catMap[cid]?.name||'Sin categoría'),
+      datasets:[{
+        label:'Media mensual',
+        data:catRows.map(([,value])=>value/monthsDivisor),
+        backgroundColor:catRows.map(([cid])=>(catMap[cid]?.color||'#64748b')+'bb'),
+        borderColor:catRows.map(([cid])=>catMap[cid]?.color||'#64748b'),
+        borderWidth:1,
+        borderRadius:5
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=>{
+          const pct = catAvgTotal ? c.parsed.x/catAvgTotal*100 : 0;
+          return `${fmt(c.parsed.x)} al mes · ${pct.toFixed(0)}%`;
+        }}}
+      },
+      scales:{
+        x:{beginAtZero:true,ticks:{color:'#475569',font:{size:10},callback:v=>fmt(v)},grid:{color:'#0f1d2e'}},
+        y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{display:false}}
       }
     }
   });

@@ -806,7 +806,7 @@ function cfgSave(){
 
 function updateCfgPreview(){
   const p = prof(); if(!p) return;
-  const num = (p.cfg.prefix||"") + String(p.cfg.next||1).padStart(4,"0");
+  const num = nextFacNumero(p);
   const el = document.getElementById("cfgPreview");
   if(el) el.textContent = num;
 }
@@ -1102,7 +1102,7 @@ function duplicateFactura(id){
   const orig = p.facturas.find(x => x.id === id);
   if(!orig) return;
   // Crear copia con nuevo número, fecha de hoy, y estado pendiente
-  const num = (p.cfg.prefix||"") + String(p.cfg.next||1).padStart(4,"0");
+  const num = nextFacNumero(p);
   editingFactura = {
     ...JSON.parse(JSON.stringify(orig)),
     id: uid(),
@@ -1153,18 +1153,27 @@ function deleteFactura(id){
   if(!f) return;
   if(!confirm(`¿Borrar la factura ${f.numero} (${fmt(f.totales?.total)})?\n\nEsta acción no se puede deshacer.`)) return;
   p.facturas = p.facturas.filter(x => x.id !== id);
+  p.cfg.next = nextFacSequence(p);
   save();
   renderFacList();
 }
 
-// Devuelve el siguiente número de factura LIBRE para el perfil, avanzando el
-// contador si quedó rezagado respecto a las facturas ya existentes (evita
-// duplicados tras borrados, ediciones manuales o merges entre dispositivos).
+// Calcula la secuencia desde las facturas que existen ahora. Si se elimina la
+// factura más reciente, su número vuelve a quedar disponible.
+function nextFacSequence(p){
+  const prefix = p.cfg?.prefix || "";
+  const seqs = (p.facturas || []).map(f => {
+    const numero = String(f.numero || "");
+    if(prefix && !numero.startsWith(prefix)) return null;
+    const tail = prefix ? numero.slice(prefix.length) : numero;
+    return /^\d+$/.test(tail) ? parseInt(tail, 10) : null;
+  }).filter(Number.isFinite);
+  return seqs.length ? Math.max(...seqs) + 1 : (p.cfg?.next || 1);
+}
+
 function nextFacNumero(p){
   const prefix = p.cfg.prefix || "";
-  const used = new Set((p.facturas||[]).map(x => x.numero));
-  let n = p.cfg.next || 1;
-  while(used.has(prefix + String(n).padStart(4,"0"))) n++;
+  const n = nextFacSequence(p);
   return prefix + String(n).padStart(4,"0");
 }
 
@@ -1619,14 +1628,7 @@ function saveFactura(){
   if(editingFacIsNew){
     p.facturas = p.facturas || [];
     p.facturas.push(f);
-    // Mantener el contador por delante del número realmente usado (robusto ante
-    // borrados/merges). Se quita el prefijo numérico para no leer "250007" como
-    // secuencia 250007 cuando el prefijo es "25".
-    const _pre = p.cfg.prefix || "";
-    let _tail = f.numero || "";
-    if(_pre && _tail.startsWith(_pre)) _tail = _tail.slice(_pre.length);
-    const _seq = parseInt(_tail, 10);
-    p.cfg.next = isNaN(_seq) ? (p.cfg.next||1) + 1 : Math.max((p.cfg.next||1), _seq + 1);
+    p.cfg.next = nextFacSequence(p);
     editingFacIsNew = false;
   } else {
     const idx = p.facturas.findIndex(x=>x.id===f.id);

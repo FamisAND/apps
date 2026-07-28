@@ -344,7 +344,7 @@
       <div class="tob-row col-2">
         <div>
           <label class="tob-lbl">Cliente *</label>
-          <select class="tob-select" id="tobMcCliente" onchange="tobMcOnClienteChange()">
+          <select class="tob-select" id="tobMcCliente" onchange="tobMcOnClienteSelectChange()">
             <option value="">— Selecciona cliente —</option>
           </select>
           <div id="tobMcClienteHint" style="font-size:.7rem;color:var(--mute2);margin-top:3px;font-family:'DM Mono',monospace;"></div>
@@ -403,6 +403,7 @@
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenNotasModal()" title="Editar las notas/recomendaciones que salen al final del PDF de TODOS los menús (son comunes)">📝 Notas</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcOpenReviewPasos()" title="Revisar todos los pasos del menú con ingredientes eliminados — toggle ✂️/✓ rápido + acciones masivas">✂️ Revisar pasos</button>
               <button class="tob-action ghost btn-xs" onclick="tobMcClearSemana()" title="Vaciar la semana actual">🗑 Vaciar semana</button>
+              <span id="tobMcSaveState" style="font-size:.66rem;color:var(--mute2);font-family:'DM Mono',monospace;"></span>
               <button class="tob-action btn-xs" onclick="tobMcSave()" title="Guardar el menú en el cliente">💾 Guardar</button>
             </div>
           </div>
@@ -460,6 +461,21 @@
     <div id="tobMcListBody" style="max-height:60vh;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="document.getElementById('tobMcListModalBg').classList.remove('on')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ AVISO CAMBIOS DE MENÚ SIN GUARDAR ════════ -->
+<div class="tob-modal-bg" id="tobMcUnsavedBg">
+  <div class="tob-modal" style="max-width:500px;">
+    <h3>💾 Hay cambios sin guardar</h3>
+    <p style="font-size:.82rem;color:var(--mute);line-height:1.55;margin:0;">
+      Has modificado este menú. ¿Quieres guardarlo antes de salir?
+    </p>
+    <div style="display:flex;gap:8px;margin-top:18px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="tob-action ghost" onclick="tobMcCancelLeave()">Seguir editando</button>
+      <button class="tob-action ghost" style="color:#dc6a6a;border-color:#7a2424;" onclick="tobMcDiscardAndLeave()">No guardar</button>
+      <button class="tob-action" onclick="tobMcSaveAndLeave()">Guardar y salir</button>
     </div>
   </div>
 </div>
@@ -1153,7 +1169,7 @@
     <div class="tob-pdf-actions" style="margin-top:10px;">
       <button class="tob-action" onclick="tobGeneratePdfActual()" title="PDF editable con cover, KPIs y tablas con campos rellenables">📄 PDF rutina (editable)</button>
       <button class="tob-action ghost" onclick="tobPreviewPdfActual()" title="Abre el PDF en una pestaña nueva para verlo antes de descargar/enviar">👁 Vista previa</button>
-      <button class="tob-action ghost" onclick="tobGeneratePdfResumenActual()" title="PDF resumen de esta rutina con las gráficas de progreso por ejercicio (volumen kg×reps por iteración)">📊 PDF resumen (gráficas)</button>
+      <button class="tob-action ghost" onclick="tobGeneratePdfResumenActual()" title="PDF resumen de esta rutina con las gráficas de progreso por ejercicio (fuerza estimada por iteración)">📊 PDF resumen (gráficas)</button>
       <button class="tob-action ghost" onclick="tobShareWhatsAppRutina()" title="Abre WhatsApp con un mensaje preformateado para enviarle la rutina (adjunta el PDF manualmente)">📲 WhatsApp</button>
     </div>
   </div>
@@ -1166,7 +1182,7 @@
 
   <!-- Gráficas de progreso -->
   <div class="tob-card">
-    <div class="tob-card-title">📈 Progreso por ejercicio (volumen total kg×reps · una línea por iteración)</div>
+    <div class="tob-card-title">📈 Progreso por ejercicio (fuerza estimada · una línea por iteración)</div>
     <div class="tob-charts-grid" id="tobChartsGrid"></div>
   </div>
 </div>

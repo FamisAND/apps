@@ -180,11 +180,11 @@
           <div class="row-2">
             <div><label class="fld-lbl">Prefijo (ej: F-, FT-, A-)</label>
               <input class="inp" id="cfg_prefix" oninput="cfgSave()"></div>
-            <div><label class="fld-lbl">Próximo número</label>
+            <div><label class="fld-lbl">Número inicial (si aún no hay facturas)</label>
               <input class="inp" type="number" id="cfg_next" min="1" oninput="cfgSave()"></div>
           </div>
           <div style="font-size:.7rem;color:var(--mute2);">
-            Ejemplo de número siguiente: <span id="cfgPreview" style="color:var(--acc2);font-family:'DM Mono',monospace;">—</span>
+            Siguiente número según la última factura existente: <span id="cfgPreview" style="color:var(--acc2);font-family:'DM Mono',monospace;">—</span>
           </div>
         </div>
 
