@@ -92,6 +92,14 @@ body{background:#080d1a;color:#e2e8f0;font-family:'DM Sans','Segoe UI',sans-seri
 .tgl input:checked~.tgl-thumb{transform:translateX(15px);}
 .tgl-lbl{font-size:.82rem;color:#94a3b8;}
 .tgl-val{font-size:.73rem;color:#f472b6;font-family:'DM Mono',monospace;margin-left:auto;}
+#dashboardEmpresaToggle{display:flex;justify-content:flex-end;min-height:0;}
+.dash-empresa-toggle{display:inline-flex;align-items:center;gap:10px;margin:0 0 12px auto;padding:8px 12px;background:#0f1729;border:1px solid #1e2d4a;border-radius:12px;color:#94a3b8;font-family:inherit;cursor:pointer;transition:border-color .16s,background .16s,color .16s;}
+.dash-empresa-toggle:hover{border-color:#334a68;background:#111c31;color:#cbd5e1;}
+.dash-empresa-toggle.on{border-color:#4c1d3c;background:#160b1d;}
+.dash-empresa-copy{display:grid;gap:1px;text-align:left;min-width:0;}
+.dash-empresa-kicker{font-size:.55rem;text-transform:uppercase;letter-spacing:.1em;color:#64748b;font-weight:700;}
+.dash-empresa-title{font-size:.78rem;color:#e2e8f0;font-weight:700;max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dash-empresa-state{font-size:.66rem;color:#f472b6;font-family:'DM Mono',monospace;text-transform:uppercase;}
 /* CHARTS */
 .chart-wrap{margin-bottom:16px;}
 canvas{max-height:220px;}

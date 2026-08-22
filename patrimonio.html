@@ -117,6 +117,7 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
         </button>
         <div id="alertsArea" style="display:none;"></div>
       </div>
+      <div id="dashboardEmpresaToggle"></div>
       <div class="stats-grid" id="statsGrid"></div>
       <div id="emptyDash" class="card hidden" style="text-align:center;padding:40px;color:#334155;">
         <div style="font-size:2rem;margin-bottom:10px">📊</div>
@@ -1061,6 +1062,7 @@ function renderProjectionChart(p,curPat,avgGrowth){
 // ══════════════════════════════
 function renderDashboard(){
   const p=prof();if(!p)return;
+  renderDashboardEmpresaToggle(p);
   // Use only complete entries for dashboard display
   const ents=completeEntries(p);
   const allEnts=p.entries||[];
@@ -1129,6 +1131,31 @@ function renderDashboard(){
   document.getElementById("emptyDash").classList.toggle("hidden",has);
   document.getElementById("chartsWrap").classList.toggle("hidden",!has);
   if(has)renderCharts(p);
+}
+
+function renderDashboardEmpresaToggle(p){
+  const el=document.getElementById("dashboardEmpresaToggle");
+  if(!el)return;
+  p.empresaSection=p.empresaSection||{enabled:false,title:"🏢 Empresa",participacion:49};
+  const enabled=!!p.empresaSection.enabled;
+  const title=p.empresaSection.title||"🏢 Empresa";
+  el.innerHTML=`<button class="dash-empresa-toggle ${enabled?'on':'off'}" onclick="toggleDashboardEmpresa()" title="${enabled?'Ocultar empresa del dashboard e historial':'Mostrar empresa en dashboard e historial'}">
+    <span class="dash-empresa-copy">
+      <span class="dash-empresa-kicker">Empresa</span>
+      <span class="dash-empresa-title">${esc(title)}</span>
+    </span>
+    <span class="tgl" aria-hidden="true"><input type="checkbox" ${enabled?'checked':''} tabindex="-1"><div class="tgl-track"></div><div class="tgl-thumb"></div></span>
+    <span class="dash-empresa-state">${enabled?'Visible':'Oculta'}</span>
+  </button>`;
+}
+
+function toggleDashboardEmpresa(){
+  const p=prof();if(!p)return;
+  p.empresaSection=p.empresaSection||{enabled:false,title:"🏢 Empresa",participacion:49};
+  p.empresaSection.enabled=!p.empresaSection.enabled;
+  save();
+  toast(p.empresaSection.enabled?"✓ Empresa visible":"✓ Empresa oculta","green");
+  renderDashboard();
 }
 
 // ══════════════════════════════
