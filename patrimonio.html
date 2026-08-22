@@ -638,12 +638,20 @@ function calcPat(entry,p){
   const deuda=parseFloat(entry.deuda);if(!isNaN(deuda)&&deuda>0)t-=deuda;
   return t;
 }
+function parseMoneyValue(v){
+  if(v==null||v==="")return NaN;
+  if(typeof v==="number")return v;
+  const s=String(v).trim().replace(/\s/g,'');
+  if(!s)return NaN;
+  const normalized=s.includes(',') ? s.replace(/\./g,'').replace(',','.') : s;
+  return parseFloat(normalized);
+}
 function calcEmpParts(entry,p){
-  let ben=parseFloat(entry.emp_ben12??entry.emp_fact);
+  let ben=parseMoneyValue(entry.emp_ben12??entry.emp_fact);
   if(entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""){
     ben=calcBen12Rolling(entry,p);
   }
-  const cajaRaw=parseFloat(entry.emp_caja);
+  const cajaRaw=parseMoneyValue(entry.emp_caja);
   const hasBen=!isNaN(ben);
   const hasCaja=!isNaN(cajaRaw);
   if(!hasBen&&!hasCaja)return null;
@@ -674,17 +682,17 @@ function empPart(p){const v=parseFloat(p?.empresaSection?.participacion);return 
 function calcBen12RollingLegacy(entry,p){
   const ents=p.entries||[];
   const idx=ents.findIndex(e=>e.key===entry.key);
-  if(idx<0)return parseFloat(entry.emp_ben_mes)||0;
+  if(idx<0)return parseMoneyValue(entry.emp_ben_mes)||0;
   let sum=0;let count=0;
   // Recorrer los últimos 12 meses (incluido el actual)
   for(let i=idx;i>=Math.max(0,idx-11);i--){
     const e=ents[i];
-    const v=parseFloat(e.emp_ben_mes);
+    const v=parseMoneyValue(e.emp_ben_mes);
     if(!isNaN(v)){sum+=v;count++;}
     else if(e.emp_ben12!=null&&e.emp_ben12!==""){
       // Fallback: si un mes antiguo no tiene emp_ben_mes pero sí emp_ben12,
       // usar emp_ben12 como total y no sumar más meses anteriores
-      return parseFloat(e.emp_ben12)||0;
+      return parseMoneyValue(e.emp_ben12)||0;
     }
   }
   return sum;
@@ -692,23 +700,26 @@ function calcBen12RollingLegacy(entry,p){
 
 function calcBen12Rolling(entry,p){
   const ents=p.entries||[];
-  const entryKey=entry.key||`${entry.year}-${String((entry.month||0)+1).padStart(2,'0')}`;
-  const [yy,mm]=entryKey.split('-').map(Number);
-  if(!yy||!mm)return parseFloat(entry.emp_ben_mes)||0;
-  const byKey={};
-  ents.forEach(e=>{
-    const k=e.key||`${e.year}-${String((e.month||0)+1).padStart(2,'0')}`;
-    byKey[k]=e;
-  });
-  let sum=0;
-  for(let i=0;i<12;i++){
-    const d=new Date(yy,mm-1-i,1);
-    const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const e=byKey[k];
-    if(!e)continue;
-    const v=parseFloat(e.emp_ben_mes);
+  const yy=parseInt(entry.year);
+  const mm=parseInt(entry.month);
+  if(isNaN(yy)||isNaN(mm))return parseMoneyValue(entry.emp_ben_mes)||0;
+  const before=ents
+    .filter(e=>{
+      const ey=parseInt(e.year),em=parseInt(e.month);
+      if(isNaN(ey)||isNaN(em))return false;
+      return (ey<yy)||(ey===yy&&em<mm);
+    })
+    .sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month)
+    .slice(-11);
+  let sum=parseMoneyValue(entry.emp_ben_mes)||0;
+  for(let i=before.length-1;i>=0;i--){
+    const e=before[i];
+    const v=parseMoneyValue(e.emp_ben_mes);
     if(!isNaN(v))sum+=v;
-    else if(e.emp_ben12!=null&&e.emp_ben12!=="")return parseFloat(e.emp_ben12)||0;
+    else if(e.emp_ben12!=null&&e.emp_ben12!==""){
+      sum+=parseMoneyValue(e.emp_ben12)||0;
+      break;
+    }
   }
   return sum;
 }
@@ -718,7 +729,7 @@ function getBen12Display(entry,p){
   if(entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""){
     return calcBen12Rolling(entry,p);
   }
-  return parseFloat(entry.emp_ben12??entry.emp_fact)||0;
+  return parseMoneyValue(entry.emp_ben12??entry.emp_fact)||0;
 }
 
 // ── Calcular rentabilidad de un activo individual (sin aportaciones) ──
@@ -3348,7 +3359,7 @@ function renderFormFields(prefill){
       prev11=before.slice(-11);
     }
     const prev11sum=prev11.reduce((s,e)=>{
-      const v=parseFloat(e.emp_ben_mes);
+      const v=parseMoneyValue(e.emp_ben_mes);
       if(!isNaN(v))return s+v;
       // Si un mes no tiene emp_ben_mes, no se puede sumar parcial
       return s;
@@ -3425,9 +3436,9 @@ function updateFP(){
   const box=document.getElementById("formulaBox");if(!box)return;
   const detailEl=document.getElementById("ben12Detail");
   
-  const bMes=parseFloat(bMesEl?.value)||0;
-  const bManual=bEl?.value?.trim()?parseFloat(bEl.value):null;
-  const c=parseFloat(cEl?.value)||0;
+  const bMes=parseMoneyValue(bMesEl?.value)||0;
+  const bManual=bEl?.value?.trim()?parseMoneyValue(bEl.value):null;
+  const c=parseMoneyValue(cEl?.value)||0;
   const per=empPer(p),part=empPart(p);
   
   // Calcular beneficio 12m
@@ -3453,13 +3464,13 @@ function updateFP(){
     // Recorremos del más reciente al más antiguo
     for(let i=prev11.length-1;i>=0;i--){
       const e=prev11[i];
-      const v=parseFloat(e.emp_ben_mes);
+      const v=parseMoneyValue(e.emp_ben_mes);
       if(!isNaN(v)){
         prev11sum+=v;
         details.unshift(`${MO[e.month]} ${e.year}: ${fmt(v)}`);
       } else if(e.emp_ben12!=null&&e.emp_ben12!==""){
         // Fallback legacy: usar emp_ben12 como total acumulado (sumamos lo que ya tenemos del mes y rompemos)
-        const legacyVal=parseFloat(e.emp_ben12)||0;
+        const legacyVal=parseMoneyValue(e.emp_ben12)||0;
         usedLegacy={mes:`${MO[e.month]} ${e.year}`, valor:legacyVal};
         prev11sum+=legacyVal; // incluir el legacy como base
         break; // dejar de sumar hacia atrás (el legacy ya incluye los anteriores)
