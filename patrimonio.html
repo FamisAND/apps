@@ -597,11 +597,20 @@ function profileAssets(p){const r=[];p.sections.forEach(s=>s.assets.forEach(a=>r
 function activeAssetsOf(p){const r=[];p.sections.forEach(s=>s.assets.forEach(a=>{if(!a.archived)r.push(a);}));return r;}
 // Activos visibles en el dashboard: no archivados y activos en el último registro.
 // Los valores históricos se conservan, pero una cartera cerrada deja de aparecer como opción o serie.
-function dashboardAssetsOf(p,entry){
-  const available=activeAssetsOf(p);
+function dashboardAssetsOf(p,entry,includeArchived=false){
+  const available=includeArchived?profileAssets(p):activeAssetsOf(p);
   if(!entry)return available;
   const entryIds=new Set(entryActiveAssets(entry,p).map(a=>a.id));
   return available.filter(a=>entryIds.has(a.id));
+}
+function showArchivedHistory(p){return !!p?.showArchivedHistory;}
+function assetLabel(a){return a.archived?`${a.name} (oculta)`:a.name;}
+function hasAssetValueInEntries(p,assetId,entries){
+  return (entries||[]).some(e=>{
+    const activeIds=new Set(entryActiveAssets(e,p).map(a=>a.id));
+    const value=parseFloat((e.assets||{})[assetId]);
+    return activeIds.has(assetId)&&Number.isFinite(value)&&value>0;
+  });
 }
 // Detecta carteres sense valors > 0 en les últimes N entrades (default 6 mesos).
 // Ignora les seccions d'ingressos (no es consideren "carteres" arxivables).
@@ -1111,11 +1120,11 @@ function renderDashboard(){
   addS("Patrimonio Total",curP,"#60a5fa",true,dPct!=null?fPct(dPct)+" este mes":null,dPct!=null?dPct>=0:true,last?`📅 ${MO[last.month]} ${last.year}`:null);
   if(last){
     const ingSec=ingSection(p);const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
-    dashboardAssetsOf(p,last).forEach(a=>{
+    dashboardAssetsOf(p,last,showArchivedHistory(p)).forEach(a=>{
       if(ingIds.has(a.id))return;
       const v=parseFloat((last.assets||{})[a.id]);
       const weight=curP>0&&!isNaN(v)&&v>0?((v/curP)*100).toFixed(1)+"%":"";
-      if(!isNaN(v)&&v>0)addS(a.name,v,a.color,false,null,true,weight?`${weight} del total`:null);
+      if(!isNaN(v)&&v>0)addS(assetLabel(a),v,a.color,false,null,true,weight?`${weight} del total`:null);
     });
   } else {
     const ingSec=ingSection(p);const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
@@ -1138,6 +1147,7 @@ function renderDashboardEmpresaToggle(p){
   if(!el)return;
   p.empresaSection=p.empresaSection||{enabled:false,title:"🏢 Empresa",participacion:49};
   const enabled=!!p.empresaSection.enabled;
+  const hist=showArchivedHistory(p);
   const title=p.empresaSection.title||"🏢 Empresa";
   el.innerHTML=`<button class="dash-empresa-toggle ${enabled?'on':'off'}" onclick="toggleDashboardEmpresa()" title="${enabled?'Ocultar empresa del dashboard e historial':'Mostrar empresa en dashboard e historial'}">
     <span class="dash-empresa-copy">
@@ -1146,6 +1156,14 @@ function renderDashboardEmpresaToggle(p){
     </span>
     <span class="tgl" aria-hidden="true"><input type="checkbox" ${enabled?'checked':''} tabindex="-1"><div class="tgl-track"></div><div class="tgl-thumb"></div></span>
     <span class="dash-empresa-state">${enabled?'Visible':'Oculta'}</span>
+  </button>
+  <button class="dash-empresa-toggle dash-history-toggle ${hist?'on':'off'}" onclick="toggleArchivedHistory()" title="${hist?'Ver solo carteras actuales':'Incluir carteras ocultas con datos históricos'}">
+    <span class="dash-empresa-copy">
+      <span class="dash-empresa-kicker">Carteras</span>
+      <span class="dash-empresa-title">Histórico completo</span>
+    </span>
+    <span class="tgl" aria-hidden="true"><input type="checkbox" ${hist?'checked':''} tabindex="-1"><div class="tgl-track"></div><div class="tgl-thumb"></div></span>
+    <span class="dash-empresa-state">${hist?'Completo':'Actual'}</span>
   </button>`;
 }
 
@@ -1156,6 +1174,18 @@ function toggleDashboardEmpresa(){
   save();
   toast(p.empresaSection.enabled?"✓ Empresa visible":"✓ Empresa oculta","green");
   renderDashboard();
+  setTimeout(()=>renderAssetYearComparison(),50);
+}
+
+function toggleArchivedHistory(){
+  const p=prof();if(!p)return;
+  p.showArchivedHistory=!showArchivedHistory(p);
+  portfolioChartPrimary='__total';
+  portfolioChartCompare='__none';
+  save();
+  toast(p.showArchivedHistory?"✓ Histórico completo":"✓ Solo carteras actuales","green");
+  renderDashboard();
+  setTimeout(()=>renderAssetYearComparison(),50);
 }
 
 // ══════════════════════════════
@@ -1199,11 +1229,11 @@ function populatePortfolioChartControls(assets){
   assets.forEach(a=>{
     const primaryOption=document.createElement('option');
     primaryOption.value=a.id;
-    primaryOption.textContent=a.name;
+    primaryOption.textContent=assetLabel(a);
     primary.appendChild(primaryOption);
     const compareOption=document.createElement('option');
     compareOption.value=a.id;
-    compareOption.textContent=a.name;
+    compareOption.textContent=assetLabel(a);
     compare.appendChild(compareOption);
   });
   primary.value=portfolioChartPrimary;
@@ -1221,6 +1251,16 @@ function selectPortfolioChartDatasets(totalDataset,individualDatasets){
   }
   return selected.length?selected:[totalDataset];
 }
+function investmentAssetsForDashboard(p,ents,last){
+  const ingSec=ingSection(p);
+  const bancoSec=p.sections.find(s=>s.id==="s_banco");
+  const invSections=p.sections.filter(s=>s.id!==ingSec?.id&&s.id!==bancoSec?.id);
+  const isInvestment=a=>invSections.some(sec=>sec.assets.some(x=>x.id===a.id));
+  if(showArchivedHistory(p)){
+    return profileAssets(p).filter(a=>isInvestment(a)&&hasAssetValueInEntries(p,a.id,ents));
+  }
+  return dashboardAssetsOf(p,last,false).filter(isInvestment);
+}
 
 function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
@@ -1237,10 +1277,10 @@ function renderCharts(p){
     const pieLabels=[],pieData=[],pieColors=[];
     const ingSec=ingSection(p);
     const ingAssetIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
-    const activeAssets=dashboardAssetsOf(p,last).filter(a=>!ingAssetIds.has(a.id));
+    const activeAssets=dashboardAssetsOf(p,last,showArchivedHistory(p)).filter(a=>!ingAssetIds.has(a.id));
     activeAssets.forEach(a=>{
       const v=parseFloat((last.assets||{})[a.id]);
-      if(!isNaN(v)&&v>0){pieLabels.push(a.name);pieData.push(v);pieColors.push(a.color);}
+      if(!isNaN(v)&&v>0){pieLabels.push(assetLabel(a));pieData.push(v);pieColors.push(a.color);}
     });
     if(p.empresaSection.enabled){const e=calcEmp(last,p);if(e>0){pieLabels.push(p.empresaSection.title);pieData.push(e);pieColors.push("#f472b6");}}
     charts["pie"]=new Chart(document.getElementById("cPie"),{type:"doughnut",data:{labels:pieLabels,datasets:[{data:pieData,backgroundColor:pieColors,borderColor:"#0f1729",borderWidth:3,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:true,cutout:"62%",plugins:{legend:{position:"bottom",labels:{color:"#475569",font:{size:10},boxWidth:10,padding:8}},tooltip:{...TT,callbacks:{label:c=>`${c.label}: ${fmt(c.parsed)} (${(c.parsed/c.dataset.data.reduce((a,b)=>a+b,0)*100).toFixed(1)}%)`}}}}});
@@ -1248,16 +1288,11 @@ function renderCharts(p){
 
   // ── Carteras de Inversión (all sections except ingresos & banco) ──
   dChart("bloques");
-  const ingSec=ingSection(p);
-  const bancoSec=p.sections.find(s=>s.id==="s_banco");
-  const invSections=p.sections.filter(s=>s.id!==ingSec?.id&&s.id!==bancoSec?.id);
-  const investmentAssets=dashboardAssetsOf(p,last).filter(a=>
-    invSections.some(sec=>sec.assets.some(x=>x.id===a.id))
-  );
+  const investmentAssets=investmentAssetsForDashboard(p,ents,last);
   const assetMap=Object.fromEntries(investmentAssets.map(a=>[a.id,a]));
   populatePortfolioChartControls(investmentAssets);
   const bDS=investmentAssets.map(a=>({
-    label:a.name,
+    label:assetLabel(a),
     _assetId:a.id,
     data:ents.map(e=>{
       const act=entryActiveAssets(e,p);
@@ -1301,8 +1336,8 @@ function renderCharts(p){
   const summaryEl=document.getElementById('portfolioChartSummary');
   if(summaryEl){
     summaryEl.textContent=portfolioChartPrimary==='__all'
-      ? `${investmentAssets.length} carteras visibles`
-      : `${primaryAsset?.name||'Total de inversiones'}${compareAsset?` frente a ${compareAsset.name}`:''}`;
+      ? `${investmentAssets.length} carteras ${showArchivedHistory(p)?'en histórico completo':'visibles'}`
+      : `${primaryAsset?assetLabel(primaryAsset):'Total de inversiones'}${compareAsset?` frente a ${assetLabel(compareAsset)}`:''}`;
   }
   charts["bloques"]=new Chart(document.getElementById("cBloques"),{
     type:"line",
@@ -1328,7 +1363,7 @@ function renderCharts(p){
   // ── Rentabilidad mensual por cartera ──
   dChart("retornoBloques");
   const retornoDS=Object.values(assetMap).map(a=>({
-    label:a.name,
+    label:assetLabel(a),
     _assetId:a.id,
     data:ents.map((e,i)=>{
       if(i===0)return null;
@@ -1404,19 +1439,19 @@ function renderCharts(p){
   if(statsEl){
     const primaryName=portfolioChartPrimary==='__all'
       ? 'Total combinado'
-      : (primaryAsset?.name||'Total inversiones');
+      : (primaryAsset?assetLabel(primaryAsset):'Total inversiones');
     const comparisonDataset=compareAsset
       ? evolutionDatasets.find(ds=>ds._assetId===compareAsset.id)
       : null;
     const comparisonNow=comparisonDataset?lastFiniteValue(comparisonDataset.data):null;
     const thirdMetric=compareAsset
       ? `<div class="portfolio-chart-stat" style="border-color:${compareAsset.color}">
-          <div class="portfolio-chart-stat-label">${esc(compareAsset.name)}</div>
+          <div class="portfolio-chart-stat-label">${esc(assetLabel(compareAsset))}</div>
           <div class="portfolio-chart-stat-value" style="color:${compareAsset.color}">${fmt(comparisonNow)}</div>
           <div class="portfolio-chart-stat-note">Capital actual</div>
         </div>`
       : `<div class="portfolio-chart-stat">
-          <div class="portfolio-chart-stat-label">Carteras activas</div>
+          <div class="portfolio-chart-stat-label">${showArchivedHistory(p)?'Carteras históricas':'Carteras activas'}</div>
           <div class="portfolio-chart-stat-value">${investmentAssets.length}</div>
           <div class="portfolio-chart-stat-note">Incluidas en el total</div>
         </div>`;
@@ -3028,11 +3063,17 @@ function renderHistorial(){
   thead.innerHTML="";tbody.innerHTML="";
   if(!ents.length){empty.classList.remove("hidden");return;}
   empty.classList.add("hidden");
-  const assetMap={};ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{if(!assetMap[a.id]&&!a.archived)assetMap[a.id]=a;}));
+  const includeHidden=showArchivedHistory(p);
+  const assetMap={};ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{
+    if(assetMap[a.id])return;
+    if(a.archived&&!includeHidden)return;
+    if(a.archived&&!hasAssetValueInEntries(p,a.id,ents))return;
+    assetMap[a.id]=a;
+  }));
   const allA=Object.values(assetMap);
   const hasDeuda=ents.some(e=>e.deuda>0);
   const hr=document.createElement("tr");
-  ["Mes",...allA.map(a=>`<span style="color:${a.color}">${a.name}</span>`),p.empresaSection.enabled?`<span style="color:#f472b6">${p.empresaSection.title}</span>`:"",hasDeuda?`<span style="color:#f87171">💳 Deuda</span>`:"","Patrimonio","Var.","Nota",""].filter(x=>x!=="").forEach(h=>{const th=document.createElement("th");th.innerHTML=h;hr.appendChild(th);});
+  ["Mes",...allA.map(a=>`<span style="color:${a.color}">${esc(assetLabel(a))}</span>`),p.empresaSection.enabled?`<span style="color:#f472b6">${p.empresaSection.title}</span>`:"",hasDeuda?`<span style="color:#f87171">💳 Deuda</span>`:"","Patrimonio","Var.","Nota",""].filter(x=>x!=="").forEach(h=>{const th=document.createElement("th");th.innerHTML=h;hr.appendChild(th);});
   thead.appendChild(hr);
   [...ents].reverse().forEach((e,i)=>{
     // Índice invertido para calcular prev correctamente
@@ -3131,7 +3172,9 @@ function renderAssetYearComparison(){
   const ingIds=new Set(ingSection_?ingSection_.assets.map(a=>a.id):[]);
   
   const lastEntry=ents[ents.length-1];
-  const allAssets=dashboardAssetsOf(p,lastEntry).filter(a=>!ingIds.has(a.id));
+  const allAssets=showArchivedHistory(p)
+    ? profileAssets(p).filter(a=>!ingIds.has(a.id)&&hasAssetValueInEntries(p,a.id,ents))
+    : dashboardAssetsOf(p,lastEntry,false).filter(a=>!ingIds.has(a.id));
   
   if(!allAssets.length){
     const selector=document.getElementById("assetYearSelector");
@@ -3149,7 +3192,7 @@ function renderAssetYearComparison(){
   const totalLabel = `🏠 Patrimonio Total${p.includeEmpresa && p.empresaSection.enabled ? ' (con empresa)' : ''}`;
   selector.innerHTML=`<option value="__total">${totalLabel}</option>`+
     `<option value="" disabled>──────────</option>`+
-    allAssets.map(a=>`<option value="${a.id}">${a.name}</option>`).join("");
+    allAssets.map(a=>`<option value="${a.id}">${esc(assetLabel(a))}</option>`).join("");
   
   // Restaurar valor anterior o auto-seleccionar Total como default
   if(currentValue && (currentValue==='__total' || allAssets.find(a=>a.id===currentValue))){
