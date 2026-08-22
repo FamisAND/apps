@@ -146,7 +146,7 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
               <label>
                 <span>Vista</span>
                 <select id="portfolioChartPrimary" onchange="onPortfolioChartSelection()">
-                  <option value="__total">Total inversiones</option>
+                  <option value="__total">Total carteras</option>
                 </select>
               </label>
               <label>
@@ -622,11 +622,9 @@ function hasAssetValueInEntries(p,assetId,entries){
 function findEmptyAssets(p,monthsBack){
   monthsBack=monthsBack||6;
   const ents=(p.entries||[]).slice(-monthsBack);
-  const ingSec=ingSection(p);
-  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
   const empty=[];
   p.sections.forEach(s=>s.assets.forEach(a=>{
-    if(ingIds.has(a.id))return;
+    if(isIncomeAsset(p,a)||isBankAsset(p,a))return;
     if(a.archived)return;
     const hasValue=ents.some(e=>{const v=parseMoneyValue((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
     if(!hasValue)empty.push(a);
@@ -638,15 +636,32 @@ function entryActiveAssets(entry,p){
   return profileAssets(p);
 }
 function ingSection(p){return p.sections.find(s=>s.id==="s_ing")||p.sections[p.sections.length-1];}
-function ingValue(entry,p){let t=0;const sec=ingSection(p);if(!sec)return 0;sec.assets.forEach(a=>{const v=parseMoneyValue((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;});return t;}
+function normLabel(s){return String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();}
+function assetSectionOf(p,a){return (p.sections||[]).find(sec=>(sec.assets||[]).some(x=>x.id===a.id));}
+function isIncomeSection(sec){
+  const txt=normLabel(`${sec?.id||""} ${sec?.title||""}`);
+  return sec?.id==="s_ing"||txt.includes("ingres");
+}
+function isBankSection(sec){
+  const txt=normLabel(`${sec?.id||""} ${sec?.title||""}`);
+  return sec?.id==="s_banco"||txt.includes("cuenta")||txt.includes("banco")||txt.includes("ahorro")||txt.includes("cash");
+}
+function isIncomeAsset(p,a){
+  const txt=normLabel(a?.name);
+  return isIncomeSection(assetSectionOf(p,a))||txt==="ingresos mensuales"||txt==="ingresos"||txt==="dividendos cobrados";
+}
+function isBankAsset(p,a){
+  const txt=normLabel(a?.name);
+  return isBankSection(assetSectionOf(p,a))||txt.includes("cuenta bancaria")||txt==="cash"||txt.includes("liquidez")||txt.includes("ahorro");
+}
+function isPortfolioAsset(p,a){return !isIncomeAsset(p,a)&&!isBankAsset(p,a);}
+function ingValue(entry,p){let t=0;profileAssets(p).filter(a=>isIncomeAsset(p,a)).forEach(a=>{const v=parseMoneyValue((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;});return t;}
 
 // ── Patrimonio (excluye ingresos, resta deuda, incluye empresa) ──
 function calcPat(entry,p){
-  const ingSec=ingSection(p);
-  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
   let t=0;
   entryActiveAssets(entry,p).forEach(a=>{
-    if(ingIds.has(a.id))return;
+    if(isIncomeAsset(p,a))return;
     const v=parseMoneyValue((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;
   });
   if(p.empresaSection.enabled){const e=calcEmp(entry,p);if(e!=null)t+=e;}
@@ -796,9 +811,7 @@ function calcReturnPatrimonio(current,prev,p){
   // (activos + fuera de la sección Ingresos), simétrico con calcPat y calcReturnAsset.
   // Si no, una aportación anotada en un activo de ingresos (o ya inactivo) se restaría
   // sin que su valor estuviera nunca en currPat/prevPat → rentabilidad infravalorada.
-  const ingSec=ingSection(p);
-  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
-  const patIds=new Set(entryActiveAssets(current,p).filter(a=>!ingIds.has(a.id)).map(a=>a.id));
+  const patIds=new Set(entryActiveAssets(current,p).filter(a=>!isIncomeAsset(p,a)).map(a=>a.id));
   const contribs=current.contributions||{};
   const totalContrib=Object.keys(contribs).reduce((s,k)=>patIds.has(k)?s+(parseMoneyValue(contribs[k])||0):s,0);
 
@@ -822,12 +835,10 @@ function avgIngresos(p,n=6){
 
 // ── Check if an entry is "complete" (has at least 1 investment/bank NAV > 0) ──
 function isEntryComplete(entry,p){
-  const ingSec=ingSection(p);
-  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
   const active=entryActiveAssets(entry,p);
   // Check if any non-income asset has a value > 0
   const hasAsset=active.some(a=>{
-    if(ingIds.has(a.id))return false;
+    if(isIncomeAsset(p,a))return false;
     const v=parseMoneyValue((entry.assets||{})[a.id]);
     return !isNaN(v)&&v>0;
   });
@@ -1155,16 +1166,14 @@ function renderDashboard(){
   };
   addS("Patrimonio Total",curP,"#60a5fa",true,dPct!=null?fPct(dPct)+" este mes":null,dPct!=null?dPct>=0:true,last?`📅 ${MO[last.month]} ${last.year}`:null);
   if(last){
-    const ingSec=ingSection(p);const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
     dashboardAssetsOf(p,last,showArchivedHistory(p)).forEach(a=>{
-      if(ingIds.has(a.id))return;
+      if(isIncomeAsset(p,a))return;
       const v=parseMoneyValue((last.assets||{})[a.id]);
       const weight=curP>0&&!isNaN(v)&&v>0?((v/curP)*100).toFixed(1)+"%":"";
       if(!isNaN(v)&&v>0)addS(assetLabel(a),v,a.color,false,null,true,weight?`${weight} del total`:null);
     });
   } else {
-    const ingSec=ingSection(p);const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
-    activeAssetsOf(p).filter(a=>!ingIds.has(a.id)).forEach(a=>addS(a.name,null,a.color));
+    activeAssetsOf(p).filter(a=>!isIncomeAsset(p,a)).forEach(a=>addS(a.name,null,a.color));
   }
   if(p.empresaSection.enabled&&last){
     const parts=calcEmpParts(last,p);
@@ -1260,7 +1269,7 @@ function populatePortfolioChartControls(assets){
   if(!validIds.has(portfolioChartCompare)||portfolioChartCompare===portfolioChartPrimary){
     portfolioChartCompare='__none';
   }
-  primary.innerHTML='<option value="__total">Total inversiones</option><option value="__all">Todas las carteras</option>';
+  primary.innerHTML='<option value="__total">Total carteras</option><option value="__all">Todas las carteras</option>';
   compare.innerHTML='<option value="__none">Sin comparación</option>';
   assets.forEach(a=>{
     const primaryOption=document.createElement('option');
@@ -1288,21 +1297,19 @@ function selectPortfolioChartDatasets(totalDataset,individualDatasets){
   return selected.length?selected:[totalDataset];
 }
 function investmentAssetsForDashboard(p,ents,last){
-  const ingSec=ingSection(p);
-  const bancoSec=p.sections.find(s=>s.id==="s_banco");
-  const invSections=p.sections.filter(s=>s.id!==ingSec?.id&&s.id!==bancoSec?.id);
-  const isInvestment=a=>invSections.some(sec=>sec.assets.some(x=>x.id===a.id));
   if(showArchivedHistory(p)){
-    return profileAssets(p).filter(a=>isInvestment(a)&&hasAssetValueInEntries(p,a.id,ents));
+    return profileAssets(p).filter(a=>isPortfolioAsset(p,a)&&hasAssetValueInEntries(p,a.id,ents));
   }
-  return dashboardAssetsOf(p,last,false).filter(isInvestment);
+  return dashboardAssetsOf(p,last,false).filter(a=>isPortfolioAsset(p,a));
 }
 
 function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
   const opts={responsive:true,maintainAspectRatio:true};
   const last=ents[ents.length-1];
-  const bancoSec=p.sections.find(s=>s.id==="s_banco");
+  const bankAssetsForCharts=showArchivedHistory(p)
+    ? profileAssets(p).filter(a=>isBankAsset(p,a)&&hasAssetValueInEntries(p,a.id,ents))
+    : dashboardAssetsOf(p,last,false).filter(a=>isBankAsset(p,a));
 
   // ── Total line ──
   dChart("total");
@@ -1312,9 +1319,7 @@ function renderCharts(p){
   dChart("pie");
   if(last){
     const pieLabels=[],pieData=[],pieColors=[];
-    const ingSec=ingSection(p);
-    const ingAssetIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
-    const activeAssets=dashboardAssetsOf(p,last,showArchivedHistory(p)).filter(a=>!ingAssetIds.has(a.id));
+    const activeAssets=dashboardAssetsOf(p,last,showArchivedHistory(p)).filter(a=>!isIncomeAsset(p,a));
     activeAssets.forEach(a=>{
       const v=parseMoneyValue((last.assets||{})[a.id]);
       if(!isNaN(v)&&v>0){pieLabels.push(assetLabel(a));pieData.push(v);pieColors.push(a.color);}
@@ -1356,7 +1361,7 @@ function renderCharts(p){
     return hasValue?total:null;
   });
   const totalEvolutionDataset={
-    label:"Total inversiones",
+    label:"Total carteras",
     data:totalInvestmentValues,
     borderColor:"#60a5fa",
     backgroundColor:"rgba(96,165,250,.08)",
@@ -1374,7 +1379,7 @@ function renderCharts(p){
   if(summaryEl){
     summaryEl.textContent=portfolioChartPrimary==='__all'
       ? `${investmentAssets.length} carteras ${showArchivedHistory(p)?'en histórico completo':'visibles'}`
-      : `${primaryAsset?assetLabel(primaryAsset):'Total de inversiones'}${compareAsset?` frente a ${assetLabel(compareAsset)}`:''}`;
+      : `${primaryAsset?assetLabel(primaryAsset):'Total de carteras'}${compareAsset?` frente a ${assetLabel(compareAsset)}`:''}`;
   }
   charts["bloques"]=new Chart(document.getElementById("cBloques"),{
     type:"line",
@@ -1476,7 +1481,7 @@ function renderCharts(p){
   if(statsEl){
     const primaryName=portfolioChartPrimary==='__all'
       ? 'Total combinado'
-      : (primaryAsset?assetLabel(primaryAsset):'Total inversiones');
+      : (primaryAsset?assetLabel(primaryAsset):'Total carteras');
     const comparisonDataset=compareAsset
       ? evolutionDatasets.find(ds=>ds._assetId===compareAsset.id)
       : null;
@@ -1541,9 +1546,7 @@ function renderCharts(p){
 
   // ── Cuentas / Ahorro ──
   dChart("banco");
-  const bancoAssets=bancoSec?bancoSec.assets:[];
-  const bancoMap={};
-  ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{if(bancoAssets.find(x=>x.id===a.id)&&!bancoMap[a.id])bancoMap[a.id]=a;}));
+  const bancoMap=Object.fromEntries(bankAssetsForCharts.map(a=>[a.id,a]));
   const bancoDSets=Object.values(bancoMap).map(a=>({label:a.name,data:ents.map(e=>{const act=entryActiveAssets(e,p);return act.find(x=>x.id===a.id)?parseMoneyValue((e.assets||{})[a.id])||0:null;}),borderColor:a.color,backgroundColor:a.color+"18",borderWidth:1.8,pointRadius:2,tension:.3,fill:true,spanGaps:false}));
   charts["banco"]=new Chart(document.getElementById("cBanco"),{type:"line",data:{labels:lbl,datasets:bancoDSets.length?bancoDSets:[{label:"Sin datos",data:[],borderColor:"#334155"}]},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
 
@@ -3204,14 +3207,10 @@ function renderAssetYearComparison(){
   const p=prof();if(!p)return;
   const ents=completeEntries(p);
   
-  // Obtener TODAS las secciones de inversión (excluir ingresos)
-  const ingSection_=ingSection(p);
-  const ingIds=new Set(ingSection_?ingSection_.assets.map(a=>a.id):[]);
-  
   const lastEntry=ents[ents.length-1];
   const allAssets=showArchivedHistory(p)
-    ? profileAssets(p).filter(a=>!ingIds.has(a.id)&&hasAssetValueInEntries(p,a.id,ents))
-    : dashboardAssetsOf(p,lastEntry,false).filter(a=>!ingIds.has(a.id));
+    ? profileAssets(p).filter(a=>isPortfolioAsset(p,a)&&hasAssetValueInEntries(p,a.id,ents))
+    : dashboardAssetsOf(p,lastEntry,false).filter(a=>isPortfolioAsset(p,a));
   
   if(!allAssets.length){
     const selector=document.getElementById("assetYearSelector");
@@ -3973,14 +3972,12 @@ function patAutoArchiveRefresh(){
   const p=prof();if(!p)return;
   const months=document.getElementById('autoArchivePeriod6').checked?6:3;
   const ents=(p.entries||[]).slice(-months);
-  const ingSec=ingSection(p);
-  const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
   // Detecta candidats sobre tmpSections (canvis pendents) o sobre p.sections
   const sections=tmpSections&&tmpSections.length?tmpSections:p.sections;
   const candidats=[];
   sections.forEach((sec,si)=>{
     sec.assets.forEach((a,ai)=>{
-      if(ingIds.has(a.id))return;
+      if(isIncomeAsset(p,a)||isBankAsset(p,a))return;
       if(a.archived)return;
       const hasValue=ents.some(e=>{const v=parseMoneyValue((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
       if(!hasValue){
