@@ -408,6 +408,16 @@
             </div>
           </div>
           <div id="tobMcGrid" class="tob-mc-grid"></div>
+          <div class="tob-mc-ingfind">
+            <div class="tob-mc-ingfind-top">
+              <div>
+                <div class="tob-mc-ingfind-title">🔎 Ingrediente en este menú</div>
+                <div class="tob-mc-ingfind-sub">Busca un ingrediente y te enseño en qué platos del menú aparece, contando ingredientes base y extras.</div>
+              </div>
+              <input class="tob-input tob-mc-ingfind-input" id="tobMcMenuIngSearch" placeholder="espinacas, nueces..." type="search" autocomplete="off" oninput="tobMcRenderMenuIngSearch()">
+            </div>
+            <div id="tobMcMenuIngResults" class="tob-mc-ing-results"></div>
+          </div>
           <div id="tobMcAjustesBox" class="tob-mc-aj-box" style="display:none;"></div>
           <div id="tobMcChecksBox" class="tob-mc-checks-box"></div>
         </div>
@@ -422,7 +432,7 @@
             </div>
           </div>
           <div class="tob-mc-side-body" id="tobMcSideBody">
-            <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar..." type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
+            <input class="tob-input" id="tobMcRecSearch" placeholder="🔍 Buscar receta o ingrediente..." type="search" autocomplete="off" data-lpignore="true" data-1p-ignore readonly onfocus="this.removeAttribute('readonly')" oninput="tobMcRenderSidePanel()" style="margin-bottom:8px;">
             <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;font-family:'DM Mono',monospace;font-size:.65rem;">
               <button class="tob-mc-mom-btn active" data-mom="" onclick="tobMcFilterMomento('',this)">Todas</button>
               <button class="tob-mc-mom-btn" data-mom="esmorzar" onclick="tobMcFilterMomento('esmorzar',this)">Esmorzar</button>
@@ -1016,20 +1026,29 @@
             <div class="tob-quest-chip-block">
               <label class="tob-lbl">Aliments ✗ (no menjar)</label>
               <div class="tob-quest-chips" id="qChipsAlimX"></div>
-              <input class="tob-input" id="qAlimXNew" list="qFoodCatalogOptions" placeholder="buscar en tu catálogo y Enter..." style="margin-top:6px;" onfocus="tobQuestRefreshFoodOptions()" oninput="tobQuestRefreshFoodOptions()" onkeydown="tobQuestAddListChip('alimX',event)">
+              <div class="tob-quest-food-wrap" style="margin-top:6px;">
+                <input class="tob-input" id="qAlimXNew" placeholder="buscar ingrediente o receta..." onfocus="tobQuestFoodSuggest('alimX',this.value)" oninput="tobQuestFoodSuggest('alimX',this.value)" onkeydown="tobQuestAddListChip('alimX',event)">
+                <div id="qFoodSuggestalimX" class="tob-food-suggest" style="display:none;"></div>
+              </div>
               <div class="tob-quest-input-hint">Mejor seleccionar nombres del catálogo para que la IA no interprete de más.</div>
             </div>
             <div class="tob-quest-chip-block">
               <label class="tob-lbl">Aliments ✓ (preferits)</label>
               <div class="tob-quest-chips" id="qChipsAlimOk"></div>
-              <input class="tob-input" id="qAlimOkNew" list="qFoodCatalogOptions" placeholder="buscar en tu catálogo y Enter..." style="margin-top:6px;" onfocus="tobQuestRefreshFoodOptions()" oninput="tobQuestRefreshFoodOptions()" onkeydown="tobQuestAddListChip('alimOk',event)">
+              <div class="tob-quest-food-wrap" style="margin-top:6px;">
+                <input class="tob-input" id="qAlimOkNew" placeholder="buscar ingrediente o receta..." onfocus="tobQuestFoodSuggest('alimOk',this.value)" oninput="tobQuestFoodSuggest('alimOk',this.value)" onkeydown="tobQuestAddListChip('alimOk',event)">
+                <div id="qFoodSuggestalimOk" class="tob-food-suggest" style="display:none;"></div>
+              </div>
               <div class="tob-quest-input-hint">Prioriza alimentos o recetas reales de la base para reducir dudas.</div>
             </div>
           </div>
           <div class="tob-quest-chip-block">
             <label class="tob-lbl">Aliments que li senten malament</label>
             <div class="tob-quest-chips" id="qChipsSentenMal"></div>
-            <input class="tob-input" id="qSentenMalNew" list="qFoodCatalogOptions" placeholder="buscar en tu catálogo y Enter..." style="margin-top:6px;" onfocus="tobQuestRefreshFoodOptions()" oninput="tobQuestRefreshFoodOptions()" onkeydown="tobQuestAddListChip('sentenMal',event)">
+            <div class="tob-quest-food-wrap" style="margin-top:6px;">
+                <input class="tob-input" id="qSentenMalNew" placeholder="buscar ingrediente o receta..." onfocus="tobQuestFoodSuggest('sentenMal',this.value)" oninput="tobQuestFoodSuggest('sentenMal',this.value)" onkeydown="tobQuestAddListChip('sentenMal',event)">
+                <div id="qFoodSuggestsentenMal" class="tob-food-suggest" style="display:none;"></div>
+              </div>
             <div class="tob-quest-input-hint">Si existe en el catálogo, usa ese nombre exacto.</div>
             <datalist id="qFoodCatalogOptions"></datalist>
           </div>

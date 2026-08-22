@@ -1305,7 +1305,7 @@ function renderEditor(){
   <div class="card">
     <div class="card-title">📝 Líneas de factura</div>
     <div class="fac-line-head">
-      <div>Descripción</div><div class="td-r">Cantidad</div><div class="td-r">Precio €</div><div class="td-r igi-col">IGI %</div><div></div>
+      <div>Descripción</div><div class="td-r">Cantidad</div><div class="td-r">Base €</div><div class="td-r igi-col">IGI %</div><div class="td-r">Total €</div><div></div>
     </div>
     <div id="ed_lines"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
@@ -1403,6 +1403,30 @@ function edClienteChange(){
   recalcTotales();
 }
 
+function roundCents(n){
+  return Math.round(((parseFloat(n)||0) + Number.EPSILON) * 100) / 100;
+}
+function lineTotalConIgi(l, sinIgi){
+  const base = (parseFloat(l.cant)||0) * (parseFloat(l.precio)||0);
+  const igi = sinIgi ? 0 : base * ((parseFloat(l.igi)||0)/100);
+  return roundCents(base + igi);
+}
+function syncLineMoneyInputs(i, changedField){
+  const f = editingFactura;
+  const l = f?.lineas?.[i];
+  if(!l) return;
+  const cli = facCliente(f);
+  const sinIgi = !!(cli && clientCfg(cli).sinIgi);
+  const priceEl = document.getElementById(`ed_price_${i}`);
+  const totalEl = document.getElementById(`ed_total_${i}`);
+  if(changedField === 'total' && priceEl){
+    priceEl.value = roundCents(l.precio).toFixed(2);
+  }
+  if(changedField !== 'total' && totalEl){
+    totalEl.value = lineTotalConIgi(l, sinIgi).toFixed(2);
+  }
+}
+
 function renderEdLines(){
   const cont = document.getElementById("ed_lines");
   if(!cont) return;
@@ -1417,12 +1441,14 @@ function renderEdLines(){
     row.className = "fac-line" + (sinIgi ? " no-igi" : "");
     const igiCell = sinIgi
       ? ''
-      : `<input class="inp" type="number" step="0.5" value="${l.igi}" oninput="edLineChange(${i},'igi',this.value)" style="text-align:right;">`;
+      : `<input class="inp" id="ed_igi_${i}" type="number" step="0.5" value="${l.igi}" oninput="edLineChange(${i},'igi',this.value)" style="text-align:right;">`;
+    const totalLinea = lineTotalConIgi(l, sinIgi).toFixed(2);
     row.innerHTML = `
       <input class="inp" placeholder="Descripción" value="${l.desc||""}" oninput="edLineChange(${i},'desc',this.value)">
-      <input class="inp" type="number" step="0.01" value="${l.cant}" oninput="edLineChange(${i},'cant',this.value)" style="text-align:right;">
-      <input class="inp" type="number" step="0.01" value="${l.precio}" oninput="edLineChange(${i},'precio',this.value)" style="text-align:right;">
+      <input class="inp" id="ed_cant_${i}" type="number" step="0.01" value="${l.cant}" oninput="edLineChange(${i},'cant',this.value)" style="text-align:right;">
+      <input class="inp" id="ed_price_${i}" type="number" step="0.01" value="${l.precio}" oninput="edLineChange(${i},'precio',this.value)" style="text-align:right;">
       ${igiCell}
+      <input class="inp" id="ed_total_${i}" type="number" step="0.01" value="${totalLinea}" oninput="edLineChange(${i},'total',this.value)" style="text-align:right;font-weight:600;color:var(--acc2);">
       <button class="fac-x" onclick="edRemoveLine(${i})" title="Eliminar línea">×</button>
     `;
     cont.appendChild(row);
@@ -1466,7 +1492,19 @@ function edInsertPlantilla(idx){
 function edLineChange(i, field, val){
   const f = editingFactura;
   if(field==="desc"){ f.lineas[i].desc = val; }
-  else { f.lineas[i][field] = parseFloat(val)||0; }
+  else if(field==="total"){
+    const total=parseFloat(val)||0;
+    const cli=facCliente(f);
+    const sinIgi=!!(cli && clientCfg(cli).sinIgi);
+    const qty=parseFloat(f.lineas[i].cant)||0;
+    const rate=sinIgi?0:((parseFloat(f.lineas[i].igi)||0)/100);
+    f.lineas[i].precio = qty>0 ? roundCents(total/(qty*(1+rate))) : 0;
+    syncLineMoneyInputs(i,'total');
+  }
+  else {
+    f.lineas[i][field] = parseFloat(val)||0;
+    syncLineMoneyInputs(i,field);
+  }
   recalcTotales();
 }
 
@@ -1499,11 +1537,8 @@ function recalcTotales(){
     if(!sinIgi) igi += base * ((l.igi||0)/100);
   });
   if(sinIgi) igi = 0;
-  // Redondeo a céntimos: evita arrastres de coma flotante en subtotal/IGI/total
-  // (un documento legal debe cuadrar al céntimo). Solo afecta a la factura en edición.
-  const _c2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
-  subt = _c2(subt); igi = _c2(igi);
-  const tot = _c2(subt + igi);
+  subt = roundCents(subt); igi = roundCents(igi);
+  const tot = roundCents(subt + igi);
   f.totales = { subtotal: subt, igi: igi, total: tot };
   document.getElementById("ed_subt").textContent = fmt(subt);
   document.getElementById("ed_igi").textContent = fmt(igi);

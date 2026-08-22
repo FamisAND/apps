@@ -141,14 +141,14 @@ tr:hover td{background:var(--bg2);}
 .fac-head{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
 .fac-side{display:flex;flex-direction:column;gap:8px;}
 .fac-num{font-size:1.4rem;font-weight:700;font-family:'DM Mono',monospace;color:var(--acc2);}
-.fac-line{display:grid;grid-template-columns:3fr 1fr 1fr 1fr 28px;gap:8px;align-items:center;
+.fac-line{display:grid;grid-template-columns:3fr .85fr 1fr .75fr 1fr 28px;gap:8px;align-items:center;
   margin-bottom:6px;}
-.fac-line.no-igi{grid-template-columns:3fr 1fr 1fr 28px;}
+.fac-line.no-igi{grid-template-columns:3fr .85fr 1fr 1fr 28px;}
 .fac-line .inp{padding:6px 8px;font-size:.82rem;}
-.fac-line-head{display:grid;grid-template-columns:3fr 1fr 1fr 1fr 28px;gap:8px;
+.fac-line-head{display:grid;grid-template-columns:3fr .85fr 1fr .75fr 1fr 28px;gap:8px;
   font-size:.66rem;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;
   margin-bottom:6px;padding:0 4px;}
-.fac-line-head.no-igi{grid-template-columns:3fr 1fr 1fr 28px;}
+.fac-line-head.no-igi{grid-template-columns:3fr .85fr 1fr 1fr 28px;}
 .fac-line-head.no-igi .igi-col{display:none;}
 .fac-add{background:transparent;border:1px dashed var(--bd2);color:var(--mute);
   padding:7px 12px;border-radius:7px;cursor:pointer;font-family:inherit;font-size:.78rem;
@@ -206,7 +206,8 @@ tr:hover td{background:var(--bg2);}
   .sidebar-bottom > *{ flex:1; min-width:0; }
   .main-scroll{ padding:12px 14px; }
   .row-2,.row-3,.fac-head{ grid-template-columns:1fr !important; }
-  .fac-line,.fac-line-head{ grid-template-columns:2fr 1fr 1fr 0.7fr 24px; gap:4px; }
+  .fac-line,.fac-line-head{ grid-template-columns:2fr .7fr .85fr .55fr .85fr 24px; gap:4px; }
+  .fac-line.no-igi,.fac-line-head.no-igi{ grid-template-columns:2fr .7fr .85fr .85fr 24px; }
   input,select,textarea{ font-size:16px !important; }  /* 16px → iOS no zoom */
   .modal{ max-width:100%; border-radius:0; max-height:100vh; }
 }
@@ -253,10 +254,13 @@ tr:hover td{background:var(--bg2);}
     justify-content:flex-end;
   }
 
-  /* Línea de factura (concepto, qty, precio, igi, x): más legible */
+  /* Línea de factura (concepto, qty, precio, igi, total, x): más legible */
   .fac-line,.fac-line-head{
-    grid-template-columns:1fr 0.6fr 0.7fr 0.6fr 22px !important;
+    grid-template-columns:1fr 0.52fr 0.65fr 0.48fr 0.7fr 22px !important;
     gap:3px !important;
+  }
+  .fac-line.no-igi,.fac-line-head.no-igi{
+    grid-template-columns:1fr 0.52fr 0.65fr 0.7fr 22px !important;
   }
   .fac-line .inp{padding:5px 6px;font-size:.78rem;}
   .fac-line-head{font-size:.6rem;}
@@ -287,7 +291,10 @@ tr:hover td{background:var(--bg2);}
 @media (max-width: 380px){
   .p-grid{grid-template-columns:1fr !important;}
   .fac-line,.fac-line-head{
-    grid-template-columns:1.5fr 0.6fr 0.7fr 0.5fr 20px !important;
+    grid-template-columns:1.2fr 0.48fr 0.58fr 0.44fr 0.62fr 20px !important;
+  }
+  .fac-line.no-igi,.fac-line-head.no-igi{
+    grid-template-columns:1.2fr 0.48fr 0.58fr 0.62fr 20px !important;
   }
   .topbar-title{font-size:.92rem;}
 }

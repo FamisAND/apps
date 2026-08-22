@@ -2165,6 +2165,14 @@ document.addEventListener('click', e => {
   if(ingSuggest && !e.target.closest('#tobRecIngPicker') && !e.target.closest('#tobRecIngSuggest')){
     ingSuggest.style.display = 'none';
   }
+  const foodSuggests = document.querySelectorAll('.tob-food-suggest');
+  foodSuggests.forEach(box => {
+    const key = box.id ? box.id.replace(/^qFoodSuggest/, '') : '';
+    const input = key ? document.getElementById({ alimX:'qAlimXNew', alimOk:'qAlimOkNew', sentenMal:'qSentenMalNew' }[key] || '') : null;
+    if(box && input && !e.target.closest('#' + input.id) && !e.target.closest('#' + box.id)){
+      box.style.display = 'none';
+    }
+  });
 });
 function tobRunPasteImport(){
   const txt = document.getElementById('tobPasteImportTxt').value.trim();
@@ -6479,24 +6487,87 @@ function tobQuestRenderRecordatori(){
 
 // Opciones para los campos de alimentos del cuestionario. Se alimenta del
 // catálogo real para evitar texto libre ambiguo que luego la IA interprete mal.
+function tobQuestFoodInputId(key){
+  return ({ alimX:'qAlimXNew', alimOk:'qAlimOkNew', sentenMal:'qSentenMalNew' })[key] || '';
+}
+
+function tobQuestHideFoodSuggestions(key){
+  const box = document.getElementById('qFoodSuggest' + key);
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+}
+
+function tobQuestHideAllFoodSuggestions(){
+  ['alimX','alimOk','sentenMal'].forEach(tobQuestHideFoodSuggestions);
+}
+
+function tobQuestAddListValue(key, rawVal){
+  const val = String(rawVal || '').trim();
+  if(!val) return false;
+  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
+  if(!cli) return false;
+  const tags = tobQuestEnsureTags(cli);
+  if(!Array.isArray(tags[key])) tags[key] = [];
+  if(tags[key].indexOf(val) === -1) tags[key].push(val);
+  tobQuestRenderChips(tags);
+  tobQuestScheduleSave();
+  return true;
+}
+
+function tobQuestPickFoodSuggestion(key, val){
+  const inp = document.getElementById(tobQuestFoodInputId(key));
+  if(inp) inp.value = '';
+  tobQuestAddListValue(key, val);
+  tobQuestHideFoodSuggestions(key);
+}
+
+function tobQuestFoodSuggest(key, raw){
+  const box = document.getElementById('qFoodSuggest' + key);
+  if(!box) return;
+  const q = tobIngNormName(raw);
+  if(!q.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  const items = tobFoodSearchMatches(raw, 8, { kind:'both' });
+  if(!items.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = items.map(it => {
+    const kind = it.kind === 'ingrediente' ? 'Ingrediente' : 'Receta';
+    const hint = it.hint ? `<span class="g">${tobEsc(it.hint)}</span>` : '';
+    const meta = it.meta ? `<span class="g">${tobEsc(it.meta)}</span>` : '';
+    return `<button type="button" class="opt" data-key="${tobEsc(key)}" data-value="${tobEsc(it.value)}" onclick="tobQuestPickFoodSuggestion(this.dataset.key,this.dataset.value)">
+      <span>${tobEsc(it.label)}</span>
+      <span class="kind">${kind}</span>
+      ${hint || meta ? `<span class="g">${tobEsc([it.hint, it.meta].filter(Boolean).join(' · '))}</span>` : ''}
+    </button>`;
+  }).join('');
+  box.style.display = 'block';
+}
+
 function tobQuestRefreshFoodOptions(){
   const dl = document.getElementById('qFoodCatalogOptions');
   if(!dl) return;
   const seen = new Set();
-  const values = [];
+  const ingValues = [];
+  const recValues = [];
   const add = (v) => {
     const s = String(v || '').trim();
     const key = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     if(!s || seen.has(key)) return;
     seen.add(key);
-    values.push(s);
+    return s;
   };
-  TOB_QUEST_ALIM_PRESETS.forEach(add);
-  (tobMenusDB.ingredientes || []).forEach(i => add(i.nombre));
-  (tobMenusDB.recetas || []).forEach(r => {
-    if(r && r.origen !== 'ingrediente') add(r.nombre);
+  TOB_QUEST_ALIM_PRESETS.forEach(v => { const s = add(v); if(s) ingValues.push(s); });
+  (tobMenusDB.ingredientes || []).forEach(i => {
+    const aliases = Array.isArray(i.aliases) ? i.aliases : (i.aliases ? [i.aliases] : []);
+    [i.nombre, i.nombre_es, ...aliases].forEach(v => { const s = add(v); if(s) ingValues.push(s); });
   });
-  const opts = values.sort((a,b) => a.localeCompare(b, 'es', { sensitivity:'base' })).slice(0, 900);
+  (tobMenusDB.recetas || []).forEach(r => {
+    if(r && r.origen !== 'ingrediente'){
+      const s = add(r.nombre);
+      if(s) recValues.push(s);
+    }
+  });
+  const opts = ingValues
+    .sort((a,b) => a.localeCompare(b, 'es', { sensitivity:'base' }))
+    .concat(recValues.sort((a,b) => a.localeCompare(b, 'es', { sensitivity:'base' })))
+    .slice(0, 900);
   dl.innerHTML = opts.map(v => `<option value="${tobEsc(v)}"></option>`).join('');
 }
 
@@ -6894,14 +6965,8 @@ function tobQuestAddListChip(key, ev){
   const inp = ev.target;
   const val = (inp.value || '').trim();
   if(!val) return;
-  const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
-  if(!cli) return;
-  const tags = tobQuestEnsureTags(cli);
-  if(!Array.isArray(tags[key])) tags[key] = [];
-  if(tags[key].indexOf(val) === -1) tags[key].push(val);
-  inp.value = '';
-  tobQuestRenderChips(tags);
-  tobQuestScheduleSave();
+  if(tobQuestAddListValue(key, val)) inp.value = '';
+  tobQuestHideFoodSuggestions(key);
 }
 
 function tobQuestRemoveListChip(key, ix){
@@ -8614,9 +8679,151 @@ function tobIngNormName(s){
   return String(s || '')
     .toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w\s]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function tobIngWordVariants(word){
+  const w = tobIngNormName(word);
+  if(!w) return [];
+  const out = new Set([w]);
+  if(w.length > 3){
+    if(w.endsWith('ces')) out.add(w.slice(0, -3) + 'z');
+    if(w.endsWith('es')) out.add(w.slice(0, -2));
+    if(w.endsWith('s')) out.add(w.slice(0, -1));
+  }
+  return [...out];
+}
+
+function tobIngCollectSearchParts(entry){
+  const parts = [];
+  const add = v => {
+    if(v == null) return;
+    if(Array.isArray(v)){ v.forEach(add); return; }
+    const s = tobIngNormName(v);
+    if(s) parts.push(s);
+  };
+  add(entry && entry.nombre);
+  add(entry && entry.nombre_es);
+  add(entry && entry.aliases);
+  add(entry && entry.alias);
+  add(entry && entry.tags);
+  add(entry && entry.alergenos);
+  add(entry && entry.momentos);
+  add(entry && entry.iaMomentos);
+  add(entry && entry.origen);
+  add(entry && entry.descripcion);
+  add(entry && entry._nombreFallback);
+  if(entry && Array.isArray(entry.ingredientes)){
+    entry.ingredientes.forEach(it => {
+      if(!it) return;
+      add(it.nombre);
+      add(it._nombreFallback);
+    });
+  }
+  return parts.join(' ');
+}
+
+function tobRecSearchText(rec){
+  const parts = [];
+  const add = v => {
+    if(v == null) return;
+    if(Array.isArray(v)){ v.forEach(add); return; }
+    const s = tobIngNormName(v);
+    if(s) parts.push(s);
+  };
+  add(rec && rec.nombre);
+  add(rec && rec.nombre_es);
+  add(rec && rec.tags);
+  add(rec && rec.momentos);
+  add(rec && rec.rol);
+  add(rec && rec.origen);
+  add(rec && rec.autor);
+  if(rec && Array.isArray(rec.ingredientes)){
+    rec.ingredientes.forEach(it => {
+      if(!it) return;
+      const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
+      add(ing ? ing.nombre : it._nombreFallback);
+      if(ing){
+        add(ing.aliases);
+        add(ing.alias);
+        add(ing.tags);
+        add(ing.alergenos);
+      }
+    });
+  }
+  return parts.join(' ');
+}
+
+function tobIngMatchScore(raw, hay){
+  const q = tobIngNormName(raw);
+  const h = tobIngNormName(hay);
+  if(!q || !h) return 0;
+  if(h === q) return 1.25;
+  if(h.startsWith(q)) return 1.1;
+  if(h.includes(q)) return 0.95;
+  const qWords = q.split(' ').filter(w => w.length > 1);
+  const hWords = h.split(' ').filter(Boolean);
+  if(!qWords.length || !hWords.length) return 0;
+  let hits = 0;
+  qWords.forEach(qw => {
+    const qv = tobIngWordVariants(qw);
+    const ok = hWords.some(hw => {
+      const hv = tobIngWordVariants(hw);
+      return qv.some(a => hv.some(b => a === b || a.includes(b) || b.includes(a)));
+    });
+    if(ok) hits++;
+  });
+  return hits ? (hits / qWords.length) * 0.8 : 0;
+}
+
+function tobFoodSearchMatches(raw, limit, opts){
+  opts = opts || {};
+  const q = tobIngNormName(raw);
+  if(!q) return [];
+  const max = Number.isFinite(+limit) && +limit > 0 ? +limit : 8;
+  const kind = opts.kind || 'both'; // both | ingredient | recipe
+  const items = [];
+  const push = (item) => { if(item && item.score > 0) items.push(item); };
+  if(kind !== 'recipe'){
+    (tobMenusDB.ingredientes || []).forEach(ing => {
+      const score = tobIngMatchScore(q, tobIngCollectSearchParts(ing));
+      if(score <= 0) return;
+      push({
+        kind: 'ingrediente',
+        id: ing.id,
+        label: ing.nombre || '—',
+        value: ing.nombre || '',
+        score,
+        meta: (ing.tags && ing.tags.length) ? ing.tags.slice(0,2).join(' · ') : '',
+        hint: tobIngDefaultGrams(ing) ? (tobIngDefaultGrams(ing) + ' g') : ''
+      });
+    });
+  }
+  if(kind !== 'ingredient'){
+    (tobMenusDB.recetas || []).forEach(rec => {
+      if(!rec || rec.descartada) return;
+      const score = tobIngMatchScore(q, tobRecSearchText(rec));
+      if(score <= 0) return;
+      const m = tobRecMacros(rec);
+      push({
+        kind: 'receta',
+        id: rec.id,
+        label: rec.nombre || '—',
+        value: rec.nombre || '',
+        score: score * (rec.origen === 'ingrediente' ? 0.98 : 1),
+        meta: Math.round((m.kcal || 0) / (rec.raciones || 1)) + ' kcal',
+        hint: rec.origen === 'ingrediente'
+          ? 'plato suelto'
+          : ((rec.tags || []).slice(0,2).join(' · ') || '')
+      });
+    });
+  }
+  return items.sort((a,b) =>
+    b.score - a.score ||
+    (a.kind === b.kind ? (a.label || '').localeCompare(b.label || '', 'es', { sensitivity:'base' }) : (a.kind === 'ingrediente' ? -1 : 1))
+  ).slice(0, max);
 }
 
 function tobIngFindByText(raw){
@@ -8627,15 +8834,7 @@ function tobIngFindByText(raw){
   let bestScore = 0;
   for(const ing of list){
     if(String(ing.id) === String(raw)) return ing;
-    const n = tobIngNormName(ing.nombre);
-    if(!n) continue;
-    if(n === q) return ing;
-    let score = 0;
-    if(n.includes(q) || q.includes(n)) score = Math.max(score, Math.min(q.length, n.length) / Math.max(q.length, n.length));
-    const qWords = q.split(' ').filter(w => w.length > 2);
-    const nWords = new Set(n.split(' ').filter(Boolean));
-    const hits = qWords.filter(w => nWords.has(w) || [...nWords].some(nw => nw.includes(w) || w.includes(nw))).length;
-    if(qWords.length) score = Math.max(score, hits / qWords.length);
+    const score = tobIngMatchScore(q, tobIngCollectSearchParts(ing));
     if(score > bestScore){ bestScore = score; best = ing; }
   }
   return bestScore >= 0.55 ? best : null;
@@ -8646,19 +8845,7 @@ function tobIngSearchMatches(raw, limit){
   const list = tobMenusDB.ingredientes || [];
   const scored = [];
   for(const ing of list){
-    const n = tobIngNormName(ing.nombre);
-    if(!n) continue;
-    let score = 0;
-    if(!q) score = 0.2;
-    else if(n === q) score = 1.2;
-    else if(n.startsWith(q)) score = 1;
-    else if(n.includes(q) || q.includes(n)) score = Math.max(score, 0.75);
-    if(q){
-      const qWords = q.split(' ').filter(w => w.length > 1);
-      const nWords = n.split(' ').filter(Boolean);
-      const hits = qWords.filter(w => nWords.some(nw => nw.includes(w) || w.includes(nw))).length;
-      if(qWords.length) score = Math.max(score, hits / qWords.length * 0.8);
-    }
+    const score = q ? tobIngMatchScore(q, tobIngCollectSearchParts(ing)) : 0.2;
     if(score > 0) scored.push({ ing, score });
   }
   return scored
@@ -11143,6 +11330,7 @@ function tobMcRenderGrid(){
   }
   grid.innerHTML = html;
   tobHydrateFotos('#tobMcGrid');
+  if(typeof tobMcRenderMenuIngSearch === 'function') tobMcRenderMenuIngSearch();
 
   // Habilitar drag&drop en cada celda.
   const syncCellState = (cellEl) => {
@@ -11437,9 +11625,7 @@ function tobMcRenderSidePanel(){
 
   // Las recetas descartadas no aparecen en el creador.
   const all = (tobMenusDB.recetas || []).filter(r => !r.descartada);
-  const matchSearch = r => !search ||
-    (r.nombre || '').toLowerCase().includes(search) ||
-    (r.tags || []).some(t => t.toLowerCase().includes(search));
+  const matchSearch = r => !search || tobIngMatchScore(search, tobRecSearchText(r)) > 0;
   // Recetes normals: respecten el filtre de moment.
   let listRec = all.filter(r => r.origen !== 'ingrediente' && matchSearch(r));
   if(_tobMcMomentoFiltro){
@@ -11538,6 +11724,120 @@ function tobMcRenderSidePanel(){
       });
     });
   }
+}
+
+function tobMcMenuIngredientMatches(raw){
+  if(!tobMcState) return [];
+  const q = tobIngNormName(raw);
+  if(!q) return [];
+  const recsById = {};
+  (tobMenusDB.recetas || []).forEach(r => { recsById[r.id] = r; });
+  const out = [];
+  const seen = new Set();
+  Object.keys(tobMcState.data || {}).forEach(semKey => {
+    const sem = parseInt(semKey, 10);
+    const semData = tobMcState.data[semKey] || tobMcState.data[sem] || {};
+    Object.keys(semData || {}).forEach(dayKey => {
+      const day = parseInt(dayKey, 10);
+      const dayData = semData[dayKey] || semData[day] || {};
+      Object.keys(dayData || {}).forEach(mealId => {
+        const arr = Array.isArray(dayData[mealId]) ? dayData[mealId] : [];
+        arr.forEach(recId => {
+          const r = recsById[recId];
+          if(!r || r.descartada) return;
+          const aj = (tobMcState.ajustes || {})[recId];
+          const removed = new Set((aj && Array.isArray(aj.ingRemoved)) ? aj.ingRemoved : []);
+          const hits = [];
+          const addHit = (ing, src) => {
+            if(!ing || removed.has(ing.id)) return;
+            const score = tobIngMatchScore(q, tobIngCollectSearchParts(ing));
+            if(score <= 0) return;
+            hits.push({ name: ing.nombre || '—', src });
+          };
+          if(Array.isArray(r.ingredientes)){
+            r.ingredientes.forEach(it => {
+              const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
+              addHit(ing, 'base');
+            });
+          }
+          if(aj && Array.isArray(aj.ingExtras)){
+            aj.ingExtras.forEach(ex => {
+              const ing = (tobMenusDB.ingredientes || []).find(i => i.id === ex.ingId);
+              addHit(ing, 'extra');
+            });
+          }
+          if(!hits.length) return;
+          const key = sem + '|' + day + '|' + mealId + '|' + recId;
+          if(!seen.has(key)){
+            seen.add(key);
+            out.push({
+              sem,
+              day,
+              mealId,
+              recId,
+              recNombre: tobMcRecNombre(r, aj),
+              hits
+            });
+          } else {
+            const cur = out.find(x => x.sem === sem && x.day === day && x.mealId === mealId && x.recId === recId);
+            if(cur) hits.forEach(h => {
+              if(!cur.hits.some(e => e.name === h.name && e.src === h.src)) cur.hits.push(h);
+            });
+          }
+        });
+      });
+    });
+  });
+  return out.sort((a,b) =>
+    a.sem - b.sem ||
+    a.day - b.day ||
+    a.mealId.localeCompare(b.mealId, 'es', { sensitivity:'base' }) ||
+    (a.recNombre || '').localeCompare(b.recNombre || '', 'es', { sensitivity:'base' })
+  );
+}
+
+function tobMcFocusCell(sem, day, mealId){
+  if(!tobMcState) return;
+  const go = () => {
+    const cell = document.querySelector(`.tob-mc-cell[data-day="${day}"][data-meal="${mealId}"]`);
+    if(!cell) return;
+    cell.scrollIntoView({ behavior:'smooth', block:'center' });
+    cell.classList.add('flash-match');
+    setTimeout(() => cell.classList.remove('flash-match'), 1200);
+  };
+  if(Number.isInteger(sem) && tobMcState.semanaActiva !== sem){
+    tobMcState.semanaActiva = sem;
+    tobMcRenderSemanasTabs();
+    tobMcRenderGrid();
+    setTimeout(go, 90);
+  } else {
+    setTimeout(go, 10);
+  }
+}
+
+function tobMcRenderMenuIngSearch(){
+  const inp = document.getElementById('tobMcMenuIngSearch');
+  const box = document.getElementById('tobMcMenuIngResults');
+  if(!inp || !box || !tobMcState) return;
+  const q = (inp.value || '').trim();
+  if(!q){
+    box.innerHTML = '<div style="font-size:.72rem;color:var(--mute2);font-family:DM Mono,monospace;">Escribe un ingrediente y te diré en qué platos del menú aparece.</div>';
+    return;
+  }
+  const hits = tobMcMenuIngredientMatches(q);
+  if(!hits.length){
+    box.innerHTML = '<div style="font-size:.72rem;color:var(--mute2);font-family:DM Mono,monospace;">No aparece en el menú actual.</div>';
+    return;
+  }
+  box.innerHTML = hits.map(hit => {
+    const mealLbl = tobMcMealLabel(hit.mealId);
+    const dayLbl = TOB_MC_DIA_FULL[hit.day] || TOB_MC_DIAS[hit.day] || ('D' + (hit.day + 1));
+    return `<button type="button" class="tob-mc-ing-hit" onclick="tobMcFocusCell(${hit.sem},${hit.day},'${tobEsc(hit.mealId)}')">
+      <div class="nm">S${hit.sem + 1} · ${tobEsc(dayLbl)} · ${tobEsc(mealLbl)} · ${tobEsc(hit.recNombre || '—')}</div>
+      <div class="meta">Coincidencias dentro del plato:</div>
+      <div class="hits">${hit.hits.map(h => `<span class="hit-chip">${tobEsc(h.name)} · ${h.src === 'extra' ? 'extra' : 'base'}</span>`).join('')}</div>
+    </button>`;
+  }).join('');
 }
 
 // ── Vaciar / guardar / cargar menús ─────────────────────────────

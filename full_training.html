@@ -1894,20 +1894,26 @@ function getGymWeeklyParallelCapacity(){
   const cfg=getGymConfig();
   return cfg.hoursPerDay*cfg.daysPerWeek*cfg.trainersPerHour;
 }
+function getTicketCorrectionDivisor(k){
+  if(typeof k!=='string')return 1;
+  if(k<'2025-06')return 100;
+  if(k>='2025-07' && k<='2026-02')return 10;
+  return 1;
+}
 function isTicketDecimalBugMonth(k){
-  return typeof k==='string' && k>='2025-07' && k<='2026-02';
+  return getTicketCorrectionDivisor(k)!==1;
 }
 function calcTicketForMonth(k){
   const entries=db.months[k]?.entries||[];
   if(!entries.length)return 0;
   const raw=entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0)/entries.length;
-  return isTicketDecimalBugMonth(k)?raw/10:raw;
+  return raw/getTicketCorrectionDivisor(k);
 }
 function calcTicketForKeys(keys){
   let total=0,count=0;
   keys.forEach(k=>{
     const entries=db.months[k]?.entries||[];
-    const divisor=isTicketDecimalBugMonth(k)?10:1;
+    const divisor=getTicketCorrectionDivisor(k);
     entries.forEach(e=>{total+=(parseFloat(e.price)||0)/divisor;count++;});
   });
   return count>0?total/count:0;
@@ -2450,14 +2456,18 @@ function renderBEPersonalChart(){
   });
 
   if(sub){
+    const gasAvg=gasVals.length?gasVals.reduce((a,b)=>a+b,0)/gasVals.length:0;
     const cuotaAvg=cuotaVals.length?cuotaVals.reduce((a,b)=>a+b,0)/cuotaVals.length:0;
-    const workAvg=workHourVals.length?workHourVals.reduce((a,b)=>a+b,0)/workHourVals.length:0;
     const hoursAvg=hourVals.length?hourVals.reduce((a,b)=>a+b,0)/hourVals.length:0;
     const outsideAvg=outsideHourVals.length?outsideHourVals.reduce((a,b)=>a+b,0)/outsideHourVals.length:0;
     const totalHoursAvg=totalHourVals.length?totalHourVals.reduce((a,b)=>a+b,0)/totalHourVals.length:0;
     const pctAvg=totalHoursAvg>0?(hoursAvg/totalHoursAvg)*100:0;
+    const gymText=Math.round(hoursAvg*10)/10;
+    const outsideText=Math.round(outsideAvg*10)/10;
+    const workText=Math.round((gymText+outsideText)*10)/10;
+    const cuotaText=totalHoursAvg>0?gasAvg*(hoursAvg/totalHoursAvg):cuotaAvg;
     sub.textContent=totalHoursAvg>0
-      ?`- ${trainer.name}: trabaja ${fmtN(workAvg,1)}h/sem; ${fmtN(hoursAvg,1)}h sala + ${fmtN(outsideAvg,1)}h fuera. Gasto de sala = ${fmtN(hoursAvg,1)}h / ${fmtN(totalHoursAvg,1)}h de capacidad total (${fmtN(pctAvg,1)}%) = ${fmt(cuotaAvg)}/mes`
+      ?`- ${trainer.name}: media periodo ${fmtN(workText,1)}h/sem; ${fmtN(gymText,1)}h sala + ${fmtN(outsideText,1)}h fuera. Gasto sala = ${fmt(gasAvg)} x ${fmtN(hoursAvg,1)}h / ${fmtN(totalHoursAvg,1)}h (${fmtN(pctAvg,1)}%) = ${fmt(cuotaText)}/mes`
       :`- ${trainer.name}: sin horas de sala registradas; se usa fallback / ${getBeNTrainers()} = ${fmt(cuotaAvg)}/mes`;
   }
 
