@@ -834,8 +834,8 @@ function enterApp(id){
 function toggleAlerts(){
   const area=document.getElementById("alertsArea");
   const chevron=document.getElementById("alertsChevron");
-  const open=area.style.display==="block";
-  area.style.display=open?"none":"block";
+  const open=area.style.display==="flex";
+  area.style.display=open?"none":"flex";
   chevron.style.transform=open?"":"rotate(180deg)";
 }
 function logout(){curId=null;editKey=null;renderProfiles();}
@@ -1086,8 +1086,8 @@ function renderDashboard(){
     computed.forEach((a,i)=>{
       const d=document.createElement("div");d.className=`alert-item ${a.type}`;
       d.style.cssText="justify-content:space-between;align-items:center;";
-      d.innerHTML=`<div style="display:flex;align-items:flex-start;gap:10px;flex:1"><span class="alert-icon">${a.icon}</span><span>${a.text}</span></div>
-        <button onclick="this.closest('.alert-item').remove();if(!document.getElementById('alertsArea').children.length){document.getElementById('alertsWrapper').style.display='none';}" style="flex-shrink:0;margin-left:12px;background:none;border:1px solid currentColor;border-radius:6px;padding:2px 9px;cursor:pointer;font-size:.72rem;font-family:inherit;color:inherit;opacity:.7;white-space:nowrap">✕</button>`;
+      d.innerHTML=`<div class="alert-main"><span class="alert-icon">${a.icon}</span><span>${a.text}</span></div>
+        <button class="alert-close" onclick="this.closest('.alert-item').remove();if(!document.getElementById('alertsArea').children.length){document.getElementById('alertsWrapper').style.display='none';}">✕</button>`;
       alertsArea.appendChild(d);
     });
   }
@@ -1096,8 +1096,8 @@ function renderDashboard(){
   
   // Show pending entry indicator
   if(pendingEntry){
-    const pe=document.createElement("div");pe.style.cssText="grid-column:1/-1;padding:10px 14px;background:#0c1f3f;border:1px solid #1e3a5f;border-radius:10px;display:flex;align-items:center;gap:10px;font-size:.82rem;color:#93c5fd;margin-bottom:4px";
-    pe.innerHTML=`<span style="font-size:1rem">📝</span><span><strong>${MO[pendingEntry.month]} ${pendingEntry.year}</strong> en progreso — faltan NAVs de carteras. <a href="#" onclick="event.preventDefault();openEdit('${pendingEntry.key}')" style="color:#60a5fa;text-decoration:underline">Completar registro</a></span>`;
+    const pe=document.createElement("div");pe.className="pending-entry-pill";
+    pe.innerHTML=`<span class="pending-entry-icon">📝</span><span><strong>${MO[pendingEntry.month]} ${pendingEntry.year}</strong> en curso · faltan NAVs · <a href="#" onclick="event.preventDefault();openEdit('${pendingEntry.key}')">Completar</a></span>`;
     g.appendChild(pe);
   }
   
