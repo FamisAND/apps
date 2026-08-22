@@ -109,15 +109,20 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
 
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="tab-content">
-      <div id="alertsWrapper" style="margin-bottom:4px;display:none;">
-        <button onclick="toggleAlerts()" id="alertsToggle" style="display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;color:#64748b;padding:6px 2px;margin-bottom:4px;width:100%;">
-          <span id="alertsDot" style="width:7px;height:7px;border-radius:50%;background:#f87171;flex-shrink:0;"></span>
-          <span id="alertsLabel">Notificaciones</span>
-          <span id="alertsChevron" style="margin-left:auto;font-size:.7rem;transition:transform .2s;">&#9660;</span>
-        </button>
-        <div id="alertsArea" style="display:none;"></div>
+      <div class="dashboard-topline">
+        <div class="dashboard-topline-main">
+          <div id="alertsWrapper" style="display:none;">
+            <button onclick="toggleAlerts()" id="alertsToggle" style="display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;color:#64748b;padding:6px 2px;margin-bottom:4px;width:100%;">
+              <span id="alertsDot" style="width:7px;height:7px;border-radius:50%;background:#f87171;flex-shrink:0;"></span>
+              <span id="alertsLabel">Notificaciones</span>
+              <span id="alertsChevron" style="margin-left:auto;font-size:.7rem;transition:transform .2s;">&#9660;</span>
+            </button>
+            <div id="alertsArea" style="display:none;"></div>
+          </div>
+          <div id="pendingEntrySlot"></div>
+        </div>
+        <div id="dashboardEmpresaToggle"></div>
       </div>
-      <div id="dashboardEmpresaToggle"></div>
       <div class="stats-grid" id="statsGrid"></div>
       <div id="emptyDash" class="card hidden" style="text-align:center;padding:40px;color:#334155;">
         <div style="font-size:2rem;margin-bottom:10px">📊</div>
@@ -608,7 +613,7 @@ function assetLabel(a){return a.archived?`${a.name} (oculta)`:a.name;}
 function hasAssetValueInEntries(p,assetId,entries){
   return (entries||[]).some(e=>{
     const activeIds=new Set(entryActiveAssets(e,p).map(a=>a.id));
-    const value=parseFloat((e.assets||{})[assetId]);
+    const value=parseMoneyValue((e.assets||{})[assetId]);
     return activeIds.has(assetId)&&Number.isFinite(value)&&value>0;
   });
 }
@@ -623,7 +628,7 @@ function findEmptyAssets(p,monthsBack){
   p.sections.forEach(s=>s.assets.forEach(a=>{
     if(ingIds.has(a.id))return;
     if(a.archived)return;
-    const hasValue=ents.some(e=>{const v=parseFloat((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
+    const hasValue=ents.some(e=>{const v=parseMoneyValue((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
     if(!hasValue)empty.push(a);
   }));
   return empty;
@@ -633,7 +638,7 @@ function entryActiveAssets(entry,p){
   return profileAssets(p);
 }
 function ingSection(p){return p.sections.find(s=>s.id==="s_ing")||p.sections[p.sections.length-1];}
-function ingValue(entry,p){let t=0;const sec=ingSection(p);if(!sec)return 0;sec.assets.forEach(a=>{const v=parseFloat((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;});return t;}
+function ingValue(entry,p){let t=0;const sec=ingSection(p);if(!sec)return 0;sec.assets.forEach(a=>{const v=parseMoneyValue((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;});return t;}
 
 // ── Patrimonio (excluye ingresos, resta deuda, incluye empresa) ──
 function calcPat(entry,p){
@@ -642,18 +647,38 @@ function calcPat(entry,p){
   let t=0;
   entryActiveAssets(entry,p).forEach(a=>{
     if(ingIds.has(a.id))return;
-    const v=parseFloat((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;
+    const v=parseMoneyValue((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;
   });
   if(p.empresaSection.enabled){const e=calcEmp(entry,p);if(e!=null)t+=e;}
-  const deuda=parseFloat(entry.deuda);if(!isNaN(deuda)&&deuda>0)t-=deuda;
+  const deuda=parseMoneyValue(entry.deuda);if(!isNaN(deuda)&&deuda>0)t-=deuda;
   return t;
 }
 function parseMoneyValue(v){
   if(v==null||v==="")return NaN;
   if(typeof v==="number")return v;
-  const s=String(v).trim().replace(/\s/g,'');
+  let s=String(v).trim().replace(/\s/g,'').replace(/[€$]/g,'');
   if(!s)return NaN;
-  const normalized=s.includes(',') ? s.replace(/\./g,'').replace(',','.') : s;
+  s=s.replace(/[^0-9,.\-]/g,'');
+  if(!s||s==="-"||s===","||s===".")return NaN;
+  let normalized;
+  if(s.includes(',')&&s.includes('.')){
+    const lastComma=s.lastIndexOf(',');
+    const lastDot=s.lastIndexOf('.');
+    normalized=lastComma>lastDot
+      ? s.replace(/\./g,'').replace(',','.')
+      : s.replace(/,/g,'');
+  }else if(s.includes(',')){
+    normalized=s.replace(',','.');
+  }else{
+    const parts=s.split('.');
+    if(parts.length>2){
+      normalized=parts.join('');
+    }else if(parts.length===2&&parts[1].length===3&&parts[0].length>=1){
+      normalized=parts.join('');
+    }else{
+      normalized=s;
+    }
+  }
   return parseFloat(normalized);
 }
 function calcEmpParts(entry,p){
@@ -746,9 +771,9 @@ function getBen12Display(entry,p){
 function calcReturnAsset(current,prev,p){
   if(!current||!prev||!current.assets||!prev.assets)return null;
   
-  const currVal=parseFloat(current.assets[p])||0;
-  const prevVal=parseFloat(prev.assets[p])||0;
-  const contribution=parseFloat((current.contributions||{})[p])||0;
+  const currVal=parseMoneyValue(current.assets[p])||0;
+  const prevVal=parseMoneyValue(prev.assets[p])||0;
+  const contribution=parseMoneyValue((current.contributions||{})[p])||0;
   
   // Rentabilidad = (Valor actual - Valor anterior - Aportación) / Valor anterior
   if(prevVal<=0)return null;
@@ -775,7 +800,7 @@ function calcReturnPatrimonio(current,prev,p){
   const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
   const patIds=new Set(entryActiveAssets(current,p).filter(a=>!ingIds.has(a.id)).map(a=>a.id));
   const contribs=current.contributions||{};
-  const totalContrib=Object.keys(contribs).reduce((s,k)=>patIds.has(k)?s+(parseFloat(contribs[k])||0):s,0);
+  const totalContrib=Object.keys(contribs).reduce((s,k)=>patIds.has(k)?s+(parseMoneyValue(contribs[k])||0):s,0);
 
   // Rentabilidad = (Pat actual - Pat anterior - Aportaciones al patrimonio) / Pat anterior
   const return_amount=currPat-prevPat-totalContrib;
@@ -801,16 +826,25 @@ function isEntryComplete(entry,p){
   const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
   const active=entryActiveAssets(entry,p);
   // Check if any non-income asset has a value > 0
-  return active.some(a=>{
+  const hasAsset=active.some(a=>{
     if(ingIds.has(a.id))return false;
-    const v=parseFloat((entry.assets||{})[a.id]);
+    const v=parseMoneyValue((entry.assets||{})[a.id]);
     return !isNaN(v)&&v>0;
   });
+  if(hasAsset)return true;
+  if(p.empresaSection?.enabled){
+    const emp=calcEmp(entry,p);
+    if(emp!=null&&emp>0)return true;
+  }
+  const deuda=parseMoneyValue(entry.deuda);
+  return !isNaN(deuda)&&deuda>0;
 }
 
 // ── Get entries filtered to only complete ones (for dashboard/charts) ──
 function completeEntries(p){
-  return (p.entries||[]).filter(e=>isEntryComplete(e,p));
+  return [...(p.entries||[])]
+    .sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month)
+    .filter(e=>isEntryComplete(e,p));
 }
 
 // ══════════════════════════════
@@ -897,7 +931,7 @@ function computeAlerts(p){
   // 3. Caída brusca de un activo (>10%) — dismissable con "Sí, es correcto"
   if(prev){
     dashboardAssetsOf(p,last).forEach(a=>{
-      const vNow=parseFloat((last.assets||{})[a.id]),vPrev=parseFloat((prev.assets||{})[a.id]);
+      const vNow=parseMoneyValue((last.assets||{})[a.id]),vPrev=parseMoneyValue((prev.assets||{})[a.id]);
       if(!isNaN(vNow)&&!isNaN(vPrev)&&vPrev>0){
         const chg=(vNow-vPrev)/vPrev*100;
         if(chg<-10)alerts.push({id:`caida_${last.key}_${a.id}`,type:"red",icon:"📉",dismissable:true,dismissLabel:"Sí, es correcto",text:`${a.name} ha caído un ${chg.toFixed(1)}% este mes (${fmt(vPrev)} → ${fmt(vNow)}). ¿Es correcto?`});
@@ -1102,12 +1136,14 @@ function renderDashboard(){
   }
 
   const g=document.getElementById("statsGrid");g.innerHTML="";
+  const pendingSlot=document.getElementById("pendingEntrySlot");
+  if(pendingSlot)pendingSlot.innerHTML="";
   
   // Show pending entry indicator
-  if(pendingEntry){
+  if(pendingEntry&&pendingSlot){
     const pe=document.createElement("div");pe.className="pending-entry-pill";
     pe.innerHTML=`<span class="pending-entry-icon">📝</span><span><strong>${MO[pendingEntry.month]} ${pendingEntry.year}</strong> en curso · faltan NAVs · <a href="#" onclick="event.preventDefault();openEdit('${pendingEntry.key}')">Completar</a></span>`;
-    g.appendChild(pe);
+    pendingSlot.appendChild(pe);
   }
   
   const addS=(lbl,val,col,big,badge,bUp,sub)=>{
@@ -1122,7 +1158,7 @@ function renderDashboard(){
     const ingSec=ingSection(p);const ingIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
     dashboardAssetsOf(p,last,showArchivedHistory(p)).forEach(a=>{
       if(ingIds.has(a.id))return;
-      const v=parseFloat((last.assets||{})[a.id]);
+      const v=parseMoneyValue((last.assets||{})[a.id]);
       const weight=curP>0&&!isNaN(v)&&v>0?((v/curP)*100).toFixed(1)+"%":"";
       if(!isNaN(v)&&v>0)addS(assetLabel(a),v,a.color,false,null,true,weight?`${weight} del total`:null);
     });
@@ -1266,6 +1302,7 @@ function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
   const opts={responsive:true,maintainAspectRatio:true};
   const last=ents[ents.length-1];
+  const bancoSec=p.sections.find(s=>s.id==="s_banco");
 
   // ── Total line ──
   dChart("total");
@@ -1279,7 +1316,7 @@ function renderCharts(p){
     const ingAssetIds=new Set(ingSec?ingSec.assets.map(a=>a.id):[]);
     const activeAssets=dashboardAssetsOf(p,last,showArchivedHistory(p)).filter(a=>!ingAssetIds.has(a.id));
     activeAssets.forEach(a=>{
-      const v=parseFloat((last.assets||{})[a.id]);
+      const v=parseMoneyValue((last.assets||{})[a.id]);
       if(!isNaN(v)&&v>0){pieLabels.push(assetLabel(a));pieData.push(v);pieColors.push(a.color);}
     });
     if(p.empresaSection.enabled){const e=calcEmp(last,p);if(e>0){pieLabels.push(p.empresaSection.title);pieData.push(e);pieColors.push("#f472b6");}}
@@ -1297,7 +1334,7 @@ function renderCharts(p){
     data:ents.map(e=>{
       const act=entryActiveAssets(e,p);
       if(!act.find(x=>x.id===a.id)) return null;
-      const value=parseFloat((e.assets||{})[a.id]);
+      const value=parseMoneyValue((e.assets||{})[a.id]);
       return Number.isFinite(value)?value:null;
     }),
     borderColor:a.color,
@@ -1313,7 +1350,7 @@ function renderCharts(p){
     let total=0,hasValue=false;
     investmentAssets.forEach(a=>{
       if(!activeIds.has(a.id)) return;
-      const value=parseFloat((e.assets||{})[a.id]);
+      const value=parseMoneyValue((e.assets||{})[a.id]);
       if(Number.isFinite(value)){total+=value;hasValue=true;}
     });
     return hasValue?total:null;
@@ -1367,10 +1404,10 @@ function renderCharts(p){
     _assetId:a.id,
     data:ents.map((e,i)=>{
       if(i===0)return null;
-      const curr=parseFloat((e.assets||{})[a.id])||0;
-      const prev=parseFloat((ents[i-1].assets||{})[a.id])||0;
+      const curr=parseMoneyValue((e.assets||{})[a.id])||0;
+      const prev=parseMoneyValue((ents[i-1].assets||{})[a.id])||0;
       if(prev<=0)return null;
-      const contrib=parseFloat((e.contributions||{})[a.id])||0;
+      const contrib=parseMoneyValue((e.contributions||{})[a.id])||0;
       const retorno=((curr-prev-contrib)/prev)*100;
       return parseFloat(retorno.toFixed(2));
     }),
@@ -1390,10 +1427,10 @@ function renderCharts(p){
     let totalRetornoValor=0;
     
     assets.forEach(a=>{
-      const curr=parseFloat((e.assets||{})[a.id])||0;
-      const prev=parseFloat((ents[i-1].assets||{})[a.id])||0;
+      const curr=parseMoneyValue((e.assets||{})[a.id])||0;
+      const prev=parseMoneyValue((ents[i-1].assets||{})[a.id])||0;
       if(prev>0){
-        const contrib=parseFloat((e.contributions||{})[a.id])||0;
+        const contrib=parseMoneyValue((e.contributions||{})[a.id])||0;
         const retorno_pct=((curr-prev-contrib)/prev)*100;
         const retorno_valor=(curr-prev-contrib);
         
@@ -1507,7 +1544,7 @@ function renderCharts(p){
   const bancoAssets=bancoSec?bancoSec.assets:[];
   const bancoMap={};
   ents.forEach(e=>entryActiveAssets(e,p).forEach(a=>{if(bancoAssets.find(x=>x.id===a.id)&&!bancoMap[a.id])bancoMap[a.id]=a;}));
-  const bancoDSets=Object.values(bancoMap).map(a=>({label:a.name,data:ents.map(e=>{const act=entryActiveAssets(e,p);return act.find(x=>x.id===a.id)?parseFloat((e.assets||{})[a.id])||0:null;}),borderColor:a.color,backgroundColor:a.color+"18",borderWidth:1.8,pointRadius:2,tension:.3,fill:true,spanGaps:false}));
+  const bancoDSets=Object.values(bancoMap).map(a=>({label:a.name,data:ents.map(e=>{const act=entryActiveAssets(e,p);return act.find(x=>x.id===a.id)?parseMoneyValue((e.assets||{})[a.id])||0:null;}),borderColor:a.color,backgroundColor:a.color+"18",borderWidth:1.8,pointRadius:2,tension:.3,fill:true,spanGaps:false}));
   charts["banco"]=new Chart(document.getElementById("cBanco"),{type:"line",data:{labels:lbl,datasets:bancoDSets.length?bancoDSets:[{label:"Sin datos",data:[],borderColor:"#334155"}]},options:{...opts,plugins:{legend:{labels:{color:"#475569",font:{size:10},boxWidth:10}},tooltip:{...TT,callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.parsed.y)}`}},zoom:ZCFG},scales:sc("€")}});
 
   // ── Variación mensual ──
@@ -1547,13 +1584,13 @@ function renderCharts(p){
   // Datasets por tipo
   const ingDatasets=ingAssets.map((a,i)=>({
     label:a.name,
-    data:entsIng.map(e=>{const v=parseFloat((e.assets||{})[a.id]);return isNaN(v)?0:v;}),
+    data:entsIng.map(e=>{const v=parseMoneyValue((e.assets||{})[a.id]);return isNaN(v)?0:v;}),
     backgroundColor:ingAssets.length>1?(a.color+"bb"):ingColors[0],
     borderRadius:i===ingAssets.length-1?4:0,
     stack:"ing",order:ingAssets.length-i+2
   }));
   // Total y media adaptada
-  const ingTotal=entsIng.map(e=>ingAssets.reduce((s,a)=>{const v=parseFloat((e.assets||{})[a.id]);return s+(isNaN(v)?0:v);},0));
+  const ingTotal=entsIng.map(e=>ingAssets.reduce((s,a)=>{const v=parseMoneyValue((e.assets||{})[a.id]);return s+(isNaN(v)?0:v);},0));
   const ingPositive=ingTotal.filter(v=>v>0);
   const avgPeriod=ingPositive.length?ingPositive.reduce((s,v)=>s+v,0)/ingPositive.length:0;
   const periodLabel = ingRangeSel === 'all' ? 'histórica' : (ingRangeSel === 'custom' ? 'periodo' : ingRangeSel);
@@ -3093,7 +3130,7 @@ function renderHistorial(){
     const tdMes=document.createElement("td");tdMes.style.cssText="font-weight:600;color:#94a3b8";tdMes.innerHTML=`${MO[e.month]} ${e.year}${incomplete?' <span style="font-size:.6rem;color:#fb923c;font-weight:400">⏳ pendiente</span>':''}`;tr.appendChild(tdMes);
     allA.forEach(a=>{
       const td=document.createElement("td");
-      if(active.find(x=>x.id===a.id)){td.className="mono";td.style.color=a.color;td.textContent=fmt(parseFloat((e.assets||{})[a.id]));}
+      if(active.find(x=>x.id===a.id)){td.className="mono";td.style.color=a.color;td.textContent=fmt(parseMoneyValue((e.assets||{})[a.id]));}
       else{td.style.cssText="color:#1e2d4a;font-size:.68rem";td.textContent="—";}
       tr.appendChild(td);
     });
@@ -3228,7 +3265,7 @@ function renderAssetYearComparison(){
       // Sumar valores de todas las carteras + empresa (si includeEmpresa)
       const sumAssets = (entry) => {
         let s = 0;
-        allAssets.forEach(a => { s += parseFloat((entry.assets||{})[a.id])||0; });
+        allAssets.forEach(a => { s += parseMoneyValue((entry.assets||{})[a.id])||0; });
         if(p.includeEmpresa && p.empresaSection.enabled){
           const e = calcEmp(entry, p);
           if(e!=null) s += e;
@@ -3237,17 +3274,17 @@ function renderAssetYearComparison(){
       };
       const sumDeposits = (entry) => {
         let s = 0;
-        allAssets.forEach(a => { s += parseFloat((entry.contributions||{})[a.id])||0; });
+        allAssets.forEach(a => { s += parseMoneyValue((entry.contributions||{})[a.id])||0; });
         return s; // empresa no tiene depósitos
       };
       lastVal = sumAssets(lastEntry);
       firstVal = firstEntry ? sumAssets(firstEntry) : 0;
       totalDeposits = yearEnts.reduce((s,e) => s + sumDeposits(e), 0);
     } else {
-      lastVal = parseFloat((lastEntry.assets||{})[asset.id])||0;
-      firstVal = firstEntry ? parseFloat((firstEntry.assets||{})[asset.id])||0 : 0;
+      lastVal = parseMoneyValue((lastEntry.assets||{})[asset.id])||0;
+      firstVal = firstEntry ? parseMoneyValue((firstEntry.assets||{})[asset.id])||0 : 0;
       totalDeposits = yearEnts.reduce((s,e)=>{
-        const contrib=parseFloat((e.contributions||{})[asset.id])||0;
+        const contrib=parseMoneyValue((e.contributions||{})[asset.id])||0;
         return s+contrib;
       },0);
     }
@@ -3606,13 +3643,13 @@ function submitForm(){
     if(ec)entry.emp_caja=ec.value;
   }
   const noteEl=document.getElementById("fi_note");if(noteEl)entry.note=noteEl.value.trim();
-  const deudaEl=document.getElementById("fi_deuda");if(deudaEl&&deudaEl.value)entry.deuda=parseFloat(deudaEl.value)||0;
+  const deudaEl=document.getElementById("fi_deuda");if(deudaEl&&deudaEl.value)entry.deuda=parseMoneyValue(deudaEl.value)||0;
   
   // Guardar aportaciones
   const contributions={};
   profileAssets(p).forEach(a=>{
     const el=document.getElementById("fc_"+a.id);
-    if(el&&el.value){contributions[a.id]=parseFloat(el.value)||0;}
+    if(el&&el.value){contributions[a.id]=parseMoneyValue(el.value)||0;}
   });
   if(Object.keys(contributions).length>0)entry.contributions=contributions;
   
@@ -3632,7 +3669,7 @@ function getCurrentValue(obj,p,last){
   if(obj.type==="patrimonio")return calcPat(last,p);
   if(obj.type==="ingresos")return ingValue(last,p);
   if(obj.type==="empresa")return p.empresaSection.enabled?calcEmp(last,p)||0:0;
-  if(obj.type==="activo"){const v=parseFloat((last.assets||{})[obj.assetId]);return isNaN(v)?0:v;}
+  if(obj.type==="activo"){const v=parseMoneyValue((last.assets||{})[obj.assetId]);return isNaN(v)?0:v;}
   return 0;
 }
 function getObjLabel(obj,p){
@@ -3945,12 +3982,12 @@ function patAutoArchiveRefresh(){
     sec.assets.forEach((a,ai)=>{
       if(ingIds.has(a.id))return;
       if(a.archived)return;
-      const hasValue=ents.some(e=>{const v=parseFloat((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
+      const hasValue=ents.some(e=>{const v=parseMoneyValue((e.assets||{})[a.id]);return !isNaN(v)&&v>0;});
       if(!hasValue){
         // Última data amb valor (per mostrar context)
         let lastWithValue=null;
         (p.entries||[]).slice().reverse().some(e=>{
-          const v=parseFloat((e.assets||{})[a.id]);
+          const v=parseMoneyValue((e.assets||{})[a.id]);
           if(!isNaN(v)&&v>0){lastWithValue={year:e.year,month:e.month,value:v};return true;}
           return false;
         });
