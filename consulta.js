@@ -8269,7 +8269,7 @@ function tobRecRender(){
   let list = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
   // Las descartadas van al final, atenuadas.
   if(search){
-    list = list.filter(r => tobIngMatchScore(search, tobRecSearchText(r)) > 0);
+    list = list.filter(r => tobRecipeSearchMatches(search, r));
   }
   if(momento) list = list.filter(r => (r.momentos||[]).includes(momento));
   if(tag)     list = list.filter(r => (r.tags||[]).includes(tag));
@@ -8747,6 +8747,7 @@ function tobRecSearchText(rec){
     rec.ingredientes.forEach(it => {
       if(!it) return;
       const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
+      add(it.nombre);
       add(ing ? ing.nombre : it._nombreFallback);
       if(ing){
         add(ing.aliases);
@@ -8779,6 +8780,33 @@ function tobIngMatchScore(raw, hay){
     if(ok) hits++;
   });
   return hits ? (hits / qWords.length) * 0.8 : 0;
+}
+
+function tobStrictFoodSearchMatch(raw, hay){
+  const q = tobIngNormName(raw);
+  const h = tobIngNormName(hay);
+  if(!q || !h) return false;
+  if(h === q || h.startsWith(q) || h.includes(q)) return true;
+
+  const qWords = q.split(' ').filter(w => w.length >= 3);
+  const hWords = h.split(' ').filter(w => w.length >= 2);
+  if(!qWords.length || !hWords.length) return false;
+
+  return qWords.every(qw => {
+    const qv = tobIngWordVariants(qw).filter(v => v.length >= 3);
+    return hWords.some(hw => {
+      const hv = tobIngWordVariants(hw).filter(v => v.length >= 3);
+      return qv.some(a => hv.some(b =>
+        a === b ||
+        (a.length >= 4 && b.startsWith(a)) ||
+        (b.length >= 4 && a.startsWith(b))
+      ));
+    });
+  });
+}
+
+function tobRecipeSearchMatches(raw, rec){
+  return tobStrictFoodSearchMatch(raw, tobRecSearchText(rec));
 }
 
 function tobFoodSearchMatches(raw, limit, opts){
@@ -11628,7 +11656,7 @@ function tobMcRenderSidePanel(){
 
   // Las recetas descartadas no aparecen en el creador.
   const all = (tobMenusDB.recetas || []).filter(r => !r.descartada);
-  const matchSearch = r => !search || tobIngMatchScore(search, tobRecSearchText(r)) > 0;
+  const matchSearch = r => !search || tobRecipeSearchMatches(search, r);
   // Recetes normals: respecten el filtre de moment.
   let listRec = all.filter(r => r.origen !== 'ingrediente' && matchSearch(r));
   if(_tobMcMomentoFiltro){
