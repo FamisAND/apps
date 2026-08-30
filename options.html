@@ -252,7 +252,7 @@
           ifAsign se calcula automaticamente desde las patas de cada estrategia: PC/short put cuenta nominal, PL/long put protege.
         </div>
       </div>
-      <div>
+      <div style="display:none">
         <div class="cfg-col-hdr" style="color:#f04545;margin-bottom:8px">Risk total</div>
         <div style="font-size:9px;color:#2a4a6a;margin-bottom:8px">Estrategias cuyo maxRisk cuenta en el total de capital en riesgo.</div>
         <div id="gc_riskTotalWrap" style="display:flex;flex-wrap:wrap;gap:6px"></div>
@@ -435,13 +435,12 @@
       </select>
       <button id="actViewToggle" onclick="toggleActivasCompact()" title="Alternar vista compacta/detalle" style="background:#4a9eff11;border:1px solid #4a9eff44;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer">Vista rapida</button>
     <button onclick="openRoadmapCfg()" title="Hoja de ruta de gestión por DTE y profit" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:10px;font-weight:800;padding:4px 8px;border-radius:999px;cursor:pointer" onmouseover="this.style.borderColor='#4a9eff';this.style.color='#4a9eff'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">?</button>
-    <button onclick="openActCfg()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#f0a500';this.style.color='#f0a500'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">⚙ Config</button>
     <button onclick="openTtPriceUpdate()" title="Actualizar priceCurrent desde positions.csv de Tastytrade" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#22c55e';this.style.color='#22c55e'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">↻ Tastytrade</button>
     <button onclick="openActModal(null)"   style="background:transparent;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:3px;cursor:pointer">+ Nueva posición</button>
     </div>
   </div>
 
-  <div id="actRiskPanel" style="padding:14px 20px 0"></div>
+  <div id="actRiskPanel" style="display:none"></div>
 
   <!-- Cards grid -->
   <div id="activasGrid" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px"></div>
@@ -462,12 +461,12 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <input type="number" id="acfg_cash" step="100" placeholder="ej: 25000"
           style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:11px;padding:5px 8px;border-radius:3px;outline:none;width:160px"/>
-        <span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;flex:1;min-width:180px">Base del ifAsign, sizing y cobertura de asignaciones.</span>
+        <span style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;flex:1;min-width:180px">Base para sizing y control de liquidez.</span>
       </div>
     </div>
 
     <div style="border:1px solid #1e2d3d;background:#0a1421;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-family:&quot;Courier New&quot;,monospace;font-size:8px;color:#5a7a9a;line-height:1.45">
-      Las patas, TP y Risk total se editan en la configuracion global. ifAsign se calcula automaticamente por short puts y coberturas.
+      Las patas, TP y estrategias se editan en la configuracion global. En Op Abiertas solo queda el cash y la gestion operativa.
     </div>
 
     <div class="cfg-btns">
@@ -1014,28 +1013,28 @@ const TODAY = new Date().toISOString().split('T')[0];
 const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── CONFIG / THRESHOLDS ──────────────────────────────────────
+const ROADMAP_RULES_VERSION = 2;
 const DEFAULT_ROADMAP_RULES = [
-  {dteMin:46,dteMax:60,profitMin:-999,profitMax:999,action:'Setup valido',situation:'Entrada 45 DTE aprox.',comment:'Aqui manda el setup, no abrir por abrir',tone:'idle'},
-  {dteMin:35,dteMax:45,profitMin:50,profitMax:999,action:'Cerrar / parcial',situation:'Profit rapido',comment:'Si llega rapido, no hace falta esperar',tone:'good'},
-  {dteMin:35,dteMax:45,profitMin:30,profitMax:50,action:'Mantener',situation:'Precio lateral / comodo',comment:'Aun queda prima temporal',tone:'idle'},
-  {dteMin:35,dteMax:45,profitMin:0,profitMax:30,action:'Mantener y vigilar',situation:'Profit bajo',comment:'Todavia no hace falta tocar',tone:'warn'},
-  {dteMin:35,dteMax:45,profitMin:-999,profitMax:0,action:'No anadir',situation:'Tesis debilitada',comment:'Valorar cierre o roll defensivo',tone:'bad'},
-  {dteMin:22,dteMax:34,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit bueno',comment:'Zona ideal de salida',tone:'good'},
-  {dteMin:22,dteMax:34,profitMin:30,profitMax:50,action:'Mantener',situation:'Profit medio',comment:'Puedes dejar trabajar theta',tone:'idle'},
-  {dteMin:22,dteMax:34,profitMin:0,profitMax:30,action:'Mantener',situation:'Profit bajo pero precio bien',comment:'No hay motivo para rolear',tone:'idle'},
-  {dteMin:22,dteMax:34,profitMin:-999,profitMax:0,action:'Preparar gestion',situation:'Strike amenazado',comment:'Vigilar roll si la tesis sigue viva',tone:'warn'},
-  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit 50-70%',comment:'Salida limpia',tone:'good'},
-  {dteMin:15,dteMax:21,profitMin:25,profitMax:50,action:'Mantener',situation:'Precio comodo',comment:'No cierres solo porque llego 21 DTE',tone:'idle'},
-  {dteMin:15,dteMax:21,profitMin:0,profitMax:25,action:'Vigilar',situation:'Profit bajo pero OTM',comment:'Puede no haber desintegrado aun',tone:'warn'},
-  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Revisar roll',situation:'Delta/strike amenazado',comment:'No automatico, pero toca decidir',tone:'bad'},
-  {dteMin:8,dteMax:14,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit 50%+',comment:'A partir de aqui no conviene alargar mucho',tone:'good'},
-  {dteMin:8,dteMax:14,profitMin:0,profitMax:50,action:'Decidir',situation:'Precio comodo pero profit bajo',comment:'Mantener solo si delta sigue baja',tone:'warn'},
-  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'Roll / cerrar',situation:'Cerca del strike',comment:'Ya no me gusta esperar demasiado',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'Profit alto',comment:'No arriesgar una buena operacion por migajas',tone:'good'},
-  {dteMin:4,dteMax:7,profitMin:0,profitMax:70,action:'Cerrar o rolear',situation:'Gamma cerca',comment:'No quieres gamma risk fuerte',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:-999,profitMax:0,action:'Gestionar/cerrar',situation:'Perdida abierta',comment:'No esperes milagros',tone:'bad'},
-  {dteMin:0,dteMax:3,profitMin:0,profitMax:999,action:'Cerrar si compensa',situation:'Spread casi muerto',comment:'Evita sustos tontos',tone:'warn'},
-  {dteMin:0,dteMax:3,profitMin:-999,profitMax:0,action:'Cerrar / gestionar',situation:'ITM o dudoso',comment:'No dejar a vencimiento sin control',tone:'bad'}
+  {dteMin:40,dteMax:50,profitMin:-999,profitMax:999,action:'Setup OK',situation:'40-50 DTE',comment:'Solo PCS en activos asignables, delta short max 30 y crédito decente.',tone:'idle'},
+  {dteMin:35,dteMax:45,profitMin:50,profitMax:999,action:'Cerrar',situation:'Profit rapido',comment:'Si ya captura 50% pronto, no hace falta enamorarse.',tone:'good'},
+  {dteMin:35,dteMax:45,profitMin:30,profitMax:50,action:'Mantener / cerrar',situation:'Buen avance',comment:'Puedes cerrar parcial/total si fue muy rapido; si no, deja trabajar.',tone:'good'},
+  {dteMin:35,dteMax:45,profitMin:0,profitMax:30,action:'Mantener',situation:'Normal',comment:'Queda prima temporal. Vigila delta, no toques por tocar.',tone:'idle'},
+  {dteMin:35,dteMax:45,profitMin:-999,profitMax:0,action:'No anadir',situation:'Tesis debilitada',comment:'No hagas DCA ciego. Valora cierre o roll defensivo.',tone:'bad'},
+  {dteMin:22,dteMax:34,profitMin:50,profitMax:999,action:'Cerrar',situation:'Zona ideal',comment:'50-70% capturado cerca de 30 DTE es una salida limpia.',tone:'good'},
+  {dteMin:22,dteMax:34,profitMin:30,profitMax:50,action:'Mantener',situation:'Profit medio',comment:'Puedes dejar que theta trabaje si el precio esta comodo.',tone:'idle'},
+  {dteMin:22,dteMax:34,profitMin:0,profitMax:30,action:'Mantener',situation:'Profit bajo',comment:'No rolees solo porque no ha pagado aun.',tone:'idle'},
+  {dteMin:22,dteMax:34,profitMin:-999,profitMax:0,action:'Preparar gestion',situation:'Amenazada',comment:'Vigila delta 20-30 y decide si la tesis sigue viva.',tone:'warn'},
+  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar',situation:'Salida limpia',comment:'21 DTE es checkpoint: si hay 50%+, se cierra.',tone:'good'},
+  {dteMin:15,dteMax:21,profitMin:25,profitMax:50,action:'Mantener',situation:'Comoda',comment:'No cierres solo porque llego 21 DTE si sigue lejos del strike.',tone:'idle'},
+  {dteMin:15,dteMax:21,profitMin:0,profitMax:25,action:'Vigilar',situation:'Poco profit',comment:'Mantener solo si sigue OTM y la delta esta controlada.',tone:'warn'},
+  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Revisar roll',situation:'Decidir',comment:'No automatico: roll defensivo solo si la tesis sigue viva.',tone:'bad'},
+  {dteMin:8,dteMax:14,profitMin:50,profitMax:999,action:'Cerrar',situation:'No alargar',comment:'A partir de 14 DTE ya no interesa regalar gamma.',tone:'good'},
+  {dteMin:8,dteMax:14,profitMin:0,profitMax:50,action:'Decidir',situation:'Checkpoint',comment:'Roll/cerrar/reducir si esta cerca. Mantener solo si esta muy comoda.',tone:'warn'},
+  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'Gestionar si o si',situation:'Problema abierto',comment:'Si ya hubo dos rolls, no conviertas esto en bola de nieve.',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'Spread casi muerto',comment:'Puedes dejar expirar solo si la comision/spread lo permite y esta muy lejos.',tone:'good'},
+  {dteMin:4,dteMax:7,profitMin:0,profitMax:70,action:'Cerrar o rolear',situation:'Gamma risk',comment:'No quieres problemas abiertos a 7 DTE.',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:-999,profitMax:0,action:'Cerrar / gestionar',situation:'Perdida abierta',comment:'No esperes milagros.',tone:'bad'},
+  {dteMin:0,dteMax:3,profitMin:-999,profitMax:999,action:'Cerrar',situation:'Vencimiento',comment:'Evita asignacion/ejercicio sin control.',tone:'bad'}
 ];
 let CFG = {
   NP:  { ann:20, prob:75, ivr:35, psig:12 },
@@ -1046,11 +1045,13 @@ let CFG = {
   stratOtroSet: ['CCS','DPS','BWB','JL','IC','0DTE','112'],
   cashAvail: 0,
   riskTotalStrats: ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE'],
-  roadmapRules: DEFAULT_ROADMAP_RULES
+  roadmapRules: DEFAULT_ROADMAP_RULES,
+  roadmapRulesVersion: ROADMAP_RULES_VERSION
 };
 try{ const s=localStorage.getItem('ot_cfg'); if(s){ const p=JSON.parse(s); if(p.NP&&p.PCS) CFG=p; } }catch(e){}
-if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length){
+if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length || CFG.roadmapRulesVersion !== ROADMAP_RULES_VERSION){
   CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+  CFG.roadmapRulesVersion = ROADMAP_RULES_VERSION;
 }
 function toggleUnrealized(){
   CFG.showUnrealized = !CFG.showUnrealized;
@@ -2680,8 +2681,8 @@ function openEntryModal(id=null){
   // usuario tuvo (poner el neto en P. Crédito en vez del coste real).
   const _isLongLeg = !!(e.isPartialClose && e.isLong);
   const _lblCredito = _isLongLeg
-    ? `Coste apertura ($/contrato) <span style="color:#3a5468;font-size:7px">lo que pagaste al comprarla</span>`
-    : `P. Crédito ($/contrato) <span style="color:#3a5468;font-size:7px">prima cobrada total</span>`;
+    ? `Coste apertura unitario <span style="color:#3a5468;font-size:7px">como Tasty: 3.00, no 300</span>`
+    : `P. Crédito unitario <span style="color:#3a5468;font-size:7px">como Tasty: 3.00, no 300</span>`;
   const _lblCierre = _isLongLeg
     ? `Precio venta cierre ($/contrato) <span style="color:#3a5468;font-size:7px">lo que recibiste al venderla</span>`
     : `P. Cierre ($/contrato) <span style="color:#3a5468;font-size:7px">recompra al cerrar</span>`;
@@ -2716,7 +2717,7 @@ function openEntryModal(id=null){
       <div class="hfr"><label>Apertura</label><input type="date" id="hf_apertura" value="${e.apertura||TODAY}"/></div>
       <div class="hfr"><label>EXP</label><input type="date" id="hf_exp" value="${e.exp||''}"/></div>
       <div class="hfr"><label>Cierre</label><input type="date" id="hf_cierre" value="${e.cierre||''}"/></div>
-      <div class="hfr"><label>Max Risk $/contrato <span style="color:#3a5468;font-size:7px" id="hf_maxRisk_hint">crédito: (width−prima)×mult · débito: prima×mult</span></label><input type="number" id="hf_maxRisk" step="0.5" placeholder="ej: 5000" value="${e.maxRisk||''}"/></div>
+      <div class="hfr"><label>Max Risk total ($) <span style="color:#3a5468;font-size:7px" id="hf_maxRisk_hint">no se multiplica por contratos</span></label><input type="number" id="hf_maxRisk" step="0.5" placeholder="ej: 5000" value="${e.maxRisk||''}"/></div>
 
       <div class="h-form-sep"></div>
 
@@ -3170,6 +3171,18 @@ function premiumStorageToTotal(stored, contracts){
 function premiumStoredToPoints(stored, contracts){
   const pts = premiumStorageToTotal(stored, contracts);
   return Number.isFinite(pts) ? pts : 0;
+}
+function premiumPointsToHistStorage(points){
+  const p = parseFloat(points);
+  return Number.isFinite(p) ? p / 100 : null;
+}
+function premiumActiveToHistStorage(stored, contracts){
+  if(stored == null) return null;
+  return premiumPointsToHistStorage(premiumStoredToPoints(stored, contracts));
+}
+function profitPctToOverrideStorage(pct){
+  const p = parseFloat(pct);
+  return Number.isFinite(p) ? p * 100 : null;
 }
 
 function togglePnlDesglose(){
@@ -3770,7 +3783,10 @@ function getDashData(){
       const synth = {
         idOp:a.idOp, activo:a.activo, strat:a.strat, stratGroup:a.strat||'NP',
         contracts:ctr, apertura:a.apertura, cierre:today2+'-28',
-        maxRisk:mr, pCredito:a.pCredito, pDebito:a.pDebito, pCierre:premiumTotalToStorage(cur, ctr),
+          maxRisk:mr,
+          pCredito:premiumActiveToHistStorage(a.pCredito, ctr),
+          pDebito:premiumActiveToHistStorage(a.pDebito, ctr),
+          pCierre:premiumPointsToHistStorage(cur),
         totalNeto:pneto, pNeto:pneto/ctr, profitOp:profitOp2,
         tp:tp2, _unrealized: true
       };
@@ -4429,11 +4445,13 @@ function removeRoadmapRule(i){
 
 function resetRoadmapRules(){
   CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+  CFG.roadmapRulesVersion = ROADMAP_RULES_VERSION;
   renderRoadmapRules();
 }
 
 function saveRoadmapCfg(){
   CFG.roadmapRules = readRoadmapRulesFromDom();
+  CFG.roadmapRulesVersion = ROADMAP_RULES_VERSION;
   try{ localStorage.setItem('ot_cfg', JSON.stringify(CFG)); }catch(e){}
   closeRoadmapCfg();
   renderActivas();
@@ -4624,6 +4642,11 @@ function renderActivas(){
   const empty = document.getElementById('activasEmpty');
   const sumEl = document.getElementById('actSummary');
   const riskPanel = document.getElementById('actRiskPanel');
+  if(riskPanel){
+    riskPanel.style.display = 'none';
+    riskPanel.innerHTML = '';
+  }
+  const showActRiskPanel = false;
   const viewBtn = document.getElementById('actViewToggle');
   if(!grid) return;
   if(viewBtn) viewBtn.textContent = ACT_COMPACT_VIEW ? 'Ver detalle' : 'Vista rapida';
@@ -4751,7 +4774,7 @@ function renderActivas(){
     {max:120,color:'#e69138',label:'agresivo',bg:'#2a1b0c'},
     {max:Infinity,color:'#f04545',label:'rojo',bg:'#2a0f12'}
   ]);
-  if(riskPanel){
+  if(showActRiskPanel && riskPanel){
     const topRows = assignStats.rows
       .filter(r=>r.amount>0)
       .sort((a,b)=>b.amount-a.amount)
@@ -4790,14 +4813,9 @@ function renderActivas(){
       </div>`;
   }
   if(sumEl){
-    const finalParts = [];
-    if(assignStats.definedRisk>0) finalParts.push(`Riesgo definido: $${assignStats.definedRisk.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
-    if(assignStats.potential>0) finalParts.push(`ifPot: $${assignStats.potential.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
-    if(assignStats.current>0) finalParts.push(`ifReal: $${assignStats.current.toLocaleString('es-ES',{maximumFractionDigits:0})}`);
-    if(totalRiskExcl>0) finalParts.push(`<span style="color:#2a4a6a">+$${totalRiskExcl.toLocaleString('es-ES',{maximumFractionDigits:0})} excl.</span>`);
-    const finalRiskStr = finalParts.join(' · ') || 'Sin riesgo';
-    const finalCoverage = realPct!=null ? ` · ifReal: ${realPct.toFixed(0)}% liq <span style="color:${realState.color}">${realState.label}</span>` : '';
-    sumEl.innerHTML = `${ACTIVAS.length} pos · ${finalRiskStr} · P&L est: ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}${finalCoverage}`;
+    const conPrecio = ACTIVAS.filter(a=>a.priceCurrent!=null).length;
+    const pnlColor = totalUnreal >= 0 ? '#3fb68b' : '#f04545';
+    sumEl.innerHTML = `${ACTIVAS.length} pos · ${conPrecio}/${ACTIVAS.length} con precio · <span style="color:${pnlColor}">P&L abierto ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}</span>`;
   }
   grid.classList.toggle('act-grid-compact', ACT_COMPACT_VIEW);
   grid.innerHTML = sorted.map(({a,i})=>buildActCard(a,i,today)).join('');
@@ -4879,14 +4897,6 @@ function buildActCard(a, idx, today){
   const tpAlertOn = tpPct!=null && tpPct >= tpTarget;
   if(tpAlertOn) cardClass += ' act-tp-alert';
   if(ACT_COMPACT_VIEW && ACT_EXPANDED_IDX !== idx) cardClass += ' act-compact';
-
-  const assignExp = _activeAssignmentExposure(a);
-  const liqInfo = _lastAccountLiquidity();
-  const assignPct = liqInfo.value > 0 ? assignExp.amount / liqInfo.value * 100 : null;
-  const assignCol = assignPct==null ? '#5a7a9a' : assignPct>=50 ? '#f04545' : assignPct>=25 ? '#f0a500' : '#3fb68b';
-  const assignLabel = assignExp.amount > 0
-    ? `${_fmtUsd0(assignExp.amount)}${assignPct!=null?' · '+assignPct.toFixed(0)+'% liq':''}`
-    : '$0';
 
   // Temporal efficiency (ET)
   // ── prima capturada ── Para spreads usamos el crédito NETO (pc-pd).
@@ -4970,8 +4980,6 @@ function buildActCard(a, idx, today){
   const heroTpStr = strat === 'ACC'
     ? accPnlPctStr
     : [tpPct!=null ? `${tpPct.toFixed(1)}% TP abierto` : '—', idTotalStr].filter(Boolean).join(' · ');
-  const portfolioStats = _assignmentPortfolioStats(0);
-  const portfolioIf = portfolioStats.pct;
   const manageItems = [];
   const road = roadmapRecommendation(dteLeft, tpPct, strat);
   if(road){
@@ -4981,11 +4989,11 @@ function buildActCard(a, idx, today){
   if(!road && dteLeft!=null && dteLeft>=0 && dteLeft<=7) manageItems.push({tone:'warn',label:'Expira pronto',txt:`${dteLeft}d`});
   else if(!road && dteLeft!=null && dteLeft>=0 && dteLeft<=21) manageItems.push({tone:'warn',label:'Revisar 20DTE',txt:'zona gestion'});
   if(!road && dteLeft!=null && dteLeft<=21 && tpPct!=null && tpPct<0) manageItems.push({tone:'bad',label:'Roll?',txt:'P&L negativo'});
-  if(assignPct!=null && assignPct>=50) manageItems.push({tone:'bad',label:'No añadir',txt:'ifAsign alto'});
-  else if(portfolioIf!=null && portfolioIf>=120) manageItems.push({tone:'warn',label:'Medir tamaño',txt:'cartera cargada'});
   if(!manageItems.length) manageItems.push({tone:'idle',label:'Mantener',txt:'sin accion urgente'});
   const toneColor = t => t==='good'?'#3fb68b':t==='bad'?'#f04545':t==='warn'?'#f0a500':'#5a7a9a';
   const manageHtml = manageItems.map(m=>`<span class="act-manage-pill act-manage-${m.tone}" title="${esc(m.title||'')}" style="border-color:${toneColor(m.tone)}44;background:${toneColor(m.tone)}10;color:${toneColor(m.tone)}"><b>${esc(m.label)}</b><small>${esc(m.txt)}</small></span>`).join('');
+  const premiumUnit = a.pCredito!=null ? Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1)) : null;
+  const premiumCash = premiumUnit!=null ? premiumUnit * 100 * (a.contracts||1) : null;
 
   return `
   <div class="${cardClass}" id="act_card_${idx}" onclick="actCardClick(event, ${idx})">
@@ -5010,9 +5018,9 @@ function buildActCard(a, idx, today){
         <small>${heroTpStr}</small>
       </div>
       <div class="act-hero-cell">
-        <span>ifAsign op.</span>
-        <b style="color:${assignCol}">${assignExp.amount>0?_fmtUsd0(assignExp.amount):'$0'}</b>
-        <small>${assignPct!=null?assignPct.toFixed(1)+'% liquidez':assignExp.source}</small>
+        <span>${strat==='ACC'?'Capital':'Prima entrada'}</span>
+        <b style="color:#c9d1d9">${strat==='ACC'?_fmtUsd0(a.maxRisk||0):(premiumUnit!=null?premiumUnit.toFixed(2):'—')}</b>
+        <small>${strat==='ACC'?'acciones compradas':(premiumCash!=null?_fmtUsd0(premiumCash)+' total':'precio ×100×contratos')}</small>
       </div>
       <div class="act-hero-cell">
         <span>Tiempo</span>
@@ -5029,7 +5037,7 @@ function buildActCard(a, idx, today){
       <div class="act-kv"><span class="act-k">Acciones</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k">P. Compra</span><span class="act-v">${a.precioCompra!=null?'$'+a.precioCompra.toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Coste total</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
-      <div class="act-kv"><span class="act-k">ifAsign</span><span class="act-v" style="color:#5a7a9a">$0 — acciones ya compradas</span></div>
+      <div class="act-kv"><span class="act-k">Tipo</span><span class="act-v" style="color:#5a7a9a">acciones</span></div>
       <div class="act-kv">
         <span class="act-k">Precio actual</span>
         <input class="act-price-input" id="act_price_${idx}" type="number" step="0.01" placeholder="0.00"
@@ -5049,7 +5057,6 @@ function buildActCard(a, idx, today){
         return `<div class="act-kv"><span class="act-k">Dist. strike</span><span class="act-v ${dc}">${dist>=0?'+':''}${dist.toFixed(1)}%</span></div>`;
       })():''}
       <div class="act-kv"><span class="act-k">Max Risk</span><span class="act-v">$${(a.maxRisk||0).toLocaleString()}</span></div>
-      <div class="act-kv"><span class="act-k" title="Nominal que podría exigir la cuenta si se quita cobertura y/o asignan puts vendidos">ifAsign</span><span class="act-v" style="color:${assignCol}">${assignLabel}</span></div>
       <div class="act-kv"><span class="act-k" title="Prima de apertura en puntos por spread/contrato, comparable con el precio de Tasty">Prima/spread</span><span class="act-v">${a.pCredito!=null?Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1)).toFixed(2):'—'}</span></div>
       <div class="act-kv"><span class="act-k">Contratos</span><span class="act-v">${a.contracts||1}</span></div>
       <div class="act-kv"><span class="act-k" title="Delta de la posición (siempre en positivo)">Δ</span><span class="act-v">${a.delta!=null?Math.abs(a.delta):'—'}</span></div>
@@ -5130,7 +5137,7 @@ function openActModal(idx){
   for(const [id,key] of Object.entries(fields)){
     const el=document.getElementById(id);
     if(!el) continue;
-    // pCredito se guarda en escala legacy; en este modal se edita como prima total de la posición.
+    // pCredito se guarda en escala interna; en el modal se edita como puntos por contrato/spread.
     if(id==='am_pcred' && a[key]!=null) {
       const totalPremium = premiumStorageToTotal(a[key], a.contracts || 1);
       el.value = totalPremium != null ? totalPremium.toFixed(2) : '';
@@ -5140,6 +5147,7 @@ function openActModal(idx){
   }
   // Auto-fill next ID when creating new position
   if(idx == null){
+    if(stratSel) stratSel.value = 'PCS';
     const allIds = [...HIST.map(e=>+e.idOp||0), ...ACTIVAS.map(a=>+a.idOp||0)];
     const nextId = allIds.length ? Math.max(...allIds) + 1 : 1;
     const idEl = document.getElementById('am_idop');
@@ -6757,9 +6765,9 @@ function _confirmClosePositionImpl(){
   const pc_share  = Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1));
   const pd_share  = Math.abs(premiumStoredToPoints(a.pDebito, a.contracts||1));
   const pcl_share = Math.abs(+document.getElementById('acm_pcierre').value||0);
-  // pCierre en escala /100 para guardar en histórico (mismo formato que pCredito).
-  // Conservamos el signo que entró por compatibilidad con datos viejos.
-  const pcl_storage = premiumTotalToStorage((+document.getElementById('acm_pcierre').value||0), a.contracts||1);
+  const pcredHistStorage = premiumActiveToHistStorage(a.pCredito, a.contracts||1);
+  const pdebHistStorage  = premiumActiveToHistStorage(a.pDebito, a.contracts||1);
+  const pcl_storage = premiumPointsToHistStorage(+document.getElementById('acm_pcierre').value||0);
   // Comisiones: apertura ya estaba en a.comi, cierre la introduce el usuario.
   const comiOpen  = +(a.comi||0);
   const comiClose = +document.getElementById('acm_comi_close').value||1.24;
@@ -6808,17 +6816,17 @@ function _confirmClosePositionImpl(){
     delta:     a.delta||null,
     iv:        a.iv||null,
     ivr:       a.ivr||null,
-    pCredito:  a.pCredito||0,    // mantenemos la escala /100 original
-    pDebito:   a.pDebito||0,
-    pCierre:   pcl_storage,       // /100 para que coincida con pCredito
+    pCredito:  pcredHistStorage||0,
+    pDebito:   pdebHistStorage||0,
+    pCierre:   pcl_storage,
     comi:      comi,              // legacy: total para compatibilidad
     comiOpen:  comiOpen,          // sistema nuevo: split apertura
     comiClose: comiClose,         // sistema nuevo: split cierre
     nota:      notaClose || a.nota || '',
     pNetoOvr:  parseFloat(pneto.toFixed(2)),
     totalNetoOvr: parseFloat(totalneto.toFixed(2)),
-    // profitOpOvr: usa los $ reales para el ratio
-    profitOpOvr: a.maxRisk ? parseFloat((totalNetoFallback/a.maxRisk*100).toFixed(2)) : null,
+    // profitOpOvr se guarda en la escala legacy que computeEntry espera.
+    profitOpOvr: a.maxRisk ? parseFloat(profitPctToOverrideStorage(totalNetoFallback/a.maxRisk*100).toFixed(2)) : null,
     tpOvr:     parseFloat(tp.toFixed(2)),
     dteIni:    dteIni,
     tiempoOp:  tOp
@@ -10127,11 +10135,14 @@ function rollLegDefaultCloseCommission(a, pata){
   return parseFloat(a.comi || 0) || 1.24;
 }
 
-function rollBuildReplacementLegs(oldLegs, legInfo, newCredShare, newStrike){
+function rollBuildReplacementLegs(oldLegs, legInfo, newCredShare, newStrike, newOpenCommission){
   if(!legInfo || !Array.isArray(oldLegs) || !oldLegs.length) return [];
   const killSet = new Set(legInfo.kinds);
   const rolled = oldLegs.filter(l => l && killSet.has(l.kind));
   if(!rolled.length) return [];
+  const comiEach = Number.isFinite(parseFloat(newOpenCommission)) && rolled.length
+    ? parseFloat(newOpenCommission) / rolled.length
+    : null;
   const oldSigned = rolled.reduce((s,l)=>{
     const sign = String(l.kind || '').startsWith('short_') ? 1 : -1;
     return s + sign * (Math.abs(parseFloat(l.prima) || 0));
@@ -10143,6 +10154,7 @@ function rollBuildReplacementLegs(oldLegs, legInfo, newCredShare, newStrike){
     const rawPrima = Math.abs(parseFloat(l.prima) || 0);
     const prima = factor != null ? Math.abs(rawPrima * factor) : (ix === 0 && isShort ? Math.abs(newCredShare) : rawPrima);
     const next = Object.assign({}, l, { prima: Number.isFinite(prima) ? +prima.toFixed(4) : l.prima });
+    if(comiEach != null) next.comi = +comiEach.toFixed(2);
     if(Number.isFinite(strikeNum) && rolled.length === 1) next.strike = strikeNum;
     return next;
   });
@@ -10353,14 +10365,11 @@ function confirmRoll(){
   const dteIni     = (expD&&openD)   ? Math.ceil((expD-openD)/(86400000))   : null;
   const tOp        = (openD&&closeD) ? Math.ceil((closeD-openD)/(86400000)) : null;
 
-  // Para guardar en hist mantenemos escala /100 (formato pCredito antiguo)
-  const pcl_storage = premiumTotalToStorage(pcl_share, ctr);
-  // pCredito guardado en HIST: si tenemos info de pata por legs, guardamos
-  // el crédito SOLO de esa pata (más correcto para auditoría). Si no, el total.
-  const pcredHist_storage = legInfo ? premiumTotalToStorage(pc_share, ctr) : (a.pCredito||0);
-  // totalNetoOvr en escala "prima" (/100), pNetoOvr per contract en escala "prima"
+  const pcl_storage = premiumPointsToHistStorage(pcl_share);
+  const pcredHist_storage = premiumPointsToHistStorage(pc_share);
+  // totalNetoOvr en escala "prima" (/100), pNetoOvr antes de comisiones.
   const totalNetoOvrPrima = pnlClose / 100;
-  const pNetoOvrPrima = totalNetoOvrPrima / ctr;
+  const pNetoOvrPrima = (pc_share - pcl_share) * ctr;
 
   const pataLabelFull = pata !== 'todo' ? '-'+pata.toUpperCase() : '';
   const histEntry = {
@@ -10385,7 +10394,7 @@ function confirmRoll(){
     nota:        '',
     pNetoOvr:    parseFloat(pNetoOvrPrima.toFixed(4)),
     totalNetoOvr:parseFloat(totalNetoOvrPrima.toFixed(4)),
-    profitOpOvr: a.maxRisk ? parseFloat((pnlClose/a.maxRisk*100).toFixed(2)) : null,
+    profitOpOvr: a.maxRisk ? parseFloat(profitPctToOverrideStorage(pnlClose/a.maxRisk*100).toFixed(2)) : null,
     tpOvr:       parseFloat(tpClose.toFixed(2)),
     dteIni:      dteIni,
     tiempoOp:    tOp,
@@ -10412,30 +10421,44 @@ function confirmRoll(){
   //   de las patas NO roladas conservadas) + newCred. Las patas roladas se
   //   quitan de a.legs (el usuario puede re-añadirlas si quiere detalle de la
   //   nueva pata desde el modal de edición).
-  // Si fue un roll 'todo' o sin legs: comportamiento clásico — newCred sustituye
-  //   todo el pCredito y vaciamos a.legs (la posición es nueva).
+  // Si fue un roll 'todo': newCred sustituye todo el pCredito; si habia legs,
+  //   se reconstruyen para que sigan ayudando al importador de precios.
   const newCred_storage = premiumTotalToStorage(newCred_share, nextCtr);
   let nextLegs = a.legs;
   let nextPCredito = newCred_storage;
+  let nextComiOpen = comiOp;
   if(legInfo && Array.isArray(a.legs) && a.legs.length){
     // Roll parcial CON match en legs: quitamos las patas roladas, sumamos
     // el resto + newCred. Las supervivientes mantienen sus datos.
     const killSet = new Set(legInfo.kinds);
     const survivors = a.legs.filter(l => !killSet.has(l.kind));
-    const replacements = rollBuildReplacementLegs(a.legs, legInfo, newCred_share, newStrike);
+    const replacements = rollBuildReplacementLegs(a.legs, legInfo, newCred_share, newStrike, comiOp);
     const survivCred = legsSumCredit(survivors);
     nextLegs = survivors.concat(replacements);
     if(!nextLegs.length) nextLegs = undefined;
     nextPCredito = premiumTotalToStorage((survivCred || 0) + newCred_share, nextCtr);
   } else if(pata === 'todo'){
-    // Roll completo: la posición es nueva, los legs viejos ya no aplican.
-    nextLegs = undefined;
+    // Roll completo: la posición es nueva, pero si había patas las mantenemos
+    // reconstruidas para que el importador de precios no pierda la referencia.
+    if(Array.isArray(a.legs) && a.legs.length){
+      const allKinds = [...new Set(a.legs.map(l=>l && l.kind).filter(Boolean))];
+      const replacements = rollBuildReplacementLegs(a.legs, {kinds: allKinds}, newCred_share, newStrike, comiOp);
+      nextLegs = replacements.length ? replacements : undefined;
+    } else {
+      nextLegs = undefined;
+    }
   } else if(Array.isArray(a.legs) && a.legs.length){
     // Roll parcial SIN match en legs (p.ej. selector 'ala_inf' del BWB que no
     // mapea 1:1, o usuario no rellenó la pata específica): los legs viejos
     // probablemente ya no reflejan la posición tras el roll → limpiar para
     // evitar datos zombi. El usuario puede re-añadir detalle desde edición.
     nextLegs = undefined;
+  }
+  if(Array.isArray(nextLegs) && nextLegs.length){
+    const legComi = nextLegs
+      .map(l=>parseFloat(l && l.comi))
+      .filter(v=>Number.isFinite(v));
+    if(legComi.length) nextComiOpen = +legComi.reduce((s,v)=>s+v,0).toFixed(2);
   }
 
   ACTIVAS[_rollIdx] = Object.assign({}, a, {
@@ -10450,7 +10473,7 @@ function confirmRoll(){
     iv:           newIv,
     ivr:          newIvr,
     nota:         nota,
-    comi:         comiOp,
+    comi:         nextComiOpen,
     legs:         nextLegs
   });
   activasSave();
@@ -10553,6 +10576,9 @@ function _initCsvDragDrop(){
 <div id="rollOverlay" style="display:none;position:fixed;inset:0;background:#000000cc;z-index:9000;align-items:center;justify-content:center">
   <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:20px;width:520px;max-height:90vh;overflow-y:auto">
     <div style="font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#c084fc;margin-bottom:12px;border-bottom:1px solid #1e2d3d;padding-bottom:10px">🔄 Roll de posición — <span id="rollTitle">—</span></div>
+    <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.45;background:#070b10;border:1px solid #1e2d3d;border-radius:5px;padding:8px 10px;margin-bottom:12px">
+      Primas siempre como Tasty en puntos por contrato/spread: si cobras 3.00, escribe <b style="color:#c9d1d9">3.00</b>, no 300. Las comisiones sí son dólares totales.
+    </div>
 
     <!-- Selector de pata -->
     <div style="margin-bottom:14px;padding:10px 12px;background:#070b10;border:1px solid #1e2d3d;border-radius:4px">
@@ -10570,11 +10596,11 @@ function _initCsvDragDrop(){
         <input type="date" id="roll_cierre" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Precio cierre pata actual ($/ctr)</label>
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Precio cierre unitario</label>
         <input type="number" id="roll_pcl" step="0.01" placeholder="ej: 0.45" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Comisiones cierre ($)</label>
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Comisiones cierre total ($)</label>
         <input type="number" id="roll_comi_close" step="0.01" value="1.24" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
     </div>
@@ -10588,7 +10614,7 @@ function _initCsvDragDrop(){
         <input type="date" id="roll_newexp" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima nueva por contrato/spread</label>
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Prima nueva unitaria</label>
         <input type="number" id="roll_newcred" step="0.01" placeholder="ej: si cobras 1.00, pon 1.00" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
@@ -10596,7 +10622,7 @@ function _initCsvDragDrop(){
         <input type="number" id="roll_add_contracts" min="0" step="1" value="0" placeholder="0" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>
-        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Comisiones nueva pata ($)</label>
+        <label style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;display:block;margin-bottom:3px">Comisiones apertura nueva total ($)</label>
         <input type="number" id="roll_comi_open" step="0.01" value="1.24" oninput="rollCalc()" style="width:100%;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none">
       </div>
       <div>

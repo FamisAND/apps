@@ -1896,8 +1896,7 @@ function getGymWeeklyParallelCapacity(){
 }
 function getTicketCorrectionDivisor(k){
   if(typeof k!=='string')return 1;
-  if(k<'2025-06')return 100;
-  if(k>='2025-07' && k<='2026-02')return 10;
+  if(k>='2024-06' && k<='2026-02')return 10;
   return 1;
 }
 function isTicketDecimalBugMonth(k){

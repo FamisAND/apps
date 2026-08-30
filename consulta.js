@@ -6525,10 +6525,10 @@ function tobQuestFoodSuggest(key, raw){
   if(!box) return;
   const q = tobIngNormName(raw);
   if(!q.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
-  const items = tobFoodSearchMatches(raw, 8, { kind:'both' });
+  const items = tobFoodSearchMatches(raw, 10, { kind:'ingredient' });
   if(!items.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
   box.innerHTML = items.map(it => {
-    const kind = it.kind === 'ingrediente' ? 'Ingrediente' : 'Receta';
+    const kind = 'Ingrediente';
     const hint = it.hint ? `<span class="g">${tobEsc(it.hint)}</span>` : '';
     const meta = it.meta ? `<span class="g">${tobEsc(it.meta)}</span>` : '';
     return `<button type="button" class="opt" data-key="${tobEsc(key)}" data-value="${tobEsc(it.value)}" onclick="tobQuestPickFoodSuggestion(this.dataset.key,this.dataset.value)">
@@ -6545,7 +6545,6 @@ function tobQuestRefreshFoodOptions(){
   if(!dl) return;
   const seen = new Set();
   const ingValues = [];
-  const recValues = [];
   const add = (v) => {
     const s = String(v || '').trim();
     const key = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -6558,15 +6557,8 @@ function tobQuestRefreshFoodOptions(){
     const aliases = Array.isArray(i.aliases) ? i.aliases : (i.aliases ? [i.aliases] : []);
     [i.nombre, i.nombre_es, ...aliases].forEach(v => { const s = add(v); if(s) ingValues.push(s); });
   });
-  (tobMenusDB.recetas || []).forEach(r => {
-    if(r && r.origen !== 'ingrediente'){
-      const s = add(r.nombre);
-      if(s) recValues.push(s);
-    }
-  });
   const opts = ingValues
     .sort((a,b) => a.localeCompare(b, 'es', { sensitivity:'base' }))
-    .concat(recValues.sort((a,b) => a.localeCompare(b, 'es', { sensitivity:'base' })))
     .slice(0, 900);
   dl.innerHTML = opts.map(v => `<option value="${tobEsc(v)}"></option>`).join('');
 }
@@ -6799,9 +6791,11 @@ function tobUpdateCuestionarioBadge(){
   const cli = tobDB.clientes.find(c => c.id === tobCurrentFichaId);
   const badgeBtn  = document.getElementById('tobBtnCuestionarioBadge');
   const tagEmpty  = document.getElementById('tobCuestEmptyTag');
+  const hint      = document.getElementById('qSavedHint');
   if(!cli){
     if(badgeBtn) badgeBtn.style.display = 'none';
     if(tagEmpty) tagEmpty.style.display = 'none';
+    if(hint) hint.textContent = 'Datos para personalizar menús y comunicación';
     return;
   }
   const q = cli.cuestionario || {};
@@ -6809,9 +6803,25 @@ function tobUpdateCuestionarioBadge(){
   const tieneDieta = !!tags.dieta || (Array.isArray(tags.proteina) && tags.proteina.length > 0);
   const tieneObjetivo = !!tags.objectiu;
   const tieneKcal = q.kcalObjetivo != null && String(q.kcalObjetivo).trim() !== '';
+  const tieneProt = q.protObjetivo != null && String(q.protObjetivo).trim() !== '';
+  const tieneApats = Array.isArray(tags.apats) && tags.apats.length > 0;
+  const tieneRecordatorio = q.recChips && Object.values(q.recChips).some(arr => Array.isArray(arr) && arr.length);
+  const tieneRestricciones = ['alergies','alimX','alimOk','sentenMal','intolerancia','patologies','pref']
+    .some(k => Array.isArray(tags[k]) ? tags[k].length : !!tags[k]);
   const vacio = !tieneObjetivo && !tieneDieta && !tieneKcal;
   if(badgeBtn) badgeBtn.style.display = vacio ? '' : 'none';
   if(tagEmpty) tagEmpty.style.display = vacio ? '' : 'none';
+  if(hint){
+    const faltan = [];
+    if(!tieneObjetivo) faltan.push('objetivo');
+    if(!tieneKcal || !tieneProt) faltan.push('kcal/proteína');
+    if(!tieneApats) faltan.push('comidas');
+    if(!tieneRecordatorio) faltan.push('recordatorio');
+    if(!tieneRestricciones) faltan.push('gustos/restricciones');
+    hint.textContent = faltan.length
+      ? 'Para que la IA vaya fina falta: ' + faltan.slice(0,4).join(', ') + (faltan.length > 4 ? '...' : '')
+      : 'Listo para IA: objetivo, comidas, recordatorio y restricciones cubiertas';
+  }
 }
 
 // Render genérico de TODOS los grupos de chips + listas libres.
@@ -8259,14 +8269,7 @@ function tobRecRender(){
   let list = (tobMenusDB.recetas||[]).filter(r => r.origen !== 'ingrediente');
   // Las descartadas van al final, atenuadas.
   if(search){
-    list = list.filter(r => {
-      const haystack = [r.nombre, ...(r.tags||[]),
-        ...(r.ingredientes||[]).map(it => {
-          const ing = (tobMenusDB.ingredientes||[]).find(i => i.id === it.ingId);
-          return ing ? ing.nombre : '';
-        })].join(' ').toLowerCase();
-      return haystack.includes(search);
-    });
+    list = list.filter(r => tobIngMatchScore(search, tobRecSearchText(r)) > 0);
   }
   if(momento) list = list.filter(r => (r.momentos||[]).includes(momento));
   if(tag)     list = list.filter(r => (r.tags||[]).includes(tag));
@@ -13100,6 +13103,7 @@ const TOB_AI_MENU_RULES_NO_AJUSTES =
 REGLA 1 — cuestionario manda:
 - Revisa alergias, patologías, intolerancias, alimentos que no quiere, alimentos que le sientan mal y alimentos preferidos antes de elegir recetas.
 - Si una receta contiene algo prohibido o que le sienta mal, NO la uses. Busca otra receta compatible.
+- Los alimentos marcados en la entrevista vienen del catálogo de ingredientes: comprueba ingredientes reales de la receta, no solo el nombre.
 - Si el recordatorio habitual de un àpat indica alimentos concretos, respeta esa estructura.
 
 REGLA 2 — solo selección de recetas:
