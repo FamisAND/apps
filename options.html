@@ -481,9 +481,9 @@
   <div class="cfg-modal" style="width:95vw;max-width:1180px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px">
       <div>
-        <div class="cfg-title" style="margin-bottom:4px">Hoja Operativa PCS SPX v1.5</div>
+        <div class="cfg-title" style="margin-bottom:4px">Hoja Operativa PCS SPX v1.6</div>
         <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.45">
-          Las etiquetas de Op Abiertas se calculan con la primera regla que encaja por DTE restante y TP/profit capturado. Delta, Vega, FIX, cohortes y Recovery Mode quedan como checklist en el comentario.
+          Las etiquetas de Op Abiertas se calculan con la primera regla que encaja por DTE restante y TP/profit capturado. Delta, Vega, Fresh Risk, FIX, Recovery Mode y nuevas entradas 0-4 quedan como checklist operativo en el comentario.
         </div>
       </div>
       <button onclick="addRoadmapRule()" style="background:#4a9eff11;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap">+ Regla</button>
@@ -1013,28 +1013,30 @@ const TODAY = new Date().toISOString().split('T')[0];
 const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── CONFIG / THRESHOLDS ──────────────────────────────────────
-const ROADMAP_RULES_VERSION = 3;
+const ROADMAP_RULES_VERSION = 4;
 const DEFAULT_ROADMAP_RULES = [
-  {dteMin:40,dteMax:50,profitMin:-999,profitMax:999,action:'Abrir PCS',situation:'Setup base',comment:'45 DTE | SPX PCS | short Put Delta 15-30 | width 25 | credito minimo 13% riesgo nominal | 1 contrato base.',tone:'idle'},
-  {dteMin:36,dteMax:45,profitMin:50,profitMax:999,action:'Cerrar ciclo',situation:'ET +20 / profit rapido',comment:'Si el ciclo captura beneficio muy rapido, cerrar y reciclar capital. La ET mira P/L acumulado del ciclo, no solo la pata actual.',tone:'good'},
-  {dteMin:36,dteMax:45,profitMin:25,profitMax:50,action:'Cerrar si ET +20',situation:'Buen avance temprano',comment:'Si el beneficio supera claramente al tiempo consumido, cerrar. Si no, mantener y dejar trabajar theta.',tone:'good'},
-  {dteMin:36,dteMax:45,profitMin:0,profitMax:25,action:'Mantener',situation:'Ciclo normal',comment:'Theta y prima trabajan. No tocar por P/L aislado si la estructura sigue viable.',tone:'idle'},
-  {dteMin:36,dteMax:45,profitMin:-999,profitMax:0,action:'Emergency review',situation:'Deterioro brusco',comment:'No FIX automatico. Revisar si short Delta se acerca a 50, short perforado, caida fuerte o shock IV/Vega.',tone:'warn'},
-  {dteMin:33,dteMax:35,profitMin:25,profitMax:999,action:'Cerrar + nuevo PCS',situation:'CP25 cumplido',comment:'Profit del ciclo >=25%: cerrar y abrir nueva cohorte a 45 DTE.',tone:'good'},
-  {dteMin:33,dteMax:35,profitMin:-999,profitMax:25,action:'Mantener',situation:'CP25 sin TP',comment:'Si profit <25%, mantener. No hay FIX normal en CP25 salvo deterioro extraordinario.',tone:'idle'},
-  {dteMin:22,dteMax:32,profitMin:50,profitMax:999,action:'Cerrar + nuevo PCS',situation:'CP50 cumplido',comment:'Profit del ciclo >=50%: salida limpia, cerrar y reciclar a una nueva cohorte 45 DTE.',tone:'good'},
-  {dteMin:22,dteMax:32,profitMin:25,profitMax:50,action:'Mantener',situation:'CP50 viable',comment:'No llega al TP pero la estructura es viable: mantener. Se permite nueva cohorte base si la cartera no esta en Recovery Mode.',tone:'idle'},
-  {dteMin:22,dteMax:32,profitMin:0,profitMax:25,action:'Mantener',situation:'CP50 profit bajo',comment:'No rolear solo porque no ha pagado. Vigila distancia al short, Delta, IV y riesgo agregado.',tone:'idle'},
-  {dteMin:22,dteMax:32,profitMin:-999,profitMax:0,action:'FIX defensivo',situation:'CP50 comprometido',comment:'Si la estructura esta comprometida: rolar a ~45 DTE, bajar short y valorar anadir 1 contrato defensivo manteniendo width 25.',tone:'bad'},
-  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar ciclo',situation:'Checkpoint 21 DTE',comment:'Con 50%+ de ciclo, cerrar. No mantener por querer apurar prima.',tone:'good'},
-  {dteMin:15,dteMax:21,profitMin:0,profitMax:50,action:'Mantener vigilado',situation:'Pre CP75',comment:'Mantener solo si sigue comodo y lejos del short. Controlar Delta, distancia y riesgo agregado.',tone:'warn'},
-  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Preparar FIX',situation:'Defensa probable',comment:'No reaccionar por miedo, pero decidir pronto. Comparar mantener vs defender: DTE, Delta, BE, credito y riesgo anadido.',tone:'bad'},
-  {dteMin:8,dteMax:14,profitMin:0,profitMax:999,action:'Cerrar + reciclar',situation:'CP75 con beneficio',comment:'En CP75 se actua siempre. Ciclo con beneficio: cerrar y abrir nuevo PCS 45 DTE.',tone:'good'},
-  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'FIX / reducir',situation:'CP75 en perdida',comment:'Ciclo en perdida: FIX o reduccion. No dejar acercarse a expiracion ni convertir esto en bola de nieve.',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'7 DTE ganador',comment:'Si queda muy poco valor, cerrar si comisiones/slippage lo permiten. Gamma empieza a mandar.',tone:'good'},
-  {dteMin:4,dteMax:7,profitMin:0,profitMax:70,action:'Cerrar o gestionar',situation:'7 DTE abierto',comment:'No llevar problemas voluntariamente a expiracion. Evitar gamma y asignacion/ejercicio sin control.',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:-999,profitMax:0,action:'Gestionar ya',situation:'7 DTE en perdida',comment:'Cerrar, rolar o reducir antes de que gamma mande. No esperar milagros.',tone:'bad'},
-  {dteMin:0,dteMax:3,profitMin:-999,profitMax:999,action:'Cerrar',situation:'Expiracion',comment:'Disciplina: no perseguir fills, no confundir credito con beneficio y no llevar posiciones a expiracion sin control.',tone:'bad'}
+  {dteMin:40,dteMax:50,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Profit rapido',comment:'ET a nivel ciclo: P/L acumulado + tiempo total. Si ET >= +20, cerrar ciclo y luego evaluar cartera antes de abrir 0-4 PCS.',tone:'good'},
+  {dteMin:40,dteMax:50,profitMin:0,profitMax:50,action:'Mantener',situation:'Fresh / inicio',comment:'Entrada ideal: 45 DTE, SPX PCS, short Put Delta 15-30, width 25, credito minimo 13% del riesgo nominal. 13-18% zona habitual.',tone:'idle'},
+  {dteMin:40,dteMax:50,profitMin:-999,profitMax:0,action:'Emergency review',situation:'Fresh deteriorado',comment:'No FIX automatico antes de CP50. Revisar solo si short Delta ~50+, short perforado, caida fuerte o shock IV/Vega.',tone:'warn'},
+  {dteMin:36,dteMax:39,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Muy eficiente',comment:'Cierre extraordinario si ET >= +20. No hace falta esperar al checkpoint si el ciclo pago muy rapido.',tone:'good'},
+  {dteMin:36,dteMax:39,profitMin:0,profitMax:50,action:'Mantener',situation:'Ciclo normal',comment:'Fresh Risk: aun no llego a CP25. No anadir exposicion si ya hay demasiados Fresh simultaneos.',tone:'idle'},
+  {dteMin:36,dteMax:39,profitMin:-999,profitMax:0,action:'Revisar shock',situation:'Deterioro temprano',comment:'Si short Delta ~50+, short perforado o IV/Vega disparada: Emergency Fix Review. Si no, no tocar por P/L rojo aislado.',tone:'warn'},
+  {dteMin:33,dteMax:35,profitMin:25,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'CP25 logrado',comment:'Profit ciclo >=25%: cerrar. Despues revisar exposicion, Fresh Risk y FIX; solo entonces decidir 0-4 PCS nuevos.',tone:'good'},
+  {dteMin:33,dteMax:35,profitMin:0,profitMax:25,action:'Mantener',situation:'CP25 sin TP',comment:'CP25 sin 25%: mantener. No hay FIX normal en CP25; solo review extraordinaria si estructura esta rota.',tone:'idle'},
+  {dteMin:33,dteMax:35,profitMin:-999,profitMax:0,action:'Mantener / review',situation:'CP25 rojo',comment:'No reaccionar por P/L. Revisar Delta, short, IV/Vega y cartera. Nuevas entradas 0-1 si hay defensa probable.',tone:'warn'},
+  {dteMin:22,dteMax:32,profitMin:50,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'CP50 logrado',comment:'Profit ciclo >=50%: cerrar. Gestionar primero; despues decidir 0-4 PCS segun estado de cartera y Fresh Risk.',tone:'good'},
+  {dteMin:22,dteMax:32,profitMin:25,profitMax:50,action:'Mantener',situation:'CP50 viable',comment:'Si estructura sigue viable, mantener y dejar trabajar theta. Nuevas entradas solo si cartera NORMAL.',tone:'idle'},
+  {dteMin:22,dteMax:32,profitMin:0,profitMax:25,action:'Mantener / vigilar',situation:'CP50 bajo profit',comment:'No FIX solo porque no pago. Vigilar distancia al short, Delta, IV/Vega y riesgo agregado.',tone:'warn'},
+  {dteMin:22,dteMax:32,profitMin:-999,profitMax:0,action:'FIX si comprometida',situation:'CP50 defensa',comment:'Si estructura comprometida: FIX defensivo a ~45 DTE, bajar short y valorar +1 contrato defensivo con width 25.',tone:'bad'},
+  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'Pre CP75 ganador',comment:'Con 50%+ cerca de 21 DTE, cerrar ciclo. No apurar prima si el ciclo ya hizo su trabajo.',tone:'good'},
+  {dteMin:15,dteMax:21,profitMin:0,profitMax:50,action:'Mantener vigilado',situation:'Pre CP75 viable',comment:'Mantener solo si esta comodo y lejos del short. Si hay duda, reservar margen para posible FIX.',tone:'warn'},
+  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Preparar FIX',situation:'Defensa probable',comment:'Comparar mantener vs defender: DTE anadidos, mejora Delta/strike/breakeven, credito, Delta Max Loss y margen.',tone:'bad'},
+  {dteMin:8,dteMax:14,profitMin:0,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'CP75 beneficio',comment:'CP75 = actuar siempre. Con beneficio, cerrar. Abrir 0-4 nuevos solo si no hay Recovery Mode.',tone:'good'},
+  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'FIX / reducir',situation:'CP75 perdida',comment:'Con perdida: FIX o reduccion. Si hubo 2+ FIX o varias cohortes en defensa, Recovery Mode y 0 nuevas entradas.',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'7 DTE ganador',comment:'Cerrar si comisiones/slippage lo permiten. Evitar gamma y no perseguir centimos.',tone:'good'},
+  {dteMin:4,dteMax:7,profitMin:0,profitMax:70,action:'Cerrar o gestionar',situation:'7 DTE abierto',comment:'No llegar voluntariamente a expiracion. Cerca del short o dudoso: gestionar/cerrar.',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:-999,profitMax:0,action:'Gestionar ya',situation:'7 DTE perdida',comment:'Cerrar, rolar o reducir antes de que gamma mande. No esperar milagros.',tone:'bad'},
+  {dteMin:0,dteMax:3,profitMin:-999,profitMax:999,action:'Cerrar',situation:'Expiracion',comment:'Disciplina: no llegar voluntariamente a expiracion, no confundir credito con beneficio y no abrir riesgo nuevo en Recovery.',tone:'bad'}
 ];
 let CFG = {
   NP:  { ann:20, prob:75, ivr:35, psig:12 },
