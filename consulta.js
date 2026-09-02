@@ -9855,6 +9855,11 @@ function tobMcMarkClean(){
   tobMcRefreshSaveState();
 }
 
+function tobMcMarkDirty(){
+  _tobMcCleanFingerprint = '__dirty__';
+  tobMcRefreshSaveState();
+}
+
 function tobMcIsDirty(){
   return !!tobMcState && _tobMcCleanFingerprint != null &&
     tobMcFingerprint() !== _tobMcCleanFingerprint;
@@ -12256,6 +12261,221 @@ function tobMenusAll(){
   (tobDB.clientes || []).forEach(cli => (cli.menus || []).forEach(m => all.push({ m, cli })));
   all.sort((a,b) => (b.m.savedAt||b.m.fecha||'').localeCompare(a.m.savedAt||a.m.fecha||''));
   return all;
+}
+
+let _tobMcBaseSel = null;
+
+function _tobMcFindMenu(cliId, menuId){
+  const cli = (tobDB.clientes || []).find(c => String(c.id) === String(cliId));
+  const m = cli && (cli.menus || []).find(x => String(x.id) === String(menuId));
+  return (cli && m) ? { cli, m } : null;
+}
+
+function _tobMcMenuMealIds(m){
+  const out = [];
+  const seen = new Set();
+  const add = id => {
+    if(!id || seen.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  (m.comidasIds || []).forEach(add);
+  Object.values(m.data || {}).forEach(sem =>
+    Object.values(sem || {}).forEach(day =>
+      Object.keys(day || {}).forEach(add)));
+  if(!out.length) TOB_MEALS_DEFAULT.forEach(add);
+  return out;
+}
+
+function _tobMcMenuSearchText(cli, m){
+  const recsById = {};
+  (tobMenusDB.recetas || []).forEach(r => { recsById[r.id] = r; });
+  const parts = [cli.nombre, m.fecha, m.savedAt, m.kcalObj, m.protObj];
+  Object.values(m.data || {}).forEach(sem =>
+    Object.values(sem || {}).forEach(day =>
+      Object.values(day || {}).forEach(arr => {
+        if(!Array.isArray(arr)) return;
+        arr.forEach(id => {
+          const r = recsById[id];
+          if(r) parts.push(r.nombre, r.nombre_es);
+        });
+      })));
+  return parts.filter(v => v != null && String(v).trim()).join(' ');
+}
+
+function _tobMcMenuDataForState(data, semanas, comidasIds){
+  const out = _tobMcReindexData(data);
+  for(let s = 0; s < semanas; s++){
+    if(!out[s]) out[s] = {};
+    for(let d = 0; d < 7; d++){
+      if(!out[s][d]) out[s][d] = {};
+      comidasIds.forEach(mid => {
+        if(!Array.isArray(out[s][d][mid])) out[s][d][mid] = [];
+      });
+    }
+  }
+  return out;
+}
+
+function tobMcOpenBaseModal(){
+  if(!tobMcState || !tobMcState.cliId){
+    tobToast('Selecciona primero el cliente destino', 'red');
+    return;
+  }
+  const bg = document.getElementById('tobMcBaseModalBg');
+  if(!bg) return;
+  const inp = document.getElementById('tobMcBaseSearch');
+  if(inp) inp.value = '';
+  _tobMcBaseSel = null;
+  tobMcRenderBaseModal();
+  bg.classList.add('on');
+  setTimeout(() => inp && inp.focus(), 80);
+}
+
+function tobMcCloseBaseModal(){
+  document.getElementById('tobMcBaseModalBg')?.classList.remove('on');
+}
+
+function tobMcRenderBaseModal(){
+  const list = document.getElementById('tobMcBaseList');
+  const preview = document.getElementById('tobMcBasePreview');
+  if(!list || !preview) return;
+  const q = tobIngNormName(document.getElementById('tobMcBaseSearch')?.value || '');
+  let all = tobMenusAll().filter(x => tobMenuCountRecetas(x.m) > 0);
+  if(tobMcState && tobMcState._menuId){
+    all = all.filter(x => !(String(x.cli.id) === String(tobMcState.cliId) && String(x.m.id) === String(tobMcState._menuId)));
+  }
+  if(q){
+    all = all.filter(x => tobStrictFoodSearchMatch(q, _tobMcMenuSearchText(x.cli, x.m)));
+  }
+  if(!all.length){
+    list.innerHTML = '<div class="tob-mc-base-preview-empty">No hay menús guardados que coincidan.</div>';
+    preview.innerHTML = '<div class="tob-mc-base-preview-empty">Guarda algún menú primero o prueba otra búsqueda.</div>';
+    return;
+  }
+  if(!_tobMcBaseSel || !all.some(x => String(x.cli.id) === String(_tobMcBaseSel.cliId) && String(x.m.id) === String(_tobMcBaseSel.menuId))){
+    _tobMcBaseSel = { cliId: all[0].cli.id, menuId: all[0].m.id };
+  }
+  list.innerHTML = all.map(({cli, m}) => {
+    const active = String(cli.id) === String(_tobMcBaseSel.cliId) && String(m.id) === String(_tobMcBaseSel.menuId);
+    const fecha = (m.savedAt || m.fecha || '').slice(0,10);
+    const hora = (m.savedAt || '').slice(11,16);
+    const n = tobMenuCountRecetas(m);
+    const jsCli = String(cli.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const jsMenu = String(m.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<button type="button" class="tob-mc-base-item${active?' active':''}" data-cli="${tobEsc(cli.id)}" data-menu="${tobEsc(m.id)}"
+      onmouseenter="tobMcPreviewBaseMenu('${jsCli}','${jsMenu}')" onfocus="tobMcPreviewBaseMenu('${jsCli}','${jsMenu}')" onclick="tobMcPreviewBaseMenu('${jsCli}','${jsMenu}')">
+      <span class="nm"><span>${tobEsc(cli.nombre || 'Cliente')}</span><span>${tobEsc(fecha)}</span></span>
+      <span class="meta">${tobEsc(hora ? fecha + ' ' + hora : fecha)} · ${m.semanas || 1} sem · ${n} recetas · ${m.kcalObj || '—'} kcal · ${m.protObj || '—'}g prot</span>
+    </button>`;
+  }).join('');
+  tobMcRenderBasePreview(_tobMcBaseSel.cliId, _tobMcBaseSel.menuId);
+}
+
+function tobMcPreviewBaseMenu(cliId, menuId){
+  _tobMcBaseSel = { cliId, menuId };
+  document.querySelectorAll('.tob-mc-base-item').forEach(btn => {
+    btn.classList.toggle('active', String(btn.dataset.cli) === String(cliId) && String(btn.dataset.menu) === String(menuId));
+  });
+  tobMcRenderBasePreview(cliId, menuId);
+}
+
+function tobMcRenderBasePreview(cliId, menuId){
+  const preview = document.getElementById('tobMcBasePreview');
+  if(!preview) return;
+  const found = _tobMcFindMenu(cliId, menuId);
+  if(!found){
+    preview.innerHTML = '<div class="tob-mc-base-preview-empty">Selecciona un menú para ver el preview.</div>';
+    return;
+  }
+  const { cli, m } = found;
+  const recsById = {};
+  (tobMenusDB.recetas || []).forEach(r => { recsById[r.id] = r; });
+  const data = _tobMcReindexData(m.data);
+  const mealIds = _tobMcMenuMealIds(m);
+  const weeks = Object.keys(data).sort((a,b) => (+a || 0) - (+b || 0));
+  const fecha = (m.savedAt || m.fecha || '').slice(0,10);
+  const hora = (m.savedAt || '').slice(11,16);
+  const jsCli = String(cli.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const jsMenu = String(m.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const weekHtml = weeks.slice(0, 3).map((wk, wi) => {
+    const sem = data[wk] || {};
+    const daysHtml = Array.from({length:7}, (_, d) => {
+      const day = sem[d] || {};
+      const mealsHtml = mealIds.map(mid => {
+        const arr = Array.isArray(day[mid]) ? day[mid] : [];
+        if(!arr.length) return '';
+        const names = arr.map(id => {
+          const r = recsById[id];
+          return r ? tobMcRecNombre(r, (m.ajustes || {})[id]) : '(receta eliminada)';
+        }).join(' · ');
+        return `<div class="tob-mc-base-meal"><span class="meal">${tobEsc(tobMcMealLabel(mid))}</span><span class="recipes">${tobEsc(names)}</span></div>`;
+      }).filter(Boolean).join('');
+      if(!mealsHtml) return '';
+      return `<div class="tob-mc-base-day"><div class="tob-mc-base-day-name">${TOB_MC_DIAS[d]}</div>${mealsHtml}</div>`;
+    }).filter(Boolean).join('');
+    return `<div class="tob-mc-base-week"><div class="tob-mc-base-week-title">Semana ${wi + 1}</div>${daysHtml || '<div class="tob-mc-base-preview-empty" style="min-height:80px">Semana vacía</div>'}</div>`;
+  }).join('');
+  const extra = weeks.length > 3 ? `<div class="tob-mc-base-preview-empty" style="min-height:52px">+ ${weeks.length - 3} semana(s) más en el menú original.</div>` : '';
+  preview.innerHTML = `
+    <div class="tob-mc-base-preview-head">
+      <div>
+        <div class="nm">${tobEsc(cli.nombre || 'Cliente')}</div>
+        <div class="meta">${tobEsc(fecha)}${hora ? ' ' + tobEsc(hora) : ''} · ${m.semanas || 1} sem · ${tobMenuCountRecetas(m)} recetas · ${m.kcalObj || '—'} kcal · ${m.protObj || '—'}g prot</div>
+      </div>
+      <button class="tob-action btn-xs" onclick="tobMcUseBaseMenu('${jsCli}','${jsMenu}')">Usar como base</button>
+    </div>
+    ${weekHtml || '<div class="tob-mc-base-preview-empty">Este menú no tiene recetas visibles.</div>'}
+    ${extra}`;
+}
+
+function tobMcUseBaseMenu(cliId, menuId, force){
+  if(!tobMcState || !tobMcState.cliId){
+    tobToast('Selecciona primero el cliente destino', 'red');
+    return;
+  }
+  if(tobMcIsDirty() && !force){
+    tobMcRequestLeave(() => tobMcUseBaseMenu(cliId, menuId, true));
+    return;
+  }
+  const found = _tobMcFindMenu(cliId, menuId);
+  if(!found){ tobToast('Menú base no encontrado', 'red'); return; }
+  const targetCliId = tobMcState.cliId;
+  const targetCli = (tobDB.clientes || []).find(c => String(c.id) === String(targetCliId));
+  const source = found.m;
+  const sourceMealIds = _tobMcMenuMealIds(source);
+  const semanas = Math.max(1, parseInt(source.semanas, 10) || 1);
+  const kcalEl = document.getElementById('tobMcKcal');
+  const protEl = document.getElementById('tobMcProt');
+  const margenEl = document.getElementById('tobMcMargen');
+  if(kcalEl && !String(kcalEl.value || '').trim() && source.kcalObj) kcalEl.value = source.kcalObj;
+  if(protEl && !String(protEl.value || '').trim() && source.protObj) protEl.value = source.protObj;
+  if(margenEl && !String(margenEl.value || '').trim() && source.margenPct != null) margenEl.value = source.margenPct;
+  const semEl = document.getElementById('tobMcSemanas');
+  if(semEl) semEl.value = semanas;
+  const comidasEl = document.getElementById('tobMcComidas');
+  if(comidasEl) comidasEl.textContent = sourceMealIds.length + ' (' + sourceMealIds.map(tobMcMealLabel).join(' · ') + ')';
+  tobMcState = {
+    cliId: targetCliId,
+    semanas,
+    comidasIds: sourceMealIds,
+    semanaActiva: 0,
+    notas: tobNotasMenu(source),
+    data: _tobMcMenuDataForState(source.data, semanas, sourceMealIds),
+    ajustes: JSON.parse(JSON.stringify(source.ajustes || {})),
+    _menuId: null,
+    _savedAt: null,
+    _baseFrom: { cliId: found.cli.id, menuId: source.id, nombre: found.cli.nombre || '' }
+  };
+  document.getElementById('tobMcWorkspace').style.display = '';
+  tobMcRenderPerfilResumen(targetCli || {});
+  _tobMcSideRestoreState();
+  tobMcRenderSemanasTabs();
+  tobMcRenderGrid();
+  tobMcRenderSidePanel();
+  tobMcMarkDirty();
+  tobMcCloseBaseModal();
+  tobToast('Menú base copiado. Revísalo y pulsa guardar para crear el menú del cliente actual.', 'green');
 }
 
 function tobMenuRowHTML(cli, m){
@@ -14679,6 +14899,8 @@ tobMenuShowTab = function(name, btn){
 document.addEventListener('DOMContentLoaded', () => {
   const bg = document.getElementById('tobMcListModalBg');
   if(bg) bg.addEventListener('click', e => { if(e.target === bg) bg.classList.remove('on'); });
+  const baseBg = document.getElementById('tobMcBaseModalBg');
+  if(baseBg) baseBg.addEventListener('click', e => { if(e.target === baseBg) tobMcCloseBaseModal(); });
   const unsavedBg = document.getElementById('tobMcUnsavedBg');
   if(unsavedBg) unsavedBg.addEventListener('click', e => {
     if(e.target === unsavedBg) tobMcCancelLeave();

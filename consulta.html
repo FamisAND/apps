@@ -336,6 +336,7 @@
         <span>📅 Creador de menús</span>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="tob-action ghost btn-xs" onclick="tobMcShowList()" title="Ver menús anteriores del cliente">📂 Menús guardados</button>
+          <button class="tob-action ghost btn-xs" onclick="tobMcOpenBaseModal()" title="Copiar otro menú guardado como base para este cliente">📋 Menú base</button>
           <button class="tob-action ghost btn-xs" onclick="tobAiOpenConfig()" title="Configurar la IA (clau API)">⚙ IA</button>
           <button class="tob-action btn-xs" id="tobMcGenerarIA" onclick="tobMcGenerarIA()" title="Generar el menú automáticamente con IA respetando cuestionario y objetivos">🤖 Generar con IA</button>
         </div>
@@ -471,6 +472,24 @@
     <div id="tobMcListBody" style="max-height:60vh;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
       <button class="tob-action ghost" onclick="document.getElementById('tobMcListModalBg').classList.remove('on')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ MODAL COPIAR MENÚ BASE ════════ -->
+<div class="tob-modal-bg" id="tobMcBaseModalBg">
+  <div class="tob-modal tob-mc-base-modal">
+    <div class="tob-mc-base-head">
+      <div>
+        <h3>📋 Coger otro menú base</h3>
+        <p>Copia un menú guardado de cualquier cliente como punto de partida para el cliente actual. El original no se modifica.</p>
+      </div>
+      <button class="tob-action ghost" onclick="tobMcCloseBaseModal()">Cerrar</button>
+    </div>
+    <input class="tob-input" id="tobMcBaseSearch" placeholder="Buscar por cliente, fecha o receta..." type="search" autocomplete="off" oninput="tobMcRenderBaseModal()">
+    <div class="tob-mc-base-layout">
+      <div id="tobMcBaseList" class="tob-mc-base-list"></div>
+      <div id="tobMcBasePreview" class="tob-mc-base-preview"></div>
     </div>
   </div>
 </div>

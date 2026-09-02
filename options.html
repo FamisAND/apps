@@ -440,7 +440,7 @@
     </div>
   </div>
 
-  <div id="actRiskPanel" style="display:none"></div>
+  <div id="actRiskPanel" class="act-spx-panel" style="display:none"></div>
 
   <!-- Cards grid -->
   <div id="activasGrid" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px"></div>
@@ -4471,6 +4471,200 @@ function roadmapRecommendation(dteLeft, tpPct, strat){
   ) || null;
 }
 
+function _activeOpenMetrics(a, today){
+  const exp   = a && a.exp ? new Date(a.exp) : null;
+  const open  = a && a.apertura ? new Date(a.apertura) : null;
+  const dteLeft = exp ? Math.ceil((exp - today) / 86400000) : null;
+  const dteIni  = (exp && open) ? Math.ceil((exp - open) / 86400000) : null;
+  const timeElapsed = (dteIni && dteLeft != null) ? Math.max(0, Math.min(100, ((dteIni - dteLeft) / dteIni) * 100)) : null;
+  const ctr = parseFloat(a && a.contracts) || 1;
+  const useAbs = a && (a.entryDirection === 'debit' || a.entryDirection === 'credit');
+  const isLong = (typeof _entryIsLong === 'function') ? _entryIsLong(a || {}) : false;
+  const pc = useAbs ? Math.abs(premiumStoredToPoints(a && a.pCredito, ctr)) : premiumStoredToPoints(a && a.pCredito, ctr);
+  const pd = Math.abs(premiumStoredToPoints(a && a.pDebito, ctr));
+  const pCur = a ? a.priceCurrent : null;
+  let pnlEst = null, tpPct = null;
+  if(a && a.strat === 'ACC'){
+    if(a.priceCurrent != null && a.precioCompra != null){
+      const pCompra = parseFloat(a.precioCompra);
+      pnlEst = (parseFloat(a.priceCurrent) - pCompra) * ctr;
+      tpPct = pCompra > 0 ? ((parseFloat(a.priceCurrent) - pCompra) / pCompra * 100) : null;
+    }
+  } else if(pCur != null && pc){
+    if(useAbs){
+      const pCurAbs = Math.abs(parseFloat(pCur) || 0);
+      const primaApertura = isLong ? (pc + pd) : (pc - pd);
+      const diff = isLong ? (pCurAbs - primaApertura) : (primaApertura - pCurAbs);
+      pnlEst = diff * 100 * ctr;
+      tpPct = primaApertura > 0 ? Math.min(100, Math.max(-100, diff / primaApertura * 100)) : null;
+    } else {
+      pnlEst = (pc - pd - (parseFloat(pCur) || 0)) * 100 * ctr;
+      tpPct = (pc - pd) > 0 ? Math.min(100, Math.max(-100, (pc - pd - (parseFloat(pCur) || 0)) / (pc - pd) * 100)) : null;
+    }
+  }
+  const premiumUnit = a && a.pCredito != null ? Math.abs(premiumStoredToPoints(a.pCredito, ctr)) : null;
+  return {
+    dteLeft,
+    dteIni,
+    timeElapsed,
+    pnlEst,
+    tpPct,
+    premiumUnit,
+    premiumTotal: premiumUnit != null ? premiumUnit * 100 * ctr : 0,
+    risk: parseFloat(a && a.maxRisk) || 0,
+    contracts: ctr,
+    hasPrice: !!(a && a.priceCurrent != null)
+  };
+}
+
+function _isSpxPcs(a){
+  const ticker = String((a && a.activo) || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const strat = (a && (a.stratGroup || a.strat)) || '';
+  return ticker === 'SPX' && strat === 'PCS';
+}
+
+function _spxPhase(dteLeft){
+  if(dteLeft == null) return 'Sin DTE';
+  if(dteLeft <= 3) return 'Expiracion';
+  if(dteLeft <= 7) return '7 DTE';
+  if(dteLeft <= 14) return 'CP75';
+  if(dteLeft <= 21) return 'Pre CP75';
+  if(dteLeft <= 32) return 'CP50';
+  if(dteLeft <= 35) return 'CP25';
+  if(dteLeft <= 50) return 'Fresh';
+  return 'Fuera rango';
+}
+
+function _spxDecision(rows, riskPct, freshCount, warnCount, badCount, urgentCount, missingPrices){
+  const base = { label:'NORMAL', tone:'good', color:'#3fb68b', bg:'#0f2a1f', action:'Gestiona primero los CP; si la cartera sigue sana, puedes evaluar 2-4 PCS nuevos.' };
+  if(!rows.length){
+    return { label:'SIN PCS SPX', tone:'idle', color:'#5a7a9a', bg:'#0a1421', action:'No hay spreads SPX abiertos. Esperar setup valido antes de iniciar cohorte.' };
+  }
+  if(urgentCount > 0){
+    return { label:'VENCIMIENTO', tone:'bad', color:'#f04545', bg:'#2a0f12', action:'Prioridad absoluta: cerrar o gestionar lo que queda cerca de expiracion. 0 PCS nuevos.' };
+  }
+  if(badCount >= 2){
+    return { label:'RECOVERY MODE', tone:'bad', color:'#f04545', bg:'#2a0f12', action:'0 PCS nuevos. Reservar margen y recuperar ciclos existentes antes de volver a abrir.' };
+  }
+  if(badCount > 0 || warnCount >= 2){
+    return { label:'DEFENSA', tone:'warn', color:'#f0a500', bg:'#2b220d', action:'0-1 PCS maximo tras gestionar. Mandan Delta, distancia al short, IV/Vega y riesgo agregado.' };
+  }
+  if(riskPct != null && riskPct >= 50){
+    return { label:'TECHO RIESGO', tone:'warn', color:'#f0a500', bg:'#2b220d', action:'No llenar por llenar. El 50% de capital base es techo, no objetivo.' };
+  }
+  if(freshCount >= 4){
+    return { label:'FRESH ALTO', tone:'warn', color:'#f0a500', bg:'#2b220d', action:'Reducir nuevas entradas: hay demasiadas cohortes recientes sensibles a una correccion.' };
+  }
+  if(missingPrices > 0){
+    return { label:'FALTAN PRECIOS', tone:'idle', color:'#5a7a9a', bg:'#0a1421', action:'Actualiza precios para que TP medio, P&L y etiquetas sean fiables.' };
+  }
+  return base;
+}
+
+function renderSpxAccountPanel(today){
+  const el = document.getElementById('actRiskPanel');
+  if(!el) return;
+  const rows = (ACTIVAS || [])
+    .map((a, idx) => {
+      const m = _activeOpenMetrics(a, today);
+      const road = roadmapRecommendation(m.dteLeft, m.tpPct, a.strat);
+      return { a, idx, m, road };
+    })
+    .filter(x => _isSpxPcs(x.a));
+
+  const navInfo = _lastAccountNav();
+  const nav = navInfo.value || 0;
+  const risk = rows.reduce((s,x) => s + (x.m.risk || 0), 0);
+  const credit = rows.reduce((s,x) => s + (x.m.premiumTotal || 0), 0);
+  const pnl = rows.reduce((s,x) => s + (Number.isFinite(x.m.pnlEst) ? x.m.pnlEst : 0), 0);
+  const contracts = rows.reduce((s,x) => s + (x.m.contracts || 0), 0);
+  const validTp = rows.filter(x => Number.isFinite(x.m.tpPct));
+  const avgTp = validTp.length ? validTp.reduce((s,x) => s + x.m.tpPct, 0) / validTp.length : null;
+  const validDte = rows.filter(x => Number.isFinite(x.m.dteLeft));
+  const avgDte = validDte.length ? validDte.reduce((s,x) => s + x.m.dteLeft, 0) / validDte.length : null;
+  const riskPct = nav > 0 ? risk / nav * 100 : null;
+  const pnlRiskPct = risk > 0 ? pnl / risk * 100 : null;
+  const creditRiskPct = risk > 0 ? credit / risk * 100 : null;
+  const missingPrices = rows.filter(x => !x.m.hasPrice).length;
+  const freshCount = rows.filter(x => x.m.dteLeft != null && x.m.dteLeft > 35).length;
+  const cp25 = rows.filter(x => x.m.dteLeft != null && x.m.dteLeft >= 33 && x.m.dteLeft <= 35).length;
+  const cp50 = rows.filter(x => x.m.dteLeft != null && x.m.dteLeft >= 22 && x.m.dteLeft <= 32).length;
+  const cp75 = rows.filter(x => x.m.dteLeft != null && x.m.dteLeft >= 8 && x.m.dteLeft <= 14).length;
+  const urgent = rows.filter(x => x.m.dteLeft != null && x.m.dteLeft <= 7).length;
+  const warnCount = rows.filter(x => (x.road && x.road.tone === 'warn')).length;
+  const badCount = rows.filter(x => (x.road && x.road.tone === 'bad')).length;
+  const decision = _spxDecision(rows, riskPct, freshCount, warnCount, badCount, urgent, missingPrices);
+  const cap = nav > 0 ? nav * 0.5 : 0;
+  const headroom = cap > 0 ? Math.max(0, cap - risk) : null;
+  const fmtPct = v => Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '--';
+  const fmtPlainPct = v => Number.isFinite(v) ? v.toFixed(1) + '%' : '--';
+  const fmtSignedUsd = v => (v >= 0 ? '+' : '-') + _fmtUsd0(Math.abs(v));
+  const kpi = (label, value, sub, color) => `
+    <div class="spx-kpi">
+      <span>${esc(label)}</span>
+      <b style="color:${color || '#c9d1d9'}">${value}</b>
+      <small>${esc(sub || '')}</small>
+    </div>`;
+  const phaseChip = (label, n) => `<span class="spx-chip">${esc(label)} <b>${n}</b></span>`;
+  const toneRank = t => t === 'bad' ? 0 : t === 'warn' ? 1 : t === 'good' ? 2 : 3;
+  const watch = rows.slice().sort((x,y) => {
+    const tx = x.road ? x.road.tone : (!x.m.hasPrice ? 'warn' : 'idle');
+    const ty = y.road ? y.road.tone : (!y.m.hasPrice ? 'warn' : 'idle');
+    return toneRank(tx) - toneRank(ty) || ((x.m.dteLeft ?? 999) - (y.m.dteLeft ?? 999));
+  }).slice(0, 5).map(x => {
+    const tone = x.road ? x.road.tone : (!x.m.hasPrice ? 'warn' : 'idle');
+    const action = x.road ? x.road.action : (!x.m.hasPrice ? 'Actualizar precio' : 'Mantener');
+    const tp = Number.isFinite(x.m.tpPct) ? fmtPlainPct(x.m.tpPct) : 'sin precio';
+    const dte = x.m.dteLeft != null ? x.m.dteLeft + 'd' : '--';
+    const phase = _spxPhase(x.m.dteLeft);
+    return `<div class="spx-watch-row" title="${esc(phase + ((x.road && x.road.comment) ? ' · ' + x.road.comment : ''))}">
+      <b>${esc((x.a.activo || 'SPX') + ' #' + (x.a.idOp || '-'))}</b>
+      <span>${dte}</span>
+      <span class="${tone}">${tp}</span>
+      <span class="${tone}">${esc(action)}</span>
+    </div>`;
+  }).join('');
+
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="spx-board">
+      <div class="spx-board-head">
+        <div>
+          <div class="spx-board-title">Estado cuenta SPX PCS</div>
+          <div class="spx-board-sub">Lectura rapida de spreads SPX abiertos segun riesgo base, DTE, TP y hoja operativa v1.6.</div>
+        </div>
+        <span class="spx-board-pill" style="color:${decision.color};border-color:${decision.color};background:${decision.bg}">${esc(decision.label)}</span>
+      </div>
+      ${rows.length ? `
+        <div class="spx-kpis">
+          ${kpi('PCS / contratos', rows.length + ' / ' + contracts, missingPrices ? missingPrices + ' sin precio actual' : 'precios completos', missingPrices ? '#f0a500' : '#c9d1d9')}
+          ${kpi('Riesgo base', _fmtUsd0(risk), riskPct != null ? fmtPlainPct(riskPct) + ' NAV · techo 50%' : navInfo.label, riskPct != null && riskPct >= 50 ? '#f0a500' : '#c9d1d9')}
+          ${kpi('Reserva hasta techo', headroom != null ? _fmtUsd0(headroom) : '--', 'techo orientativo: 50% NAV', headroom === 0 ? '#f0a500' : '#5a7a9a')}
+          ${kpi('P&L abierto', fmtSignedUsd(pnl), 'P&L/riesgo ' + fmtPct(pnlRiskPct), pnl >= 0 ? '#3fb68b' : '#f04545')}
+          ${kpi('TP medio', avgTp != null ? avgTp.toFixed(1) + '%' : '--', creditRiskPct != null ? 'prima/riesgo ' + creditRiskPct.toFixed(1) + '%' : 'falta precio/riesgo', avgTp != null && avgTp >= 50 ? '#3fb68b' : avgTp != null && avgTp < 0 ? '#f04545' : '#c9d1d9')}
+          ${kpi('DTE medio', avgDte != null ? avgDte.toFixed(0) + 'd' : '--', navInfo.label || '', avgDte != null && avgDte <= 21 ? '#f0a500' : '#c9d1d9')}
+        </div>
+        <div class="spx-detail-grid">
+          <div>
+            <div class="spx-cohorts">
+              ${phaseChip('Fresh', freshCount)}
+              ${phaseChip('CP25', cp25)}
+              ${phaseChip('CP50', cp50)}
+              ${phaseChip('CP75', cp75)}
+              ${phaseChip('7DTE', urgent)}
+              ${phaseChip('Defensa', warnCount + badCount)}
+            </div>
+            <div class="spx-board-sub" style="margin-top:9px;color:${decision.color}">${esc(decision.action)}</div>
+          </div>
+          <div class="spx-watch">
+            <div class="spx-watch-title">Mirar primero</div>
+            ${watch || '<div class="spx-empty">Sin operaciones prioritarias.</div>'}
+          </div>
+        </div>` :
+        '<div class="spx-empty">No hay PCS SPX abiertos ahora mismo. Cuando abras spreads de SPX, aqui veras Fresh Risk, checkpoints, riesgo usado y accion sugerida.</div>'}
+    </div>`;
+}
+
 function activasLoad(){
   try{
     const d=localStorage.getItem('ot_activas');
@@ -4648,7 +4842,6 @@ function renderActivas(){
     riskPanel.style.display = 'none';
     riskPanel.innerHTML = '';
   }
-  const showActRiskPanel = false;
   const viewBtn = document.getElementById('actViewToggle');
   if(!grid) return;
   if(viewBtn) viewBtn.textContent = ACT_COMPACT_VIEW ? 'Ver detalle' : 'Vista rapida';
@@ -4656,12 +4849,12 @@ function renderActivas(){
   // today must be declared BEFORE sort uses it
   const today = new Date(); today.setHours(0,0,0,0);
   const todayMs = today.getTime();
+  renderSpxAccountPanel(today);
 
   if(!ACTIVAS.length){
     grid.innerHTML='';
     if(empty) empty.style.display='block';
     if(sumEl) sumEl.textContent='';
-    if(riskPanel) riskPanel.innerHTML='';
     return;
   }
   if(empty) empty.style.display='none';
@@ -4722,10 +4915,7 @@ function renderActivas(){
     return 0;
   });
 
-
-  // Risk layers: defined vertical risk, covered short-put stress, real naked puts and spot.
-  const _riskTotSet   = new Set(CFG.riskTotalStrats || ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE']);
-  const totalRiskExcl = ACTIVAS.filter(a=>!_riskTotSet.has(a.strat)).reduce((s,a)=>s+(a.maxRisk||0),0);
+  // P&L abierto global para el resumen compacto.
   const totalUnreal = ACTIVAS.reduce((s,a)=>{
     if(a.strat === 'ACC'){
       if(a.priceCurrent==null || a.precioCompra==null) return s;
@@ -4745,75 +4935,6 @@ function renderActivas(){
     }
     return s + ((pc_share - pd_share - pCur_abs) * 100 * ctr) - (a.comi||0);
   },0);
-  const assignStats = _assignmentPortfolioStats(0);
-  const cash = assignStats.liquidity.value || 0;
-  const nav = assignStats.nav.value || 0;
-  const definedPct = assignStats.definedPct;
-  const potentialPct = assignStats.potentialPct;
-  const realPct = assignStats.pct;
-  const metricState = (pct, bands) => {
-    if(pct == null) return { color:'#5a7a9a', label:'sin dato', bg:'#0a1421' };
-    for(const b of bands){ if(pct <= b.max) return b; }
-    return bands[bands.length-1];
-  };
-  const definedState = metricState(definedPct, [
-    {max:20,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
-    {max:35,color:'#7fc9a6',label:'bien',bg:'#10251f'},
-    {max:45,color:'#f0a500',label:'alto ok',bg:'#2b220d'},
-    {max:55,color:'#e69138',label:'muy cargado',bg:'#2a1b0c'},
-    {max:Infinity,color:'#f04545',label:'pasado',bg:'#2a0f12'}
-  ]);
-  const potentialState = metricState(potentialPct, [
-    {max:200,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
-    {max:350,color:'#7fc9a6',label:'normal',bg:'#10251f'},
-    {max:500,color:'#f0a500',label:'alto',bg:'#2b220d'},
-    {max:650,color:'#e69138',label:'muy alto',bg:'#2a1b0c'},
-    {max:Infinity,color:'#f04545',label:'demasiado',bg:'#2a0f12'}
-  ]);
-  const realState = metricState(realPct, [
-    {max:50,color:'#3fb68b',label:'verde',bg:'#0f2a1f'},
-    {max:80,color:'#f0a500',label:'vigilar',bg:'#2b220d'},
-    {max:120,color:'#e69138',label:'agresivo',bg:'#2a1b0c'},
-    {max:Infinity,color:'#f04545',label:'rojo',bg:'#2a0f12'}
-  ]);
-  if(showActRiskPanel && riskPanel){
-    const topRows = assignStats.rows
-      .filter(r=>r.amount>0)
-      .sort((a,b)=>b.amount-a.amount)
-      .slice(0,5)
-      .map(r=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid #0d1117">
-        <span style="color:#5a7a9a">${r.a.activo||'--'} · ${r.a.strat||'--'} · ${r.source}</span>
-        <strong style="color:#c9d1d9">${_fmtUsd0(r.amount)}</strong>
-      </div>`).join('');
-    const metricCard = (title, val, pct, st, hint) => `
-      <div style="background:${st.bg};border:1px solid ${st.color}55;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;min-width:0">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:7px">
-          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:${st.color}">${title}</div>
-          <div style="font-size:8px;color:${st.color};font-weight:800;text-transform:uppercase">${st.label}</div>
-        </div>
-        <div style="font-size:22px;line-height:1;font-weight:800;color:${st.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pct!=null?pct.toFixed(0)+'%':'--'}</div>
-        <div style="font-size:9px;color:#c9d1d9;margin-top:4px">${_fmtUsd0(val)}</div>
-        <div style="font-size:7px;color:#5a7a9a;margin-top:5px;line-height:1.35">${hint}</div>
-      </div>`;
-    riskPanel.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch">
-        ${metricCard('Riesgo definido', assignStats.definedRisk, definedPct, definedState, 'Verticales cubiertas vs NAV')}
-        ${metricCard('ifAsign potencial', assignStats.potential, potentialPct, potentialState, 'Short puts cubiertas vs cash')}
-        ${metricCard('ifAsign real/naked', assignStats.current, realPct, realState, 'Puts sin proteccion vs cash')}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr .85fr;gap:12px;align-items:stretch;margin-top:10px">
-        <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px">
-          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#f0a500;margin-bottom:8px">Mayor exposicion short put</div>
-          ${topRows || '<div style="color:#5a7a9a;padding:10px 0">Sin puts vendidos con asignacion potencial.</div>'}
-        </div>
-        <div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.5">
-          <div style="font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#4a9eff;margin-bottom:8px">Liquidez</div>
-          <div>${assignStats.liquidity.label}: <b style="color:#c9d1d9">${cash?_fmtUsd0(cash):'--'}</b></div>
-          <div>${assignStats.nav.label}: <b style="color:#c9d1d9">${nav?_fmtUsd0(nav):'--'}</b></div>
-          <div>El ifAsign real solo sube cuando la put vendida queda sin put comprada de cobertura.</div>
-        </div>
-      </div>`;
-  }
   if(sumEl){
     const conPrecio = ACTIVAS.filter(a=>a.priceCurrent!=null).length;
     const pnlColor = totalUnreal >= 0 ? '#3fb68b' : '#f04545';
