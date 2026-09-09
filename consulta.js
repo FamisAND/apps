@@ -8806,7 +8806,38 @@ function tobStrictFoodSearchMatch(raw, hay){
 }
 
 function tobRecipeSearchMatches(raw, rec){
-  return tobStrictFoodSearchMatch(raw, tobRecSearchText(rec));
+  return tobRecipeSearchScore(raw, rec) > 0;
+}
+
+function tobRecipeSearchScore(raw, rec){
+  const q = tobIngNormName(raw);
+  if(!q || !rec) return 0;
+  const nameText = tobIngCollectSearchParts({
+    nombre: rec.nombre,
+    nombre_es: rec.nombre_es,
+    tags: rec.tags,
+    momentos: rec.momentos,
+    rol: rec.rol,
+    origen: rec.origen,
+    autor: rec.autor
+  });
+  const nameScore = tobIngMatchScore(q, nameText);
+  let ingScore = 0;
+  if(Array.isArray(rec.ingredientes)){
+    rec.ingredientes.forEach(it => {
+      if(!it) return;
+      const ing = (tobMenusDB.ingredientes || []).find(i => i.id === it.ingId);
+      const text = tobIngCollectSearchParts({
+        nombre: it.nombre,
+        _nombreFallback: it._nombreFallback,
+        aliases: ing && (ing.aliases || ing.alias),
+        tags: ing && ing.tags,
+        alergenos: ing && ing.alergenos
+      }) + ' ' + tobIngCollectSearchParts(ing);
+      ingScore = Math.max(ingScore, tobIngMatchScore(q, text));
+    });
+  }
+  return Math.max(nameScore, ingScore * 1.08);
 }
 
 function tobFoodSearchMatches(raw, limit, opts){
@@ -11657,11 +11688,13 @@ function tobMcRenderSidePanel(){
   if(!panel || !tobMcState) return;
   const cli = tobDB.clientes.find(c => c.id === tobMcState.cliId);
   const search = (document.getElementById('tobMcRecSearch')?.value || '').trim().toLowerCase();
+  const searchNorm = tobIngNormName(search);
   const filtrarPerfil = document.getElementById('tobMcFiltrarPerfil')?.checked;
 
   // Las recetas descartadas no aparecen en el creador.
   const all = (tobMenusDB.recetas || []).filter(r => !r.descartada);
-  const matchSearch = r => !search || tobRecipeSearchMatches(search, r);
+  const searchScore = r => searchNorm ? tobRecipeSearchScore(searchNorm, r) : 0;
+  const matchSearch = r => !searchNorm || searchScore(r) > 0;
   // Recetes normals: respecten el filtre de moment.
   let listRec = all.filter(r => r.origen !== 'ingrediente' && matchSearch(r));
   if(_tobMcMomentoFiltro){
@@ -11680,8 +11713,10 @@ function tobMcRenderSidePanel(){
 
   const evaluar = arr => arr.map(r => ({
     rec: r,
-    check: cli ? tobMcCheckCompat(r, cli) : { compat:true, razones:[] }
+    check: cli ? tobMcCheckCompat(r, cli) : { compat:true, razones:[] },
+    score: searchNorm ? searchScore(r) : 0
   })).sort((a,b) => {
+    if(searchNorm && a.score !== b.score) return b.score - a.score;
     if(a.check.compat !== b.check.compat) return a.check.compat ? -1 : 1;
     return (a.rec.nombre||'').localeCompare(b.rec.nombre||'','es',{sensitivity:'base'});
   });

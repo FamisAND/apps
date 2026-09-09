@@ -294,8 +294,31 @@ DashboardAuth.gate({ section: 'training', title: 'Full Training' });
         <div id="clientsList"></div>
         <div id="recaptacionesSection" style="margin-top:24px;display:none;">
           <div class="card">
-            <div class="card-title">📞 Clientes para Recaptación</div>
-            <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px;">Clientes que estaban en remesas anteriores pero no en la actual</div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+              <div>
+                <div class="card-title">📞 Clientes para Recaptación</div>
+                <div style="font-size:.75rem;color:var(--muted);">Clientes que estaban en remesas anteriores pero no en la actual</div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="resetRecaptFilters()">Limpiar filtros</button>
+            </div>
+            <div class="filter-bar" style="margin-bottom:10px;">
+              <input class="filter-inp" id="recaptSearch" placeholder="Buscar cliente..." oninput="renderRecaptaciones()" style="width:170px;">
+              <select class="filter-inp" id="recaptLoss" onchange="renderRecaptaciones()" style="width:155px;">
+                <option value="all">Todas las bajas</option>
+                <option value="this">Perdidos este mes</option>
+                <option value="range">Rango de pérdida</option>
+              </select>
+              <input class="filter-inp" id="recaptFrom" type="month" onchange="renderRecaptaciones()" style="width:130px;">
+              <input class="filter-inp" id="recaptTo" type="month" onchange="renderRecaptaciones()" style="width:130px;">
+              <select class="filter-inp" id="recaptCat" onchange="renderRecaptaciones()" style="width:150px;"></select>
+              <select class="filter-inp" id="recaptService" onchange="renderRecaptaciones()" style="width:190px;"></select>
+              <select class="filter-inp" id="recaptActive" onchange="renderRecaptaciones()" style="width:120px;">
+                <option value="all">Todos</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Baja ficha</option>
+              </select>
+            </div>
+            <div id="recaptacionesSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px;"></div>
             <div id="recaptacionesList"></div>
           </div>
         </div>
@@ -924,6 +947,7 @@ let db={team:[],clients:[],services:[],months:{},stock:[]};
 let editMemberId=null,editClientId=null,editServiceId=null,editEntryId=null,editGastoId=null,fichaMemberId=null,condMemberId=null,editMasajePackId=null;
 let clientFilterState='todos';
 let selectedClientIds=new Set();
+let recaptFilterState={search:'',loss:'all',from:'',to:'',cat:'',service:'',active:'all'};
 // Filtro dinámico de la lista de Remesas, controlado por las tarjetas KPI de arriba.
 // '' = todos · 'cobrado' = solo clientes con todo pagado · 'pendiente' = con algo por cobrar · 'cuidado' = marcados ⚠
 let remPayFilter='';
@@ -5360,6 +5384,25 @@ function toggleClientSelection(cid){
 }
 
 // RECAPTACIONES
+function resetRecaptFilters(){
+  ['recaptSearch','recaptFrom','recaptTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['recaptLoss','recaptCat','recaptService','recaptActive'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=id==='recaptLoss'?'all':id==='recaptActive'?'all':'';});
+  renderRecaptaciones();
+}
+
+function _recaptMonthName(key){
+  if(!key)return'—';
+  const [y,m]=key.split('-').map(Number);
+  return mLabel(y,m);
+}
+
+function _recaptSetOptions(sel, options, emptyLabel, current){
+  if(!sel)return;
+  const prev=current!=null?current:sel.value;
+  sel.innerHTML=`<option value="">${emptyLabel}</option>`+options.map(o=>`<option value="${esc(o.v)}">${esc(o.l)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+}
+
 function renderRecaptaciones(){
   const currentMonth=curKey('remesas');
   const currentMonthEntry=db.months[currentMonth]?.entries||[];
@@ -5376,7 +5419,13 @@ function renderRecaptaciones(){
     const entries=db.months[monthKey]?.entries||[];
     entries.forEach(e=>{
       if(!currentClientIds.has(e.clientId) && !clientLastMonth[e.clientId]){
-        clientLastMonth[e.clientId]=monthKey;
+        const clientEntries=entries.filter(x=>x.clientId===e.clientId);
+        clientLastMonth[e.clientId]={
+          monthKey,
+          lastIdx:i,
+          lostKey:allMonthKeys[i+1]||currentMonth,
+          entries:clientEntries
+        };
       }
     });
   }
@@ -5385,25 +5434,91 @@ function renderRecaptaciones(){
   
   document.getElementById('recaptacionesSection').style.display='block';
   const recaptEl=document.getElementById('recaptacionesList');
+  const sumEl=document.getElementById('recaptacionesSummary');
   const pi={transferencia:'🏦',bizum:'📱',efectivo:'💵'};
   
   // Crear lista con mes de origen y ordenar de más actual a más antiguo
-  let recaptList=Object.entries(clientLastMonth).map(([clientId,monthKey])=>({
-    client:db.clients.find(c=>c.id===clientId),
-    monthKey:monthKey,
-    monthName:MES[parseInt(monthKey.split('-')[1])-1]+' '+monthKey.split('-')[0]
-  })).filter(x=>x.client).sort((a,b)=>b.monthKey.localeCompare(a.monthKey));
+  let recaptList=Object.entries(clientLastMonth).map(([clientId,info])=>{
+    const client=db.clients.find(c=>c.id===clientId);
+    const services=info.entries.map(e=>db.services.find(s=>s.id===e.serviceId)).filter(Boolean);
+    const total=info.entries.reduce((s,e)=>s+(parseFloat(e.price)||0),0);
+    const cats=[...new Set(services.map(s=>s.category||'otro'))];
+    return{
+      client,
+      monthKey:info.monthKey,
+      lostKey:info.lostKey,
+      monthsLost:currentIdx-info.lastIdx,
+      entries:info.entries,
+      services,
+      serviceIds:[...new Set(services.map(s=>s.id))],
+      serviceNames:[...new Set(services.map(s=>s.name))],
+      cats,
+      total
+    };
+  }).filter(x=>x.client).sort((a,b)=>b.monthKey.localeCompare(a.monthKey));
+
+  const catOptions=Object.entries(CAT_LBL)
+    .filter(([cat])=>recaptList.some(x=>x.cats.includes(cat)))
+    .map(([v,l])=>({v,l}));
+  const serviceOptions=[...new Map(recaptList.flatMap(x=>x.services).map(s=>[s.id,{v:s.id,l:s.name}])).values()]
+    .sort((a,b)=>a.l.localeCompare(b.l,'es',{sensitivity:'base'}));
+  _recaptSetOptions(document.getElementById('recaptCat'),catOptions,'Todas las categorías',document.getElementById('recaptCat')?.value||'');
+  _recaptSetOptions(document.getElementById('recaptService'),serviceOptions,'Servicio concreto',document.getElementById('recaptService')?.value||'');
+
+  const search=(document.getElementById('recaptSearch')?.value||'').trim().toLowerCase();
+  const loss=document.getElementById('recaptLoss')?.value||'all';
+  const from=document.getElementById('recaptFrom')?.value||'';
+  const to=document.getElementById('recaptTo')?.value||'';
+  const cat=document.getElementById('recaptCat')?.value||'';
+  const service=document.getElementById('recaptService')?.value||'';
+  const active=document.getElementById('recaptActive')?.value||'all';
+  recaptFilterState={search,loss,from,to,cat,service,active};
+
+  if(search)recaptList=recaptList.filter(x=>
+    (x.client.name||'').toLowerCase().includes(search) ||
+    (x.client.phone||'').toLowerCase().includes(search) ||
+    x.serviceNames.join(' ').toLowerCase().includes(search)
+  );
+  if(active==='active')recaptList=recaptList.filter(x=>x.client.active!==false);
+  if(active==='inactive')recaptList=recaptList.filter(x=>x.client.active===false);
+  if(loss==='this')recaptList=recaptList.filter(x=>x.lostKey===currentMonth);
+  if(loss==='range'){
+    if(from)recaptList=recaptList.filter(x=>x.lostKey>=from);
+    if(to)recaptList=recaptList.filter(x=>x.lostKey<=to);
+  }
+  if(cat)recaptList=recaptList.filter(x=>x.cats.includes(cat));
+  if(service)recaptList=recaptList.filter(x=>x.serviceIds.includes(service));
+
+  const totalLost=recaptList.reduce((s,x)=>s+x.total,0);
+  const monthLost=recaptList.filter(x=>x.lostKey===currentMonth).length;
+  const training=recaptList.filter(x=>x.cats.includes('entrenamiento')).length;
+  const nutrition=recaptList.filter(x=>x.cats.includes('nutricion')).length;
+  if(sumEl)sumEl.innerHTML=`
+    <div class="kpi" style="padding:10px 12px;"><div class="kpi-lbl">Clientes</div><div class="kpi-val">${recaptList.length}</div></div>
+    <div class="kpi" style="padding:10px 12px;"><div class="kpi-lbl">Facturación perdida</div><div class="kpi-val rd">${fmt(totalLost)}</div></div>
+    <div class="kpi" style="padding:10px 12px;"><div class="kpi-lbl">Perdidos este mes</div><div class="kpi-val yl">${monthLost}</div></div>
+    <div class="kpi" style="padding:10px 12px;"><div class="kpi-lbl">Entreno / Nutri</div><div class="kpi-val">${training} / ${nutrition}</div></div>
+  `;
   
-  const rows=recaptList.map(item=>`<tr>
-    <td style="font-weight:600">${item.client.name}</td>
-    <td style="font-size:.75rem;color:var(--muted)">${item.monthName}</td>
+  if(!recaptList.length){
+    recaptEl.innerHTML='<div class="empty"><div class="empty-ic">📞</div><div>Sin recaptaciones con estos filtros</div></div>';
+    return;
+  }
+
+  const rows=recaptList.map(item=>{
+    const svcBadges=item.services.map(s=>`<span class="badge" style="border-color:${CAT_COL[s.category||'otro']||'#666'}55;color:${CAT_COL[s.category||'otro']||'var(--muted2)'}">${esc(s.name)}</span>`).join(' ');
+    return `<tr>
+    <td style="font-weight:600">${esc(item.client.name)}</td>
+    <td style="font-size:.75rem;color:var(--muted)">${_recaptMonthName(item.monthKey)}<div style="font-size:.64rem;color:var(--muted2)">Perdido desde ${_recaptMonthName(item.lostKey)} · ${item.monthsLost} mes${item.monthsLost!==1?'es':''}</div></td>
+    <td>${svcBadges||'—'}</td>
+    <td class="mono" style="text-align:right;font-size:.75rem;color:var(--red)">${fmt(item.total)}</td>
     <td><span class="badge b-gy">${pi[item.client.payMethod]||''} ${item.client.payMethod||'—'}</span></td>
-    <td class="mono" style="font-size:.73rem">${item.client.phone||'—'}</td>
-    <td><button class="btn-icon" style="color:var(--green)" onclick="openEntryModal(null,'remesa');document.getElementById('en_client').value='${item.client.id}';toast('✓ Cliente seleccionado')">➕</button></td>
-    <td><button class="btn-icon" style="color:var(--red)" onclick="removeFromRecapt('${item.client.id}')">✕</button></td>
-  </tr>`).join('');
+    <td class="mono" style="font-size:.73rem">${esc(item.client.phone||'—')}</td>
+    <td><span class="badge ${item.client.active!==false?'b-gn':'b-gy'}">${item.client.active!==false?'Activo':'Baja ficha'}</span></td>
+  </tr>`;
+  }).join('');
   
-  recaptEl.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Último mes</th><th>Pago</th><th>Teléfono</th><th></th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  recaptEl.innerHTML=`<div class="tbl-wrap"><table><thead><tr><th>Nombre</th><th>Último mes</th><th>Servicios perdidos</th><th style="text-align:right">Importe</th><th>Pago</th><th>Teléfono</th><th>Ficha</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function removeFromRecapt(clientId){
