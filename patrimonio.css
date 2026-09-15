@@ -140,7 +140,34 @@ canvas{max-height:220px;}
 .portfolio-chart-period{font-size:.56rem;color:#64748b;text-transform:uppercase;padding-top:2px;white-space:nowrap}
 .portfolio-chart-canvas{position:relative;height:250px;margin-top:10px}
 .portfolio-chart-canvas canvas{max-height:none}
+.portfolio-movement-summary{padding:13px 20px;background:#09111f;border-bottom:1px solid #243551}
+.portfolio-flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px;margin-bottom:9px}
+.portfolio-flow-card{background:#0a0e14;border:1px solid #1e2d3d;border-radius:9px;padding:10px 12px;min-width:0}
+.portfolio-flow-card span{display:block;font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700}
+.portfolio-flow-card b{display:block;margin-top:4px;font-size:1rem;color:#e2e8f0}
+.portfolio-flow-card small{display:block;margin-top:2px;font-size:.62rem;color:#475569}
+.portfolio-flow-moves{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.portfolio-flow-label{font-size:.58rem;color:#475569;text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-right:2px}
+.portfolio-move-chip{display:inline-flex;align-items:center;gap:5px;background:#0a0e14;border:1px solid #1e2d3d;border-radius:999px;padding:4px 8px;font-size:.66rem;color:#94a3b8}
+.portfolio-move-chip small{color:#475569}
+.portfolio-flow-empty{font-size:.68rem;color:#475569}
 .gastos-insights-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:12px;margin-bottom:14px}
+.gastos-tagger-card{background:#0a0e14;border:1px solid #1e2d3d;border-radius:12px;padding:13px 14px;margin-bottom:14px}
+.gastos-tagger-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}
+.gastos-tagger-title{font-size:.78rem;font-weight:700;color:#dbeafe}
+.gastos-tagger-form{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,.45fr) auto;gap:8px;margin-bottom:10px}
+.gastos-tagger-form .btn-primary{padding:7px 12px;font-size:.78rem}
+.gastos-tagger-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,.6fr);gap:10px;align-items:start}
+.gastos-tagger-rules{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.gasto-rule-chip{display:inline-flex;align-items:center;gap:6px;background:#080d1a;border:1px solid #1e2d3d;border-radius:999px;padding:4px 7px;font-size:.66rem;color:#94a3b8;max-width:260px}
+.gasto-rule-chip b{color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gasto-rule-chip small{color:#64748b;white-space:nowrap}
+.gasto-rule-chip button{background:transparent;border:0;color:#64748b;cursor:pointer;font-size:.8rem;line-height:1;padding:0 2px}
+.gastos-tagger-suggestions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.gasto-suggestion{background:#080d1a;border:1px dashed #243551;border-radius:999px;color:#94a3b8;padding:4px 8px;font-family:inherit;font-size:.65rem;cursor:pointer;display:inline-flex;align-items:center;gap:6px;max-width:240px}
+.gasto-suggestion:hover{border-color:#60a5fa;color:#dbeafe}
+.gasto-suggestion span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gasto-suggestion b{color:#f87171;white-space:nowrap}
 .gastos-insight-panel{background:#0a0e14;border:1px solid #1e2d3d;border-radius:10px;padding:13px 14px;min-width:0}
 .gastos-insight-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
 .gastos-insight-title strong{font-size:.76rem;color:#cbd5e1}
@@ -289,6 +316,11 @@ textarea.inp{resize:vertical;min-height:70px;}
   .portfolio-chart-section{padding:14px 12px}
   .portfolio-chart-canvas{height:230px}
   .gastos-insights-grid{grid-template-columns:1fr}
+  .portfolio-movement-summary{padding:12px}
+  .gastos-tagger-head{display:grid;grid-template-columns:1fr}
+  .gastos-tagger-form{grid-template-columns:1fr}
+  .gastos-tagger-body{grid-template-columns:1fr}
+  .gastos-tagger-suggestions{justify-content:flex-start}
   .gastos-budget-config-row{grid-template-columns:minmax(0,1fr) 110px}
 
   /* ─── HEADER: 3 filas (logo+badge+actions, tabs scroll, hueco) ─── */

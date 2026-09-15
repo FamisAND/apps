@@ -158,6 +158,7 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
               <button class="btn-ghost portfolio-chart-reset" onclick="resetPortfolioChartSelection()" title="Restablecer vista">↺</button>
             </div>
           </div>
+          <div id="portfolioMovementSummary" class="portfolio-movement-summary"></div>
           <section class="portfolio-chart-section">
             <div class="portfolio-chart-section-head">
               <div>
@@ -338,6 +339,9 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
 
       <!-- Resumen -->
       <div id="gastosSummary"></div>
+
+      <!-- Etiquetador automático -->
+      <div id="gastosTagger"></div>
 
       <!-- Presupuesto, cambios y recurrentes -->
       <div id="gastosInsights"></div>
@@ -1303,6 +1307,48 @@ function investmentAssetsForDashboard(p,ents,last){
   return dashboardAssetsOf(p,last,false).filter(a=>isPortfolioAsset(p,a));
 }
 
+function renderPortfolioMovementSummary(p,ents,investmentAssets,totalInvestmentValues){
+  const el=document.getElementById('portfolioMovementSummary');
+  if(!el) return;
+  if(!ents.length||!investmentAssets.length){
+    el.innerHTML='';
+    return;
+  }
+  const ids=new Set(investmentAssets.map(a=>a.id));
+  const lastValue=[...totalInvestmentValues].reverse().find(v=>Number.isFinite(v))||0;
+  let net=0,adds=0,outs=0;
+  const moves=[];
+  ents.forEach(e=>{
+    const contribs=e.contributions||{};
+    investmentAssets.forEach(a=>{
+      if(!ids.has(a.id)) return;
+      const v=parseMoneyValue(contribs[a.id]);
+      if(!Number.isFinite(v)||v===0) return;
+      net+=v;
+      if(v>0)adds+=v; else outs+=Math.abs(v);
+      moves.push({key:e.key,month:e.month,year:e.year,asset:a,value:v});
+    });
+  });
+  const firstValue=totalInvestmentValues.find(v=>Number.isFinite(v))||0;
+  const estimatedResult=lastValue-firstValue-net;
+  const resultPct=(firstValue+Math.max(net,0))>0?estimatedResult/(firstValue+Math.max(net,0))*100:null;
+  const lastMoves=moves.slice(-4).reverse().map(m=>{
+    const color=m.value>=0?'#4ade80':'#f87171';
+    return `<span class="portfolio-move-chip"><b style="color:${m.asset.color}">${esc(assetLabel(m.asset))}</b> <span style="color:${color}">${m.value>=0?'+':'-'}${fmt(Math.abs(m.value))}</span> <small>${MO[m.month]} ${m.year}</small></span>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="portfolio-flow-grid">
+      <div class="portfolio-flow-card"><span>Capital actual</span><b>${fmt(lastValue)}</b><small>valor de carteras incluidas</small></div>
+      <div class="portfolio-flow-card"><span>Total invertido neto</span><b style="color:${net>=0?'#4ade80':'#f87171'}">${net>=0?'+':'-'}${fmt(Math.abs(net))}</b><small>aportaciones menos retiros</small></div>
+      <div class="portfolio-flow-card"><span>Aportado / retirado</span><b>${fmt(adds)} / ${fmt(outs)}</b><small>movimientos registrados</small></div>
+      <div class="portfolio-flow-card"><span>Resultado estimado</span><b style="color:${estimatedResult>=0?'#4ade80':'#f87171'}">${estimatedResult>=0?'+':'-'}${fmt(Math.abs(estimatedResult))}</b><small>${resultPct==null?'sin base suficiente':fPct(resultPct)+' sobre base'}</small></div>
+    </div>
+    <div class="portfolio-flow-moves">
+      <span class="portfolio-flow-label">Últimos movimientos</span>
+      ${lastMoves||'<span class="portfolio-flow-empty">Sin aportaciones/retiros registrados en carteras.</span>'}
+    </div>`;
+}
+
 function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
   const opts={responsive:true,maintainAspectRatio:true};
@@ -1372,6 +1418,7 @@ function renderCharts(p){
     fill:true,
     spanGaps:false
   };
+  renderPortfolioMovementSummary(p,ents,investmentAssets,totalInvestmentValues);
   const evolutionDatasets=selectPortfolioChartDatasets(totalEvolutionDataset,bDS);
   const primaryAsset=assetMap[portfolioChartPrimary];
   const compareAsset=assetMap[portfolioChartCompare];
@@ -1681,6 +1728,120 @@ function isInternalTransferConcept(text){
   const s = String(text||'').toLowerCase();
   return /\b(traspaso|entre\s+cuentas|entre\s+comptes|compte\s+propi|cuenta\s+propia)\b/.test(s);
 }
+function gastoRuleNorm(text){
+  return String(text||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function findGastoRuleCategory(p, concepto){
+  const rules=p?.gastos?.reglas||{};
+  if(rules[concepto]) return rules[concepto];
+  const n=gastoRuleNorm(concepto);
+  if(!n) return '';
+  if(rules[n]) return rules[n];
+  let best='';
+  let bestLen=0;
+  Object.entries(rules).forEach(([raw,catId])=>{
+    const key=gastoRuleNorm(raw);
+    if(!key||key.length<3) return;
+    if((n.includes(key)||key.includes(n))&&key.length>bestLen){
+      best=catId;
+      bestLen=key.length;
+    }
+  });
+  return best;
+}
+function applyGastoRulesToMonth(monthKey){
+  const p=prof(); if(!p) return 0;
+  gastosInit(p);
+  const md=p.gastos.meses?.[monthKey]; if(!md) return 0;
+  let changed=0;
+  (md.transacciones||[]).forEach(t=>{
+    if(t.categoriaId||t.excluido||t.importe>=0) return;
+    const concept=t.concepto||t.conceptoOrig||t.operacion||'';
+    const catId=findGastoRuleCategory(p,concept);
+    if(catId){t.categoriaId=catId;changed++;}
+    else if(isInternalTransferConcept(concept)){t.categoriaId='cat_transfer';changed++;}
+  });
+  if(changed) save();
+  return changed;
+}
+function applyGastoRulesCurrentMonth(){
+  const monthKey=document.getElementById('gastosMonth')?.value;
+  const changed=applyGastoRulesToMonth(monthKey);
+  renderGastos();
+  toast(changed?`✓ ${changed} movimientos etiquetados`:'Sin cambios pendientes','green');
+}
+function saveGastoTagRule(){
+  const p=prof(); if(!p) return;
+  gastosInit(p);
+  const pattern=(document.getElementById('gastoRulePattern')?.value||'').trim();
+  const catId=document.getElementById('gastoRuleCat')?.value||'';
+  if(!pattern||!catId){toast('Falta texto o categoría','red');return;}
+  p.gastos.reglas[gastoRuleNorm(pattern)]=catId;
+  save();
+  applyGastoRulesCurrentMonth();
+}
+function deleteGastoRule(pattern){
+  const p=prof(); if(!p) return;
+  if(p.gastos?.reglas) delete p.gastos.reglas[pattern];
+  save();
+  renderGastos();
+}
+function renderGastosTagger(p,monthKey,monthData){
+  const el=document.getElementById('gastosTagger');
+  if(!el) return;
+  gastosInit(p);
+  const cats=(p.gastos.categorias||[]).filter(c=>!isTransferCategoria(c.id));
+  const catMap={}; cats.forEach(c=>{catMap[c.id]=c;});
+  const rules=Object.entries(p.gastos.reglas||{}).filter(([,catId])=>catMap[catId]);
+  const pending=(monthData?.transacciones||[])
+    .filter(t=>!t.excluido&&t.importe<0&&!t.categoriaId)
+    .slice(0,5);
+  const catOptions=cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  const ruleChips=rules.slice(0,12).map(([pattern,catId])=>{
+    const c=catMap[catId];
+    return `<span class="gasto-rule-chip" title="Texto: ${esc(pattern)}">
+      <span class="gastos-budget-dot" style="background:${c.color}"></span>
+      <b>${esc(pattern)}</b>
+      <small>${esc(c.name)}</small>
+      <button data-rule="${esc(pattern)}" onclick="deleteGastoRule(this.dataset.rule)" title="Borrar regla">×</button>
+    </span>`;
+  }).join('');
+  const suggestions=pending.map(t=>{
+    const label=(t.concepto||t.conceptoOrig||'Sin concepto').slice(0,48);
+    const value=(t.concepto||t.conceptoOrig||'').slice(0,42);
+    return `<button class="gasto-suggestion" data-pattern="${esc(value)}" onclick="document.getElementById('gastoRulePattern').value=this.dataset.pattern">
+      <span>${esc(label)}</span>
+      <b>${fmt(Math.abs(t.importe))}</b>
+    </button>`;
+  }).join('');
+  el.innerHTML=`
+    <section class="gastos-tagger-card">
+      <div class="gastos-tagger-head">
+        <div>
+          <div class="gastos-tagger-title">Etiquetador automático</div>
+          <div class="gastos-help">Crea reglas tipo "mercadona", "feda" o "andorra telecom" y se aplicarán al importar o al mes actual.</div>
+        </div>
+        <button class="btn-ghost" style="font-size:.7rem;padding:5px 9px" onclick="applyGastoRulesCurrentMonth()">Aplicar reglas</button>
+      </div>
+      <div class="gastos-tagger-form">
+        <input class="inp" id="gastoRulePattern" placeholder="Texto que aparece en el movimiento...">
+        <select class="inp" id="gastoRuleCat">${catOptions}</select>
+        <button class="btn-primary" onclick="saveGastoTagRule()">Guardar regla</button>
+      </div>
+      <div class="gastos-tagger-body">
+        <div class="gastos-tagger-rules">${ruleChips||'<span class="portfolio-flow-empty">Aún no hay reglas guardadas.</span>'}</div>
+        <div class="gastos-tagger-suggestions">
+          <span class="portfolio-flow-label">Sin categoría este mes</span>
+          ${suggestions||'<span class="portfolio-flow-empty">Todo lo importante está etiquetado.</span>'}
+        </div>
+      </div>
+    </section>`;
+}
 function calcGastosMes(md){
   const archivoMap = {};
   (md?.archivos||[]).forEach(a=>{archivoMap[a.id]=a;});
@@ -1964,6 +2125,7 @@ function renderGastos(){
 
   if(!monthData || !(monthData.transacciones||[]).length){
     summaryEl.innerHTML = '';
+    renderGastosTagger(p, monthKey, monthData);
     renderGastosInsights(p, monthKey, monthData);
     filesEl.innerHTML   = '';
     tableEl.innerHTML   = '';
@@ -2031,6 +2193,7 @@ function renderGastos(){
       </div>`:''}
     </div>
   `;
+  renderGastosTagger(p, monthKey, monthData);
   renderGastosInsights(p, monthKey, monthData);
 
   // Render archivos
@@ -2230,7 +2393,7 @@ function updateGastoField(txId, field, value){
   tx[field] = value;
   // Si cambia categoría, aprender la regla para el conceptoOrig
   if(field==='categoriaId' && value && tx.conceptoOrig){
-    p.gastos.reglas[tx.conceptoOrig] = value;
+    p.gastos.reglas[gastoRuleNorm(tx.conceptoOrig)] = value;
   }
   save();
 }
@@ -2358,7 +2521,8 @@ function importGastosRows(rows, etiqueta, tipo, fileName){
     const conceptoOrig = (operacion || concepto || '').trim();
     // Aplicar regla de auto-categorización si existe
     let categoriaId = '';
-    if(p.gastos.reglas[conceptoOrig]) categoriaId = p.gastos.reglas[conceptoOrig];
+    const autoCat = findGastoRuleCategory(p,conceptoOrig);
+    if(autoCat) categoriaId = autoCat;
     else if(isInternalTransferConcept(conceptoOrig)) categoriaId = 'cat_transfer';
     // Excluir por defecto si es positivo (ingreso)
     const excluido = importe >= 0;
@@ -2607,7 +2771,9 @@ function categorizarSinCat(mesKey, txId, catId){
   if(t.revisadoSinCat) delete t.revisadoSinCat;
   // Aprender regla automáticamente: si el concepto es identificable, guardarla
   if(t.operacion && p.gastos.reglas){
-    p.gastos.reglas[t.operacion] = catId;
+    p.gastos.reglas[gastoRuleNorm(t.operacion)] = catId;
+  } else if((t.conceptoOrig||t.concepto) && p.gastos.reglas){
+    p.gastos.reglas[gastoRuleNorm(t.conceptoOrig||t.concepto)] = catId;
   }
   save();
   renderSinCategorizarList(); // refresca lista (la fila desaparece)

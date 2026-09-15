@@ -481,13 +481,14 @@
   <div class="cfg-modal" style="width:95vw;max-width:1180px;max-height:90vh;overflow-y:auto">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:10px">
       <div>
-        <div class="cfg-title" style="margin-bottom:4px">Hoja Operativa PCS SPX v1.6</div>
+        <div class="cfg-title" style="margin-bottom:4px">Hoja Operativa PCS SPX v1.7</div>
         <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.45">
-          Las etiquetas de Op Abiertas se calculan con la primera regla que encaja por DTE restante y TP/profit capturado. Delta, Vega, Fresh Risk, FIX, Recovery Mode y nuevas entradas 0-4 quedan como checklist operativo en el comentario.
+          Entrada, checkpoints, nuevas entradas 0-4, Fresh Risk, FIX y Recovery Mode. Las etiquetas de Op Abiertas usan la tabla editable del final; el esquema superior explica como actuar.
         </div>
       </div>
       <button onclick="addRoadmapRule()" style="background:#4a9eff11;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap">+ Regla</button>
     </div>
+    <div id="roadmapGuide"></div>
     <div id="roadmapRules"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px">
       <button onclick="resetRoadmapRules()" style="background:transparent;border:1px solid #e6913855;color:#e69138;font-family:'Courier New',monospace;font-size:9px;padding:6px 10px;border-radius:3px;cursor:pointer">Restaurar hoja base</button>
@@ -1013,30 +1014,28 @@ const TODAY = new Date().toISOString().split('T')[0];
 const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── CONFIG / THRESHOLDS ──────────────────────────────────────
-const ROADMAP_RULES_VERSION = 4;
+const ROADMAP_RULES_VERSION = 5;
 const DEFAULT_ROADMAP_RULES = [
-  {dteMin:40,dteMax:50,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Profit rapido',comment:'ET a nivel ciclo: P/L acumulado + tiempo total. Si ET >= +20, cerrar ciclo y luego evaluar cartera antes de abrir 0-4 PCS.',tone:'good'},
-  {dteMin:40,dteMax:50,profitMin:0,profitMax:50,action:'Mantener',situation:'Fresh / inicio',comment:'Entrada ideal: 45 DTE, SPX PCS, short Put Delta 15-30, width 25, credito minimo 13% del riesgo nominal. 13-18% zona habitual.',tone:'idle'},
-  {dteMin:40,dteMax:50,profitMin:-999,profitMax:0,action:'Emergency review',situation:'Fresh deteriorado',comment:'No FIX automatico antes de CP50. Revisar solo si short Delta ~50+, short perforado, caida fuerte o shock IV/Vega.',tone:'warn'},
-  {dteMin:36,dteMax:39,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Muy eficiente',comment:'Cierre extraordinario si ET >= +20. No hace falta esperar al checkpoint si el ciclo pago muy rapido.',tone:'good'},
-  {dteMin:36,dteMax:39,profitMin:0,profitMax:50,action:'Mantener',situation:'Ciclo normal',comment:'Fresh Risk: aun no llego a CP25. No anadir exposicion si ya hay demasiados Fresh simultaneos.',tone:'idle'},
-  {dteMin:36,dteMax:39,profitMin:-999,profitMax:0,action:'Revisar shock',situation:'Deterioro temprano',comment:'Si short Delta ~50+, short perforado o IV/Vega disparada: Emergency Fix Review. Si no, no tocar por P/L rojo aislado.',tone:'warn'},
-  {dteMin:33,dteMax:35,profitMin:25,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'CP25 logrado',comment:'Profit ciclo >=25%: cerrar. Despues revisar exposicion, Fresh Risk y FIX; solo entonces decidir 0-4 PCS nuevos.',tone:'good'},
-  {dteMin:33,dteMax:35,profitMin:0,profitMax:25,action:'Mantener',situation:'CP25 sin TP',comment:'CP25 sin 25%: mantener. No hay FIX normal en CP25; solo review extraordinaria si estructura esta rota.',tone:'idle'},
-  {dteMin:33,dteMax:35,profitMin:-999,profitMax:0,action:'Mantener / review',situation:'CP25 rojo',comment:'No reaccionar por P/L. Revisar Delta, short, IV/Vega y cartera. Nuevas entradas 0-1 si hay defensa probable.',tone:'warn'},
-  {dteMin:22,dteMax:32,profitMin:50,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'CP50 logrado',comment:'Profit ciclo >=50%: cerrar. Gestionar primero; despues decidir 0-4 PCS segun estado de cartera y Fresh Risk.',tone:'good'},
-  {dteMin:22,dteMax:32,profitMin:25,profitMax:50,action:'Mantener',situation:'CP50 viable',comment:'Si estructura sigue viable, mantener y dejar trabajar theta. Nuevas entradas solo si cartera NORMAL.',tone:'idle'},
-  {dteMin:22,dteMax:32,profitMin:0,profitMax:25,action:'Mantener / vigilar',situation:'CP50 bajo profit',comment:'No FIX solo porque no pago. Vigilar distancia al short, Delta, IV/Vega y riesgo agregado.',tone:'warn'},
-  {dteMin:22,dteMax:32,profitMin:-999,profitMax:0,action:'FIX si comprometida',situation:'CP50 defensa',comment:'Si estructura comprometida: FIX defensivo a ~45 DTE, bajar short y valorar +1 contrato defensivo con width 25.',tone:'bad'},
-  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'Pre CP75 ganador',comment:'Con 50%+ cerca de 21 DTE, cerrar ciclo. No apurar prima si el ciclo ya hizo su trabajo.',tone:'good'},
+  {dteMin:40,dteMax:50,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Profit rapido',comment:'ET del ciclo >= +20 es señal extraordinaria. Cerrar ciclo si corresponde y despues revisar cartera antes de abrir 0-4 PCS.',tone:'good'},
+  {dteMin:40,dteMax:50,profitMin:0,profitMax:50,action:'Mantener',situation:'Fresh',comment:'PCS todavia no llego a CP25. Entrada valida: 45 DTE, Delta short 15-30, width 25, credito minimo 13% riesgo nominal.',tone:'idle'},
+  {dteMin:40,dteMax:50,profitMin:-999,profitMax:0,action:'Emergency review',situation:'Fresh deteriorado',comment:'No FIX automatico. Revisar solo si short Delta ~50+, short perforado, caida fuerte o shock IV/Vega.',tone:'warn'},
+  {dteMin:36,dteMax:39,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Muy eficiente',comment:'Si el ciclo capturo beneficio muy rapido, ET manda. No hace falta esperar al checkpoint si ET >= +20.',tone:'good'},
+  {dteMin:36,dteMax:39,profitMin:0,profitMax:50,action:'Mantener',situation:'Fresh normal',comment:'No tocar por tocar. Vigilar Fresh Risk total antes de permitir nuevas entradas en el siguiente checkpoint.',tone:'idle'},
+  {dteMin:36,dteMax:39,profitMin:-999,profitMax:0,action:'Revisar shock',situation:'Deterioro temprano',comment:'Comparar mantener vs defender: Delta, short perforado, IV/Vega y riesgo agregado. Si no hay estructura rota, esperar.',tone:'warn'},
+  {dteMin:33,dteMax:35,profitMin:25,profitMax:999,action:'Cerrar + evaluar',situation:'CP25 logrado',comment:'Gestionar primero: profit ciclo >=25% -> cerrar. Despues revisar riesgo agregado, Fresh Risk y FIX; decidir 0-4 PCS.',tone:'good'},
+  {dteMin:33,dteMax:35,profitMin:0,profitMax:25,action:'Mantener',situation:'CP25 sin objetivo',comment:'CP25 sin 25%: mantener. No FIX normal en CP25; solo Emergency Review si la estructura esta rota.',tone:'idle'},
+  {dteMin:33,dteMax:35,profitMin:-999,profitMax:0,action:'Mantener / review',situation:'CP25 rojo',comment:'No reaccionar por P/L rojo aislado. Reducir nuevas entradas si sube riesgo de FIX.',tone:'warn'},
+  {dteMin:22,dteMax:32,profitMin:50,profitMax:999,action:'Cerrar + evaluar',situation:'CP50 logrado',comment:'Profit ciclo >=50%: cerrar. Despues revisar cartera y abrir 0-4 PCS solo si estado y Fresh Risk lo permiten.',tone:'good'},
+  {dteMin:22,dteMax:32,profitMin:0,profitMax:50,action:'Mantener si viable',situation:'CP50 viable',comment:'Si estructura sigue viable, mantener. Si comprometida, preparar FIX. No confundir credito del roll con beneficio.',tone:'warn'},
+  {dteMin:22,dteMax:32,profitMin:-999,profitMax:0,action:'FIX si comprometida',situation:'CP50 defensa',comment:'FIX defensivo si hay compromiso real: comprar tiempo, bajar short/Delta/breakeven y respetar Risk Budget.',tone:'bad'},
+  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar / preparar CP75',situation:'Pre CP75 ganador',comment:'Con 50%+ cerca de 21 DTE, cerrar si el ciclo hizo su trabajo. Gestionar primero, abrir despues.',tone:'good'},
   {dteMin:15,dteMax:21,profitMin:0,profitMax:50,action:'Mantener vigilado',situation:'Pre CP75 viable',comment:'Mantener solo si esta comodo y lejos del short. Si hay duda, reservar margen para posible FIX.',tone:'warn'},
-  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Preparar FIX',situation:'Defensa probable',comment:'Comparar mantener vs defender: DTE anadidos, mejora Delta/strike/breakeven, credito, Delta Max Loss y margen.',tone:'bad'},
-  {dteMin:8,dteMax:14,profitMin:0,profitMax:999,action:'Cerrar + evaluar 0-4',situation:'CP75 beneficio',comment:'CP75 = actuar siempre. Con beneficio, cerrar. Abrir 0-4 nuevos solo si no hay Recovery Mode.',tone:'good'},
-  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'FIX / reducir',situation:'CP75 perdida',comment:'Con perdida: FIX o reduccion. Si hubo 2+ FIX o varias cohortes en defensa, Recovery Mode y 0 nuevas entradas.',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'7 DTE ganador',comment:'Cerrar si comisiones/slippage lo permiten. Evitar gamma y no perseguir centimos.',tone:'good'},
-  {dteMin:4,dteMax:7,profitMin:0,profitMax:70,action:'Cerrar o gestionar',situation:'7 DTE abierto',comment:'No llegar voluntariamente a expiracion. Cerca del short o dudoso: gestionar/cerrar.',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:-999,profitMax:0,action:'Gestionar ya',situation:'7 DTE perdida',comment:'Cerrar, rolar o reducir antes de que gamma mande. No esperar milagros.',tone:'bad'},
-  {dteMin:0,dteMax:3,profitMin:-999,profitMax:999,action:'Cerrar',situation:'Expiracion',comment:'Disciplina: no llegar voluntariamente a expiracion, no confundir credito con beneficio y no abrir riesgo nuevo en Recovery.',tone:'bad'}
+  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Preparar FIX',situation:'Defensa probable',comment:'Comparar DTE añadidos, mejora de strike/Delta/breakeven, credito, Delta Max Loss y margen.',tone:'bad'},
+  {dteMin:8,dteMax:14,profitMin:0,profitMax:999,action:'Cerrar + evaluar',situation:'CP75 beneficio',comment:'CP75 = actuar siempre. Con beneficio, cerrar. Nuevas entradas solo si no hay Recovery Mode.',tone:'good'},
+  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'FIX / reducir',situation:'CP75 perdida',comment:'Con perdida: FIX o reduccion. Si hay 2+ FIX en cohorte o varias defensas, Recovery Mode y 0 nuevas entradas.',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'7 DTE ganador',comment:'Cerrar si comisiones/slippage lo permiten. No perseguir centimos ni regalar gamma.',tone:'good'},
+  {dteMin:4,dteMax:7,profitMin:-999,profitMax:70,action:'Cerrar / gestionar',situation:'7 DTE abierto',comment:'Evitar expiracion. Cerca del short, ITM o dudoso: cerrar, rolar o reducir antes de gamma.',tone:'bad'},
+  {dteMin:0,dteMax:3,profitMin:-999,profitMax:999,action:'Cerrar',situation:'Expiracion',comment:'No llegar voluntariamente a expiracion. Prioridad absoluta a control, liquidez y supervivencia.',tone:'bad'}
 ];
 let CFG = {
   NP:  { ann:20, prob:75, ivr:35, psig:12 },
@@ -4396,9 +4395,66 @@ function closeRoadmapCfg(){
   document.getElementById('roadmapOverlay')?.classList.remove('on');
 }
 
+function renderRoadmapGuide(){
+  const el = document.getElementById('roadmapGuide');
+  if(!el) return;
+  const block = (title, tone, items) => `
+    <section style="background:#0a0e14;border:1px solid #1e2d3d;border-left:3px solid ${tone};border-radius:8px;padding:11px 12px;min-width:0">
+      <div style="font-family:'Courier New',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:${tone};font-weight:800;margin-bottom:8px">${title}</div>
+      <div style="display:grid;gap:7px">
+        ${items.map(it=>`<div style="font-family:'Courier New',monospace;font-size:9px;line-height:1.45;color:#8aa0b7"><b style="color:#c9d1d9">${it[0]}</b><br>${it[1]}</div>`).join('')}
+      </div>
+    </section>`;
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;margin:12px 0 14px">
+      ${block('Entrada PCS base','#4a9eff',[
+        ['Setup','SPX PCS a 45 DTE, short Put Delta 15-30, long Put 25 puntos inferior, 1 contrato por PCS base.'],
+        ['Crédito mínimo','Width 25 = $2.500 nominales. Mínimo 13% del riesgo nominal (~$325). 13-18% es zona habitual; no hay máximo duro.'],
+        ['Selección','Dentro de Delta 15-30, priorizar el Delta más bajo que alcance el crédito mínimo. No abrir si la prima no compensa.']
+      ])}
+      ${block('Orden obligatorio','#f0a500',[
+        ['1. Gestionar','En cada checkpoint, primero se decide qué hacer con lo existente.'],
+        ['2. Revisar cartera','Mirar riesgo agregado, Fresh Risk, FIX activos y estado NORMAL/DEFENSA/RECOVERY.'],
+        ['3. Abrir después','Solo entonces decidir 0-4 PCS nuevos. El 50% de capital base es techo, no objetivo.']
+      ])}
+      ${block('Checkpoints','#3fb68b',[
+        ['CP25','Profit ciclo >=25%: cerrar. Si no, mantener. No FIX normal. Después evaluar 0-4 PCS.'],
+        ['CP50','Profit >=50%: cerrar. Si viable, mantener. Si comprometida, FIX. Después evaluar 0-4 PCS.'],
+        ['CP75','Actuar siempre: con beneficio cerrar; con pérdida FIX/reducir. Nuevas entradas solo si no hay Recovery Mode.']
+      ])}
+      ${block('Nuevas entradas 0-4','#7fc9a6',[
+        ['Normal + poca exposición','2-4 PCS orientativos si Fresh Risk y Risk Budget están controlados.'],
+        ['Normal + exposición media','1-2 PCS para crecer sin concentrar entradas recientes.'],
+        ['Defensa / Recovery','Defensa: 0-1 PCS. Recovery Mode: 0 PCS y reservar margen para ciclos existentes.']
+      ])}
+      ${block('Fresh Risk','#e69138',[
+        ['Definición','PCS que todavía no ha llegado a CP25. Es la parte más sensible a una corrección inmediata.'],
+        ['Uso','Cuantos más Fresh simultáneos, menos nuevas entradas. Margen libre no significa abrir 4 PCS.'],
+        ['Objetivo','Evitar que una corrección rápida convierta varias cohortes en candidatas a Emergency FIX a la vez.']
+      ])}
+      ${block('FIX defensivo','#b874ff',[
+        ['Emergency Review','Antes de CP50 solo revisar si short Delta ~50+, short perforado, caída fuerte o shock IV/Vega. No es automático.'],
+        ['FIX de calidad','Debe comprar defensa real: +20-30 DTE y/o short ~1,5-2% más bajo, mejora de Delta/breakeven y riesgo aceptable.'],
+        ['Métricas','Delta Max Loss, crédito/riesgo incremental, crédito/día añadido, Strike Relief Efficiency, distancia al short y riesgo agregado.']
+      ])}
+      ${block('Estados de cartera','#f04545',[
+        ['NORMAL','Sin cohortes en defensa fuerte; riesgo agregado y Fresh controlados. 0-4 según exposición.'],
+        ['DEFENSA','Alguna cohorte con 1 FIX, Delta alta o posible defensa. 0-1 y reservar capital.'],
+        ['RECOVERY MODE','2+ FIX en una cohorte o varias cohortes en defensa. 0 nuevas entradas; prioridad supervivencia.']
+      ])}
+      ${block('Disciplina','#5a7a9a',[
+        ['No hacer','No abrir por obligación, no ignorar Fresh Risk, no modificar solo porque esté rojo, no perseguir fills.'],
+        ['No confundir','Crédito del roll no es beneficio del ciclo. Un contrato adicional es defensa, no excusa para escalar sin alivio real.'],
+        ['Métrica reina','Retorno por unidad de capital/margen y tiempo, siempre condicionado a sobrevivir la peor cola.']
+      ])}
+    </div>
+    <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;margin:4px 0 8px">Reglas editables para etiquetas automáticas de Op Abiertas:</div>`;
+}
+
 function renderRoadmapRules(){
   const wrap = document.getElementById('roadmapRules');
   if(!wrap) return;
+  renderRoadmapGuide();
   const rules = roadmapRules();
   const inp = (i,k,w='70px',type='number') => `<input data-rm-i="${i}" data-rm-k="${k}" type="${type}" value="${esc(rules[i][k] ?? '')}" style="width:${w};background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">`;
   const toneSel = (i) => {
@@ -4631,7 +4687,7 @@ function renderSpxAccountPanel(today){
       <div class="spx-board-head">
         <div>
           <div class="spx-board-title">Estado cuenta SPX PCS</div>
-          <div class="spx-board-sub">Lectura rapida de spreads SPX abiertos segun riesgo base, DTE, TP y hoja operativa v1.6.</div>
+          <div class="spx-board-sub">Lectura rapida de spreads SPX abiertos segun riesgo base, DTE, TP y hoja operativa v1.7.</div>
         </div>
         <span class="spx-board-pill" style="color:${decision.color};border-color:${decision.color};background:${decision.bg}">${esc(decision.label)}</span>
       </div>
