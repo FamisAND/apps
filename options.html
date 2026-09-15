@@ -4456,7 +4456,13 @@ function renderRoadmapRules(){
   if(!wrap) return;
   renderRoadmapGuide();
   const rules = roadmapRules();
-  const inp = (i,k,w='70px',type='number') => `<input data-rm-i="${i}" data-rm-k="${k}" type="${type}" value="${esc(rules[i][k] ?? '')}" style="width:${w};background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">`;
+  const ruleValue = (i,k) => {
+    const value = rules[i][k];
+    // 999 was the old sentinel for an open upper bound. Keep it readable and
+    // compatible with saved configurations while avoiding a fake percentage.
+    return k === 'profitMax' && Number(value) >= 999 ? '' : (value ?? '');
+  };
+  const inp = (i,k,w='70px',type='number') => `<input data-rm-i="${i}" data-rm-k="${k}" type="${type}" value="${esc(ruleValue(i,k))}" placeholder="${k==='profitMax'?'sin límite':''}" aria-label="${k==='profitMax'?'Profit máximo, dejar vacío para sin límite':k}" style="width:${w};background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">`;
   const toneSel = (i) => {
     const cur = rules[i].tone || 'idle';
     return `<select data-rm-i="${i}" data-rm-k="tone" style="width:86px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">
@@ -4464,12 +4470,15 @@ function renderRoadmapRules(){
     </select>`;
   };
   wrap.innerHTML = `
-    <div style="display:grid;grid-template-columns:64px 64px 78px 78px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
-      <span>DTE min</span><span>DTE max</span><span>Profit min</span><span>Profit max</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
+    <div style="font-family:'Courier New',monospace;font-size:9px;line-height:1.45;color:#5a7a9a;background:#0a0e14;border:1px solid #1e2d3d;border-radius:6px;padding:8px 10px;margin:0 0 10px">
+      <b style="color:#c9d1d9">Como leer Profit:</b> es el porcentaje de la prima neta inicial que ya se ha capturado (no dolares). Por ejemplo, 25 = CP25 y 50 = CP50. El credito minimo de entrada va aparte: en PCS de ancho 25, <b style="color:#f0a500">13% del riesgo nominal de $2.500 = aproximadamente $325 por contrato</b>. Deja “Profit max” vacio para indicar “sin limite”.
+    </div>
+    <div style="display:grid;grid-template-columns:64px 64px 78px 96px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
+      <span>DTE min</span><span>DTE max</span><span>Profit min %</span><span>Profit max %</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
     </div>
     ${rules.map((r,i)=>`
-      <div style="display:grid;grid-template-columns:64px 64px 78px 78px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px">
-        ${inp(i,'dteMin','64px')} ${inp(i,'dteMax','64px')} ${inp(i,'profitMin','78px')} ${inp(i,'profitMax','78px')}
+      <div style="display:grid;grid-template-columns:64px 64px 78px 96px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px">
+        ${inp(i,'dteMin','64px')} ${inp(i,'dteMax','64px')} ${inp(i,'profitMin','78px')} ${inp(i,'profitMax','96px')}
         ${inp(i,'action','120px','text')} ${inp(i,'situation','160px','text')} ${inp(i,'comment','100%','text')} ${toneSel(i)}
         <button onclick="removeRoadmapRule(${i})" title="Eliminar regla" style="background:transparent;border:1px solid #f0454544;color:#f04545;border-radius:3px;cursor:pointer;padding:4px 7px">×</button>
       </div>`).join('')}`;
@@ -4482,7 +4491,11 @@ function readRoadmapRulesFromDom(){
     const k = el.dataset.rmK;
     if(!rules[i]) return;
     if(['dteMin','dteMax','profitMin','profitMax'].includes(k)){
-      rules[i][k] = Number.isFinite(parseFloat(el.value)) ? parseFloat(el.value) : 0;
+      // Blank profit maximum means an open upper bound. Preserve that as null
+      // instead of writing the legacy 999 sentinel back to the configuration.
+      rules[i][k] = (k === 'profitMax' && el.value.trim() === '')
+        ? null
+        : (Number.isFinite(parseFloat(el.value)) ? parseFloat(el.value) : 0);
     } else {
       rules[i][k] = el.value;
     }
@@ -4523,7 +4536,7 @@ function roadmapRecommendation(dteLeft, tpPct, strat){
   const n = (v, fallback) => Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback;
   return roadmapRules().find(r =>
     dte >= n(r.dteMin,0) && dte <= n(r.dteMax,999) &&
-    p >= n(r.profitMin,-999) && p <= n(r.profitMax,999)
+    p >= n(r.profitMin,-999) && p <= (r.profitMax == null || Number(r.profitMax) >= 999 ? Infinity : n(r.profitMax,Infinity))
   ) || null;
 }
 
