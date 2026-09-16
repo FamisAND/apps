@@ -1014,28 +1014,32 @@ const TODAY = new Date().toISOString().split('T')[0];
 const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── CONFIG / THRESHOLDS ──────────────────────────────────────
-const ROADMAP_RULES_VERSION = 5;
+const ROADMAP_RULES_VERSION = 6;
+const PCS_ENTRY_CREDIT_MIN_PCT = 13;
+const PCS_ENTRY_CREDIT_MAX_PCT = 18;
+const PCS_GUIDE_WIDTH = 25;
+const PCS_GUIDE_RISK = PCS_GUIDE_WIDTH * 100;
 const DEFAULT_ROADMAP_RULES = [
-  {dteMin:40,dteMax:50,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Profit rapido',comment:'ET del ciclo >= +20 es señal extraordinaria. Cerrar ciclo si corresponde y despues revisar cartera antes de abrir 0-4 PCS.',tone:'good'},
+  {dteMin:40,dteMax:50,profitMin:50,profitMax:null,action:'Cerrar si ET +20',situation:'Profit rapido',comment:'ET del ciclo >= +20 es señal extraordinaria. Cerrar ciclo si corresponde y despues revisar cartera antes de abrir 0-4 PCS.',tone:'good'},
   {dteMin:40,dteMax:50,profitMin:0,profitMax:50,action:'Mantener',situation:'Fresh',comment:'PCS todavia no llego a CP25. Entrada valida: 45 DTE, Delta short 15-30, width 25, credito minimo 13% riesgo nominal.',tone:'idle'},
-  {dteMin:40,dteMax:50,profitMin:-999,profitMax:0,action:'Emergency review',situation:'Fresh deteriorado',comment:'No FIX automatico. Revisar solo si short Delta ~50+, short perforado, caida fuerte o shock IV/Vega.',tone:'warn'},
-  {dteMin:36,dteMax:39,profitMin:50,profitMax:999,action:'Cerrar si ET +20',situation:'Muy eficiente',comment:'Si el ciclo capturo beneficio muy rapido, ET manda. No hace falta esperar al checkpoint si ET >= +20.',tone:'good'},
+  {dteMin:40,dteMax:50,profitMin:null,profitMax:0,action:'Emergency review',situation:'Fresh deteriorado',comment:'No FIX automatico. Revisar solo si short Delta ~50+, short perforado, caida fuerte o shock IV/Vega.',tone:'warn'},
+  {dteMin:36,dteMax:39,profitMin:50,profitMax:null,action:'Cerrar si ET +20',situation:'Muy eficiente',comment:'Si el ciclo capturo beneficio muy rapido, ET manda. No hace falta esperar al checkpoint si ET >= +20.',tone:'good'},
   {dteMin:36,dteMax:39,profitMin:0,profitMax:50,action:'Mantener',situation:'Fresh normal',comment:'No tocar por tocar. Vigilar Fresh Risk total antes de permitir nuevas entradas en el siguiente checkpoint.',tone:'idle'},
-  {dteMin:36,dteMax:39,profitMin:-999,profitMax:0,action:'Revisar shock',situation:'Deterioro temprano',comment:'Comparar mantener vs defender: Delta, short perforado, IV/Vega y riesgo agregado. Si no hay estructura rota, esperar.',tone:'warn'},
-  {dteMin:33,dteMax:35,profitMin:25,profitMax:999,action:'Cerrar + evaluar',situation:'CP25 logrado',comment:'Gestionar primero: profit ciclo >=25% -> cerrar. Despues revisar riesgo agregado, Fresh Risk y FIX; decidir 0-4 PCS.',tone:'good'},
+  {dteMin:36,dteMax:39,profitMin:null,profitMax:0,action:'Revisar shock',situation:'Deterioro temprano',comment:'Comparar mantener vs defender: Delta, short perforado, IV/Vega y riesgo agregado. Si no hay estructura rota, esperar.',tone:'warn'},
+  {dteMin:33,dteMax:35,profitMin:25,profitMax:null,action:'Cerrar + evaluar',situation:'CP25 logrado',comment:'Gestionar primero: profit ciclo >=25% -> cerrar. Despues revisar riesgo agregado, Fresh Risk y FIX; decidir 0-4 PCS.',tone:'good'},
   {dteMin:33,dteMax:35,profitMin:0,profitMax:25,action:'Mantener',situation:'CP25 sin objetivo',comment:'CP25 sin 25%: mantener. No FIX normal en CP25; solo Emergency Review si la estructura esta rota.',tone:'idle'},
-  {dteMin:33,dteMax:35,profitMin:-999,profitMax:0,action:'Mantener / review',situation:'CP25 rojo',comment:'No reaccionar por P/L rojo aislado. Reducir nuevas entradas si sube riesgo de FIX.',tone:'warn'},
-  {dteMin:22,dteMax:32,profitMin:50,profitMax:999,action:'Cerrar + evaluar',situation:'CP50 logrado',comment:'Profit ciclo >=50%: cerrar. Despues revisar cartera y abrir 0-4 PCS solo si estado y Fresh Risk lo permiten.',tone:'good'},
+  {dteMin:33,dteMax:35,profitMin:null,profitMax:0,action:'Mantener / review',situation:'CP25 rojo',comment:'No reaccionar por P/L rojo aislado. Reducir nuevas entradas si sube riesgo de FIX.',tone:'warn'},
+  {dteMin:22,dteMax:32,profitMin:50,profitMax:null,action:'Cerrar + evaluar',situation:'CP50 logrado',comment:'Profit ciclo >=50%: cerrar. Despues revisar cartera y abrir 0-4 PCS solo si estado y Fresh Risk lo permiten.',tone:'good'},
   {dteMin:22,dteMax:32,profitMin:0,profitMax:50,action:'Mantener si viable',situation:'CP50 viable',comment:'Si estructura sigue viable, mantener. Si comprometida, preparar FIX. No confundir credito del roll con beneficio.',tone:'warn'},
-  {dteMin:22,dteMax:32,profitMin:-999,profitMax:0,action:'FIX si comprometida',situation:'CP50 defensa',comment:'FIX defensivo si hay compromiso real: comprar tiempo, bajar short/Delta/breakeven y respetar Risk Budget.',tone:'bad'},
-  {dteMin:15,dteMax:21,profitMin:50,profitMax:999,action:'Cerrar / preparar CP75',situation:'Pre CP75 ganador',comment:'Con 50%+ cerca de 21 DTE, cerrar si el ciclo hizo su trabajo. Gestionar primero, abrir despues.',tone:'good'},
+  {dteMin:22,dteMax:32,profitMin:null,profitMax:0,action:'FIX si comprometida',situation:'CP50 defensa',comment:'FIX defensivo si hay compromiso real: comprar tiempo, bajar short/Delta/breakeven y respetar Risk Budget.',tone:'bad'},
+  {dteMin:15,dteMax:21,profitMin:50,profitMax:null,action:'Cerrar / preparar CP75',situation:'Pre CP75 ganador',comment:'Con 50%+ cerca de 21 DTE, cerrar si el ciclo hizo su trabajo. Gestionar primero, abrir despues.',tone:'good'},
   {dteMin:15,dteMax:21,profitMin:0,profitMax:50,action:'Mantener vigilado',situation:'Pre CP75 viable',comment:'Mantener solo si esta comodo y lejos del short. Si hay duda, reservar margen para posible FIX.',tone:'warn'},
-  {dteMin:15,dteMax:21,profitMin:-999,profitMax:0,action:'Preparar FIX',situation:'Defensa probable',comment:'Comparar DTE añadidos, mejora de strike/Delta/breakeven, credito, Delta Max Loss y margen.',tone:'bad'},
-  {dteMin:8,dteMax:14,profitMin:0,profitMax:999,action:'Cerrar + evaluar',situation:'CP75 beneficio',comment:'CP75 = actuar siempre. Con beneficio, cerrar. Nuevas entradas solo si no hay Recovery Mode.',tone:'good'},
-  {dteMin:8,dteMax:14,profitMin:-999,profitMax:0,action:'FIX / reducir',situation:'CP75 perdida',comment:'Con perdida: FIX o reduccion. Si hay 2+ FIX en cohorte o varias defensas, Recovery Mode y 0 nuevas entradas.',tone:'bad'},
-  {dteMin:4,dteMax:7,profitMin:70,profitMax:999,action:'Cerrar',situation:'7 DTE ganador',comment:'Cerrar si comisiones/slippage lo permiten. No perseguir centimos ni regalar gamma.',tone:'good'},
-  {dteMin:4,dteMax:7,profitMin:-999,profitMax:70,action:'Cerrar / gestionar',situation:'7 DTE abierto',comment:'Evitar expiracion. Cerca del short, ITM o dudoso: cerrar, rolar o reducir antes de gamma.',tone:'bad'},
-  {dteMin:0,dteMax:3,profitMin:-999,profitMax:999,action:'Cerrar',situation:'Expiracion',comment:'No llegar voluntariamente a expiracion. Prioridad absoluta a control, liquidez y supervivencia.',tone:'bad'}
+  {dteMin:15,dteMax:21,profitMin:null,profitMax:0,action:'Preparar FIX',situation:'Defensa probable',comment:'Comparar DTE añadidos, mejora de strike/Delta/breakeven, credito, Delta Max Loss y margen.',tone:'bad'},
+  {dteMin:8,dteMax:14,profitMin:0,profitMax:null,action:'Cerrar + evaluar',situation:'CP75 beneficio',comment:'CP75 = actuar siempre. Con beneficio, cerrar. Nuevas entradas solo si no hay Recovery Mode.',tone:'good'},
+  {dteMin:8,dteMax:14,profitMin:null,profitMax:0,action:'FIX / reducir',situation:'CP75 perdida',comment:'Con perdida: FIX o reduccion. Si hay 2+ FIX en cohorte o varias defensas, Recovery Mode y 0 nuevas entradas.',tone:'bad'},
+  {dteMin:4,dteMax:7,profitMin:70,profitMax:null,action:'Cerrar',situation:'7 DTE ganador',comment:'Cerrar si comisiones/slippage lo permiten. No perseguir centimos ni regalar gamma.',tone:'good'},
+  {dteMin:4,dteMax:7,profitMin:null,profitMax:70,action:'Cerrar / gestionar',situation:'7 DTE abierto',comment:'Evitar expiracion. Cerca del short, ITM o dudoso: cerrar, rolar o reducir antes de gamma.',tone:'bad'},
+  {dteMin:0,dteMax:3,profitMin:null,profitMax:null,action:'Cerrar',situation:'Expiracion',comment:'No llegar voluntariamente a expiracion. Prioridad absoluta a control, liquidez y supervivencia.',tone:'bad'}
 ];
 let CFG = {
   NP:  { ann:20, prob:75, ivr:35, psig:12 },
@@ -1050,10 +1054,20 @@ let CFG = {
   roadmapRulesVersion: ROADMAP_RULES_VERSION
 };
 try{ const s=localStorage.getItem('ot_cfg'); if(s){ const p=JSON.parse(s); if(p.NP&&p.PCS) CFG=p; } }catch(e){}
-if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length || CFG.roadmapRulesVersion !== ROADMAP_RULES_VERSION){
-  CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
-  CFG.roadmapRulesVersion = ROADMAP_RULES_VERSION;
+function normalizeRoadmapRules(rules){
+  if(!Array.isArray(rules) || !rules.length) return DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+  return rules.map(r => {
+    const next = {...r};
+    if(next.profitMax == null || Number(next.profitMax) >= 999) next.profitMax = null;
+    if(next.profitMin == null || Number(next.profitMin) <= -999) next.profitMin = null;
+    return next;
+  });
 }
+if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length){
+  CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
+}
+CFG.roadmapRules = normalizeRoadmapRules(CFG.roadmapRules);
+CFG.roadmapRulesVersion = ROADMAP_RULES_VERSION;
 function toggleUnrealized(){
   CFG.showUnrealized = !CFG.showUnrealized;
   try{ const s=JSON.parse(localStorage.getItem('ot_cfg')||'{}'); s.showUnrealized=CFG.showUnrealized; localStorage.setItem('ot_cfg',JSON.stringify(s)); }catch(e){}
@@ -1104,15 +1118,22 @@ function closeCfg(){ document.getElementById('cfgOverlay').classList.remove('on'
 
 function saveCfg(){
   const prevDashGroup = CFG.dashGroup || 'op'; // preserve across save
+  const prevRoadmapRules = normalizeRoadmapRules(CFG.roadmapRules);
+  const prevShowUnrealized = CFG.showUnrealized;
+  const prevStratDirections = CFG.stratDirections || {};
   CFG = {
     NP:  { ann:+document.getElementById('cfg_np_ann').value||20,  prob:+document.getElementById('cfg_np_prob').value||75,  ivr:+document.getElementById('cfg_np_ivr').value||35,  psig:+document.getElementById('cfg_np_psig').value||12 },
     PCS: { ann:+document.getElementById('cfg_pcs_ann').value||15, prob:+document.getElementById('cfg_pcs_prob').value||68, ivr:+document.getElementById('cfg_pcs_ivr').value||30, psig:+document.getElementById('cfg_pcs_psig').value||8  },
     dashGroup: prevDashGroup,
+    showUnrealized: prevShowUnrealized,
     customStrats:  CFG.customStrats  || [],
     stratOtroSet:  CFG.stratOtroSet  || [],
+    stratDirections: prevStratDirections,
     cashAvail:     CFG.cashAvail     || 0,
     riskTotalStrats: CFG.riskTotalStrats || ['NP','PCS','CC','CCS','DPS','IC','BWB','JL','112','0DTE'],
-    tpTargets: CFG.tpTargets || { NP:50, PCS:50, CC:80, '0DTE':50, CCS:60, DPS:50, IC:50, OTRO:50 }
+    tpTargets: CFG.tpTargets || { NP:50, PCS:50, CC:80, '0DTE':50, CCS:60, DPS:50, IC:50, OTRO:50 },
+    roadmapRules: prevRoadmapRules,
+    roadmapRulesVersion: ROADMAP_RULES_VERSION
   };
   // dashGroup managed by toggleDashGroup()
   try{ localStorage.setItem('ot_cfg', JSON.stringify(CFG)); }catch(e){}
@@ -4383,6 +4404,7 @@ function roadmapRules(){
   if(!Array.isArray(CFG.roadmapRules) || !CFG.roadmapRules.length){
     CFG.roadmapRules = DEFAULT_ROADMAP_RULES.map(r=>({...r}));
   }
+  CFG.roadmapRules = normalizeRoadmapRules(CFG.roadmapRules);
   return CFG.roadmapRules;
 }
 
@@ -4456,13 +4478,38 @@ function renderRoadmapRules(){
   if(!wrap) return;
   renderRoadmapGuide();
   const rules = roadmapRules();
+  const eur = v => '$' + Math.round(v).toLocaleString('es-ES');
+  const pct = v => (Math.round(v * 10) / 10).toLocaleString('es-ES', {maximumFractionDigits:1}) + '%';
+  const liveCreditGuide = (r) => {
+    const min = r.profitMin == null ? null : parseFloat(r.profitMin);
+    const max = r.profitMax == null ? null : parseFloat(r.profitMax);
+    if(min == null && max == null) return 'Gestionar sin esperar vencimiento';
+    if(min == null && max <= 0) return `Perdida: prima viva > ${PCS_ENTRY_CREDIT_MIN_PCT}-${PCS_ENTRY_CREDIT_MAX_PCT}% MR`;
+    const fromCapture = Math.max(0, min ?? 0);
+    const toCapture = max == null ? 100 : Math.max(0, Math.min(100, max));
+    const liveLowPct = PCS_ENTRY_CREDIT_MIN_PCT * Math.max(0, 1 - toCapture / 100);
+    const liveHighPct = PCS_ENTRY_CREDIT_MAX_PCT * Math.max(0, 1 - fromCapture / 100);
+    const liveLowUsd = PCS_GUIDE_RISK * liveLowPct / 100;
+    const liveHighUsd = PCS_GUIDE_RISK * liveHighPct / 100;
+    if(max == null){
+      const thresholdLowPct = PCS_ENTRY_CREDIT_MIN_PCT * Math.max(0, 1 - fromCapture / 100);
+      const thresholdHighPct = PCS_ENTRY_CREDIT_MAX_PCT * Math.max(0, 1 - fromCapture / 100);
+      const thresholdLowUsd = PCS_GUIDE_RISK * thresholdLowPct / 100;
+      const thresholdHighUsd = PCS_GUIDE_RISK * thresholdHighPct / 100;
+      return `Cerrar si recomprar <= ${pct(thresholdLowPct)}-${pct(thresholdHighPct)} MR (${eur(thresholdLowUsd)}-${eur(thresholdHighUsd)} w25)`;
+    }
+    return `Prima viva ${pct(liveLowPct)}-${pct(liveHighPct)} MR (${eur(liveLowUsd)}-${eur(liveHighUsd)} w25)`;
+  };
   const ruleValue = (i,k) => {
     const value = rules[i][k];
-    // 999 was the old sentinel for an open upper bound. Keep it readable and
-    // compatible with saved configurations while avoiding a fake percentage.
-    return k === 'profitMax' && Number(value) >= 999 ? '' : (value ?? '');
+    return value ?? '';
   };
-  const inp = (i,k,w='70px',type='number') => `<input data-rm-i="${i}" data-rm-k="${k}" type="${type}" value="${esc(ruleValue(i,k))}" placeholder="${k==='profitMax'?'sin límite':''}" aria-label="${k==='profitMax'?'Profit máximo, dejar vacío para sin límite':k}" style="width:${w};background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">`;
+  const inp = (i,k,w='70px',type='number') => {
+    const label = k === 'profitMin'
+      ? 'Profit mínimo; dejar vacío para incluir pérdidas'
+      : (k === 'profitMax' ? 'Profit máximo; dejar vacío para sin límite' : k);
+    return `<input data-rm-i="${i}" data-rm-k="${k}" type="${type}" value="${esc(ruleValue(i,k))}" aria-label="${label}" style="width:${w};background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">`;
+  };
   const toneSel = (i) => {
     const cur = rules[i].tone || 'idle';
     return `<select data-rm-i="${i}" data-rm-k="tone" style="width:86px;background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:5px 6px;border-radius:3px;outline:none">
@@ -4471,14 +4518,15 @@ function renderRoadmapRules(){
   };
   wrap.innerHTML = `
     <div style="font-family:'Courier New',monospace;font-size:9px;line-height:1.45;color:#5a7a9a;background:#0a0e14;border:1px solid #1e2d3d;border-radius:6px;padding:8px 10px;margin:0 0 10px">
-      <b style="color:#c9d1d9">Como leer Profit:</b> es el porcentaje de la prima neta inicial que ya se ha capturado (no dolares). Por ejemplo, 25 = CP25 y 50 = CP50. El credito minimo de entrada va aparte: en PCS de ancho 25, <b style="color:#f0a500">13% del riesgo nominal de $2.500 = aproximadamente $325 por contrato</b>. Deja “Profit max” vacio para indicar “sin limite”.
+      <b style="color:#c9d1d9">Como leerlo:</b> Profit es % de prima neta inicial capturada. Entrada base PCS: credito objetivo <b style="color:#f0a500">${PCS_ENTRY_CREDIT_MIN_PCT}-${PCS_ENTRY_CREDIT_MAX_PCT}% del max risk nominal</b>. En un spread width ${PCS_GUIDE_WIDTH}, eso equivale a ${eur(PCS_GUIDE_RISK*PCS_ENTRY_CREDIT_MIN_PCT/100)}-${eur(PCS_GUIDE_RISK*PCS_ENTRY_CREDIT_MAX_PCT/100)} por contrato.
     </div>
-    <div style="display:grid;grid-template-columns:64px 64px 78px 96px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
-      <span>DTE min</span><span>DTE max</span><span>Profit min %</span><span>Profit max %</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
+    <div style="display:grid;grid-template-columns:64px 64px 78px 96px 180px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
+      <span>DTE min</span><span>DTE max</span><span>Capt. min %</span><span>Capt. max %</span><span>Credito estimado</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
     </div>
     ${rules.map((r,i)=>`
-      <div style="display:grid;grid-template-columns:64px 64px 78px 96px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:64px 64px 78px 96px 180px 120px 160px 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px">
         ${inp(i,'dteMin','64px')} ${inp(i,'dteMax','64px')} ${inp(i,'profitMin','78px')} ${inp(i,'profitMax','96px')}
+        <div title="Estimación derivada de crédito inicial ${PCS_ENTRY_CREDIT_MIN_PCT}-${PCS_ENTRY_CREDIT_MAX_PCT}% MR y width ${PCS_GUIDE_WIDTH}" style="min-height:28px;display:flex;align-items:center;background:#08111b;border:1px solid #1e2d3d;color:#8fb7dc;font-family:'Courier New',monospace;font-size:8px;line-height:1.25;padding:4px 6px;border-radius:3px">${esc(liveCreditGuide(r))}</div>
         ${inp(i,'action','120px','text')} ${inp(i,'situation','160px','text')} ${inp(i,'comment','100%','text')} ${toneSel(i)}
         <button onclick="removeRoadmapRule(${i})" title="Eliminar regla" style="background:transparent;border:1px solid #f0454544;color:#f04545;border-radius:3px;cursor:pointer;padding:4px 7px">×</button>
       </div>`).join('')}`;
@@ -4491,16 +4539,16 @@ function readRoadmapRulesFromDom(){
     const k = el.dataset.rmK;
     if(!rules[i]) return;
     if(['dteMin','dteMax','profitMin','profitMax'].includes(k)){
-      // Blank profit maximum means an open upper bound. Preserve that as null
-      // instead of writing the legacy 999 sentinel back to the configuration.
-      rules[i][k] = (k === 'profitMax' && el.value.trim() === '')
+      // Blank profit bounds mean an open side of the range. This keeps the
+      // UI readable and avoids persisting the old +/-999 sentinels.
+      rules[i][k] = ((k === 'profitMax' || k === 'profitMin') && el.value.trim() === '')
         ? null
         : (Number.isFinite(parseFloat(el.value)) ? parseFloat(el.value) : 0);
     } else {
       rules[i][k] = el.value;
     }
   });
-  return rules;
+  return normalizeRoadmapRules(rules);
 }
 
 function addRoadmapRule(){
@@ -4536,7 +4584,8 @@ function roadmapRecommendation(dteLeft, tpPct, strat){
   const n = (v, fallback) => Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback;
   return roadmapRules().find(r =>
     dte >= n(r.dteMin,0) && dte <= n(r.dteMax,999) &&
-    p >= n(r.profitMin,-999) && p <= (r.profitMax == null || Number(r.profitMax) >= 999 ? Infinity : n(r.profitMax,Infinity))
+    p >= (r.profitMin == null || Number(r.profitMin) <= -999 ? -Infinity : n(r.profitMin,-Infinity)) &&
+    p <= (r.profitMax == null || Number(r.profitMax) >= 999 ? Infinity : n(r.profitMax,Infinity))
   ) || null;
 }
 
