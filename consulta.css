@@ -151,6 +151,11 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-
 .tob-ej-sub{font-size:.75rem;color:var(--mute);font-style:italic;}
 
 .tob-ej-grid{width:100%;border-collapse:separate;border-spacing:0;font-size:.8rem;}
+.tob-ej-block{overflow-x:auto!important;}
+.tob-ej-grid tr.plan-row td,.tob-ej-grid tr.pausa-row td{color:#d8c99d!important;font-size:.78rem!important;line-height:1.5;}
+.tob-ej-grid textarea{box-sizing:border-box;background:#101623;color:#eee;border:1px solid #465268;border-radius:4px;padding:8px;font:14px sans-serif;}
+.tob-ej-grid details{text-align:left;white-space:normal;}
+.tob-ej-grid input:invalid{outline:2px solid #e55;}
 .tob-ej-grid th{background:#0e0d0a;color:var(--acc2);padding:8px 6px;font-family:'DM Mono',monospace;
   font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--border);
   font-weight:600;text-align:center;}

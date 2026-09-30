@@ -2,7 +2,7 @@
 body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-height:100vh;margin:0;padding:0}
 .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #1e2d3d}
 .topbar-title{color:#4a9eff;font-size:11px;letter-spacing:3px;text-transform:uppercase}
-.topbar-date{color:#2a4a6a;font-size:9px;letter-spacing:1px}
+.topbar-date{color:#8098ae;font-size:9px;letter-spacing:1px}
 /* ── NEW CALCULADORA ─────────────────────────────────────── */
 .nc-tabs{display:flex;align-items:center;gap:6px;padding:12px 20px;border-bottom:1px solid #1e2d3d;flex-wrap:wrap}
 .nc-tab{font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 14px;border:1px solid #1e2d3d;border-radius:4px;cursor:pointer;color:#5a7a9a;background:transparent;transition:all .2s}
@@ -718,3 +718,7 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
   }
   .nav-brand{display:none !important;}
 }
+
+.d-chart-wrap[data-error]::after{content:attr(data-error);display:block;color:#e6b96f;font-size:12px;padding:12px;}
+
+.nav{flex-wrap:wrap;gap:6px}.nav>div:last-child{flex-wrap:wrap;padding:6px 0}.nav-brand{white-space:nowrap}@media(max-width:768px){.nav-tabs{display:flex!important;flex-basis:100%;overflow-x:auto}.nav>div:last-child{margin-left:0!important}.nav-brand{margin-left:auto}}

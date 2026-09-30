@@ -27,24 +27,7 @@
 </head>
 <body class="theme-opt">
 <noscript style="position:fixed;inset:0;background:#000;color:#fff;display:flex;align-items:center;justify-content:center;padding:20px;z-index:99999;font-family:sans-serif;text-align:center;line-height:1.6;">📈 <strong style="margin-left:10px">Options</strong> necesita JavaScript activado para funcionar.</noscript>
-<script>
-// BOOT CLEANUP (v104+): elimina restes del bolcat antic a localStorage
-(function(){
-  try {
-    var KEYS = ['recetas','ingredientes','menus','_v','_syncTs'];
-    var cleaned = 0;
-    KEYS.forEach(function(k){
-      try {
-        var v = localStorage.getItem(k);
-        if(v && (v.length > 5000 || k === '_v' || k === '_syncTs')){
-          localStorage.removeItem(k); cleaned++;
-        }
-      } catch(_e){}
-    });
-    if(cleaned) console.warn('[boot] cleanup localStorage:', cleaned, 'keys');
-  } catch(_e){}
-})();
-</script>
+<!-- Legacy storage is preserved. Cleanup requires an explicit, backed-up migration. -->
 
 <div class="cfg-overlay" id="cfgOverlay">
   <div class="cfg-modal">
@@ -1007,8 +990,9 @@ DashboardAuth.gate({ section: 'options', title: 'Opciones' });
 })();
 </script>
 
+<script src="options-dates.js"></script>
 <script>
-const TODAY = new Date().toISOString().split('T')[0];
+const TODAY = localISODate();
 
 // Escapa texto libre del usuario antes de inyectarlo con innerHTML (notas, etc.).
 const esc = (s) => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1510,7 +1494,7 @@ function calcTrade(i){
 
   if(!ss||!prem||!expD||!openD) return null;
 
-  const dte = Math.max(1, Math.round((new Date(expD)-new Date(openD))/86400000));
+  const dte = Math.max(0, optionDTE(expD, openD));
   const ap=prem*100*ctr, pn=(prem-comm/100)*100*ctr;
 
   let capR,maxL,sw;
@@ -1524,7 +1508,7 @@ function calcTrade(i){
   } else { maxLR=maxL; useSup=false; }
 
   const ror=(ap/capR)*100, rorN=(pn/capR)*100;
-  const ann=ror*(365/dte), annN=rorN*(365/dte);
+  const ann=ror*(365/Math.max(1,dte)), annN=rorN*(365/Math.max(1,dte));
   const deltaAbsCalc = Math.abs(delta || 0);
   const deltaNormCalc = deltaAbsCalc > 1 ? deltaAbsCalc / 100 : deltaAbsCalc;
   const pS=(1-deltaNormCalc)*100, pF=100-pS;
@@ -2072,9 +2056,9 @@ function computeEntry(e){
   // stratGroup = strat directly, no OTRO grouping
   e.stratGroup = e.stratGroup || e.strat || 'NP';
   // DTE inicial: apertura → exp
-  const dteIni = e.apertura&&e.exp ? Math.max(0,Math.round((new Date(e.exp)-new Date(e.apertura))/86400000)) : null;
+  const dteIni = e.apertura&&e.exp ? Math.max(0, optionDTE(e.exp, e.apertura)) : null;
   // Tiempo op: apertura → cierre
-  const tiempoOp = e.apertura&&e.cierre ? Math.max(0,Math.round((new Date(e.cierre)-new Date(e.apertura))/86400000)) : null;
+  const tiempoOp = e.apertura&&e.cierre ? Math.max(0, calendarDaysBetween(e.apertura, e.cierre)) : null;
   // Max Risk
   const maxRisk = e.maxRisk || null;
   // Sign-aware: long legs (LP/LC) invierten la fórmula P&L porque pagaste
@@ -2473,7 +2457,7 @@ function renderHist(){
       const lastCi  = ces.length ? ces[ces.length-1] : '—';
       // Tiempo total en posición para el ID: de primera apertura a último cierre
       const dteTot = (aps[0] && ces.length)
-        ? Math.max(0, Math.round((new Date(ces[ces.length-1]) - new Date(aps[0]))/86400000))
+        ? Math.max(0, calendarDaysBetween(aps[0], ces[ces.length-1]))
         : null;
       // Badges únicos
       const strats = [...new Set(g.entries.map(e=>e.strat))].map(mk).join(' ');
@@ -3103,14 +3087,14 @@ function saveEntry(){
   if(!entry.activo){ toast('El activo es obligatorio.', 'red'); return; }
 
   // ── Validación de fechas ──
-  const dAp = entry.apertura ? new Date(entry.apertura) : null;
-  const dEx = entry.exp ? new Date(entry.exp) : null;
-  const dCi = entry.cierre ? new Date(entry.cierre) : null;
+  const dAp = calendarDayIndex(entry.apertura);
+  const dEx = calendarDayIndex(entry.exp);
+  const dCi = calendarDayIndex(entry.cierre);
   const warnings = [];
-  if(dAp && dEx && dEx < dAp) warnings.push('· EXP ('+entry.exp+') es anterior a la apertura ('+entry.apertura+')');
-  if(dAp && dCi && dCi < dAp) warnings.push('· Cierre ('+entry.cierre+') es anterior a la apertura ('+entry.apertura+')');
-  if(dEx && dCi && dCi > dEx){
-    const diffDays = Math.round((dCi - dEx)/86400000);
+  if(dAp != null && dEx != null && dEx < dAp) warnings.push('· EXP ('+entry.exp+') es anterior a la apertura ('+entry.apertura+')');
+  if(dAp != null && dCi != null && dCi < dAp) warnings.push('· Cierre ('+entry.cierre+') es anterior a la apertura ('+entry.apertura+')');
+  if(dEx != null && dCi != null && dCi > dEx){
+    const diffDays = dCi - dEx;
     if(diffDays > 7) warnings.push('· Cierre es '+diffDays+' días posterior a EXP — revisa si es un roll o error');
   }
   if(warnings.length){
@@ -3283,7 +3267,7 @@ function openCalModal(){
   const data = HIST.map(computeEntry).filter(e=>e.cierre);
   if(!data.length) return;
   const months = [...new Set(data.map(e=>(e.cierre||'').slice(0,7)))].sort();
-  const last = months[months.length-1] || new Date().toISOString().slice(0,7);
+  const last = months[months.length-1] || localISODate().slice(0,7);
   _calYear  = parseInt(last.slice(0,4));
   _calMonth = parseInt(last.slice(5,7));
   document.getElementById('calOverlay').style.display = 'block';
@@ -3434,7 +3418,7 @@ function renderCalModal(){
   let startDow = firstDate.getDay(); // 0=Sun
   startDow = startDow === 0 ? 6 : startDow - 1; // Mon=0
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = localISODate();
   const cells = [];
 
   // Empty cells before month starts
@@ -3669,6 +3653,7 @@ const baseOpts = {
 function destroyChart(id){ if(dashCharts[id]){ dashCharts[id].destroy(); delete dashCharts[id]; } }
 
 function mkChart(id, cfg){
+  if(typeof Chart==='undefined'){const el=document.getElementById(id);if(el){el.setAttribute('aria-label','Gráfico no disponible: revisa la conexión');el.parentElement.dataset.error='Gráfico no disponible: revisa la conexión';}return;}
   destroyChart(id);
   const ctx = document.getElementById(id);
   if(!ctx) return;
@@ -3756,7 +3741,7 @@ function getDashData(){
 
   // Inject unrealized P&L from ACTIVAS if toggle is on
   if(CFG.showUnrealized && typeof ACTIVAS !== 'undefined'){
-    const today2 = new Date().toISOString().slice(0,7); // current YYYY-MM
+    const today2 = localISODate().slice(0,7); // current YYYY-MM
     ACTIVAS.forEach(a=>{
       // Caso ACC: precioCompra y priceCurrent (precio mercado actual)
       if(a.strat === 'ACC'){
@@ -4599,10 +4584,10 @@ function roadmapRecommendation(dteLeft, tpPct, strat){
 }
 
 function _activeOpenMetrics(a, today){
-  const exp   = a && a.exp ? new Date(a.exp) : null;
-  const open  = a && a.apertura ? new Date(a.apertura) : null;
-  const dteLeft = exp ? Math.ceil((exp - today) / 86400000) : null;
-  const dteIni  = (exp && open) ? Math.ceil((exp - open) / 86400000) : null;
+  const exp   = a && a.exp ? a.exp : null;
+  const open  = a && a.apertura ? a.apertura : null;
+  const dteLeft = exp ? optionDTE(exp, today) : null;
+  const dteIni  = (exp && open) ? optionDTE(exp, open) : null;
   const timeElapsed = (dteIni && dteLeft != null) ? Math.max(0, Math.min(100, ((dteIni - dteLeft) / dteIni) * 100)) : null;
   const ctr = parseFloat(a && a.contracts) || 1;
   const useAbs = a && (a.entryDirection === 'debit' || a.entryDirection === 'credit');
@@ -4972,8 +4957,7 @@ function renderActivas(){
   if(viewBtn) viewBtn.textContent = ACT_COMPACT_VIEW ? 'Ver detalle' : 'Vista rapida';
 
   // today must be declared BEFORE sort uses it
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayMs = today.getTime();
+  const today = optionsValuationDate;
   renderSpxAccountPanel(today);
 
   if(!ACTIVAS.length){
@@ -4989,8 +4973,8 @@ function renderActivas(){
   const sorted = [...ACTIVAS].map((a,i)=>({a,i})).sort((x,y)=>{
     const ax=x.a, ay=y.a;
     if(sortBy==='dte'){
-      const dx = ax.exp ? Math.ceil((new Date(ax.exp)-todayMs)/86400000) : 9999;
-      const dy = ay.exp ? Math.ceil((new Date(ay.exp)-todayMs)/86400000) : 9999;
+      const dx = ax.exp ? optionDTE(ax.exp, today) : 9999;
+      const dy = ay.exp ? optionDTE(ay.exp, today) : 9999;
       return dx-dy;
     }
     if(sortBy==='pnl'){
@@ -5087,10 +5071,10 @@ function buildActCard(a, idx, today){
   const stratGroup=a.strat||'NP';
 
   // DTE calculation
-  const exp   = a.exp ? new Date(a.exp) : null;
-  const open  = a.apertura ? new Date(a.apertura) : null;
-  const dteLeft = exp ? Math.ceil((exp-today)/(1000*60*60*24)) : null;
-  const dteIni  = (exp&&open) ? Math.ceil((exp-open)/(1000*60*60*24)) : null;
+  const exp   = a.exp || null;
+  const open  = a.apertura || null;
+  const dteLeft = exp ? optionDTE(exp, today) : null;
+  const dteIni  = (exp&&open) ? optionDTE(exp, open) : null;
   const timeElapsed = (dteIni&&dteLeft!=null) ? Math.max(0,Math.min(100,((dteIni-dteLeft)/dteIni)*100)) : null;
 
   // Expiry status
@@ -6530,9 +6514,7 @@ function matchClosures(myCloses, csvCloses, month){
 
 function daysBetween(d1, d2){
   // d1, d2: "YYYY-MM-DD"
-  const a = new Date(d1+'T00:00:00');
-  const b = new Date(d2+'T00:00:00');
-  return Math.round((a-b) / 86400000);
+  return calendarDaysBetween(d2, d1);
 }
 
 function renderTtVerifyResult(month, result, cashRecon){
@@ -6856,7 +6838,7 @@ function openActCloseModal(idx){
   _actCloseIdx = idx;
   const a = ACTIVAS[idx];
   // Pre-fill with today's date
-  document.getElementById('acm_cierre').value = new Date().toISOString().split('T')[0];
+  document.getElementById('acm_cierre').value = localISODate();
   document.getElementById('acm_pcierre').value = a.priceCurrent!=null?a.priceCurrent:'';
   document.getElementById('acm_comi_close').value = '1.24';
   document.getElementById('acm_pneto').value = '';
@@ -7045,11 +7027,11 @@ function _confirmClosePositionImpl(){
   const notaClose= document.getElementById('acm_nota').value;
 
   // Build HIST entry
-  const openD  = a.apertura ? new Date(a.apertura) : null;
-  const closeD = cierre     ? new Date(cierre)       : new Date();
-  const expD   = a.exp      ? new Date(a.exp)        : null;
-  const dteIni = (expD&&openD) ? Math.ceil((expD-openD)/(86400000)) : null;
-  const tOp    = (openD&&closeD) ? Math.ceil((closeD-openD)/(86400000)) : null;
+  const openD  = a.apertura || null;
+  const closeD = cierre || localISODate();
+  const expD   = a.exp || null;
+  const dteIni = (expD&&openD) ? optionDTE(expD, openD) : null;
+  const tOp    = (openD&&closeD) ? calendarDaysBetween(openD, closeD) : null;
 
   const newHist = {
     id: HIST.length>0 ? HIST.reduce((m,e)=>Math.max(m,e.id||0),0)+1 : 1,
@@ -7197,7 +7179,7 @@ function openActLegCloseModal(idx){
   if(!a) return;
 
   // Reset campos comunes
-  document.getElementById('alcm_fecha_leg').value = new Date().toISOString().split('T')[0];
+  document.getElementById('alcm_fecha_leg').value = localISODate();
   document.getElementById('alcm_comi_leg').value  = '0.62';
   document.getElementById('alcm_nota').value      = '';
   document.getElementById('alcm_preview').textContent = '— marca patas para empezar';
@@ -7405,7 +7387,7 @@ function confirmCloseLegs(){
   if(_actLegCloseIdx == null) return;
   const a = ACTIVAS[_actLegCloseIdx];
   if(!a) return;
-  const fecha_leg = document.getElementById('alcm_fecha_leg').value || new Date().toISOString().split('T')[0];
+  const fecha_leg = document.getElementById('alcm_fecha_leg').value || localISODate();
   const comi_leg  = +document.getElementById('alcm_comi_leg').value || 0;
   const nota_leg  = document.getElementById('alcm_nota').value || '';
   const newStrat  = document.getElementById('alcm_newstrat').value;
@@ -7500,7 +7482,7 @@ function confirmCloseLegs(){
     profitOpOvr: null,
     tpOvr:      parseFloat((tpRatio * 100).toFixed(2)),
     dteIni:     null,
-    tiempoOp:   a.apertura ? Math.ceil((new Date(fecha_leg) - new Date(a.apertura)) / 86400000) : null,
+    tiempoOp:   a.apertura ? calendarDaysBetween(a.apertura, fecha_leg) : null,
     // ── NUEVO: detalle por pata de lo cerrado ──
     closedLegs:     closed.map(l => ({
                       kind: l.kind, strike: l.strike,
@@ -8039,10 +8021,10 @@ function generateAnalysis(){
   if(avgTp<40) alerts.push(['#f0a500','◆','TP medio del '+avgTp.toFixed(0)+'% — posiblemente cerrando demasiado pronto o aguantando perdedoras']);
   const expiringAct = ACTIVAS.filter(a=>{
     if(!a.exp) return false;
-    const dte=Math.ceil((new Date(a.exp)-new Date())/86400000);
+    const dte=optionDTE(a.exp);
     return dte>=0&&dte<=5;
   });
-  if(expiringAct.length) alerts.push(['#f0a500','⏰',expiringAct.map(a=>a.activo+' expira en '+Math.ceil((new Date(a.exp)-new Date())/86400000)+'d').join(' · ')]);
+  if(expiringAct.length) alerts.push(['#f0a500','⏰',expiringAct.map(a=>a.activo+' expira en '+optionDTE(a.exp)+'d').join(' · ')]);
   if(!alerts.length) alerts.push(['#3fb68b','✓','Sin alertas activas — todos los indicadores en rango saludable']);
 
   // ── Construir HTML ────────────────────────────────────────────
@@ -8168,6 +8150,7 @@ let _scatterStratFilter = null; // set of strats to show in scatter
 
 function destroyStratChart(id){ if(stratCharts[id]){ stratCharts[id].destroy(); delete stratCharts[id]; } }
 function mkStratChart(id, cfg){
+  if(typeof Chart==='undefined'){const el=document.getElementById(id);if(el)el.parentElement.dataset.error='Gráfico no disponible: revisa la conexión';return;}
   destroyStratChart(id);
   const ctx = document.getElementById(id);
   if(!ctx) return;
@@ -9404,7 +9387,7 @@ function stratCmpClick(sg){
 // ══════════════════════════════════════════════════════════════════
 let ncSlot = 0;
 let ncResults = [null, null, null];
-const NC_TODAY = new Date().toISOString().split('T')[0];
+const NC_TODAY = localISODate();
 
 // ── Slot management ──────────────────────────────────────────────
 function ncSetSlot(i){
@@ -9563,7 +9546,7 @@ function ncCalculate(){
 
   if(!ss||!prem||!expD||!openD){ toast('Introduce al menos: strike, prima, apertura y vencimiento.', 'red'); return; }
 
-  const dte = Math.max(1, Math.round((new Date(expD)-new Date(openD))/86400000));
+  const dte = Math.max(0, optionDTE(expD, openD));
   const ap  = prem*100*ctr;
   const pn  = (prem*100 - comm)*ctr;
 
@@ -9582,8 +9565,8 @@ function ncCalculate(){
 
   const ror  = (ap/capR)*100;
   const rorN = (pn/capR)*100;
-  const ann  = ror*(365/dte);
-  const annN = rorN*(365/dte);
+  const ann  = ror*(365/Math.max(1,dte));
+  const annN = rorN*(365/Math.max(1,dte));
   const pS   = (1-Math.abs(delta))*100;
   const pF   = 100-pS;
   const ev   = (pS/100*ap)-(pF/100*maxLR);
@@ -9602,7 +9585,7 @@ function ncCalculate(){
   }
 
   // Theta diaria estimada (proxy: prima / dte, frontloaded)
-  const thetaDay = prem*100*ctr / dte * 1.5; // rough ~1.5x since theta accelerates
+  const thetaDay = prem*100*ctr / Math.max(1,dte) * 1.5; // rough ~1.5x since theta accelerates
 
   // Días estimados para 50% TP (statistically front-half of DTE at accelerating rate)
   const days50 = Math.round(dte * 0.45);
@@ -10412,7 +10395,7 @@ function openRollModal(idx){
   _rollIdx = idx;
   const a = ACTIVAS[idx];
   document.getElementById('rollTitle').textContent = (a.activo||'—') + ' #' + (a.idOp||'—') + ' · ' + (a.strat||'');
-  document.getElementById('roll_cierre').value   = new Date().toISOString().split('T')[0];
+  document.getElementById('roll_cierre').value   = localISODate();
   document.getElementById('roll_pcl').value      = a.priceCurrent!=null ? a.priceCurrent : '';
   document.getElementById('roll_comi_close').value = rollLegDefaultCloseCommission(a, 'todo').toFixed(2);
   document.getElementById('roll_newexp').value   = a.exp || '';
@@ -10607,11 +10590,11 @@ function confirmRoll(){
   // pnlClose en $ reales: ($/share × 100 × ctr) - comi
   const pnlClose   = (pc_share - pcl_share) * 100 * ctr - comiCl;
   const tpClose    = pc_share>0 ? Math.min(100,Math.max(-100,(pc_share-pcl_share)/pc_share*100)) : 0;
-  const openD      = a.apertura ? new Date(a.apertura) : null;
-  const closeD     = cierre     ? new Date(cierre)     : new Date();
-  const expD       = a.exp      ? new Date(a.exp)      : null;
-  const dteIni     = (expD&&openD)   ? Math.ceil((expD-openD)/(86400000))   : null;
-  const tOp        = (openD&&closeD) ? Math.ceil((closeD-openD)/(86400000)) : null;
+  const openD      = a.apertura || null;
+  const closeD     = cierre || localISODate();
+  const expD       = a.exp || null;
+  const dteIni     = (expD&&openD) ? optionDTE(expD, openD) : null;
+  const tOp        = (openD&&closeD) ? calendarDaysBetween(openD, closeD) : null;
 
   const pcl_storage = premiumPointsToHistStorage(pcl_share);
   const pcredHist_storage = premiumPointsToHistStorage(pc_share);
