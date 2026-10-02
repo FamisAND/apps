@@ -22,7 +22,7 @@
  *     y recargar.
  */
 
-const CACHE_VERSION = 'mis-dashboards-v225';
+const CACHE_VERSION = 'mis-dashboards-v226';
 
 // Recursos que se pre-cachean en install.
 // Rutas RELATIVAS al scope del SW (que es el directorio donde vive este archivo).
@@ -47,6 +47,7 @@ const PRECACHE_URLS = [
   './biio-source.js',
   './biio-support.js',
   './options-dates.js',
+  './pcs-guide.js',
   './dashboard-auth.js',
   './github-sync.js',
   './utils.js',

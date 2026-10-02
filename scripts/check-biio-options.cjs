@@ -1,3 +1,4 @@
+(async()=>{
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const path=require('path');
 const root=path.resolve(__dirname,'..');
@@ -7,6 +8,7 @@ const storage=new Map();
 const ctx=vm.createContext({console,document:doc,window:{addEventListener:noop},navigator:{},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},setTimeout:noop,clearTimeout:noop,setInterval:noop,Date,Intl,Blob,URL,TextEncoder,Uint8Array,crypto:require('crypto').webcrypto});
 for(const file of ['biio-source.js','biio-support.js','consulta.js','options-dates.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),ctx,{filename:file});
 const run=s=>vm.runInContext(s,ctx);
+run('tobLoadNotice=()=>{};tobBackupDatabase=async()=>{};');
 assert.equal(run(`optionDTE('2026-10-16','2026-09-26')`),20);
 for(const [a,b,n] of [['2026-10-16','2026-10-16',0],['2026-10-15','2026-10-16',1],['2026-09-25','2026-09-28',3],['2026-03-28','2026-03-30',2],['2026-10-24','2026-10-26',2],['2026-03-07','2026-03-09',2]])assert.equal(run(`optionDTE('${b}','${a}')`),n);
 assert.equal(run(`calendarDayIndex('2026-02-30')`),null);
@@ -43,8 +45,9 @@ run(`
  a.iteraciones[0].sesiones[1].A.ejs.orphan={series:[{kg:71,reps:7}],comentario:'no perder'};
  globalThis.before=JSON.parse(JSON.stringify(a));
  localStorage.setItem(TOB_KEY,JSON.stringify({plantillas:[pl],clientes:[{id:'c',nombre:'Prueba',asignaciones:[a],mediciones:[{peso:73}]}]}));
- tobLoad();globalThis.after=tobDB.clientes[0].asignaciones[0];
+
 `);
+await run('tobLoad()');run('globalThis.after=tobDB.clientes[0].asignaciones[0]');
 assert.equal(run('JSON.stringify(before.iteraciones)'),run('JSON.stringify(after.iteraciones)'));
 assert.equal(run('after._planMigrationBackup.rutina._planV'),5);
 assert.ok(run('after._migrationUnmapped.length')>0);
@@ -63,3 +66,5 @@ for(const f of fs.readdirSync(root)){
  }
 }
 console.log(JSON.stringify({templates:templates.length,plans,scripts,tests:'passed'}));
+
+})().catch(e=>{console.error(e);process.exit(1)});

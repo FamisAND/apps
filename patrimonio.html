@@ -94,14 +94,6 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
     <div id="tab-dashboard" class="tab-content">
       <div class="dashboard-topline">
         <div class="dashboard-topline-main">
-          <div id="alertsWrapper" style="display:none;">
-            <button onclick="toggleAlerts()" id="alertsToggle" style="display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;color:#64748b;padding:6px 2px;margin-bottom:4px;width:100%;">
-              <span id="alertsDot" style="width:7px;height:7px;border-radius:50%;background:#f87171;flex-shrink:0;"></span>
-              <span id="alertsLabel">Notificaciones</span>
-              <span id="alertsChevron" style="margin-left:auto;font-size:.7rem;transition:transform .2s;">&#9660;</span>
-            </button>
-            <div id="alertsArea" style="display:none;"></div>
-          </div>
           <div id="pendingEntrySlot"></div>
         </div>
         <div id="dashboardEmpresaToggle"></div>
@@ -141,7 +133,7 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
               <button class="btn-ghost portfolio-chart-reset" onclick="resetPortfolioChartSelection()" title="Restablecer vista">↺</button>
             </div>
           </div>
-          <div id="portfolioMovementSummary" class="portfolio-movement-summary"></div>
+
           <section class="portfolio-chart-section">
             <div class="portfolio-chart-section-head">
               <div>
@@ -1114,25 +1106,7 @@ function renderDashboard(){
   // Check if there's a pending (incomplete) entry
   const pendingEntry=allEnts.length>0&&!isEntryComplete(allEnts[allEnts.length-1],p)?allEnts[allEnts.length-1]:null;
 
-  // Alerts at top of dashboard
-  const alertsArea=document.getElementById("alertsArea");alertsArea.innerHTML="";
-  const alertsWrapper=document.getElementById("alertsWrapper");
-  const computed=computeAlerts(p);
-  if(!computed.length){alertsWrapper.style.display="none";}
-  else{
-    alertsWrapper.style.display="";
-    document.getElementById("alertsLabel").textContent=`${computed.length} notificación${computed.length!==1?"es":""}`;
-    const hasRed=computed.some(a=>a.type==="red");
-    document.getElementById("alertsDot").style.background=hasRed?"#f87171":"#fbbf24";
-    computed.forEach((a,i)=>{
-      const d=document.createElement("div");d.className=`alert-item ${a.type}`;
-      d.style.cssText="justify-content:space-between;align-items:center;";
-      d.innerHTML=`<div class="alert-main"><span class="alert-icon">${a.icon}</span><span>${a.text}</span></div>
-        <button class="alert-close" onclick="this.closest('.alert-item').remove();if(!document.getElementById('alertsArea').children.length){document.getElementById('alertsWrapper').style.display='none';}">✕</button>`;
-      alertsArea.appendChild(d);
-    });
-  }
-
+  // Notifications removed from the dashboard at the user's request.
   const g=document.getElementById("statsGrid");g.innerHTML="";
   const pendingSlot=document.getElementById("pendingEntrySlot");
   if(pendingSlot)pendingSlot.innerHTML="";
@@ -1290,47 +1264,7 @@ function investmentAssetsForDashboard(p,ents,last){
   return dashboardAssetsOf(p,last,false).filter(a=>isPortfolioAsset(p,a));
 }
 
-function renderPortfolioMovementSummary(p,ents,investmentAssets,totalInvestmentValues){
-  const el=document.getElementById('portfolioMovementSummary');
-  if(!el) return;
-  if(!ents.length||!investmentAssets.length){
-    el.innerHTML='';
-    return;
-  }
-  const ids=new Set(investmentAssets.map(a=>a.id));
-  const lastValue=[...totalInvestmentValues].reverse().find(v=>Number.isFinite(v))||0;
-  let net=0,adds=0,outs=0;
-  const moves=[];
-  ents.forEach(e=>{
-    const contribs=e.contributions||{};
-    investmentAssets.forEach(a=>{
-      if(!ids.has(a.id)) return;
-      const v=parseMoneyValue(contribs[a.id]);
-      if(!Number.isFinite(v)||v===0) return;
-      net+=v;
-      if(v>0)adds+=v; else outs+=Math.abs(v);
-      moves.push({key:e.key,month:e.month,year:e.year,asset:a,value:v});
-    });
-  });
-  const firstValue=totalInvestmentValues.find(v=>Number.isFinite(v))||0;
-  const estimatedResult=lastValue-firstValue-net;
-  const resultPct=(firstValue+Math.max(net,0))>0?estimatedResult/(firstValue+Math.max(net,0))*100:null;
-  const lastMoves=moves.slice(-4).reverse().map(m=>{
-    const color=m.value>=0?'#4ade80':'#f87171';
-    return `<span class="portfolio-move-chip"><b style="color:${m.asset.color}">${esc(assetLabel(m.asset))}</b> <span style="color:${color}">${m.value>=0?'+':'-'}${fmt(Math.abs(m.value))}</span> <small>${MO[m.month]} ${m.year}</small></span>`;
-  }).join('');
-  el.innerHTML=`
-    <div class="portfolio-flow-grid">
-      <div class="portfolio-flow-card"><span>Capital actual</span><b>${fmt(lastValue)}</b><small>valor de carteras incluidas</small></div>
-      <div class="portfolio-flow-card"><span>Total invertido neto</span><b style="color:${net>=0?'#4ade80':'#f87171'}">${net>=0?'+':'-'}${fmt(Math.abs(net))}</b><small>aportaciones menos retiros</small></div>
-      <div class="portfolio-flow-card"><span>Aportado / retirado</span><b>${fmt(adds)} / ${fmt(outs)}</b><small>movimientos registrados</small></div>
-      <div class="portfolio-flow-card"><span>Resultado estimado</span><b style="color:${estimatedResult>=0?'#4ade80':'#f87171'}">${estimatedResult>=0?'+':'-'}${fmt(Math.abs(estimatedResult))}</b><small>${resultPct==null?'sin base suficiente':fPct(resultPct)+' sobre base'}</small></div>
-    </div>
-    <div class="portfolio-flow-moves">
-      <span class="portfolio-flow-label">Últimos movimientos</span>
-      ${lastMoves||'<span class="portfolio-flow-empty">Sin aportaciones/retiros registrados en carteras.</span>'}
-    </div>`;
-}
+// The contribution history remains stored; the summary panel is no longer displayed.
 
 function renderCharts(p){
   const ents=completeEntries(p),lbl=ents.map(e=>`${MO[e.month]} ${e.year}`);
@@ -1401,7 +1335,7 @@ function renderCharts(p){
     fill:true,
     spanGaps:false
   };
-  renderPortfolioMovementSummary(p,ents,investmentAssets,totalInvestmentValues);
+
   const evolutionDatasets=selectPortfolioChartDatasets(totalEvolutionDataset,bDS);
   const primaryAsset=assetMap[portfolioChartPrimary];
   const compareAsset=assetMap[portfolioChartCompare];

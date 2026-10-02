@@ -1,10 +1,11 @@
+(async()=>{
 const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
 const raw=fs.readFileSync(process.argv[2],'utf8'),before=JSON.parse(raw),storage=new Map([['tob_online_v2',raw]]),noop=()=>{};
 const ctx=vm.createContext({console,document:{readyState:'loading',addEventListener:noop,getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[]},window:{addEventListener:noop},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},setTimeout:noop,clearTimeout:noop,setInterval:noop,Date,Intl,crypto:require('crypto').webcrypto});
 for(const file of ['biio-source.js','biio-support.js','consulta.js'])vm.runInContext(fs.readFileSync(path.resolve(__dirname,'..',file),'utf8'),ctx);
-vm.runInContext('tobRenderClientes=()=>{};tobRenderPlantillas=()=>{};tobLoad()',ctx);
+await vm.runInContext('tobLoadNotice=()=>{};tobBackupDatabase=async raw=>{globalThis.backup=raw;};tobRenderClientes=()=>{};tobRenderPlantillas=()=>{};tobLoad()',ctx);
 const after=JSON.parse(vm.runInContext('JSON.stringify(tobDB)',ctx));
-assert.equal(storage.get('tob_online_v2_before_plan6'),raw);
+assert.equal(vm.runInContext('backup',ctx),raw);
 let assignments=0,iterations=0,unmapped=0,records=0;
 for(const c of before.clientes){
  const n=after.clientes.find(x=>x.id===c.id);assert.ok(n);
@@ -21,5 +22,7 @@ for(const c of before.clientes){
  }
 }
 for(const [k,v] of Object.entries(before))if(!['clientes','plantillas'].includes(k))assert.deepStrictEqual(after[k],v);
-const once=JSON.stringify(after);vm.runInContext('tobLoad()',ctx);assert.equal(vm.runInContext('JSON.stringify(tobDB)',ctx),once);
+const once=JSON.stringify(after);await vm.runInContext('tobLoad()',ctx);assert.equal(vm.runInContext('JSON.stringify(tobDB)',ctx),once);
 console.log(JSON.stringify({clients:before.clientes.length,assignments,iterations,exerciseRecords:records,unmapped,backupExact:true,idempotent:true,preserved:true,bytesBefore:raw.length,bytesAfter:once.length}));
+
+})().catch(e=>{console.error(e);process.exit(1)});

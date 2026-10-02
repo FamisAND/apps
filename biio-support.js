@@ -1,4 +1,29 @@
 /* Strict result validation and source-backed BIIO helpers. */
+function tobLoadNotice(message){
+  let el=document.getElementById('tobLoadNotice');
+  if(!el){el=document.createElement('div');el.id='tobLoadNotice';el.setAttribute('role','status');el.style.cssText='padding:12px 20px;background:#382b10;color:#ffde9c;line-height:1.5';document.querySelector('.tob-topbar')?.insertAdjacentElement('afterend',el);}
+  el.textContent=message;el.hidden=!message;
+}
+async function tobBackupDatabase(raw){
+  // Large recovery copies belong in IndexedDB, outside the localStorage quota.
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open('consulta-safety-v1',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('snapshots');
+    request.onerror=()=>reject(request.error);
+    request.onblocked=()=>reject(new Error('Copia bloqueada por otra pestaña'));
+    request.onsuccess=()=>{
+      const db=request.result,tx=db.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots');
+      const get=store.get('before-plan6');
+      get.onsuccess=()=>{if(!get.result)store.put({raw,createdAt:new Date().toISOString()},'before-plan6');};
+      tx.oncomplete=()=>{db.close();resolve();};
+      tx.onerror=tx.onabort=()=>{db.close();reject(tx.error||new Error('No se ha podido guardar la copia'));};
+    };
+  });
+}
+function tobSetSessionComment(entId,microNum,value){
+  const ses=tobGetSesion(microNum,entId);if(!ses)return;
+  ses.comentario=String(value).slice(0,300);tobSave();
+}
 function tobParseResult(value, field){
   if(value == null || String(value).trim()==='') return null;
   const raw=String(value).trim();
@@ -140,6 +165,8 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
       title=en.nombre;nextPage(micros);
       draw('Fecha (aaaa-mm-dd)',left,y,170,9,bold);
       micros.forEach((mn,i)=>field(`fecha_${en.id}_${mn}`,it?.sesiones?.[mn]?.[en.id]?.fecha,startX+i*colW,y+8,colW-12,18));y-=28;
+      draw('Comentario del día',left,y,170,9,bold);
+      micros.forEach((mn,i)=>{field(`sesion_comentario_${en.id}_${mn}`,it?.sesiones?.[mn]?.[en.id]?.comentario,startX+i*colW,y+8,colW-12,32);form.getTextField(`sesion_comentario_${en.id}_${mn}`).setMaxLength(300);});y-=46;
       const guidanceH=Math.max(0,...micros.map(mn=>lines(en.indicaciones?.[mn],colW-14,8).length*11));
       micros.forEach((mn,i)=>draw(en.indicaciones?.[mn],startX+i*colW,y,colW-14,8));y-=guidanceH+12;
       for(const ej of en.ejercicios){

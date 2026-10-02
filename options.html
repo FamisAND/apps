@@ -466,13 +466,13 @@
       <div>
         <div class="cfg-title" style="margin-bottom:4px">Hoja Operativa PCS SPX v1.7</div>
         <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a;line-height:1.45">
-          Entrada, checkpoints, nuevas entradas 0-4, Fresh Risk, FIX y Recovery Mode. Las etiquetas de Op Abiertas usan la tabla editable del final; el esquema superior explica como actuar.
+          Decisión por ciclo completo: gestionar primero, revisar riesgo y abrir después. Basado en tu hoja operativa v1.7.
         </div>
       </div>
-      <button onclick="addRoadmapRule()" style="background:#4a9eff11;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap">+ Regla</button>
+      <button class="cfg-cancel" onclick="closeRoadmapCfg()">Cerrar</button>
     </div>
     <div id="roadmapGuide"></div>
-    <div id="roadmapRules"></div>
+    <details class="pcs-detail"><summary>Configuración avanzada de etiquetas para otras estrategias</summary>      <button onclick="addRoadmapRule()" style="background:#4a9eff11;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;border-radius:3px;cursor:pointer;white-space:nowrap">+ Regla</button><div id="roadmapRules"></div></details>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px">
       <button onclick="resetRoadmapRules()" style="background:transparent;border:1px solid #e6913855;color:#e69138;font-family:'Courier New',monospace;font-size:9px;padding:6px 10px;border-radius:3px;cursor:pointer">Restaurar hoja base</button>
       <div class="cfg-btns" style="margin:0">
@@ -991,6 +991,7 @@ DashboardAuth.gate({ section: 'options', title: 'Opciones' });
 </script>
 
 <script src="options-dates.js"></script>
+<script src="pcs-guide.js"></script>
 <script>
 const TODAY = localISODate();
 
@@ -4409,7 +4410,7 @@ function closeRoadmapCfg(){
   document.getElementById('roadmapOverlay')?.classList.remove('on');
 }
 
-function renderRoadmapGuide(){
+function renderLegacyRoadmapGuide(){
   const el = document.getElementById('roadmapGuide');
   if(!el) return;
   const block = (title, tone, items) => `
@@ -4514,7 +4515,7 @@ function renderRoadmapRules(){
       <b style="color:#c9d1d9">Como leerlo:</b> el DTE marca el momento de revision; dentro de cada CP manda la zona de profit del ciclo. Entrada base PCS: credito objetivo <b style="color:#f0a500">${PCS_ENTRY_CREDIT_MIN_PCT}-${PCS_ENTRY_CREDIT_MAX_PCT}% del max risk nominal</b>. En un spread width ${PCS_GUIDE_WIDTH}, eso equivale a ${eur(PCS_GUIDE_RISK*PCS_ENTRY_CREDIT_MIN_PCT/100)}-${eur(PCS_GUIDE_RISK*PCS_ENTRY_CREDIT_MAX_PCT/100)} por contrato.
     </div>
     <div style="display:grid;grid-template-columns:66px 86px 78px 96px 180px 126px 160px 1fr 90px 34px;gap:6px;align-items:center;font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
-      <span>DTE</span><span>Momento</span><span>Capt. min %</span><span>Capt. max %</span><span>Credito estimado</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
+      <span>DTE</span><span>Momento</span><span>Capt. min %</span><span>Capt. max %</span><span>Referencia antigua</span><span>Accion</span><span>Situacion</span><span>Comentario</span><span>Tono</span><span></span>
     </div>
     ${rules.map((r,i)=>`
       <div style="display:grid;grid-template-columns:66px 86px 78px 96px 180px 126px 160px 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px">
@@ -4677,7 +4678,7 @@ function renderSpxAccountPanel(today){
   const rows = (ACTIVAS || [])
     .map((a, idx) => {
       const m = _activeOpenMetrics(a, today);
-      const road = roadmapRecommendation(m.dteLeft, m.tpPct, a.strat);
+      const road = _isSpxPcs(a) ? pcsRecommendation(a,today,m) : roadmapRecommendation(m.dteLeft, m.tpPct, a.strat);
       return { a, idx, m, road };
     })
     .filter(x => _isSpxPcs(x.a));
@@ -4696,10 +4697,11 @@ function renderSpxAccountPanel(today){
   const pnlRiskPct = risk > 0 ? pnl / risk * 100 : null;
   const creditRiskPct = risk > 0 ? credit / risk * 100 : null;
   const missingPrices = rows.filter(x => !x.m.hasPrice).length;
-  const freshCount = rows.filter(x => Number.isFinite(x.m.tpPct) && x.m.tpPct >= 0 && x.m.tpPct < 25).length;
-  const cp25 = rows.filter(x => Number.isFinite(x.m.tpPct) && x.m.tpPct >= 25 && x.m.tpPct < 50).length;
-  const cp50 = rows.filter(x => Number.isFinite(x.m.tpPct) && x.m.tpPct >= 50 && x.m.tpPct < 75).length;
-  const cp75 = rows.filter(x => Number.isFinite(x.m.tpPct) && x.m.tpPct >= 75).length;
+  const phaseOf = x => pcsCycleMetrics(x.a,today,x.m).checkpoint;
+  const freshCount = rows.filter(x => phaseOf(x) === 0).length;
+  const cp25 = rows.filter(x => phaseOf(x) === 25).length;
+  const cp50 = rows.filter(x => phaseOf(x) === 50).length;
+  const cp75 = rows.filter(x => phaseOf(x) === 75).length;
   const urgent = rows.filter(x => x.m.dteLeft != null && x.m.dteLeft <= 0).length;
   const warnCount = rows.filter(x => (x.road && x.road.tone === 'warn')).length;
   const badCount = rows.filter(x => (x.road && x.road.tone === 'bad')).length;
@@ -4726,7 +4728,8 @@ function renderSpxAccountPanel(today){
     const action = x.road ? x.road.action : (!x.m.hasPrice ? 'Actualizar precio' : 'Mantener');
     const tp = Number.isFinite(x.m.tpPct) ? fmtPlainPct(x.m.tpPct) : 'sin precio';
     const dte = x.m.dteLeft != null ? x.m.dteLeft + 'd' : '--';
-    const phase = _spxPhase(x.m.tpPct, x.m.dteLeft);
+    const cycle = pcsCycleMetrics(x.a, today, x.m);
+    const phase = cycle.checkpoint == null ? 'Revisar fechas' : cycle.checkpoint ? 'CP'+cycle.checkpoint : 'Fresh';
     return `<div class="spx-watch-row" title="${esc(phase + ((x.road && x.road.comment) ? ' · ' + x.road.comment : ''))}">
       <b>${esc((x.a.activo || 'SPX') + ' #' + (x.a.idOp || '-'))}</b>
       <span>${dte}</span>
@@ -5075,7 +5078,8 @@ function buildActCard(a, idx, today){
   const open  = a.apertura || null;
   const dteLeft = exp ? optionDTE(exp, today) : null;
   const dteIni  = (exp&&open) ? optionDTE(exp, open) : null;
-  const timeElapsed = (dteIni&&dteLeft!=null) ? Math.max(0,Math.min(100,((dteIni-dteLeft)/dteIni)*100)) : null;
+  const pcsCycle = _isSpxPcs(a) ? pcsCycleMetrics(a,today,_activeOpenMetrics(a,today)) : null;
+  const timeElapsed = pcsCycle ? pcsCycle.time : (dteIni&&dteLeft!=null) ? Math.max(0,Math.min(100,((dteIni-dteLeft)/dteIni)*100)) : null;
 
   // Expiry status
   let cardClass='act-card';
@@ -5134,7 +5138,7 @@ function buildActCard(a, idx, today){
   // ── prima capturada ── Para spreads usamos el crédito NETO (pc-pd).
   // Para shorts puros (NP/CC), pd=0 → misma fórmula.
   const _netCred = pc - pd;
-  const primaCap = (pCur!=null && _netCred>0)
+  const primaCap = pcsCycle ? pcsCycle.profit : (pCur!=null && _netCred>0)
     ? Math.min(100, Math.max(-100, (_netCred - pCur) / _netCred * 100))
     : null;
   // ET = primaCap − timeElapsed. Positivo = capturas más rápido que pasa el tiempo.
@@ -5213,7 +5217,7 @@ function buildActCard(a, idx, today){
     ? accPnlPctStr
     : [tpPct!=null ? `${tpPct.toFixed(1)}% TP abierto` : '—', idTotalStr].filter(Boolean).join(' · ');
   const manageItems = [];
-  const road = roadmapRecommendation(dteLeft, tpPct, strat);
+  const road = _isSpxPcs(a) ? pcsRecommendation(a,today,_activeOpenMetrics(a,today)) : roadmapRecommendation(dteLeft, tpPct, strat);
   if(road){
     manageItems.push({tone:road.tone||'idle',label:road.action||'Revisar',txt:road.situation||`${dteText} · ${tpPct!=null?tpPct.toFixed(0)+'%':'--'}`,title:road.comment||''});
   }

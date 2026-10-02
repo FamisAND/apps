@@ -609,21 +609,36 @@ function tobRutinaShortName(pl){
   return s || '(rutina)';
 }
 
-function tobLoad(){
+let tobLoadGeneration = 0;
+async function tobLoad(){
+  const generation = ++tobLoadGeneration;
   // Registrar plugin datalabels (idempotente con try/catch)
   if(window.Chart && window.ChartDataLabels){
     try { Chart.register(ChartDataLabels); } catch(e){}
   }
+  let raw;
   try {
-    const raw = localStorage.getItem(TOB_KEY);
+    raw = localStorage.getItem(TOB_KEY);
     if(raw){
       tobDB = JSON.parse(raw);
       if(!tobDB || !Array.isArray(tobDB.clientes) || !Array.isArray(tobDB.plantillas)) throw new Error('Formato de datos no válido');
-      if(!localStorage.getItem(TOB_KEY+'_before_plan6')) localStorage.setItem(TOB_KEY+'_before_plan6',raw);
       if(!tobDB.clientes) tobDB.clientes = [];
       if(!tobDB.plantillas) tobDB.plantillas = [];
     }
   } catch(e){ console.error('tobLoad:', e); tobToast('No se pueden leer los datos guardados. No se sobrescribirán.', 'red'); return; }
+
+  // Displaying existing records must never depend on backup quota.
+  tobRenderClientes();tobRenderPlantillas();
+  if(raw){
+    try { await tobBackupDatabase(raw); }
+    catch(e){
+      tobLoadNotice('Tus datos están visibles. No se ha podido crear la copia de seguridad; la actualización de rutinas queda pendiente. Exporta los datos desde Ajustes y libera espacio.');
+      return;
+    }
+    if(generation !== tobLoadGeneration)return;
+    if(localStorage.getItem(TOB_KEY)!==raw)return tobLoad();
+  }
+  tobLoadNotice('');
 
   // Backfill: si plantillas no tienen macrociclo, asignar "1º Powerbuilding"
   let backfilled = false;
@@ -1469,6 +1484,7 @@ function tobRenderEntreno(){
       </tr></thead>
       <tbody>
         <tr class="fecha-row"><td class="row-lbl">Fecha sesión</td>${fechasRow}</tr>
+        <tr><td class="row-lbl">Comentario del día<br><small>Opcional · 300 caracteres</small></td>${microHeaders.map(mn=>`<td class="micro-col"><textarea maxlength="300" aria-label="Comentario del día ${mn}" placeholder="Sensaciones, molestias, ajustes…" style="width:100%;min-width:120px;min-height:65px" onchange="tobSetSessionComment('${en.id}',${mn},this.value)">${tobEsc(it?.sesiones?.[mn]?.[en.id]?.comentario||'')}</textarea></td>`).join('')}</tr>
       </tbody>
     </table>
   </div>`;
@@ -1949,6 +1965,8 @@ async function tobReadPdfFile(file){
       if(!val) return;
 
       const comment = name.match(/^comentario_(.+)_(\d+)_(\w+)$/);
+      const sessionComment=name.match(/^sesion_comentario_(\w+)_(\d+)$/);
+      if(sessionComment){const ses=tobGetSesionIt(it,Number(sessionComment[2]),sessionComment[1]);ses.comentario=val.slice(0,300);m++;return;}
       if(comment){ const ses=tobGetSesionIt(it,Number(comment[2]),comment[3]); ses.ejs[comment[1]] ||= {}; ses.ejs[comment[1]].comentario=val; m++; return; }
       // fecha: accepta tots dos ordres — fecha_<micro>_<ent> (tobGeneratePdf) i
       // fecha_<ent>_<micro> (PDF editable del client). El micro són sempre dígits;

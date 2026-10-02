@@ -722,3 +722,16 @@ body{font-family:'Courier New',monospace;background:#060a0f;color:#c9d1d9;min-he
 .d-chart-wrap[data-error]::after{content:attr(data-error);display:block;color:#e6b96f;font-size:12px;padding:12px;}
 
 .nav{flex-wrap:wrap;gap:6px}.nav>div:last-child{flex-wrap:wrap;padding:6px 0}.nav-brand{white-space:nowrap}@media(max-width:768px){.nav-tabs{display:flex!important;flex-basis:100%;overflow-x:auto}.nav>div:last-child{margin-left:0!important}.nav-brand{margin-left:auto}}
+
+.pcs-order,.pcs-checkpoints,.pcs-entry-grid,.pcs-controls{display:grid;gap:12px}
+.pcs-order,.pcs-checkpoints{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pcs-order{padding:12px 0;color:#8fc5ff;font-size:13px}
+.pcs-quick,.pcs-checkpoints section,.pcs-detail{background:#0c1420;border:1px solid #34445b;border-radius:10px;padding:18px;margin:14px 0;color:#d6e1ef;font-family:Arial,sans-serif;font-size:14px;line-height:1.55}
+.pcs-quick h3,.pcs-checkpoints h3{margin:0 0 8px;color:#fff;font-size:18px}
+.pcs-controls,.pcs-entry-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pcs-controls label{display:flex;flex-direction:column;gap:5px}
+.pcs-controls input,.pcs-controls select{width:100%;min-width:0;background:#080e18;color:#fff;border:1px solid #526783;border-radius:6px;padding:10px;font-size:15px}
+.pcs-emergency{display:flex;gap:10px;align-items:flex-start;margin:16px 0}.pcs-emergency input{margin-top:5px}
+.pcs-answer{border-left:4px solid #8ca8c5;padding:14px;background:#172332}.pcs-answer strong{font-size:21px}.pcs-answer.good{border-color:#49d1a0}.pcs-answer.warn{border-color:#ffc65c}.pcs-answer.bad{border-color:#ff8888}
+.pcs-entry-grid>div{padding:12px;background:#142034;border-radius:6px}.pcs-entry-grid .pcs-stop{border:1px solid #f18a8a}.pcs-detail summary{cursor:pointer;font-weight:bold}.pcs-detail #roadmapRules{overflow-x:auto;margin-top:15px}
+@media(max-width:700px){.pcs-order,.pcs-checkpoints,.pcs-controls,.pcs-entry-grid{grid-template-columns:1fr}.pcs-checkpoints section{margin:0}.pcs-quick,.pcs-detail{padding:13px}}
