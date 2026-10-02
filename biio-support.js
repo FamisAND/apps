@@ -122,11 +122,14 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
   const {PDFDocument,StandardFonts,rgb}=PDFLib;
   const doc=await PDFDocument.create(),form=doc.getForm();
   const font=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);
-  const W=842,H=595,left=32,startX=210,colW=198;
+  const W=842,H=595,left=30,startX=110;
+  let colW=140;
+  const ORANGE=rgb(.96,.65,.13),BLACK=rgb(.06,.06,.06),GRAY=rgb(.55,.55,.55),GRAY_DK=rgb(.25,.25,.25);
+  const fontB=bold,fontO=await doc.embedFont(StandardFonts.HelveticaOblique),W_L=W,H_L=H;
   let page,y,title;
   function lines(value,width,size=9,f=font){
     const out=[];
-    for(const paragraph of tobPdfSafe(String(value||'')).split('\n')){
+    for(const paragraph of String(value||'').split('\n').map(tobPdfSafe)){
       let line='';
       for(const word of paragraph.split(/\s+/)){
         if(f.widthOfTextAtSize(line+' '+word,size)>width&&line){out.push(line);line=word;}else line+=(line?' ':'')+word;
@@ -139,33 +142,75 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
     const rows=lines(value,width,size,f);rows.forEach((line,i)=>page.drawText(line,{x,y:yy-i*(size+3),size,font:f,color}));return rows.length*(size+3);
   }
   function nextPage(micros){
-    page=doc.addPage([W,H]);y=H-32;
-    y-=draw(title,left,y,W-64,12,bold)+4;
-    y-=draw(`${cli?.nombre||''} · ${pl.categoria} · Iteración ${it?.numero||1}`,left,y,W-64,9)+8;
-    micros.forEach((mn,i)=>draw(`Microciclo ${mn}`,startX+i*colW,y,colW-12,10,bold));y-=23;
+    page=doc.addPage([W,H]);
+    page.drawRectangle({x:0,y:H-50,width:W,height:50,color:ORANGE});
+    draw(title,left,H-29,W-230,14,bold,BLACK);
+    draw('FULL TRAINING',W-160,H-29,140,12,bold,BLACK);
+    draw(tobRutinaShortName(pl),left,H-44,W-100,8,bold,BLACK);
+    y=H-68;
+    if(micros.length){draw('Microciclo',left,y,75,8,bold,GRAY_DK);micros.forEach((mn,i)=>draw(`${mn}º`,startX+i*colW+4,y,colW-8,10,bold,ORANGE));y-=20;}
   }
   function field(name,value,x,yy,width,height,numeric){
     const f=form.createTextField(name);if(value!=null)f.setText(tobPdfSafe(String(value)));if(height>20)f.enableMultiline();
-    f.addToPage(page,{x,y:yy-height,width,height,font,borderWidth:.5,borderColor:rgb(.5,.5,.5)});f.setFontSize(9);
+    f.addToPage(page,{x,y:yy-height,width,height,font,borderWidth:.5,borderColor:rgb(.65,.65,.65)});f.setFontSize(9);
     if(numeric)tobPdfNumberField(doc,f,numeric);
   }
-  title='FULL TRAINING · '+(pl.categoria||'BIIO');nextPage([]);
-  const stats=tobCalcItStats(a,it);
-  y-=draw(`Inicio: ${a.fechaInicio||'—'} · Sesiones registradas: ${stats.sesiones}`,left,y,W-64,10,bold)+14;
-  for(const paragraph of String(pl.descripcion||'').split('\n')){
-    for(const line of lines(paragraph,W-64,10)){
-      if(y<45)nextPage([]);
-      draw(line,left,y,W-64,10);y-=14;
-    }y-=8;
+  // Nombre rutina sin sufijo "— Hombre"/"— Mujer"
+  const rutinaShort = tobRutinaShortName(pl);
+  const L = tobLangOf(cli);
+
+  // ─── PÁGINA 1: COVER en 2 columnas ─────
+  // Izquierda: logo + cliente + rutina + KPI. Derecha: descripción completa.
+  page = doc.addPage([W_L, H_L]);
+  page.drawRectangle({ x: 0, y: 0, width: 50, height: H_L, color: ORANGE });
+
+  // ── Columna izquierda ──
+  const LX = 80;
+  page.drawText('FULL', { x: LX, y: H_L - 95, size: 48, font: fontB, color: ORANGE });
+  page.drawText('TRAINING', { x: LX, y: H_L - 143, size: 48, font: fontB, color: BLACK });
+  page.drawText(tobPdfSafe((pl?.categoria || '').toUpperCase()), { x: LX, y: H_L - 165, size: 12, font, color: GRAY });
+
+  page.drawText(tobPdfSafe(cli?.nombre || '—'), { x: LX, y: H_L - 230, size: Math.min(30,250/Math.max(1,fontB.widthOfTextAtSize(tobPdfSafe(cli?.nombre || '-'),1))), font: fontB, color: BLACK });
+  page.drawText(tobPdfSafe(rutinaShort), { x: LX, y: H_L - 256, size: Math.min(14,250/Math.max(1,font.widthOfTextAtSize(tobPdfSafe(rutinaShort),1))), font, color: GRAY_DK });
+  page.drawText(`${tobT('cover.iteracion', L, { numero: it?.numero || 1 })}  ·  ${tobT('cover.inicio', L, { fecha: a.fechaInicio || '' })}`, { x: LX, y: H_L - 274, size: 10, font: fontO, color: GRAY });
+
+  // KPI sesiones
+  const statsIt = tobCalcItStats(a, it);
+  const kpiX = LX, kpiY = 180, kpiW = 230, kpiH = 100;
+  page.drawRectangle({ x: kpiX, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
+  page.drawRectangle({ x: kpiX, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
+  page.drawText(tobT('rut.kpi.sesiones_reg', L), { x: kpiX+16, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
+  page.drawText(String(statsIt.sesiones), { x: kpiX+16, y: kpiY+30, size: 40, font: fontB, color: BLACK });
+  // Total dinámico: numMicro × número de entrenos (varía por plantilla)
+  const _Npdf = Math.max(...a.rutina.entrenos.map(en=>en.numMicro||a.rutina.numMicro));
+  const _Epdf = (a.rutina?.entrenos || []).length || 2;
+  page.drawText(tobT('rut.kpi.de_x', L, { total: a.rutina.entrenos.reduce((n,en)=>n+(en.numMicro||a.rutina.numMicro),0), micros: _Npdf, entrenos: _Epdf }), { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
+
+  page.drawText('FULL TRAINING · BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
+
+  // ── Columna derecha: descripción ──
+  // tobDescOf(p.categoria, L) escoge la versión traducida del diccionario.
+  // Si la plantilla es custom (categoría sin entrada) o el idioma no existe,
+  // hacemos fallback a la versión guardada en p.descripcion (en castellano).
+  const descTxt = (pl ? tobDescOf(pl.categoria, L,pl.sexo) : null) || pl?.descripcion;
+  if(descTxt){
+    const RX = 360;
+    const rightW = W_L - RX - 50;
+    page.drawRectangle({ x: RX - 20, y: 50, width: 1.5, height: H_L - 130, color: rgb(0.88,0.88,0.88) });
+    page.drawText(tobT('rut.desc.titulo', L), { x: RX, y: H_L - 70, size: 16, font: fontB, color: ORANGE });
+    let dy = H_L - 100;
+    dy = tobRenderDescription(page, descTxt, RX, dy, rightW, font, fontB, ORANGE, GRAY_DK, rgb);
   }
+
   for(const en of a.rutina.entrenos){
     const total=en.numMicro||a.rutina.numMicro;
-    for(let first=1;first<=total;first+=3){
-      const micros=Array.from({length:Math.min(3,total-first+1)},(_,i)=>first+i);
-      title=en.nombre;nextPage(micros);
-      draw('Fecha (aaaa-mm-dd)',left,y,170,9,bold);
+    for(let first=1;first<=total;first+=total){
+      colW=(W-startX-30)/total;
+      const micros=Array.from({length:total},(_,i)=>first+i);
+      title=en.nombre.toUpperCase().startsWith('ENTRENAMIENTO')?en.nombre:'ENTRENAMIENTO '+(en.letra||en.id)+' - '+en.nombre;nextPage(micros);
+      draw('Fecha\n(aaaa-mm-dd)',left,y,75,7,bold);
       micros.forEach((mn,i)=>field(`fecha_${en.id}_${mn}`,it?.sesiones?.[mn]?.[en.id]?.fecha,startX+i*colW,y+8,colW-12,18));y-=28;
-      draw('Comentario del día',left,y,170,9,bold);
+      draw('Comentario\ndel día',left,y,75,8,bold);
       micros.forEach((mn,i)=>{field(`sesion_comentario_${en.id}_${mn}`,it?.sesiones?.[mn]?.[en.id]?.comentario,startX+i*colW,y+8,colW-12,32);form.getTextField(`sesion_comentario_${en.id}_${mn}`).setMaxLength(300);});y-=46;
       const guidanceH=Math.max(0,...micros.map(mn=>lines(en.indicaciones?.[mn],colW-14,8).length*11));
       micros.forEach((mn,i)=>draw(en.indicaciones?.[mn],startX+i*colW,y,colW-14,8));y-=guidanceH+12;
@@ -174,39 +219,42 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
         const isCircuit=ej.tipo==='circuito';
         const counts=plans.map(p=>isCircuit?(p.recordSlots||0)*ej.circuitoLineas.length:p.series);
         const count=Math.max(...counts);
-        const headerH=lines(ej.nombre,W-64,10,bold).length*13+lines(ej.subtitle,W-64,8).length*11+14;
+        const headerH=30;
         const planH=Math.max(...plans.map(p=>Math.max(1,lines(tobPlanLabel(p),colW-14,9,bold).length)*12))+8;
         const restH=Math.max(...plans.map(p=>Math.max(1,lines(p.pausa||'Sin indicación',colW-14,8).length)*11))+8;
-        const needed=headerH+planH+count*21+restH+68;
+        const needed=headerH+planH+count*13+restH+46;
         if(y-needed<35)nextPage(micros);
-        y-=draw(ej.nombre,left,y,W-64,10,bold)+5;
-        if(ej.subtitle)y-=draw(ej.subtitle,left,y,W-64,8)+4;
-        micros.forEach((mn,i)=>draw(tobPlanLabel(plans[i]),startX+i*colW,y,colW-14,9,bold));y-=planH;
-        draw('Registro',left,y,170,8,bold);
-        micros.forEach((mn,i)=>{draw('Kg',startX+i*colW,y,70,8);draw('Reps',startX+i*colW+85,y,70,8);});y-=15;
+        const name=tobPdfSafe(ej.nombre.toUpperCase()),nameSize=Math.min(10,350/Math.max(1,bold.widthOfTextAtSize(name,1)));
+        page.drawRectangle({x:24,y:y-5,width:W-48,height:19,color:BLACK});
+        page.drawText(name,{x:left,y:y+1,size:nameSize,font:bold,color:ORANGE});
+        if(ej.subtitle){const sx=left+bold.widthOfTextAtSize(name,nameSize)+12,sub=tobPdfSafe(ej.subtitle);page.drawText(sub,{x:sx,y:y+2,size:Math.min(8,(W-35-sx)/Math.max(1,fontO.widthOfTextAtSize(sub,1))),font:fontO,color:rgb(.85,.85,.85)});}
+        y-=25;
+        micros.forEach((mn,i)=>{page.drawRectangle({x:startX+i*colW,y:y-planH+12,width:colW-5,height:planH,color:rgb(.97,.94,.85)});draw(tobPlanLabel(plans[i]),startX+i*colW+4,y,colW-14,8,bold,rgb(.60,.37,.04));});y-=planH+3;
+        draw('Series',left,y,75,8,bold,GRAY_DK);
+        micros.forEach((mn,i)=>{draw('Kg',startX+i*colW+4,y,colW/2-8,7);draw('Reps',startX+i*colW+colW/2,y,colW/2-8,7);});y-=15;
         for(let row=0;row<count;row++){
           if(y<105)nextPage(micros);
           const label=isCircuit?`${Math.floor(row/ej.circuitoLineas.length)+1}ª · ${ej.circuitoLineas[row%ej.circuitoLineas.length]}`:`${row+1}ª serie`;
-          const labelRows=lines(label,170,8),rowH=Math.max(21,labelRows.length*11+3);
-          draw(label,left,y,170,8);
+          const labelRows=lines(label,75,7),rowH=Math.max(13,labelRows.length*10+3);
+          draw(label,left,y,75,7);
           micros.forEach((mn,i)=>{
             if(row>=counts[i])return;
             const arr=isCircuit?'lineas':'series',record=it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.[arr]?.[row];
-            field(`ej_${ej.id}_${mn}_${en.id}_${arr}_${row}_kg`,record?.kg,startX+i*colW,y+8,75,17,'kg');
-            field(`ej_${ej.id}_${mn}_${en.id}_${arr}_${row}_reps`,record?.reps,startX+i*colW+85,y+8,75,17,'reps');
+            field(`ej_${ej.id}_${mn}_${en.id}_${arr}_${row}_kg`,record?.kg,startX+i*colW,y+8,colW/2-8,11,'kg');
+            field(`ej_${ej.id}_${mn}_${en.id}_${arr}_${row}_reps`,record?.reps,startX+i*colW+colW/2,y+8,colW/2-8,11,'reps');
           });y-=rowH;
         }
-        if(y-restH-68<30)nextPage(micros);
-        draw('Descanso',left,y,170,8,bold);micros.forEach((mn,i)=>draw(plans[i].pausa||'Sin indicación',startX+i*colW,y,colW-14,8));y-=restH;
-        draw('Comentarios',left,y,170,8,bold);micros.forEach((mn,i)=>field(`comentario_${ej.id}_${mn}_${en.id}`,it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.comentario,startX+i*colW,y+8,colW-12,42));y-=62;
+        if(y-restH-46<30)nextPage(micros);
+        draw('Descanso',left,y,75,8,bold,rgb(.60,.37,.04));micros.forEach((mn,i)=>draw(plans[i].pausa||'Sin indicación',startX+i*colW,y,colW-14,8));y-=restH;
+        draw('Comentarios',left,y,75,7,bold);micros.forEach((mn,i)=>field(`comentario_${ej.id}_${mn}_${en.id}`,it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.comentario,startX+i*colW,y+8,colW-12,24));y-=40;
         page.drawLine({start:{x:left,y:y+6},end:{x:W-32,y:y+6},thickness:.5,color:rgb(.75,.75,.75)});
       }
       const cardioH=Math.max(0,...micros.map(mn=>lines(en.cardioByMicro?.[mn]?.label,colW-14,8).length*11))+16;
       if(y<110+cardioH)nextPage(micros);
-      draw('Aeróbico indicado',left,y,170,8,bold);
+      draw('Aeróbico\nindicado',left,y,75,8,bold);
       micros.forEach((mn,i)=>draw(en.cardioByMicro?.[mn]?.label||'Sin indicación',startX+i*colW,y,colW-14,8));y-=cardioH;
       for(const key of ['tipo','tiempo','intensidad']){
-        draw('Aeróbico · '+key,left,y,170,9,bold);micros.forEach((mn,i)=>field(`aer_${en.id}_${mn}_${key}`,it?.sesiones?.[mn]?.[en.id]?.aerobica?.[key],startX+i*colW,y+8,colW-12,18));y-=25;
+        draw(key,left,y,75,8,bold);micros.forEach((mn,i)=>field(`aer_${en.id}_${mn}_${key}`,it?.sesiones?.[mn]?.[en.id]?.aerobica?.[key],startX+i*colW,y+8,colW-12,18));y-=25;
       }
     }
   }
