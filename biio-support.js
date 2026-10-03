@@ -141,67 +141,53 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
   function draw(value,x,yy,width,size=9,f=font,color=rgb(.1,.1,.1)){
     const rows=lines(value,width,size,f);rows.forEach((line,i)=>page.drawText(line,{x,y:yy-i*(size+3),size,font:f,color}));return rows.length*(size+3);
   }
+  function brand(){
+    draw('FULL',40,H-45,60,16,bold,ORANGE);
+    draw('TRAINING',85,H-45,160,16,bold,BLACK);
+  }
   function nextPage(micros){
-    page=doc.addPage([W,H]);
-    page.drawRectangle({x:0,y:H-50,width:W,height:50,color:ORANGE});
-    draw(title,left,H-29,W-230,14,bold,BLACK);
-    draw('FULL TRAINING',W-160,H-29,140,12,bold,BLACK);
-    draw(tobRutinaShortName(pl),left,H-44,W-100,8,bold,BLACK);
-    y=H-68;
-    if(micros.length){draw('Microciclo',left,y,75,8,bold,GRAY_DK);micros.forEach((mn,i)=>draw(`${mn}º`,startX+i*colW+4,y,colW-8,10,bold,ORANGE));y-=20;}
+    page=doc.addPage([W,H]);brand();
+    draw(tobRutinaShortName(pl)+' · Iteración '+(it?.numero||1),W-270,H-42,230,8,bold,rgb(.58,.38,.08));
+    const th=draw(title,left,H-85,W-64,17,bold,BLACK);
+    draw('Registro de sesión',left,H-85-th-2,W-64,8,font,GRAY);
+    y=H-85-th-28;
+    page.drawLine({start:{x:left,y:y+14},end:{x:W-30,y:y+14},thickness:1.2,color:ORANGE});
+    if(micros.length){draw('MICROCICLO',left,y,75,7,bold,GRAY_DK);micros.forEach((mn,i)=>draw(String(mn).padStart(2,'0'),startX+i*colW+4,y,colW-8,9,bold,rgb(.58,.38,.08)));y-=20;}
   }
   function field(name,value,x,yy,width,height,numeric){
     const f=form.createTextField(name);if(value!=null)f.setText(tobPdfSafe(String(value)));if(height>20)f.enableMultiline();
-    f.addToPage(page,{x,y:yy-height,width,height,font,borderWidth:.5,borderColor:rgb(.65,.65,.65)});f.setFontSize(9);
+    f.addToPage(page,{x,y:yy-height,width,height,font,borderWidth:.5,borderColor:rgb(.82,.84,.83)});f.setFontSize(9);
     if(numeric)tobPdfNumberField(doc,f,numeric);
   }
-  // Nombre rutina sin sufijo "— Hombre"/"— Mujer"
-  const rutinaShort = tobRutinaShortName(pl);
-  const L = tobLangOf(cli);
-
-  // ─── PÁGINA 1: COVER en 2 columnas ─────
-  // Izquierda: logo + cliente + rutina + KPI. Derecha: descripción completa.
-  page = doc.addPage([W_L, H_L]);
-  page.drawRectangle({ x: 0, y: 0, width: 50, height: H_L, color: ORANGE });
-
-  // ── Columna izquierda ──
-  const LX = 80;
-  page.drawText('FULL', { x: LX, y: H_L - 95, size: 48, font: fontB, color: ORANGE });
-  page.drawText('TRAINING', { x: LX, y: H_L - 143, size: 48, font: fontB, color: BLACK });
-  page.drawText(tobPdfSafe((pl?.categoria || '').toUpperCase()), { x: LX, y: H_L - 165, size: 12, font, color: GRAY });
-
-  page.drawText(tobPdfSafe(cli?.nombre || '—'), { x: LX, y: H_L - 230, size: Math.min(30,250/Math.max(1,fontB.widthOfTextAtSize(tobPdfSafe(cli?.nombre || '-'),1))), font: fontB, color: BLACK });
-  page.drawText(tobPdfSafe(rutinaShort), { x: LX, y: H_L - 256, size: Math.min(14,250/Math.max(1,font.widthOfTextAtSize(tobPdfSafe(rutinaShort),1))), font, color: GRAY_DK });
-  page.drawText(`${tobT('cover.iteracion', L, { numero: it?.numero || 1 })}  ·  ${tobT('cover.inicio', L, { fecha: a.fechaInicio || '' })}`, { x: LX, y: H_L - 274, size: 10, font: fontO, color: GRAY });
-
-  // KPI sesiones
-  const statsIt = tobCalcItStats(a, it);
-  const kpiX = LX, kpiY = 180, kpiW = 230, kpiH = 100;
-  page.drawRectangle({ x: kpiX, y: kpiY, width: kpiW, height: kpiH, color: rgb(0.97,0.97,0.97) });
-  page.drawRectangle({ x: kpiX, y: kpiY + kpiH - 4, width: kpiW, height: 4, color: ORANGE });
-  page.drawText(tobT('rut.kpi.sesiones_reg', L), { x: kpiX+16, y: kpiY+kpiH-28, size: 10, font: fontB, color: GRAY });
-  page.drawText(String(statsIt.sesiones), { x: kpiX+16, y: kpiY+30, size: 40, font: fontB, color: BLACK });
-  // Total dinámico: numMicro × número de entrenos (varía por plantilla)
-  const _Npdf = Math.max(...a.rutina.entrenos.map(en=>en.numMicro||a.rutina.numMicro));
-  const _Epdf = (a.rutina?.entrenos || []).length || 2;
-  page.drawText(tobT('rut.kpi.de_x', L, { total: a.rutina.entrenos.reduce((n,en)=>n+(en.numMicro||a.rutina.numMicro),0), micros: _Npdf, entrenos: _Epdf }), { x: kpiX+16, y: kpiY+16, size: 8, font, color: GRAY });
-
-  page.drawText('FULL TRAINING · BIIO System', { x: LX, y: 40, size: 9, font: fontO, color: GRAY });
-
-  // ── Columna derecha: descripción ──
-  // tobDescOf(p.categoria, L) escoge la versión traducida del diccionario.
-  // Si la plantilla es custom (categoría sin entrada) o el idioma no existe,
-  // hacemos fallback a la versión guardada en p.descripcion (en castellano).
-  const descTxt = (pl ? tobDescOf(pl.categoria, L,pl.sexo) : null) || pl?.descripcion;
-  if(descTxt){
-    const RX = 360;
-    const rightW = W_L - RX - 50;
-    page.drawRectangle({ x: RX - 20, y: 50, width: 1.5, height: H_L - 130, color: rgb(0.88,0.88,0.88) });
-    page.drawText(tobT('rut.desc.titulo', L), { x: RX, y: H_L - 70, size: 16, font: fontB, color: ORANGE });
-    let dy = H_L - 100;
-    dy = tobRenderDescription(page, descTxt, RX, dy, rightW, font, fontB, ORANGE, GRAY_DK, rgb);
+  const rutinaShort=tobRutinaShortName(pl),L=tobLangOf(cli);
+  const stats=tobCalcItStats(a,it);
+  page=doc.addPage([W,H]);
+  page.drawRectangle({x:0,y:0,width:11,height:H,color:ORANGE});brand();
+  draw('BIIO / PROGRAMA DE ENTRENAMIENTO',W-270,H-43,235,8,bold,GRAY_DK);
+  page.drawRectangle({x:40,y:440,width:280,height:25,color:rgb(.99,.96,.89)});
+  draw((pl.categoria||'ENTRENAMIENTO').toUpperCase(),50,449,260,9,bold,rgb(.58,.38,.08));
+  const titleSize=Math.min(48,320/Math.max(1,bold.widthOfTextAtSize(tobPdfSafe(rutinaShort),1)));
+  draw(rutinaShort,40,389,330,titleSize,bold,BLACK);
+  draw('Tu planificación, tus registros\ny tu progreso en un mismo lugar.',40,347,325,12,font,GRAY_DK);
+  page.drawLine({start:{x:40,y:291},end:{x:360,y:291},thickness:.5,color:rgb(.85,.86,.85)});
+  draw(cli?.nombre||'Cliente',40,269,325,12,bold,BLACK);
+  draw('Iteración '+(it?.numero||1)+' / Inicio: '+(a.fechaInicio||'___ / ___ / ______'),40,248,325,9,font,GRAY_DK);
+  const micros=Math.max(...a.rutina.entrenos.map(en=>en.numMicro||a.rutina.numMicro));
+  [[micros,'MICROCICLOS'],[a.rutina.entrenos.length,'ENTRENOS'],[stats.sesiones,'REGISTRADOS']].forEach(([v,label],i)=>{draw(String(v).padStart(2,'0'),40+i*110,192,100,25,bold,BLACK);draw(label,40+i*110,172,105,7,font,GRAY);});
+  page.drawLine({start:{x:405,y:157},end:{x:405,y:465},thickness:.5,color:rgb(.85,.86,.85)});
+  draw('01 / TU RUTINA',435,452,360,9,bold,rgb(.58,.38,.08));
+  const description=(pl?tobDescOf(pl.categoria,L,pl.sexo):null)||pl.descripcion||'';
+  let descY=428;
+  for(const line of lines(description,360,10)){
+    if(descY<62){title='Tu rutina · '+rutinaShort;nextPage([]);descY=y;}
+    draw(line,435,descY,360,10,font,GRAY_DK);descY-=14;
   }
-
+  if(descY>245){
+    descY-=28;draw('02 / CÓMO LEER TU RUTINA',435,descY,360,9,bold,rgb(.58,.38,.08));descY-=23;
+    descY-=draw('Cada columna corresponde a un microciclo. Consulta la prescripción y registra los kilos y las repeticiones de cada serie.',435,descY,360,10,font,GRAY_DK)+24;
+    draw('03 / AL TERMINAR',435,descY,360,9,bold,rgb(.58,.38,.08));descY-=23;
+    draw('Anota cómo te has sentido en el comentario del día y guarda el PDF con tus resultados.',435,descY,360,10,font,GRAY_DK);
+  }
   for(const en of a.rutina.entrenos){
     const total=en.numMicro||a.rutina.numMicro;
     for(let first=1;first<=total;first+=total){
@@ -226,10 +212,10 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
         if(y-needed<35)nextPage(micros);
         const name=tobPdfSafe(ej.nombre.toUpperCase()),nameSize=Math.min(10,350/Math.max(1,bold.widthOfTextAtSize(name,1)));
         page.drawRectangle({x:24,y:y-5,width:W-48,height:19,color:BLACK});
-        page.drawText(name,{x:left,y:y+1,size:nameSize,font:bold,color:ORANGE});
+        page.drawText(name,{x:left,y:y+1,size:nameSize,font:bold,color:rgb(1,1,1)});
         if(ej.subtitle){const sx=left+bold.widthOfTextAtSize(name,nameSize)+12,sub=tobPdfSafe(ej.subtitle);page.drawText(sub,{x:sx,y:y+2,size:Math.min(8,(W-35-sx)/Math.max(1,fontO.widthOfTextAtSize(sub,1))),font:fontO,color:rgb(.85,.85,.85)});}
         y-=25;
-        micros.forEach((mn,i)=>{page.drawRectangle({x:startX+i*colW,y:y-planH+12,width:colW-5,height:planH,color:rgb(.97,.94,.85)});draw(tobPlanLabel(plans[i]),startX+i*colW+4,y,colW-14,8,bold,rgb(.60,.37,.04));});y-=planH+3;
+        micros.forEach((mn,i)=>{page.drawRectangle({x:startX+i*colW,y:y-planH+12,width:colW-5,height:planH,color:rgb(.99,.96,.89)});draw(tobPlanLabel(plans[i]),startX+i*colW+4,y,colW-14,8,bold,rgb(.60,.37,.04));});y-=planH+3;
         draw('Series',left,y,75,8,bold,GRAY_DK);
         micros.forEach((mn,i)=>{draw('Kg',startX+i*colW+4,y,colW/2-8,7);draw('Reps',startX+i*colW+colW/2,y,colW/2-8,7);});y-=15;
         for(let row=0;row<count;row++){
@@ -258,7 +244,7 @@ async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
       }
     }
   }
-  doc.getPages().forEach((p,i)=>p.drawText(`${i+1} / ${doc.getPageCount()}`,{x:W-75,y:15,size:8,font}));
+  doc.getPages().forEach((p,i)=>{p.drawText('FULL TRAINING · ENTRENAMIENTO PERSONAL',{x:40,y:22,size:7,font,color:GRAY});p.drawText(`${i+1} / ${doc.getPageCount()}`,{x:W-75,y:22,size:7,font,color:GRAY});});
   form.updateFieldAppearances(font);const bytes=await doc.save();if(returnBytes)return bytes;
   const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
   if(preview){if(!window.open(url,'_blank'))tobToast('Permite ventanas emergentes para la vista previa','red');}
