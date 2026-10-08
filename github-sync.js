@@ -20,6 +20,206 @@ const CACHE_SHA  = '__gh_sync_sha';
 const FILE_NAME    = 'data.json';
 const PUSH_DELAY   = 2500;
 const CONFLICT_RETRIES = 3;
+const DATA_KEYS = {
+  training: ['ft_v4','ft_theme','ft_lang'],
+  training_online: ['tob_online_v2'],
+  patrimonio: ['pat_v5','pat_dismissed'],
+  facturas: ['fac_v1'],
+  options: ['ot_hist','ot_snaps','ot_activas','ot_cfg'],
+};
+const _bases = new Map();
+const _expectedValues = new Map();
+let _dirty = false;
+let _blocked = false;
+let _pushPromise = null;
+let _reloadRequired = false;
+let _safetyDBPromise;
+
+function same(a,b){
+  const canonical = v => Array.isArray(v) ? v.map(canonical)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])) : v;
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+function scope(){ return getRepo()+'@'+getBranch()+(window.FTSession?':'+(window.FTSession.user?.id||'pending'):''); }
+function conflict(message){ const e=new Error(message); e.syncConflict=true; return e; }
+function safetyDB(){
+  if(!_safetyDBPromise) _safetyDBPromise=new Promise((resolve,reject)=>{
+    if(!window.indexedDB) return reject(new Error('IndexedDB no disponible: no puedo verificar una copia segura.'));
+    const request=indexedDB.open('full-training-sync-safety-v1',1);
+    const timer=setTimeout(()=>reject(new Error('La base de copias esta bloqueada. Cierra otras pestanas y reintenta.')),8000);
+    request.onupgradeneeded=()=>request.result.createObjectStore('records',{keyPath:'id'});
+    request.onsuccess=()=>{clearTimeout(timer);const db=request.result;db.onversionchange=()=>db.close();resolve(db);};
+    request.onerror=()=>{clearTimeout(timer);reject(request.error);};
+    request.onblocked=()=>{clearTimeout(timer);reject(new Error('Base de copias bloqueada.'));};
+  }).catch(e=>{_safetyDBPromise=null;throw e;});
+  return _safetyDBPromise;
+}
+async function safetyRead(id){
+  const db=await safetyDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('records','readonly'),request=tx.objectStore('records').get(id);
+    tx.oncomplete=()=>resolve(request.result);tx.onerror=tx.onabort=()=>reject(tx.error||new Error('No pude leer la copia.'));
+  });
+}
+async function safetyWrite(record){
+  const db=await safetyDB();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('records','readwrite');tx.objectStore('records').put(record);
+    tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error||new Error('No pude preservar la copia.'));
+  });
+  if(!same(await safetyRead(record.id),record))throw new Error('La copia no supera la verificacion.');
+}
+const LEGACY_ARCHIVE_KEYS=['ot_images','__gh_sync_lastgood'];
+async function textHash(raw){
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function readLegacyArchive(){
+  const db=await safetyDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('records','readonly'),request=tx.objectStore('records').getAll();
+    tx.oncomplete=()=>resolve(request.result.filter(r=>r.kind==='legacy-storage'));
+    tx.onerror=tx.onabort=()=>reject(tx.error||new Error('No pude leer el archivo antiguo.'));
+  });
+}
+async function archiveLegacyStorage(){
+  if(!navigator.locks)throw new Error('No puedo coordinar el archivo seguro entre ventanas.');
+  return navigator.locks.request('ft-legacy-storage-archive',async()=>{
+    const copied=[];
+    for(const key of LEGACY_ARCHIVE_KEYS){
+      const raw=_origGetItem.call(localStorage,key);
+      if(raw===null)continue;
+      const sha256=await textHash(raw),id='legacy-storage:'+key+':'+sha256;
+      let record=await safetyRead(id);
+      if(!record){
+        record={id,kind:'legacy-storage',key,sha256,raw,origin:location.origin,createdAt:new Date().toISOString()};
+        await safetyWrite(record);
+      }
+      record=await safetyRead(id);
+      if(record.raw!==raw || await textHash(record.raw)!==sha256)throw new Error('El archivo de '+key+' no supera la verificacion.');
+      copied.push({key,raw});
+    }
+    // Preserve and verify every value before removing either redundant copy.
+    for(const {key,raw} of copied){
+      if(_origGetItem.call(localStorage,key)!==raw)throw conflict('Otra ventana ha cambiado '+key+'. No se retira ninguna copia.');
+    }
+    for(const {key} of copied){
+      _origRemoveItem.call(localStorage,key);
+      if(_origGetItem.call(localStorage,key)!==null)throw new Error('No se ha podido liberar la copia local de '+key);
+    }
+    return copied.length;
+  });
+}
+async function restoreLegacyStorage(key,sha256){
+  if(!LEGACY_ARCHIVE_KEYS.includes(key))throw new Error('Clave no admitida para recuperacion.');
+  return navigator.locks.request('ft-legacy-storage-archive',async()=>{
+    const record=await safetyRead('legacy-storage:'+key+':'+sha256);
+    if(!record || await textHash(record.raw)!==sha256)throw new Error('Archivo ausente o no verificado.');
+    const current=_origGetItem.call(localStorage,key);
+    if(current!==null && current!==record.raw)throw conflict('Ya existe otra version de '+key+'. No se sobrescribira.');
+    _origSetItem.call(localStorage,key,record.raw);
+    if(_origGetItem.call(localStorage,key)!==record.raw)throw new Error('Recuperacion no verificada.');
+    return true;
+  });
+}
+async function openRecoveryArchive(){
+  const records=await readLegacyArchive();
+  const dialog=document.createElement('dialog');
+  dialog.style.cssText='width:min(520px,90vw);max-height:75vh;overflow:auto;background:#141821;color:#eee;border:1px solid #515967;border-radius:8px;padding:18px;visibility:visible;font:14px sans-serif';
+  const title=document.createElement('h3');title.textContent='Copias de seguridad';dialog.appendChild(title);
+  const error=document.createElement('p');error.style.color='#f87171';dialog.appendChild(error);
+  const exportButton=document.createElement('button');exportButton.textContent='Exportar datos y archivo';
+  exportButton.onclick=()=>exportSafetyCopy().catch(e=>error.textContent=e.message);dialog.appendChild(exportButton);
+  for(const record of records){
+    const row=document.createElement('div');row.style.cssText='margin-top:12px;padding-top:10px;border-top:1px solid #515967';
+    const label=document.createElement('p');
+    label.textContent=(record.key==='ot_images'?'Imagenes antiguas':'Respaldo antiguo')+' · '+Math.round(record.raw.length*2/1024)+' KB · '+record.createdAt.slice(0,10);
+    row.appendChild(label);
+    const restore=document.createElement('button');restore.textContent='Recuperar copia local';
+    restore.onclick=async()=>{
+      if(!confirm('Se recuperara esta clave antigua solo si hay espacio y no sobrescribe otra version. El archivo de seguridad se conserva. ¿Continuar?'))return;
+      try{await restoreLegacyStorage(record.key,record.sha256);error.style.color='#34d399';error.textContent='Copia recuperada y verificada.';}
+      catch(e){error.style.color='#f87171';error.textContent=e.name==='QuotaExceededError'?'No hay espacio. La copia sigue conservada en el archivo.':e.message;}
+    };
+    row.appendChild(restore);dialog.appendChild(row);
+  }
+  const close=document.createElement('button');close.textContent='Cerrar';close.style.marginTop='16px';
+  close.onclick=()=>dialog.close();dialog.appendChild(close);
+  dialog.addEventListener('close',()=>dialog.remove());document.body.appendChild(dialog);dialog.showModal();
+}
+async function preserve(kind,section,value){
+  const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const id=kind+':'+scope()+':'+section+':'+fingerprint;
+  if(await safetyRead(id))return;
+  await safetyWrite({id,kind,section,scope:scope(),createdAt:new Date().toISOString(),value});
+}
+async function baseFor(section){
+  if(!_bases.has(section)){
+    const record=await safetyRead('base:'+scope()+':'+section);
+    _bases.set(section,record ? {known:true,value:record.value} : {known:false});
+  }
+  return _bases.get(section);
+}
+async function rememberBase(section,value){
+  await safetyWrite({id:'base:'+scope()+':'+section,kind:'base',scope:scope(),section,value});
+  _bases.set(section,{known:true,value});
+}
+async function reconcileCatalog(local,remote){
+  const section='tob_menus_catalog',base=await baseFor(section);
+  await preserve('catalog-versions',section,{local,remote,base:base.known?base.value:null});
+  const result={...remote,...local};
+  for(const field of ['ingredientes','recetas','menus']){
+    const indexed=value=>new Map((value?.[field]||[]).map(item=>[item.id,item]));
+    const l=indexed(local),r=indexed(remote),b=indexed(base.value);
+    result[field]=[];
+    for(const id of new Set([...l.keys(),...r.keys(),...b.keys()])){
+      const lv=l.get(id),rv=r.get(id),bv=b.get(id);let chosen;
+      if(same(lv,rv))chosen=lv;
+      else if(base.known && same(lv,bv))chosen=rv;
+      else if(base.known && same(rv,bv))chosen=lv;
+      else if(!base.known && (!lv||!rv))chosen=lv||rv;
+      else throw conflict('Conflicto en el catalogo: '+field+'. No se elegira una receta por su fecha global.');
+      if(chosen)result[field].push(chosen);
+    }
+  }
+  result._syncTs=Math.max(local?._syncTs||0,remote?._syncTs||0);
+  await rememberBase(section,remote||{});
+  return result;
+}
+function readSection(section){
+  const out={};
+  (DATA_KEYS[section]||(_section===section?_watchedKeys:[])).forEach(k=>{
+    const raw=_origGetItem.call(localStorage,k);if(raw===null)return;
+    try{out[k]=JSON.parse(raw);}catch(_e){out[k]=raw;}
+  });
+  return out;
+}
+async function exclusive(operation){
+  if(navigator.locks) return navigator.locks.request('ft-sync:'+scope(),operation);
+  throw new Error('Este navegador no permite coordinar guardados seguros entre pestanas. Usa Chrome actualizado.');
+}
+async function exportSafetyCopy(){
+  const values={};Object.keys(DATA_KEYS).forEach(s=>{values[s]=readSection(s);});
+  if(typeof window.ghEditorSnapshot==='function')values.editor=window.ghEditorSnapshot();
+  const legacyArchive=await readLegacyArchive();
+  const url=URL.createObjectURL(new Blob([JSON.stringify({createdAt:new Date().toISOString(),data:values,legacyArchive},null,2)],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download='full-training-copia-local-'+Date.now()+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function reportConflict(error){
+  _blocked=true;
+  showStatus('Conflicto: datos conservados. Exporta y revisa.', 'error');
+  if(document.getElementById('ghSafetyConflict'))return;
+  const panel=document.createElement('div');panel.id='ghSafetyConflict';
+  panel.style.cssText='position:fixed;bottom:50px;right:10px;max-width:440px;padding:16px;background:#15191e;color:#eee;border:1px solid #f59e0b;border-radius:6px;z-index:100002;font:13px sans-serif;visibility:visible';
+  const message=document.createElement('p');message.textContent=error.message;panel.appendChild(message);
+  const download=document.createElement('button');download.textContent='Exportar copia local';download.onclick=exportSafetyCopy;panel.appendChild(download);
+  const load=document.createElement('button');load.textContent='Conservar copia y cargar remoto';
+  load.onclick=async()=>{
+    if(!confirm('Se conservaran copias de ambas versiones. Se cargara la remota, sin fusionar tus cambios locales. ¿Continuar?'))return;
+    load.disabled=true;
+    try{await pullAndApplyAll({resolveRemote:true});location.reload();}catch(e){message.textContent=e.message;load.disabled=false;}
+  };
+  panel.appendChild(load);document.body.appendChild(panel);
+}
 
 // Funciones nativas, antes de cualquier intercepción
 const _origSetItem    = Storage.prototype.setItem;
@@ -31,7 +231,7 @@ const _origGetItem    = Storage.prototype.getItem;
 // ────────────────────────────────────────────────────────────────────
 
 function getToken(){ return _origGetItem.call(localStorage, TOKEN_KEY); }
-function getRepo(){ return _origGetItem.call(localStorage, REPO_KEY); }
+function getRepo(){ return window.FTSession ? (window.FTSession.user?.repo || 'session-api') : _origGetItem.call(localStorage, REPO_KEY); }
 function getBranch(){ return _origGetItem.call(localStorage, BRANCH_KEY) || 'main'; }
 function getCachedSha(){ return _origGetItem.call(localStorage, CACHE_SHA); }
 function setCachedSha(s){ _origSetItem.call(localStorage, CACHE_SHA, s||''); }
@@ -84,6 +284,13 @@ function b64decode(str){
 // ────────────────────────────────────────────────────────────────────
 
 async function ghFetch(path, opts){
+  if(window.FTSession){
+    await window.FTSession.ready;
+    if(path.startsWith('contents/'+FILE_NAME) && (!opts || opts.method!=='PUT')){
+      return fetch('/api/data',{cache:'no-store',credentials:'same-origin'});
+    }
+    throw new Error('Esta operacion debe pasar por la API de sesiones.');
+  }
   const token = getToken();
   if(!token) throw new Error('No hay token de GitHub configurado');
   const repo = getRepo();
@@ -97,6 +304,12 @@ async function ghFetch(path, opts){
 }
 
 async function pullRaw(){
+  if(window.FTSession){
+    await window.FTSession.ready;
+    const res=await fetch('/api/data',{cache:'no-store',credentials:'same-origin'});
+    if(!res.ok){const e=new Error('No pude leer los datos ('+res.status+').');e.status=res.status;throw e;}
+    return res.json();
+  }
   const branch = getBranch();
   const res = await ghFetch(`contents/${FILE_NAME}?ref=${encodeURIComponent(branch)}&_=${Date.now()}`,
                             { cache: 'no-store' });
@@ -188,12 +401,24 @@ async function pullRaw(){
 //     para que el caller pueda reconstruir el payload desde el ESTADO ACTUAL
 //     de localStorage (no del snapshot inicial). Esto evita perder cambios
 //     locales hechos entre el primer intento y el retry.
-//   - Si no hay `rebuild` (callers legacy), simplemente hacemos merge del
-//     payload original con el remoto fresco (comportamiento previo).
-async function pushRaw(payload, rebuild, attempt){
+//   - Sin `rebuild`, se bloquea el conflicto para no reponer datos antiguos.
+async function pushRaw(payload, rebuild, attempt, expectedSha){
   attempt = attempt || 0;
   const branch = getBranch();
-  const sha = getCachedSha();
+  const sha = expectedSha;
+  if(window.FTSession){
+    // Server-side mode only accepts one explicitly scoped section per write.
+    const section=payload.__writeSection;
+    if(!section)throw new Error('Falta la seccion autorizada para guardar.');
+    const res=await fetch('/api/data/'+encodeURIComponent(section),{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sha,section:payload[section]})});
+    if(res.status===409 && attempt<CONFLICT_RETRIES){
+      const remote=await pullRaw();
+      if(!rebuild)throw conflict('Los datos remotos han cambiado.');
+      return pushRaw(await rebuild(remote.content||{}),rebuild,attempt+1,remote.sha);
+    }
+    if(!res.ok){const e=new Error('Guardado rechazado ('+res.status+').');e.status=res.status;throw e;}
+    return res.json();
+  }
   const body = {
     message: 'sync: '+(payload.lastUpdate || new Date().toISOString()),
     content: b64encode(JSON.stringify(payload, null, 2)),
@@ -211,9 +436,9 @@ async function pushRaw(payload, rebuild, attempt){
     const remote = await pullRaw();
     setCachedSha(remote.sha || '');
     const nextPayload = rebuild
-      ? rebuild(remote.content || {})
-      : mergeSections(remote.content || {}, payload);
-    return pushRaw(nextPayload, rebuild, attempt + 1);
+      ? await rebuild(remote.content || {})
+      : (()=>{throw conflict('Conflicto remoto: no se permite reponer un payload antiguo.');})();
+    return pushRaw(nextPayload, rebuild, attempt + 1, remote.sha);
   }
 
   if(!res.ok){
@@ -247,7 +472,7 @@ function setupCredentials(opts){
   if(opts.token)  _origSetItem.call(localStorage, TOKEN_KEY, opts.token);
 }
 
-function isLoggedIn(){ return !!getToken() && !!getRepo(); }
+function isLoggedIn(){ return !!window.FTSession || (!!getToken() && !!getRepo()); }
 
 function clearCredentials(){
   _origRemoveItem.call(localStorage, TOKEN_KEY);
@@ -292,16 +517,22 @@ function _cleanupLegacyOversize(){
       + limpiado + ' keys, ~' + Math.round(bytes/1024) + ' KB. Aquesta neteja és puntual.');
   }
 }
-_cleanupLegacyOversize();
+// Legacy storage is retained. Cleanup is never executed on startup.
 
 // Descarga data.json y vuelca cada sección/clave en localStorage.
 // Avisa via showStatus para que el badge (con glow CSS) refleje el estado real.
 // Al acabar OK marca la sesión como sincronizada (sessionStorage), de modo que
 // si el usuario navega entre dashboards de la misma pestaña no se vuelve a
 // re-sincronizar innecesariamente.
-async function pullAndApplyAll(){
+async function pullAndApplyAll(opts){
+  opts=opts||{};
   showStatus('⟳ sincronizando…', 'work');
   try {
+    return await exclusive(async()=>{
+    await archiveLegacyStorage();
+    if((_dirty||_pushInFlight || (window.ghHasUnsavedChanges && window.ghHasUnsavedChanges())) && !opts.resolveRemote){
+      throw conflict('Hay cambios locales pendientes. No se descargara encima de ellos.');
+    }
     const remote = await pullRaw();
     setCachedSha(remote.sha || '');
     if(!remote.content){
@@ -310,26 +541,31 @@ async function pullAndApplyAll(){
       return { fresh: true };
     }
 
-    Object.keys(remote.content).forEach(section => {
-      if(section === 'version' || section === 'lastUpdate') return;
-      if(section.startsWith('__')) return;                      // privades / config
-      if(NO_LOCAL_STORAGE_SECTIONS.has(section)) return;        // gestionades en altres stores
-      const sec = remote.content[section];
-      if(!sec || typeof sec !== 'object') return;
-      Object.keys(sec).forEach(key => {
+    const planned=[];
+    for(const section of Object.keys(DATA_KEYS)){
+      if(!remote.content[section])continue;
+      const local=readSection(section),incoming=remote.content[section];
+      const base=await baseFor(section);
+      if(!opts.resolveRemote && Object.keys(local).length && !same(local,incoming) && (!base.known || !same(local,base.value))){
+        await preserve('conflict',section,{local,remote:incoming});
+        throw conflict('La version local de '+section+' difiere de la nube. Ambas estan conservadas; revisa antes de elegir.');
+      }
+      planned.push({section,local,incoming});
+    }
+    await preserve('before-pull','all',{local:planned.map(p=>({section:p.section,data:p.local})),remote:remote.content,editor:window.ghEditorSnapshot?window.ghEditorSnapshot():null});
+    for(const {section,incoming:sec} of planned){
+      for(const key of DATA_KEYS[section]){
+        if(!Object.prototype.hasOwnProperty.call(sec,key))continue;
         const val = sec[key];
         const str = (typeof val === 'string') ? val : JSON.stringify(val);
-        try {
-          _origSetItem.call(localStorage, key, str);
-        } catch(e){
-          // Si una key concreta peta per quota, no aborti tot el bolcat — només
-          // logueja i continua amb la resta. Així la app pot arrencar encara
-          // que algun blob excepcional sigui gegantí.
-          console.warn('[GitHubSync] No s\'ha pogut guardar "' + key + '" a localStorage ('
-            + (str ? str.length : 0) + ' bytes): ' + e.message);
-        }
-      });
-    });
+        if(_origGetItem.call(localStorage,key)!==str)_reloadRequired=true;
+        _origSetItem.call(localStorage,key,str);
+        if(_origGetItem.call(localStorage,key)!==str)throw new Error('No se ha verificado el guardado local de '+key);
+        _expectedValues.set(key,str);
+      }
+      await rememberBase(section,sec);
+    }
+    _dirty=false;_blocked=false;
 
     const syncedAt = new Date().toLocaleTimeString('es-ES');
     try {
@@ -338,8 +574,11 @@ async function pullAndApplyAll(){
     } catch(_e){}
     showStatus('✓ sincronizado '+syncedAt, 'ok');
     return { fresh: false, lastUpdate: remote.content.lastUpdate, security: remote.content.__security || null };
+    });
   } catch(err){
     showStatus('⚠ error sync: '+(err.message||''), 'error');
+    _blocked=true;
+    if(err.syncConflict)reportConflict(err);
     throw err;
   }
 }
@@ -357,6 +596,7 @@ async function fetchFullData(){
   setCachedSha(remote.sha || '');
   const content = remote.content || {};
   _securityCache = content.__security || {};
+  await rememberBase('__security',_securityCache);
   return content;
 }
 
@@ -368,16 +608,7 @@ async function fetchSecuritySection(){
 }
 
 async function updateSecuritySection(updater){
-  const remote = await pullRaw();
-  setCachedSha(remote.sha || '');
-  // Protección: si hay sha pero no content, no podemos leer el archivo grande
-  if(remote.sha && !remote.content){
-    throw new Error('No pude leer data.json remoto. Recarga la app.');
-  }
-  const current = (remote.content && remote.content.__security) || {};
-  const updated = updater(Object.assign({}, current));
-  const payload = mergeSections(remote.content || {}, { __security: updated });
-  await pushRaw(payload);
+  const updated=await updateSection('__security',updater);
   _securityCache = updated;
   return updated;
 }
@@ -388,27 +619,44 @@ async function updateSecuritySection(updater){
 // updater contra el remoto FRESCO, de modo que nunca se revierten secciones ajenas.
 async function updateSection(sectionName, updater){
   if(!sectionName || typeof sectionName !== 'string') throw new Error('sectionName requerido');
+  return exclusive(async()=>{
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');
   if(remote.sha && !remote.content){
     throw new Error('No pude leer data.json remoto. Recarga la app.');
   }
-  let lastUpdated = null;
+  const original=(remote.content && remote.content[sectionName])||{};
+  const base=await baseFor(sectionName);
+  if(base.known && !same(original,base.value)){
+    await preserve('conflict',sectionName,{base:base.value,remote:original});
+    throw conflict('La seccion '+sectionName+' ha cambiado desde que la abriste.');
+  }
+  let lastUpdated = updater(JSON.parse(JSON.stringify(original)));
+  await preserve('before-update',sectionName,{remote:original,proposed:lastUpdated});
   const build = (remoteContent) => {
     const current = (remoteContent && remoteContent[sectionName]) || {};
-    lastUpdated = updater(Object.assign({}, current));
-    return mergeSections(remoteContent || {}, { [sectionName]: lastUpdated });
+    if(!same(current,original))throw conflict('Conflicto en '+sectionName+'. No se ha sobrescrito.');
+    const result=mergeSections(remoteContent || {}, { [sectionName]: lastUpdated });
+    if(window.FTSession)result.__writeSection=sectionName;
+    return result;
   };
   const payload = build(remote.content);
-  await pushRaw(payload, build);
+  await pushRaw(payload, build,0,remote.sha);
+  await rememberBase(sectionName,lastUpdated);
   return lastUpdated;
+  });
 }
 
 // Lectura de una sección arbitraria (ej. __ia_config).
-async function fetchSection(sectionName){
+async function fetchSection(sectionName,opts){
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');
-  return (remote.content && remote.content[sectionName]) || null;
+  const value=(remote.content && remote.content[sectionName]) || null;
+  if(!opts?.preserveBase){
+    const base=await baseFor(sectionName);
+    if(!base.known)await rememberBase(sectionName,value||{});
+  }
+  return value;
 }
 
 function getCachedSecurity(){ return _securityCache; }
@@ -435,14 +683,32 @@ function attach(opts){
   _section     = opts.section;
   _watchedKeys = opts.keys || [];
   _attached    = true;
+  _watchedKeys.forEach(k=>_expectedValues.set(k,_origGetItem.call(localStorage,k)));
+  window.addEventListener('storage',e=>{
+    if(e.storageArea===localStorage && _watchedKeys.includes(e.key)){
+      _blocked=true;
+      reportConflict(conflict('Otra pestana ha cambiado estos datos. Exporta lo pendiente antes de recargar.'));
+    }
+  });
 
   Storage.prototype.setItem = function(key, value){
+    if(_enabled && this===window.localStorage && _watchedKeys.includes(key)){
+      if(window.FTSession && !window.FTSession.active)throw new Error('Sesion no verificada. Los datos no se han cambiado.');
+      if(_reloadRequired || _blocked || _origGetItem.call(this,key)!==_expectedValues.get(key)){
+        const e=conflict('Los datos han cambiado en otra ventana. No se sustituira la version actual.');
+        reportConflict(e);throw e;
+      }
+    }
     _origSetItem.call(this, key, value);
+    if(this===window.localStorage && _watchedKeys.includes(key))_expectedValues.set(key,String(value));
     if(_enabled && this === window.localStorage && _watchedKeys.indexOf(key) >= 0){
       schedulePush();
     }
   };
   Storage.prototype.removeItem = function(key){
+    if(this===window.localStorage && _watchedKeys.includes(key)){
+      const e=conflict('No se permite eliminar una clave completa de datos desde la sincronizacion.');reportConflict(e);throw e;
+    }
     _origRemoveItem.call(this, key);
     if(_enabled && this === window.localStorage && _watchedKeys.indexOf(key) >= 0){
       schedulePush();
@@ -450,7 +716,7 @@ function attach(opts){
   };
 
   window.addEventListener('beforeunload', function(e){
-    if(_pushTimer || _pushInFlight){
+    if(_dirty || _pushTimer || _pushInFlight){
       e.preventDefault();
       e.returnValue = 'Hay cambios sin guardar en GitHub. ¿Salir?';
       return e.returnValue;
@@ -461,7 +727,7 @@ function attach(opts){
 // Lo llama dashboard-auth.js tras pasar el gate. Hasta ese momento,
 // los cambios a localStorage NO se suben (porque podrían ser cambios
 // del propio bootstrap antes de que el usuario haya entrado).
-function enableAutoPush(){ _enabled = true; }
+function enableAutoPush(){ _enabled = true;if(_dirty&&!_blocked)schedulePush(); }
 
 function setStatusElement(el){ _statusEl = el; }
 
@@ -512,34 +778,32 @@ function _findBadge(){
 }
 
 function schedulePush(){
+  _dirty=true;
   clearTimeout(_pushTimer);
+  if(_blocked)return;
   showStatus('● cambios pendientes', 'work');
-  _pushTimer = setTimeout(doPush, PUSH_DELAY);
+  _pushTimer = setTimeout(()=>{doPush().catch(()=>{});}, PUSH_DELAY);
 }
 
-async function doPush(){
+function doPush(){
+  if(_pushPromise)return _pushPromise;
+  _pushPromise=performPush().finally(()=>{
+    _pushPromise=null;
+    if(_dirty && !_blocked && _enabled)schedulePush();
+  });
+  return _pushPromise;
+}
+async function performPush(){
   _pushTimer = null;
-  if(_pushInFlight){ _pendingPush = true; return; }
+  if(_blocked)throw conflict('Sincronizacion bloqueada: revisa el conflicto antes de guardar.');
+  if(!_section)return;
   _pushInFlight = true;
   showStatus('subiendo a GitHub…', 'work');
 
   try {
-    // Helper: lee TODAS las keys observadas desde localStorage al momento de
-    // llamarse. Se usa para construir el payload inicial Y para reconstruirlo
-    // en cada retry de pushRaw (si el usuario sigue editando mientras el push
-    // está en vuelo, los cambios nuevos se incluyen al reintentar).
-    const readSectionData = () => {
-      const out = {};
-      _watchedKeys.forEach(k => {
-        const v = _origGetItem.call(localStorage, k);
-        if(v === null || v === undefined) return;
-        try { out[k] = JSON.parse(v); }
-        catch(e){ out[k] = v; }
-      });
-      return out;
-    };
-    const sectionData = readSectionData();
-
+    await exclusive(async()=>{
+    const sectionData = readSection(_section);
+    await preserve('version',_section,sectionData);
     const remote = await pullRaw();
     setCachedSha(remote.sha || '');
 
@@ -549,89 +813,43 @@ async function doPush(){
       throw new Error('No pude leer data.json remoto. Cancelo subida.');
     }
 
-    const merged = mergeSections(remote.content || {}, { [_section]: sectionData });
-
-    // ── Protección 2: si el remoto tenía __security y el merge la pierde, abortar.
-    if(remote.content && remote.content.__security && !merged.__security){
-      throw new Error('Sección de seguridad perdida en merge. Cancelo subida.');
+    const original=(remote.content && remote.content[_section])||{};
+    const base=await baseFor(_section);
+    if(!base.known || !same(original,base.value)){
+      await preserve('conflict',_section,{local:sectionData,remote:original});
+      throw conflict('La nube ha cambiado o falta una base verificada. No se ha sobrescrito '+_section+'.');
     }
-
-    // ── Protección 3: si el remoto tenía OTRAS secciones de dashboards
-    // (training, options, patrimonio) y el merge las pierde, abortar.
-    if(remote.content){
-      const KNOWN_SECTIONS = ['training','options','patrimonio','facturas'];
-      const lostSections = KNOWN_SECTIONS.filter(s =>
-        remote.content[s] && !merged[s] && s !== _section
-      );
-      if(lostSections.length){
-        throw new Error('Secciones perdidas en merge: '+lostSections.join(', ')+'. Cancelo subida.');
-      }
-    }
-
-    // ── Protección 4: el payload no puede ser drásticamente más pequeño que el remoto.
-    // Si el remoto pesaba >100KB y el nuevo pesa <50% de eso, algo está muy mal.
-    // BYPASS de un solo uso: poner localStorage.setItem('__gh_sync_force_shrink','1')
-    // permite UN push ignorando esta protección. Se limpia automáticamente tras usarse.
-    if(remote.content){
-      const remoteSize = JSON.stringify(remote.content).length;
-      const newSize = JSON.stringify(merged).length;
-      const bypass = _origGetItem.call(localStorage, '__gh_sync_force_shrink') === '1';
-      if(remoteSize > 100000 && newSize < remoteSize * 0.5){
-        if(bypass){
-          // Consumir el flag (un solo uso) y permitir el push
-          try { localStorage.removeItem('__gh_sync_force_shrink'); } catch(e){}
-          console.warn('[GitHubSync] Bypass de protección de tamaño activado (un solo uso). Subiendo '+newSize+' bytes vs remoto '+remoteSize+'.');
-        } else {
-          throw new Error('El payload nuevo pesa <50% del remoto ('+newSize+' vs '+remoteSize+'). Cancelo por seguridad. Si el descenso es legítimo, ejecuta en consola: localStorage.setItem("__gh_sync_force_shrink","1") y vuelve a sincronizar.');
-        }
-      }
-    }
-
-    // ── Protección 5: backup local del remoto ANTES de subir.
-    // Guardamos el contenido remoto en localStorage por si la subida lo corrompe.
-    if(remote.content){
-      try {
-        const backupKey = '__gh_sync_lastgood';
-        const backup = {
-          content: remote.content,
-          sha: remote.sha,
-          timestamp: new Date().toISOString()
-        };
-        // Si el JSON es enorme, recortamos para que quepa en localStorage (~5MB límite)
-        const backupStr = JSON.stringify(backup);
-        if(backupStr.length < 4500000){
-          _origSetItem.call(localStorage, backupKey, backupStr);
-        }
-      } catch(e){
-        // Si falla el backup local (espacio, etc.) no abortamos: seguimos con la subida.
-        console.warn('[GitHubSync] backup local falló:', e.message);
-      }
-    }
-
-    // Pasamos un `rebuild` a pushRaw: si hay conflicto (otra pestaña pushó
-    // mientras este push estaba en vuelo, o el usuario siguió editando),
-    // re-leemos sectionData desde localStorage y re-mergeamos con el remoto
-    // fresco. Sin esto, se perdían los cambios hechos entre la captura
-    // inicial y el retry.
-    const rebuild = (freshRemote) => mergeSections(freshRemote, { [_section]: readSectionData() });
-    await pushRaw(merged, rebuild);
-
+    if(same(original,sectionData)){_dirty=false;return;}
+    await preserve('version',_section,original);
+    const rebuild=fresh=>{
+      if(!same(fresh[_section]||{},original))throw conflict('Otra persona ha editado '+_section+'. Se conservan ambas versiones.');
+      const result=mergeSections(fresh,{[_section]:sectionData});
+      if(window.FTSession)result.__writeSection=_section;
+      return result;
+    };
+    await pushRaw(rebuild(remote.content||{}),rebuild,0,remote.sha);
+    await rememberBase(_section,sectionData);
+    _dirty=!same(readSection(_section),sectionData);
+    });
     showStatus('✓ guardado '+new Date().toLocaleTimeString('es-ES'), 'ok');
   } catch(err){
     console.error('[GitHubSync] error:', err);
     if(err.status === 401 || err.status === 403){
       showStatus('⚠ token inválido — vuelve al inicio', 'error');
-    } else {
-      showStatus('⚠ error — reintentaré: '+(err.message||''), 'error');
-      setTimeout(schedulePush, 10000);
-    }
+    } else showStatus('⚠ no subido: '+(err.message||''), 'error');
+    _blocked=true;
+    if(err.syncConflict)reportConflict(err);
+    throw err;
   } finally {
     _pushInFlight = false;
-    if(_pendingPush){ _pendingPush = false; schedulePush(); }
   }
 }
 
-function flush(){ clearTimeout(_pushTimer); return doPush(); }
+async function flush(){
+  clearTimeout(_pushTimer);_pushTimer=null;
+  await doPush();
+  while(_dirty && !_blocked){clearTimeout(_pushTimer);_pushTimer=null;await doPush();}
+}
 
 // ────────────────────────────────────────────────────────────────────
 // BOOTSTRAP + RESYNC MANUAL (botón en cada dashboard)
@@ -710,11 +928,27 @@ function _showOverlayError(msg){
   if(spin) spin.style.animation = 'none';
 }
 
-async function bootstrapAutoSync(){
+let _bootstrapPromise;
+function bootstrapAutoSync(){
+  if(!_bootstrapPromise)_bootstrapPromise=runBootstrapAutoSync().catch(err=>{
+    _blocked=true;
+    _showOverlayError(err && err.message ? err.message : 'No pude verificar la seguridad local');
+    return false;
+  });
+  return _bootstrapPromise;
+}
+async function runBootstrapAutoSync(){
+  if(window.FTSession)await window.FTSession.ready;
   if(!isLoggedIn()){ _removeOverlay(); return; }
 
   let alreadySynced = false;
   try { alreadySynced = !!sessionStorage.getItem('__gh_synced_session'); } catch(_e){}
+  await safetyDB();
+  await archiveLegacyStorage();
+  if(alreadySynced && _section){
+    const base=await baseFor(_section);alreadySynced=base.known;
+    if(base.known)_dirty=!same(readSection(_section),base.value);
+  }
   if(alreadySynced){
     _removeOverlay();
     // Recuperar timestamp del sync original (lo deja pullAndApplyAll) para
@@ -722,8 +956,8 @@ async function bootstrapAutoSync(){
     let ts = '';
     try { ts = sessionStorage.getItem('__gh_synced_at') || ''; } catch(_e){}
     // Usar showStatus para que dispare el timer del modo compacto.
-    showStatus(ts ? ('✓ sincronizado ' + ts) : '✓ sincronizado', 'ok');
-    return;
+    showStatus(_dirty?'Cambios locales pendientes':ts ? ('✓ sincronizado ' + ts) : '✓ sincronizado', _dirty?'work':'ok');
+    return true;
   }
 
   _ensureOverlay();
@@ -731,7 +965,9 @@ async function bootstrapAutoSync(){
     await pullAndApplyAll();
     location.reload();
   } catch(err){
+    _blocked=true;
     _showOverlayError(err && err.message ? err.message : 'No pude sincronizar');
+    return false;
   }
 }
 
@@ -746,7 +982,8 @@ async function manualResync(){
     // Si hay cambios locales pendientes (autopush con timer activo o push
     // en vuelo), súbelos PRIMERO. Sin esto, pullAndApplyAll bajaría el
     // remoto y machacaría la edición que todavía no había subido.
-    if(_pushTimer || _pushInFlight){
+    if(_dirty || _pushTimer || _pushInFlight){
+      if(_blocked && !document.getElementById('ghSafetyConflict'))_blocked=false;
       if(badge) badge.textContent = '⟳ subiendo cambios pendientes…';
       try { await flush(); }
       catch(flushErr){
@@ -788,6 +1025,13 @@ window.GitHubSync = {
   getRepo, getBranch,
   hasToken: () => !!getToken(),
   bootstrapAutoSync, manualResync,
+  exportSafetyCopy,
+  preserve,
+  archiveLegacyStorage, readLegacyArchive, restoreLegacyStorage, openRecoveryArchive,
+  reconcileCatalog,
+  hasPendingChanges:()=>_dirty||_pushInFlight||_blocked,
+  suspend:()=>{_blocked=true;clearTimeout(_pushTimer);_pushTimer=null;},
+  get ready(){return _bootstrapPromise||Promise.resolve(true);},
 };
 
 })();

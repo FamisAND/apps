@@ -610,7 +610,9 @@ function tobRutinaShortName(pl){
 }
 
 let tobLoadGeneration = 0;
-async function tobLoad(){
+let tobStoredRaw = null;
+let tobSaveFailed = false;
+async function tobLoad(opts){
   const generation = ++tobLoadGeneration;
   // Registrar plugin datalabels (idempotente con try/catch)
   if(window.Chart && window.ChartDataLabels){
@@ -629,6 +631,9 @@ async function tobLoad(){
 
   // Displaying existing records must never depend on backup quota.
   tobRenderClientes();tobRenderPlantillas();
+  tobStoredRaw=raw||null;
+  // Routine conversions are opt-in; merely opening a client never rewrites data.
+  if(!opts || opts.allowMigration!==true)return;
   if(raw){
     try { await tobBackupDatabase(raw); }
     catch(e){
@@ -761,10 +766,26 @@ async function tobLoad(){
 }
 
 function tobSave(silent){
-  try { localStorage.setItem(TOB_KEY, JSON.stringify(tobDB)); }
-  catch(e){ console.error('tobSave:', e); tobBadge('⚠ No guardado'); tobToast('No se han podido guardar los cambios. Exporta una copia.', 'red'); return false; }
+  if(localStorage.getItem(TOB_KEY)!==tobStoredRaw){
+    tobSaveFailed=true;
+    if(window.GitHubSync)GitHubSync.preserve('editor-conflict','training_online',{database:tobDB,menu:tobMcState}).catch(()=>{});
+    tobToast('Otra ventana ha cambiado los datos. No se han sobrescrito. Exporta tu copia local desde el aviso de sincronizacion.','red');
+    return false;
+  }
+  try { localStorage.setItem(TOB_KEY, JSON.stringify(tobDB));tobStoredRaw=localStorage.getItem(TOB_KEY); }
+  catch(e){
+    tobSaveFailed=true;
+    console.error('tobSave:', e);
+    tobBadge('⚠ No guardado');
+    tobToast(e.name==='QuotaExceededError'
+      ? 'El almacenamiento del navegador esta lleno. Los cambios NO estan guardados. No cierres esta ventana; exporta una copia.'
+      : 'No se han podido guardar los cambios. No cierres esta ventana; exporta una copia.', 'red');
+    return false;
+  }
+  tobSaveFailed=false;
   if(!silent && typeof GitHubSync !== 'undefined' && GitHubSync.markDirty){ GitHubSync.markDirty(); }
-  tobBadge('💾 guardado');
+  tobBadge('Guardado local');
+  return true;
 }
 
 function tobBadge(text){
@@ -775,6 +796,7 @@ function tobBadge(text){
 }
 
 function tobToast(msg, type){
+  if(tobSaveFailed && type==='green') return;
   const t = document.getElementById('tobToast'); if(!t) return;
   t.textContent = msg;
   t.className = 'tob-toast show ' + (type || '');
@@ -3801,11 +3823,14 @@ function tobSaveMedicion(){
   } else {
     data.id = tobUid('med');
     cli.mediciones.push(data);
+    // A failed save leaves this draft in memory; retry updates the same record.
+    document.getElementById('tobMedicionModalBg').dataset.editId=data.id;
   }
-  tobSave();
+  if(tobSave()===false) return false;
   tobCloseMedicionModal();
   tobRenderFicha();
-  tobToast('✓ Medición guardada', 'green');
+  tobToast('Medicion guardada en este ordenador', 'green');
+  return true;
 }
 function tobDelMedicionFromModal(){
   const editId = document.getElementById('tobMedicionModalBg').dataset.editId;
@@ -7046,9 +7071,9 @@ async function tobMenusLoad(){
   // Si venía del localStorage viejo: persistir en IndexedDB y liberar el viejo
   if(fromLS && loaded){
     try {
+      if(window.GitHubSync)await GitHubSync.preserve('legacy-catalog','tob_menus_catalog',loaded);
       await tobKvPut(TOB_MENUS_KV, tobMenusDB);
-      localStorage.removeItem(TOB_MENUS_KEY);
-      console.log('[menus] migrado de localStorage a IndexedDB');
+      console.log('[menus] copia en IndexedDB; original localStorage conservado');
     } catch(e){ console.warn('[menus] migración a IndexedDB falló:', e); }
   }
 }
@@ -7138,7 +7163,7 @@ async function tobMenusSyncPull(opts){
   _tobMenusSyncBusy = true;
   tobMenusSyncStatus('descargando…', 'work');
   try {
-    const remote = await GitHubSync.fetchSection(TOB_MENUS_SYNC_SECTION);
+    const remote = await GitHubSync.fetchSection(TOB_MENUS_SYNC_SECTION,{preserveBase:true});
     if(!remote){
       tobMenusSyncStatus('sin catálogo en la nube todavía', '');
       // Subir el local para inicializar la nube
@@ -7150,7 +7175,7 @@ async function tobMenusSyncPull(opts){
     }
     const beforeR = (tobMenusDB.recetas || []).length;
     const beforeI = (tobMenusDB.ingredientes || []).length;
-    const merged = tobMenusSyncMerge(tobMenusDB, remote);
+    const merged = await GitHubSync.reconcileCatalog(tobMenusDB, remote);
     tobMenusDB.ingredientes = merged.ingredientes;
     tobMenusDB.recetas      = merged.recetas;
     tobMenusDB.menus        = merged.menus;
@@ -7200,9 +7225,11 @@ async function tobMenusSyncPush(opts){
   _tobMenusSyncBusy = true;
   tobMenusSyncStatus('subiendo a GitHub…', 'work');
   try {
+    const currentRemote=await GitHubSync.fetchSection(TOB_MENUS_SYNC_SECTION,{preserveBase:true});
+    const safeMerged=await GitHubSync.reconcileCatalog(tobMenusDB,currentRemote||{});
     await GitHubSync.updateSection(TOB_MENUS_SYNC_SECTION, (remote) => {
       // Fusionamos con lo que haya en la nube para no pisar otro dispositivo.
-      const merged = tobMenusSyncMerge(tobMenusDB, remote);
+      const merged = safeMerged;
       tobMenusDB.ingredientes = merged.ingredientes;
       tobMenusDB.recetas      = merged.recetas;
       tobMenusDB.menus        = merged.menus;
@@ -7211,7 +7238,7 @@ async function tobMenusSyncPush(opts){
       tobMenusDB._syncTs = merged._syncTs;
       return merged;
     });
-    await tobKvPut(TOB_MENUS_KV, tobMenusDB).catch(() => {});
+    await tobKvPut(TOB_MENUS_KV, tobMenusDB);
     localStorage.removeItem(TOB_MENUS_SYNC_DIRTY);
     tobMenusSyncStatus('✓ guardado ' + new Date().toLocaleTimeString('es-ES'), 'ok');
     if(opts.manual) tobToast('✓ Catálogo subido a la nube', 'green');
@@ -7221,7 +7248,7 @@ async function tobMenusSyncPush(opts){
     tobMenusSyncStatus('⚠ error al subir — reintentaré', 'error');
     if(opts.manual) tobToast('Error al subir: ' + (e.message || e), 'red');
     _tobMenusSyncBusy = false;
-    tobMenusSyncSchedule(20000);
+    if(!e.syncConflict)tobMenusSyncSchedule(20000);
     return false;
   } finally {
     _tobMenusSyncBusy = false;
@@ -7243,8 +7270,8 @@ function tobMenusSyncNow(){
     tobToast('Inicia sesión con GitHub desde el inicio para sincronizar', 'red');
     return;
   }
-  tobMenusSyncPull({ manual: true }).finally(() => {
-    tobMenusSyncPush({ manual: true });
+  tobMenusSyncPull({ manual: true }).then(ok => {
+    if(ok)tobMenusSyncPush({ manual: true });
   });
 }
 
@@ -14577,7 +14604,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('beforeunload', e => {
-  if(!tobMcIsDirty()) return;
+  if(!tobSaveFailed && !tobMcIsDirty()) return;
   e.preventDefault();
   e.returnValue = '';
 });
@@ -14585,7 +14612,9 @@ window.addEventListener('beforeunload', e => {
 // Auto-init — tobMenusLoad es async (IndexedDB); esperamos a que cargue
 // la BD de recetas/ingredientes antes de renderizar la app.
 function tobBoot(){
-  tobMenusLoad()
+  Promise.resolve(window.GitHubSync ? GitHubSync.ready : true).then(ready=>{
+  if(ready===false)return;
+  return tobMenusLoad()
     .catch(e => console.warn('[boot] tobMenusLoad:', e))
     .finally(() => {
       tobLoad();
@@ -14595,7 +14624,10 @@ function tobBoot(){
         if(typeof tobAiSyncPull === 'function') tobAiSyncPull();
       }, 1500);
     });
+  });
 }
+window.ghHasUnsavedChanges=()=>tobMcIsDirty();
+window.ghEditorSnapshot=()=>({database:tobDB,menu:tobMcState});
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', tobBoot);
 } else {
