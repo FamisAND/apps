@@ -23,6 +23,10 @@
 
 (function(){
 'use strict';
+if(window.FTLegacyReadOnly){
+  window.DashboardAuth={gate:async()=>false,changePin:async()=>{throw new Error('El acceso antiguo esta en solo lectura.');}};
+  return;
+}
 
 const HASH_SALT = 'dashboards_pin_v2_';
 

@@ -10,6 +10,7 @@
 
 (function(){
 'use strict';
+if(window.FTLegacyReadOnly){window.GitHubSync=window.FTLegacyReadOnly.sync;return;}
 
 // ── Claves internas en localStorage (no se sincronizan) ──
 const TOKEN_KEY  = '__gh_sync_token';

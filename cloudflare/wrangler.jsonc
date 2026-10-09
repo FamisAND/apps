@@ -13,7 +13,7 @@
     "POLICY_AUD": "bca4cc8697f6cc74b6063e86dad4fefd9cd164b5d483749e797314b578b9844d",
     "RECORDS_ENABLED": "true",
     "ACTIVE_DATASET_ID": "complete-1614c79e9164d6c2",
-    "DATA_WRITES_ENABLED": "false"
+    "DATA_WRITES_ENABLED": "true"
   },
   "d1_databases": [
     {"binding": "AUTH_DB", "database_name": "full-training-auth", "database_id": "4aaab3a9-c02e-4818-9223-3ed9d8d3b442", "migrations_dir": "migrations"},

@@ -4,19 +4,21 @@
 
 Piloto privado: https://full-training-private.sergiofamisr.workers.dev
 
-La copia completa esta conectada en SOLO LECTURA. No se han activado guardados
-centrales ni retirado escrituras del sistema anterior. No usar los dos origenes
-como escritores simultaneos. Consultar MIGRATION.md y OPERACION.md.
+El corte tecnico esta completado. Cloudflare es la unica autoridad de guardado;
+GitHub appdata esta archivado, privado y con toda su historia conservada.
+Los HTML antiguos muestran acceso de solo lectura y enlace al origen privado.
+Consultar MIGRATION.md y OPERACION.md para las pruebas y los limites pendientes.
 
-- RECORDS_ENABLED=true, DATA_WRITES_ENABLED=false.
+- RECORDS_ENABLED=true, DATA_WRITES_ENABLED=true.
 - Bindings: AUTH_DB y DATA_DB; no GITHUB_TOKEN.
-- Dataset complete-1614c79e9164d6c2, estado verified, 10.364 registros.
+- Dataset complete-1614c79e9164d6c2, estado active, 10.364 registros.
 - Seis conjuntos originales, configuracion del dashboard, 539 fotos por ID y
   ajustes privados cifrados. Reconstruccion exacta, comprobada con exportacion D1.
-- Version desplegada de solo lectura: 6d94e4a9-c54e-4e37-8ef7-18aee38cbbae.
+- Version desplegada activa: 31935f52-439a-4b92-b8d3-fa3e15284350.
 - Access All traffic, Solo Sergio, ocho horas, audiencia real fijada.
 - Login real de Sergio como Administrador/Activo ya comprobado por captura.
-  Falta la comprobacion autentificada de los modulos con la nueva copia.
+  No se ha repetido una comprobacion interactiva autentificada de los modulos
+  despues del corte: Chrome esta cerrado y no disponible para automatizacion.
 - Ningun perfil, ID de cliente, clave antigua o almacenamiento original borrado.
 
 La D1 anterior rehearsal-b49b1b75c2a67350 se conserva como staging; tambien se
@@ -24,7 +26,7 @@ conserva complete-d765c29c63726711. La copia actualizada, sus exportaciones y su
 clave de recuperacion estan fuera de este repositorio, en .full-training-backups.
 Nunca publicar sus archivos ni perder la clave que descifra sus ajustes.
 
-## Guardado Preparado
+## Guardado Activo
 
 Cambios por registro con version esperada, transaccion completa, recibos
 idempotentes, historial inmutable y retirada recuperable. El cliente conserva
@@ -40,7 +42,7 @@ La IA usa un proxy con endpoints fijos, sesion/permisos, Origin exacto y limite
 temporal por usuario. Las claves se descifran solo en el Worker. El navegador
 recibe disponibilidad, modelos y reglas, nunca las claves guardadas. Cambiar
 ajustes requiere administrador, version esperada y confirmacion del servidor.
-Las llamadas estan bloqueadas mientras DATA_WRITES_ENABLED sea false.
+Desactivar DATA_WRITES_ENABLED bloquea guardados y llamadas a proveedores.
 Las pruebas usan respuestas simuladas: no se han enviado datos de pacientes
 ni realizado llamadas facturables para validar este despliegue.
 
@@ -62,37 +64,46 @@ La recuperacion del archivo vuelve a anadir historial sin cambiar el head ni D1.
 Los almacenes antiguos no se limpian. Si falta espacio no se presenta un falso
 guardado: exportar y conservar la ventana; tras recuperar espacio, Reintentar.
 
-## Condiciones Antes Del Corte
+## Corte Y Copias
 
-1. Backup final de Chrome cerrado y remoto; comparar pendientes de cada equipo.
-2. Prueba autentificada de solo lectura de los modulos desde Chrome.
-3. Pausa de todos los escritores y permiso especifico para archivar appdata
-   como mecanismo reversible de solo lectura. Cerrar pestanas no basta.
-4. Definir copias independientes y comprobar restauracion; nunca restaurar el
-   JSON entero sobre cambios nuevos.
-5. Activar una unica autoridad y comprobar guardado/reapertura en dos equipos.
+El usuario autorizo terminar el corte sin mas preguntas y forzar el cierre de
+Chrome si era necesario. El backup final verifica 63 archivos de almacenamiento
+local; tambien conserva mirrors, historia Git y ZIP exacto del remoto. La
+comparacion completa del origen GitHub, fotos y ajustes coincide con la fuente
+seleccionada: 85 clientes y siete mediciones de octubre, incluido el ultimo
+menu anadido. Las dos mediciones que faltaban por introducir no se inventaron.
 
-El usuario anadio un menu y una medicion en Consulta antigua / GitHub DESPUES
-de la copia anterior. Ya se respaldaron y verificaron: 85 clientes, siete
-mediciones de octubre, ningun cliente anterior alterado ni eliminado. El piloto
-de solo lectura apunta a esta copia actualizada. No activar la copia anterior.
-El usuario confirma los HTML cerrados, pero el sistema detecta aun procesos
-Chrome y el backup final NO se ha realizado; no se forzaron cierres. Pendientes:
-backup consistente, prueba autentificada de modulos y permiso para archivar
-appdata. Mantener DATA_WRITES_ENABLED=false.
+Las copias mas antiguas de file:// se conservan separadas, sin mezclarlas ni
+sobrescribirlas. No se pudo inspeccionar almacenamiento de otros ordenadores;
+el usuario confirmo cerrados sus escritores. appdata archivado impide que un
+cliente antiguo vuelva a subir un snapshot sobre la base nueva.
+
+Paquete final privado: ../../.full-training-backups/20261009-204525-cutover-final-0837a97d.
+Exportaciones activas de negocio y acceso, informe de reconstruccion y clave de
+recuperacion: ../../.full-training-backups/20261009-active-cutover-verified.
+La exportacion activa se reconstruyo en RAM y coincide campo a campo y por hash.
+No hay un calendario automatico de backups configurado. Un rollback despues de
+nuevos guardados exige pausar, exportar y reconciliar, nunca reabrir el JSON viejo.
 
 ## Verificacion
 
-72 tests Node; 23 regresiones legacy; 16 comprobaciones reales de IndexedDB aislado, incluido archivado
+76 tests Node; 23 regresiones legacy; 16 comprobaciones reales de IndexedDB aislado, incluido archivado
 y recuperacion exacta; cinco HTML con datos del respaldo en RAM, cero errores JS,
 cero peticiones GitHub, guardado/reapertura y recuperacion offline de Consulta.
 Exportacion D1 reconstruida en RAM: 10.364 registros y hashes iguales, con siete
 mediciones de octubre. Los cinco HTML se reensayaron con esta copia, incluida
 igualdad completa de los datos de Consulta al arrancar. No certifica todos los formularios ni la
-latencia/CPU reales de Workers Free.
+latencia/CPU reales de Workers Free ni una prueba en dos ordenadores del usuario.
+
+Seis HTML antiguos probados con sus valores locales intactos, escrituras y
+sincronizacion bloqueadas, exportacion y capturas de escritorio/movil.
+Protocolo repetido contra D1 real en dataset sintetico separado: cambios de dos
+sesiones, rechazo atomico de conflictos y reintento idempotente tras perder una
+respuesta. Dataset de prueba retirado; cero escrituras sobre clientes reales.
+Cuatro rutas privadas desplegadas redirigen a Access sin credenciales.
 
 La lista explicita de assets excluye backups, Excel, datos, Git y service workers
-antiguos. Los 38 assets se compararon con las claves privadas conocidas: ninguna
+antiguos. Los 39 assets se compararon con las claves privadas conocidas: ninguna
 aparece publicada. Las mutaciones requieren identidad Access firmada, sesion
 HttpOnly y permisos comprobados de nuevo en cada peticion.
 

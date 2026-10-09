@@ -2,34 +2,37 @@
 
 ## Estado real al 9 de octubre de 2026
 
-La migracion NO esta activada. Los HTML actuales siguen usando GitHub.
-Cloudflare contiene un piloto privado de sesiones y una copia completa conectada
-en SOLO LECTURA (dataset verified). No se han borrado los originales ni se ha
-habilitado la escritura. Los HTML antiguos siguen usando GitHub hasta el corte.
+La migracion tecnica esta activada. Trabajar desde
+`https://full-training-private.sergiofamisr.workers.dev/`.
+Cloudflare guarda los cambios por registro; GitHub appdata queda como archivo
+privado de solo lectura. No se borraron los almacenamientos originales.
 
-El nuevo guardado por registros esta implementado y probado localmente.
-No afirmar que todos los modulos estan migrados hasta superar el corte final.
-El piloto recibio una correccion del acceso el 9 de octubre. Sergio confirmo
+El acceso recibio una correccion el 9 de octubre. Sergio confirmo
 con captura el panel real: Administrador y Activo. En Chrome se puede guardar como marcador
 `https://full-training-private.sergiofamisr.workers.dev/session-admin.html`.
 Ese panel es distinto de Manage Account / Members de la cuenta de Cloudflare.
 
-Actualizacion: Sergio anadio un menu y una medicion de un cliente en Consulta
-antigua / GitHub. Ya estan respaldados y verificados en la nueva copia D1 de
-solo lectura: 85 clientes y siete mediciones de octubre. Los 84 clientes previos
-siguen intactos. El corte definitivo NO se ha ejecutado.
+Se incluyeron el ultimo menu y medicion anadidos antes de la pausa: 85 clientes
+y siete mediciones de octubre. Los 84 clientes previos siguen intactos. Las dos
+mediciones que el usuario introducira manualmente siguen pendientes.
 
-Aunque Sergio confirma los HTML cerrados, el sistema sigue detectando Chrome:
-el backup final se detuvo antes de copiar y no se forzo ningun cierre. Faltan
-esa copia consistente, la prueba autentificada de modulos y la autorizacion
-especifica para archivar appdata. No confundir la copia D1 con el cambio de sistema.
+El backup final de Chrome verifica 63 archivos. La fuente GitHub, catalogo,
+fotos y ajustes actuales se compararon de nuevo antes de activar D1. Las copias
+locales mas antiguas de file:// se conservaron separadas. appdata esta archivado;
+ninguna pestana antigua puede subir alli otro snapshot. Los HTML actualizados
+del origen antiguo bloquean edicion y ofrecen enlace privado y exportacion.
 
-## Que papel tendra cada sistema
+El usuario autorizo completar el corte sin estar en el ordenador. No se ha
+hecho una nueva comprobacion interactiva autentificada de sus modulos desde
+Chrome tras el despliegue, ni una prueba en dos ordenadores fisicos. Las pruebas
+aisladas de los cinco HTML y las de concurrencia contra D1 real si han pasado.
 
-| Sistema | Funcion despues del corte |
+## Que papel tiene cada sistema
+
+| Sistema | Funcion actual |
 | --- | --- |
 | GitHub apps | Codigo de los HTML e historial de cambios del programa. Publicar codigo no restaura ni reemplaza datos de pacientes. |
-| GitHub appdata | Archivo privado de recuperacion del sistema anterior. Dejara de recibir guardados normales; se conserva su historia. |
+| GitHub appdata | Archivo privado de recuperacion del sistema anterior, archivado y sin guardados normales. Se conserva su historia. |
 | Cloudflare Access | Identificar cada persona mediante su correo autorizado. No basta conocer la URL. |
 | Worker y base de sesiones | Aplicar permisos, sesiones, revocacion y validacion de cada peticion. |
 | D1 de negocio | Fuente central de clientes, mediciones, anamnesis, menus, gestion, facturas, patrimonio, opciones y catalogo. Cambios por registro, con version e historial. |
@@ -43,7 +46,7 @@ No se han probado llamadas reales a proveedores ni enviado pacientes. Finanzas
 no tiene proveedores configurados en la fuente examinada; su futura activacion
 necesita su propio intermediario.
 
-## Como se guardara
+## Como se guarda
 
 1. Al abrir un modulo se verifican sesion, permisos y una copia completa.
    Si falla la lectura, no se inicia una base vacia ni se ejecutan semillas.
@@ -94,13 +97,16 @@ liberar espacio ajeno a los datos de la aplicacion. No se simula un guardado
 central exitoso para ocultar el problema.
 
 D1 Free ofrece 7 dias de Time Travel; no es un archivo a largo plazo.
-Definir y probar copias privadas independientes antes del uso definitivo.
-Todavia no hay un calendario automatico de backups configurado.
+Existe una exportacion privada independiente al terminar el corte, reconstruida
+y verificada en RAM. Tambien se conservaron usuarios/permisos y la clave para
+descifrar ajustes. No hay un calendario automatico de backups configurado.
+Las exportaciones oficiales pueden bloquear consultas brevemente: realizarlas
+con la edicion pausada y nunca restaurarlas sobre la base activa sin comparar.
 Referencia: https://developers.cloudflare.com/d1/platform/limits/
 
 ## Administracion
 
-Sergio ya ha verificado su login real como administrador. Podra crear cuentas,
+Sergio ya ha verificado su login real como administrador. Puede crear cuentas,
 elegir modulos, desactivar usuarios y revocar sesiones. Tambien hay que permitir
 sus correos en Access. No compartir tokens GitHub ni la cuenta del administrador.
 
@@ -108,16 +114,19 @@ Los permisos actuales son por modulo completo, NO por paciente. Un colaborador
 con acceso a Consulta puede ver todos sus clientes. No dar ese permiso a clientes
 finales. Usar perfiles de navegador separados en ordenadores compartidos.
 
-## Condiciones del cambio definitivo
+## Recuperacion Y Limites
 
-- Login del administrador ya comprobado; faltan pruebas autentificadas de solo lectura de los modulos.
-- Exportar y comparar todos los perfiles/ordenadores, incluidas fotos y pendientes.
-- Copia completa de fotos, secretos cifrados y configuracion del dashboard ya preparada; faltan pruebas autentificadas y formularios aun no ensayados.
-- Acordar una pausa de edicion y generar un backup final verificable.
-- Revisar automatizaciones y archivar appdata en solo lectura, reversible, con confirmacion. No revocar a ciegas un token usado por otros repositorios.
-- Confirmacion explicita de Sergio antes de activar una unica fuente central.
-- Probar un guardado y su lectura desde dos ordenadores; verificar recuperacion
-  en otra base y establecer backups independientes.
+Paquete privado final: ../../.full-training-backups/20261009-204525-cutover-final-0837a97d.
+Copias activas y clave de recuperacion: ../../.full-training-backups/20261009-active-cutover-verified.
+No publicar esos archivos ni enviar claves por correo o chat.
 
-Mientras falte una condicion, conservar el sistema anterior y no ejecutar el
-corte. No volver al JSON antiguo sin reconciliar los cambios posteriores a D1.
+Ante un problema grave: conservar formularios y pendientes, pausar escrituras,
+exportar el estado nuevo y comparar el historial. Recuperar solo los registros
+afectados, conservando autor, versiones y cambios posteriores. Desarchivar
+appdata no es una recuperacion automatica: reabriria otro escritor con datos
+anteriores. Requiere un rollback planificado y reconciliado.
+
+Pendientes de verificacion operativa: uso autentificado tras el corte, los dos
+equipos fisicos, formularios no cubiertos por los ensayos y llamadas reales a IA.
+Los otros ordenadores no se han inventariado desde aqui. No importar sus copias
+viejas automaticamente; exportarlas si contienen algun dato unico.

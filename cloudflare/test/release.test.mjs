@@ -6,8 +6,8 @@ import {readFileSync} from 'node:fs';
 test('deployed asset routing keeps literal HTML paths without redirecting the root into itself',()=>{
   const config=JSON.parse(readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8'));
   assert.equal(config.assets.html_handling,'none');assert.equal(config.assets.run_worker_first,true);
-  assert.equal(config.vars.RECORDS_ENABLED,'true');assert.equal(config.vars.DATA_WRITES_ENABLED,'false');
-  assert.equal(config.vars.ACTIVE_DATASET_ID,'complete-d765c29c63726711');
+  assert.equal(config.vars.RECORDS_ENABLED,'true');assert.equal(config.vars.DATA_WRITES_ENABLED,'true');
+  assert.equal(config.vars.ACTIVE_DATASET_ID,'complete-1614c79e9164d6c2');
   assert.deepEqual(config.d1_databases.map(value=>value.binding),['AUTH_DB','DATA_DB']);
 });
 
