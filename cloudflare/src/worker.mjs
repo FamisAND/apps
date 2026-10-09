@@ -2,6 +2,9 @@ import {verifyIdentity} from './access.mjs';
 import {MODULES,SECTION_MODULE,FILE_MODULE,COMMON_FILES,canAccess,publicUser,filterData,validateSection} from './policy.mjs';
 import {readData,writeSection} from './github.mjs';
 import {listRecords,recordHistory,commitRecords} from './records.mjs';
+import {isPhotoNamespace} from './media-format.mjs';
+import {loadPrivateSettings,publicAiConfig,saveAiSettings,AI_PROVIDERS} from './private-settings.mjs';
+import {aiText} from './ai-proxy.mjs';
 const COOKIE='__Host-ft_session';
 const now=()=>Math.floor(Date.now()/1000);
 const securityHeaders={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','X-Frame-Options':'DENY'};
@@ -73,10 +76,30 @@ export function createWorker(dependencies={}){
         await env.AUTH_DB.prepare('UPDATE sessions SET revoked=1 WHERE id=?').bind(user.sessionId).run();
         return json({ok:true},200,{'Set-Cookie':cookie('',0)});
       }
+      if(pathname==='/api/settings/ai'||pathname==='/api/ai/text'){
+        if(!canAccess(user,'training_online'))fail(403,'Configuracion de Consulta no autorizada');
+        if(env.RECORDS_ENABLED!=='true')fail(423,'Configuracion central en preparacion');
+        const dataDB=env.DATA_DB?.withSession?env.DATA_DB.withSession('first-primary'):env.DATA_DB;
+        if(pathname==='/api/settings/ai'&&request.method==='GET'){
+          const saved=await loadPrivateSettings(dataDB,env.ACTIVE_DATASET_ID,env.SETTINGS_ENCRYPTION_KEY);return json({version:saved.version,cfg:publicAiConfig(saved.value)});
+        }
+        if(request.method!=='POST')fail(405,'Metodo no permitido');csrf(request);
+        if(env.DATA_WRITES_ENABLED!=='true')fail(423,'Cambios y llamadas IA desactivados hasta validar el traslado');
+        if(pathname==='/api/settings/ai'){
+          if(user.role!=='admin')fail(403,'Solo administracion puede cambiar claves o reglas');
+          return json(await saveAiSettings(dataDB,env.ACTIVE_DATASET_ID,env.SETTINGS_ENCRYPTION_KEY,user.id,await body(request)));
+        }
+        const value=await body(request);
+        if(!AI_PROVIDERS.includes(value.provider))fail(400,'Proveedor de IA no admitido');
+        const rate=await env.AUTH_DB.prepare("INSERT INTO audit SELECT ?,?,'ai-call',?,? WHERE (SELECT count(*) FROM audit WHERE actor_id=? AND action='ai-call' AND created_at>?)<10").bind(crypto.randomUUID(),user.id,String(value.provider||''),now(),user.id,now()-60).run();
+        if(!rate.meta?.changes&&!rate.changes)fail(429,'Limite temporal de IA; espera un minuto antes de reintentar');
+        const saved=await loadPrivateSettings(dataDB,env.ACTIVE_DATASET_ID,env.SETTINGS_ENCRYPTION_KEY);
+        return json({text:await aiText(saved.value,value,{admin:user.role==='admin',fetchImpl:dependencies.aiFetch||globalThis.fetch})});
+      }
       if(pathname.startsWith('/api/records/')){
         const match=pathname.match(/^\/api\/records\/([\w]+)(\/(commit|history))?$/);
         if(!match)fail(404,'Ruta de registros inexistente');
-        const namespace=match[1],module=SECTION_MODULE[namespace];
+        const namespace=match[1],module=SECTION_MODULE[namespace]||(isPhotoNamespace(namespace)?'training_online':null);
         if(!module||!canAccess(user,module))fail(403,'Registros no autorizados');
         if(env.RECORDS_ENABLED!=='true')fail(423,'Almacenamiento por registros en preparacion');
         const dataDB=env.DATA_DB?.withSession?env.DATA_DB.withSession('first-primary'):env.DATA_DB;

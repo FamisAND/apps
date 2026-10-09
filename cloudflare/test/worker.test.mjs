@@ -73,6 +73,16 @@ test('record mode cannot coexist with old whole-file reads or writes',async()=>{
   assert.equal((await f.request('/api/data/training_online',{method:'PUT',cookie:session,body:{sha:'old',section:{}}})).status,410);
 }finally{f.db.close();}});
 
+test('photo and AI settings permissions are checked before private database access',async()=>{const f=fixture();try{
+  const admin=await f.login();f.env.RECORDS_ENABLED='true';
+  await f.request('/api/admin/users',{method:'POST',cookie:admin,body:{email:'options@example.test',name:'Options only',permissions:['options']}});
+  const cookie=await f.login('options@example.test'),email='options@example.test';
+  for(const route of ['/api/records/recipe_photo_'+'a'.repeat(64),'/api/settings/ai','/api/records/private_settings'])assert.equal((await f.request(route,{cookie,email})).status,403);
+  assert.equal((await f.request('/api/settings/ai',{method:'POST',cookie:admin,body:{}})).status,423);
+  assert.equal((await f.request('/api/ai/text',{method:'POST',cookie:admin,origin:'https://other.test',body:{}})).status,403);
+  assert.equal((await f.request('/api/records/private_settings',{cookie:admin})).status,403);
+}finally{f.db.close();}});
+
 test('record HTML uses verified-data startup instead of executing old seeds first',async()=>{const f=fixture();try{
   const session=await f.login();f.env.RECORDS_ENABLED='true';
   const state=await (await f.request('/api/session',{cookie:session})).json();assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);

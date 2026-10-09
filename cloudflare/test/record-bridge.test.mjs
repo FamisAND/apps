@@ -81,6 +81,15 @@ test('a lost reply survives reopening and confirms with the original request ID'
   }finally{f.db.close();}
 });
 
+test('a quota failure can be retried after space recovery without losing the latest draft',async()=>{
+  const f=await fixture();try{
+    const store=new Copies(),bridge=f.make(store),value=await bridge.open('training_online');store.fail=true;value.tob_online_v2.clientes[0].peso=61;
+    await assert.rejects(()=>bridge.setDraft('training_online',value),/quota/);assert.equal(f.posts,0);
+    store.fail=false;await bridge.persistDraft('training_online');assert.equal(bridge.errors.size,0);assert.equal(f.posts,0);
+    await bridge.save('training_online');assert.deepEqual(await f.make().open('training_online'),value);assert.equal(bridge.pending(),false);
+  }finally{f.db.close();}
+});
+
 test('an unavailable local archive does not prevent exporting the volatile draft and editor',async()=>{
   const f=await fixture();try{
     const store=new Copies(),bridge=f.make(store),value=await bridge.open('training_online');value.tob_online_v2.clientes[0].peso=61;await bridge.setDraft('training_online',value);

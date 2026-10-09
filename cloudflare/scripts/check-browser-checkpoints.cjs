@@ -9,7 +9,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   const server=http.createServer(async(request,response)=>{
     try{
       if(request.url==='/'){response.setHeader('Content-Type','text/html');response.end('<!doctype html><title>Synthetic checkpoint tests</title>');return;}
-      const files=['hash.mjs','snapshot-codec.mjs','record-client.mjs','checkpoint-store.mjs'];
+      const files=['hash.mjs','snapshot-codec.mjs','record-client.mjs','checkpoint-store.mjs','media-format.mjs'];
       const file=request.url.slice(1);
       if(!files.includes(file)){response.writeHead(404);response.end();return;}
       response.setHeader('Content-Type','text/javascript');response.end(await readFile(path.join(root,file)));
@@ -99,6 +99,29 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       verify(copies.entries.some(row=>{const event=JSON.parse(row.payload);return event.kind==='draft'&&event.value.clientes[0].mediciones[0].peso===64;}),'Resolution discarded the previous draft');
       verify(postCount===countBeforeResolve,'Selecting the central copy wrote to the server');
       console.log('Draft reopening, unchanged save and explicit resolution passed');
+      const duplicateDraft=structuredClone(centralValue);duplicateDraft.clientes[0].mediciones[0].peso=65;
+      await draftStore.checkpoint({kind:'draft',namespace:'training_online',datasetId:'synthetic',value:duplicateDraft});
+      const duplicateCount=(await draftStore.exportCopies()).entries.length;
+      await draftStore.checkpoint({kind:'draft',namespace:'training_online',datasetId:'synthetic',value:duplicateDraft});
+      verify((await draftStore.exportCopies()).entries.length===duplicateCount,'Identical draft grew history');
+      const archive=await draftStore.exportCopies(),fileText=JSON.stringify(archive),plan=await draftStore.archivePlan(fileText);
+      verify(plan.ids.length>0,'Nothing selected for verified archival');
+      try{await draftStore.archivePlan(JSON.stringify({...archive,ownerId:'another-owner'}));throw new Error('Expected archive owner rejection');}catch(error){verify(/usuario/.test(error.message),'Wrong owner not rejected');}
+      const altered=structuredClone(archive);altered.entries[0].payload='{}';
+      try{await draftStore.archivePlan(JSON.stringify(altered));throw new Error('Expected altered archive rejection');}catch(error){verify(/verificacion/.test(error.message),'Altered archive not rejected');}
+      const beforeArchive=await draftStore.state('training_online'),headBefore=draftStore.heads.get('training_online');
+      const archived=await draftStore.archiveOldCopies(fileText,plan.archiveSha256);
+      verify(archived.archived===plan.ids.length,'Archival count mismatch');
+      verify(JSON.stringify(await draftStore.state('training_online'))===JSON.stringify(beforeArchive),'Archival changed current draft or base');
+      verify(draftStore.heads.get('training_online')===headBefore,'Archival moved current head');
+      const remaining=await draftStore.exportCopies();verify(remaining.entries.length===archive.entries.length-plan.ids.length,'History did not compact');
+      const restored=await draftStore.restoreArchivedCopies(fileText);
+      verify(restored.restored===plan.ids.length&&restored.headsChanged===false,'Archive rollback not exact');
+      verify(JSON.stringify(await draftStore.state('training_online'))===JSON.stringify(beforeArchive),'Restoring archive changed current draft');
+      verify((await draftStore.exportCopies()).entries.length===archive.entries.length,'Archive rollback lost entries');
+      const health=await draftStore.health({estimate:async()=>({usage:90,quota:100}),persisted:async()=>true});
+      verify(health.lowSpace&&health.persistent&&health.entries===archive.entries.length,'Space health not reported');
+      console.log('Verified archival, rollback and storage health passed');
       // Deliberate corruption is confined to this fresh synthetic browser context.
       const db=await draftStore.open(),head=await draftStore.get('heads',draftStore.key('training_online'));
       await new Promise((resolve,reject)=>{
@@ -108,9 +131,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       });
       try{await draftStore.state('training_online');throw new Error('Expected checksum failure');}catch(error){verify(/verificacion/.test(error.message),'Corruption not detected');}
       const forensic=await draftStore.exportCopies({allowUnverified:true});
-      verify(!forensic.verified&&forensic.unverifiedEntryIds.includes(head.id)&&forensic.entries.length===copies.entries.length,'Forensic export lost the corrupt copy');
+      verify(!forensic.verified&&forensic.unverifiedEntryIds.includes(head.id)&&forensic.entries.length===archive.entries.length,'Forensic export lost the corrupt copy');
       await recovered.close();await stale.close();await other.close();await draftStore.close();
-      return {pendingSurvivesReopen:true,retryIdempotent:true,confirmationVerified:true,historyAppendOnly:true,accountIsolation:true,staleTabRejected:true,reloadDeduplicated:true,draftSurvivesReopen:true,unchangedSaveSafe:true,resolutionPreservesDraft:true,corruptionRejected:true,forensicExportPreservesCopies:true};
+      return {pendingSurvivesReopen:true,retryIdempotent:true,confirmationVerified:true,historyAppendOnly:true,accountIsolation:true,staleTabRejected:true,reloadDeduplicated:true,draftSurvivesReopen:true,unchangedSaveSafe:true,resolutionPreservesDraft:true,draftDeduplicated:true,verifiedArchiveProtectsCurrent:true,archiveRollbackExact:true,storageHealth:true,corruptionRejected:true,forensicExportPreservesCopies:true};
     }),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Synthetic browser test timed out')),30000);})]).finally(()=>clearTimeout(timer));
     assert.ok(Object.values(result).every(value=>value===true));
     await context.close();console.log(JSON.stringify(result,null,2));

@@ -1,5 +1,6 @@
 import {sha256} from './hash.mjs';
 import {unpackSnapshot,packSnapshot} from './snapshot-codec.mjs';
+import {isPhotoNamespace} from './media-format.mjs';
 function failure(message,status){const error=new Error(message);error.status=status;return error;}
 async function changedRecords(base,value){
   const operations=[];
@@ -32,10 +33,11 @@ export class RecordClient {
     if(!response.ok){let message='Operacion central rechazada';try{message=(await response.json()).error||message;}catch(_e){}throw failure(message,response.status);}
     return response.json();
   }
-  async load(namespace){
-    return this.exclusive(namespace,()=>this.loadInternal(namespace));
+  async load(namespace,{allowEmpty=false}={}){
+    if(allowEmpty&&!isPhotoNamespace(namespace))throw failure('Solo las fotos nuevas admiten una base vacia',400);
+    return this.exclusive(namespace,()=>this.loadInternal(namespace,allowEmpty));
   }
-  async loadInternal(namespace){
+  async loadInternal(namespace,allowEmpty=false){
     if(this.pending.has(namespace))throw failure('Hay un guardado pendiente de confirmar; no se descarga encima',409);
     const records=new Map();let cursor='',generation=null,datasetId=null;
     do{
@@ -51,9 +53,10 @@ export class RecordClient {
       }
       const next=page.nextCursor;if(next!==null&&(typeof next!=='string'||next<=cursor))throw failure('Paginacion central invalida',503);cursor=next;
     }while(cursor);
-    const value=await unpackSnapshot(new Map([...records].filter(([,record])=>!record.deleted).map(([key,record])=>[key,record.value])));
-    await this.checkpoint({kind:'verified-load',namespace,datasetId,generation,records:[...records],value});
-    this.bases.set(namespace,{datasetId,generation,records,value});
+    const value=!records.size&&allowEmpty?null:await unpackSnapshot(new Map([...records].filter(([,record])=>!record.deleted).map(([key,record])=>[key,record.value])));
+    const emptyAllowed=allowEmpty?{emptyAllowed:true}:{};
+    await this.checkpoint({kind:'verified-load',namespace,datasetId,generation,records:[...records],value,...emptyAllowed});
+    this.bases.set(namespace,{datasetId,generation,records,value,...emptyAllowed});
     return structuredClone(value);
   }
   async save(namespace,value){
@@ -105,7 +108,7 @@ export class RecordClient {
         if(records.has(key))throw failure('Copia base local duplicada',409);
         records.set(key,record);
       }
-      const restored=await unpackSnapshot(new Map([...records].filter(([,r])=>!r.deleted).map(([key,r])=>[key,r.value])));
+      const restored=!records.size&&base.emptyAllowed===true&&isPhotoNamespace(namespace)?null:await unpackSnapshot(new Map([...records].filter(([,r])=>!r.deleted).map(([key,r])=>[key,r.value])));
       if(await sha256(JSON.stringify(restored))!==await sha256(JSON.stringify(base.value)))throw failure('La copia base local no coincide con los registros',409);
       const pending=state.pending;
       if(pending)await verifyPending(namespace,{...base,records},pending);

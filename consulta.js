@@ -7369,6 +7369,7 @@ async function tobKvGet(key){
 }
 
 async function tobImgPut(key, dataUrl){
+  if(window.FTRecords?.media)return FTRecords.media.put(key,dataUrl);
   const db = await tobImgDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TOB_IMGDB_STORE, 'readwrite');
@@ -7379,6 +7380,7 @@ async function tobImgPut(key, dataUrl){
 }
 
 async function tobImgGet(key){
+  if(window.FTRecords?.media)return FTRecords.media.get(key);
   const db = await tobImgDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TOB_IMGDB_STORE, 'readonly');
@@ -7389,6 +7391,8 @@ async function tobImgGet(key){
 }
 
 async function tobImgDelete(key){
+  // The migrated catalog drops the reference; keep the central photo recoverable.
+  if(window.FTRecords?.media)return true;
   const db = await tobImgDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TOB_IMGDB_STORE, 'readwrite');
@@ -7399,6 +7403,7 @@ async function tobImgDelete(key){
 }
 
 async function tobImgKeys(){
+  if(window.FTRecords?.media)return FTRecords.media.keys();
   const db = await tobImgDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TOB_IMGDB_STORE, 'readonly');
@@ -8875,9 +8880,12 @@ async function tobRecSave(){
           await tobImgPut(recId, f);
           recObj._fotoLocal = true;
           recObj.foto = '';   // no guardar el base64 en localStorage
-        } catch(e){ console.warn('[rec-save] foto IndexedDB falló', e); }
+        } catch(e){
+          if(window.FTRecords){tobToast('Foto no confirmada: '+e.message,'red');return;}
+          console.warn('[rec-save] foto IndexedDB falló', e);
+        }
       } else if(!f){
-        try { await tobImgDelete(recId); } catch(e){}
+        try { await tobImgDelete(recId); } catch(e){if(window.FTRecords){tobToast('Foto no confirmada: '+e.message,'red');return;}}
         recObj._fotoLocal = false;
       }
     }
@@ -8895,8 +8903,9 @@ async function tobRecDeleteFromModal(){
   if(!r) return;
   if(!confirm(`Eliminar receta "${r.nombre}"?`)) return;
   const delId = tobRecEditId;
+  if(window.FTRecords&&r._fotoLocal){try{await tobImgDelete(delId);}catch(e){tobToast('Cambio no confirmado: '+e.message,'red');return;}}
   tobMenusDB.recetas = tobMenusDB.recetas.filter(x => x.id !== delId);
-  if(r._fotoLocal){ try { await tobImgDelete(delId); } catch(e){} }
+  if(!window.FTRecords&&r._fotoLocal){ try { await tobImgDelete(delId); } catch(e){} }
   tobMenusSave();
   tobRecCloseModal();
   tobRecRender();
@@ -13117,7 +13126,7 @@ function tobAiRulesForGeneration(cfg){
 // segueix funcionant sense canvis.
 function tobAiGetCfg(){
   let raw = {};
-  try { raw = JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
+  try { raw = window.FTRecords?.settings?.ai?structuredClone(FTRecords.settings.ai):JSON.parse(localStorage.getItem(TOB_AI_CFG_KEY)) || {}; }
   catch(e){}
   // Migració del format antic: si no hi ha `keys` però sí `key`, l'inicialitzem
   // amb la clau actual associada al proveïdor actiu.
@@ -13163,6 +13172,7 @@ function tobAiMergeCfg(local, remote){
 // Baixa '__ia_config' del núvol i el fusiona dins localStorage perquè
 // tobAiGetCfg (síncron) ja el vegi. Es crida al boot i en obrir la config.
 async function tobAiSyncPull(){
+  if(window.FTRecords?.settings){await FTRecords.settings.load();return true;}
   if(!tobAiSyncLoggedIn()) return false;
   try {
     const remote = await GitHubSync.fetchSection(TOB_AI_SYNC_SECTION);
@@ -13172,7 +13182,8 @@ async function tobAiSyncPull(){
     return true;
   } catch(e){ console.warn('[ia sync] pull:', e); return false; }
 }
-function tobAiSaveCfg(cfg){
+async function tobAiSaveCfg(cfg){
+  if(window.FTRecords?.settings)return FTRecords.settings.save(cfg);
   cfg = cfg || {};
   cfg._ts = Date.now();
   try { localStorage.setItem(TOB_AI_CFG_KEY, JSON.stringify(cfg)); } catch(e){}
@@ -13261,17 +13272,17 @@ function tobAiRenderFallbackList(){
   }
   cont.innerHTML = rows.join('');
 }
-function tobAiFallbackToggleEnabled(prov){
+async function tobAiFallbackToggleEnabled(prov){
   const cfg = tobAiGetCfg();
   const disabled = Array.isArray(cfg.disabled) ? cfg.disabled.slice() : [];
   const ix = disabled.indexOf(prov);
   if(ix >= 0) disabled.splice(ix, 1);   // re-activar
   else disabled.push(prov);              // desactivar
   cfg.disabled = disabled;
-  tobAiSaveCfg(cfg);
+  try{await tobAiSaveCfg(cfg);}catch(e){tobToast('Configuracion no confirmada: '+e.message,'red');return;}
   tobAiRenderFallbackList();
 }
-function tobAiFallbackMove(prov, delta){
+async function tobAiFallbackMove(prov, delta){
   const cfg = tobAiGetCfg();
   const order = _tobAiNormalizedOrder(cfg);
   const keys = cfg.keys || {};
@@ -13287,7 +13298,7 @@ function tobAiFallbackMove(prov, delta){
   const inactive = order.filter(p => keys[p] && disabled.has(p));
   const noKey    = order.filter(p => !keys[p]);
   cfg.fallbackOrder = active.concat(inactive).concat(noKey);
-  tobAiSaveCfg(cfg);
+  try{await tobAiSaveCfg(cfg);}catch(e){tobToast('Configuracion no confirmada: '+e.message,'red');return;}
   tobAiRenderFallbackList();
 }
 function tobAiResetMenuRules(){
@@ -13304,7 +13315,11 @@ function tobAiProviderChange(){
   // Carregar la clau i model guardats per a aquest proveïdor (si existeixen).
   const cfg = tobAiGetCfg();
   const k = document.getElementById('tobAiKey');
-  if(k) k.value = (cfg.keys && cfg.keys[p]) || '';
+  if(k){
+    const stored=(cfg.keys && cfg.keys[p]) || '';
+    k.value=window.FTRecords&&stored==='__stored_on_server__'?'':stored;
+    if(window.FTRecords)k.placeholder=stored?'Clave guardada en el servidor':'Nueva clave API';
+  }
   if(mi) mi.value = (cfg.models && cfg.models[p]) || '';
   // Indicador visual: si hi ha clau guardada per a aquest proveïdor, ho mostrem
   const res = document.getElementById('tobAiTestResult');
@@ -13318,14 +13333,14 @@ function tobAiProviderChange(){
     }
   }
 }
-function tobAiSaveConfigFromModal(){
+async function tobAiSaveConfigFromModal(){
   const rules = (document.getElementById('tobAiMenuRules')?.value || '').trim();
   const provider = document.getElementById('tobAiProvider').value;
-  const newKey   = document.getElementById('tobAiKey').value.trim();
+  const existing = tobAiGetCfg();
+  const newKey   = document.getElementById('tobAiKey').value.trim()||(window.FTRecords?existing.keys?.[provider]:'')||'';
   const newModel = document.getElementById('tobAiModel').value.trim();
   if(!newKey){ tobToast('Falta la clau API per a ' + provider, 'red'); return; }
   // Carregar el cfg existent per preservar les claus dels altres proveïdors.
-  const existing = tobAiGetCfg();
   const keys   = Object.assign({}, existing.keys || {});
   const models = Object.assign({}, existing.models || {});
   keys[provider]   = newKey;
@@ -13347,7 +13362,7 @@ function tobAiSaveConfigFromModal(){
     key:   newKey,
     model: newModel
   };
-  tobAiSaveCfg(cfg);
+  try{await tobAiSaveCfg(cfg);}catch(e){tobToast('Configuracion no confirmada: '+e.message,'red');return;}
   document.getElementById('tobAiConfigBg').classList.remove('on');
   const tot = Object.keys(keys).filter(p => keys[p]).length;
   tobToast('✓ Clau de ' + provider + ' guardada' + (tot > 1 ? ' (' + tot + ' proveïdors configurats)' : ''), 'green');
@@ -13360,6 +13375,7 @@ async function tobAiTestConfig(){
     key:      document.getElementById('tobAiKey').value.trim(),
     model:    document.getElementById('tobAiModel').value.trim()
   };
+  if(window.FTRecords&&!cfg.key)cfg.key=tobAiGetCfg().keys?.[cfg.provider]||'';
   if(!cfg.key){ res.textContent = '✗ Falta la clau'; res.style.color = '#dc6a6a'; return; }
   try {
     await tobAiCall([{ role:'user', content:'Respon només amb aquest JSON exacte: {"ok":true}' }], cfg);
@@ -13374,6 +13390,7 @@ async function tobAiTestConfig(){
 // Llamada genérica al LLM. messages=[{role,content}]. Devuelve texto.
 async function tobAiCall(messages, cfgOverride){
   const cfg = cfgOverride || tobAiGetCfg();
+  if(window.FTRecords?.settings)return FTRecords.settings.call(messages,cfg);
   if(!cfg.key) throw new Error('Falta la clau API — configura la IA');
   const prov = cfg.provider || 'gemini';
   if(prov === 'gemini'){

@@ -1,6 +1,7 @@
 import {RecordClient} from './record-client.mjs';
 import {CheckpointStore} from './checkpoint-store.mjs';
 import {STORAGE_KEYS,NAMESPACE_MODULE} from './record-layout.mjs';
+import {isPhotoNamespace} from './media-format.mjs';
 const fault=(message,status=409)=>Object.assign(new Error(message),{status});
 const raw=value=>typeof value==='string'?value:JSON.stringify(value);
 const parsed=value=>{try{return JSON.parse(value);}catch(_error){return value;}};
@@ -12,7 +13,7 @@ export class RecordBridge {
     this.fetch=fetchImpl;this.onStatus=onStatus;this.values=new Map();this.shadow=new Map();this.drafts=new Map();this.errors=new Map();this.saving=new Set();this.states=new Map();
     this.client=new RecordClient({fetchImpl,checkpoint:event=>this.store.checkpoint(event)});
   }
-  allowed(namespace){const current=this.session();return current?.active&&current.user?.id===this.ownerId&&current.dataMode==='records'&&NAMESPACE_MODULE[namespace]&&(current.user.role==='admin'||current.user.permissions.includes(NAMESPACE_MODULE[namespace]));}
+  allowed(namespace){const current=this.session(),module=NAMESPACE_MODULE[namespace]||(isPhotoNamespace(namespace)?'training_online':null);return current?.active&&current.user?.id===this.ownerId&&current.dataMode==='records'&&module&&(current.user.role==='admin'||current.user.permissions.includes(module));}
   status(namespace,state,error=null){this.states.set(namespace,{state,error:error?.message||null});try{this.onStatus({namespace,state,error:error?.message||null});}catch(_error){}}
   assertWrite(namespace){
     if(!this.allowed(namespace))throw fault('Sesion o permisos no disponibles; conserva y exporta el borrador',403);
@@ -24,7 +25,7 @@ export class RecordBridge {
     this.values.set(namespace,structuredClone(value));
     for(const key of STORAGE_KEYS[namespace]||[]){if(Object.hasOwn(value,key))this.shadow.set(key,raw(value[key]));else this.shadow.delete(key);}
   }
-  async open(namespace){
+  async open(namespace,{allowEmpty=false}={}){
     if(!this.allowed(namespace))throw fault('Modulo no autorizado',403);
     if(this.values.has(namespace))return structuredClone(this.values.get(namespace));
     const stored=await this.store.state(namespace);let value;
@@ -32,7 +33,7 @@ export class RecordBridge {
       await this.client.restore(namespace,{base:stored.base,pending:stored.pending});
       value=structuredClone(stored.pending?.value??stored.draft.value);
       this.status(namespace,stored.pending?'pending':'draft');
-    }else{value=await this.client.load(namespace);this.status(namespace,'confirmed');}
+    }else{value=await this.client.load(namespace,{allowEmpty});this.status(namespace,'confirmed');}
     this.hydrate(namespace,value);return structuredClone(value);
   }
   async openAll(){for(const namespace of Object.keys(NAMESPACE_MODULE))if(this.allowed(namespace))await this.open(namespace);}
@@ -46,6 +47,16 @@ export class RecordBridge {
     this.drafts.set(namespace,next);next.catch(()=>{});return next;
   }
   async waitForDrafts(namespace){const pending=this.drafts.get(namespace);if(pending)await pending;}
+  async persistDraft(namespace){
+    if(!this.allowed(namespace)||!this.session().writesEnabled||this.saving.has(namespace)||this.client.pending.has(namespace))throw fault('No se puede rehacer la copia local en este estado');
+    if(!this.errors.has(namespace))return;
+    const base=this.client.bases.get(namespace),value=structuredClone(this.values.get(namespace));
+    if(!base||value===undefined)throw fault('Falta la version base; exporta antes de continuar');
+    try{
+      await this.store.checkpoint({kind:'draft',namespace,datasetId:base.datasetId,value});
+      this.errors.delete(namespace);this.drafts.delete(namespace);this.status(namespace,'draft');
+    }catch(error){this.errors.set(namespace,error);this.status(namespace,'error',error);throw error;}
+  }
   async save(namespace,value=this.values.get(namespace)){
     this.assertWrite(namespace);value=structuredClone(value);await this.waitForDrafts(namespace);this.assertWrite(namespace);
     this.saving.add(namespace);this.status(namespace,'pending');
@@ -94,7 +105,7 @@ export class RecordBridge {
     let saved;
     try{saved=await this.store.exportCopies({allowUnverified:true});}
     catch(error){saved={format:'ft-record-checkpoints-v1',ownerId:this.ownerId,entries:[],verified:false,incomplete:true,storageError:error.message};}
-    return {...saved,volatileDrafts:[...this.values].map(([namespace,value])=>({namespace,value})),editor:structuredClone(editor),centralConfirmation:false};
+    return {...saved,volatileDrafts:[...this.values].map(([namespace,value])=>({namespace,value})),editor:structuredClone(editor),privateSettingsDraft:structuredClone(this.settings?.pending||null),centralConfirmation:false};
   }
   installStorage(storage,prototype){
     const original={get:prototype.getItem,set:prototype.setItem,remove:prototype.removeItem,clear:prototype.clear},bridge=this;

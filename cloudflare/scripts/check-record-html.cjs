@@ -13,8 +13,14 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   const {packSnapshot,unpackSnapshot}=await import('../src/snapshot-codec.mjs');
   const {listRecords,commitRecords,sha256}=await import('../src/records.mjs');
   const {FILE_MODULE,COMMON_FILES,RECORD_FILES}=await import('../src/policy.mjs');
+  const {openSettings}=await import('../src/settings-crypto.mjs');
+  const {publicAiConfig}=await import('../src/private-settings.mjs');
   const bytes=await readFile(source),original=JSON.parse(bytes.toString('utf8')),bundle=JSON.parse(await readFile(bundleFile,'utf8'));
-  assert.equal(await sha256(bytes.toString('utf8')),bundle.sourceSha256);
+  const verification=JSON.parse(await readFile(path.join(path.dirname(bundleFile),'verification.private.json'),'utf8'));
+  assert.equal(await sha256(bytes.toString('utf8')),verification.sourceSha256);
+  let aiConfig={};
+  const sealed=bundle.namespaces.find(section=>section.namespace==='private_settings')?.records[0];
+  if(sealed){const secret=JSON.parse(await readFile(path.join(path.dirname(bundleFile),'worker-secret.private.json'),'utf8'));aiConfig=publicAiConfig(await openSettings(JSON.parse(sealed.payload),secret.SETTINGS_ENCRYPTION_KEY,bundle.datasetId));}
   const root=path.resolve(__dirname,'..','..'),db=new DatabaseSync(':memory:');
   console.log('Preparing isolated real-shape fixture; originals are read only');
   db.exec(await readFile(path.join(__dirname,'..','business-migrations','0001_records.sql'),'utf8'));
@@ -29,6 +35,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     try{
       let value;
       if(url.pathname==='/api/session')value={user:{id:'isolated-admin',name:'Test admin',role:'admin',active:true,permissions:[]},dataMode:'records',writesEnabled,modules:{}};
+      else if(url.pathname==='/api/settings/ai'&&request.method==='GET')value={version:1,cfg:aiConfig};
       else if(url.pathname.startsWith('/api/records/')){
         const namespace=url.pathname.split('/')[3];assert.ok(bundle.namespaces.some(section=>section.namespace===namespace));
         if(request.method==='POST'){
@@ -74,8 +81,20 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       const page=await context.newPage(),errors=[];pageSetup(page);page.on('pageerror',error=>errors.push(error.message));
       await loaded(page,file);
       const state=await page.evaluate(()=>({owner:FTRecords.ownerId,dataMode:FTSession.dataMode,writesEnabled:FTSession.writesEnabled,loaded:FTRecords.values.size,visible:document.body.innerText.length,status:document.querySelector('#ftRecordStatus').textContent}));
-      assert.equal(state.owner,'isolated-admin');assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);assert.equal(state.loaded,6);assert.ok(state.visible>100);assert.match(state.status,/solo lectura/);
+      assert.equal(state.owner,'isolated-admin');assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);assert.equal(state.loaded,7);assert.ok(state.visible>100);assert.match(state.status,/solo lectura/);
       assert.ok(!errors.length,'JavaScript errors in '+file+': '+errors.join(' | '));
+      if(file==='consulta.html'){
+        const expectedConsulta=typeof original.training_online.tob_online_v2==='string'?JSON.parse(original.training_online.tob_online_v2):original.training_online.tob_online_v2;
+        assert.deepEqual(await page.evaluate(()=>JSON.parse(JSON.stringify(tobDB))),expectedConsulta,'Consulta changed imported clients, measurements or menus while loading');
+        const catalog=typeof original.tob_menus_catalog==='string'?JSON.parse(original.tob_menus_catalog):original.tob_menus_catalog;
+        const photo=await page.evaluate(async id=>{
+          const dataUrl=await FTRecords.media.get(id),image=new Image();image.src=dataUrl;await image.decode();
+          const canvas=document.createElement('canvas');canvas.width=32;canvas.height=32;const context=canvas.getContext('2d');context.drawImage(image,0,0,32,32);
+          const pixels=context.getImageData(0,0,32,32).data;
+          return {width:image.naturalWidth,height:image.naturalHeight,colors:new Set(Array.from({length:1024},(_,index)=>pixels.slice(index*4,index*4+3).join(','))).size};
+        },catalog.recetas.find(recipe=>recipe._fotoLocal).id);
+        assert.ok(photo.width>0&&photo.height>0&&photo.colors>10,'Central recipe image is blank or failed to decode');
+      }
       await page.screenshot({path:path.join(output,file.replace('.html','-desktop.png')),fullPage:true});
       summary.push({file,loaded:true,errors:0,legacyGitHubRequests:0});await page.close();console.log(file+': verified isolated read-only startup');
     }
@@ -105,10 +124,14 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     assert.equal(await recovered.evaluate(({ci,mi})=>tobDB.clientes[ci].mediciones[mi].pes,changed),pending.peso);
     assert.equal(requests.filter(request=>request.requestId===pending.requestId).length,1);
     await recovered.setViewportSize({width:390,height:844});await recovered.screenshot({path:path.join(output,'consulta-mobile.png'),fullPage:true});
+    await recovered.getByRole('button',{name:'Copias y espacio',exact:true}).click();
+    await recovered.getByRole('dialog').waitFor();await recovered.screenshot({path:path.join(output,'storage-mobile.png'),fullPage:true});
+    const storageFits=await recovered.getByRole('dialog').evaluate(element=>element.scrollWidth<=element.clientWidth&&element.getBoundingClientRect().right<=innerWidth);
+    assert.ok(storageFits,'Storage dialog overflows on mobile');
     const rows=db.prepare("SELECT record_key,payload FROM records WHERE namespace='training_online' AND deleted=0").all();
     const final=await unpackSnapshot(new Map(rows.map(row=>[row.record_key,JSON.parse(row.payload)])));
     assert.equal(final.tob_online_v2.clientes[changed.ci].mediciones[changed.mi].pes,pending.peso);
-    assert.equal(await sha256((await readFile(source)).toString('utf8')),bundle.sourceSha256);
+    assert.equal(await sha256((await readFile(source)).toString('utf8')),verification.sourceSha256);
     console.log(JSON.stringify({status:'ISOLATED_HTMLS_VERIFIED',summary,measurementSaveConfirmed:true,reopenPreserved:true,offlinePendingRecovered:true,legacyGitHubRequests:forbidden,productionWrites:0,backupWrites:0,output},null,2));
     await recovered.close();
   }finally{

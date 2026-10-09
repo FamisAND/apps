@@ -85,6 +85,10 @@ export class CheckpointStore {
     }else if(event.kind==='resolved-remote'){
       if(!['pending-write','draft'].includes(previous?.event.kind)||event.previousId!==previousId||!event.base)throw fault('La copia anterior no esta conservada para resolver el conflicto');
     }else throw fault('Tipo de copia invalido');
+    if(['draft','unchanged-write'].includes(event.kind)&&previous?.event.kind===event.kind&&JSON.stringify(previous.event)===JSON.stringify(event)){
+      if((await this.get('heads',key))?.id!==previousId)throw fault('Otra pestana cambio la copia local; no se sustituira');
+      return;
+    }
     const payload=JSON.stringify(event),id=crypto.randomUUID();
     const row={id,key,ownerId:this.ownerId,previousId,baseId:['pending-write','draft'].includes(event.kind)?previousBase:null,
       createdAt:new Date().toISOString(),payload,sha256:await sha256(payload)};
@@ -107,15 +111,88 @@ export class CheckpointStore {
   }
   async exportCopies({allowUnverified=false}={}){
     const db=await this.open();
-    const rows=await new Promise((resolve,reject)=>{
-      const transaction=db.transaction('entries','readonly'),request=transaction.objectStore('entries').index('owner').getAll(this.ownerId);
-      let result;request.onsuccess=()=>{result=request.result;};
-      transaction.oncomplete=()=>resolve(result);transaction.onabort=()=>reject(transaction.error||fault('Exportacion local no completada'));
+    const {rows,heads}=await new Promise((resolve,reject)=>{
+      const transaction=db.transaction(['entries','heads'],'readonly'),request=transaction.objectStore('entries').index('owner').getAll(this.ownerId),headRequest=transaction.objectStore('heads').getAll();
+      let rows,heads;request.onsuccess=()=>{rows=request.result;};headRequest.onsuccess=()=>{heads=headRequest.result.filter(head=>JSON.parse(head.key)[0]===this.ownerId);};
+      transaction.oncomplete=()=>resolve({rows,heads});transaction.onabort=()=>reject(transaction.error||fault('Exportacion local no completada'));
     });
     const unverifiedEntryIds=[];
     for(const row of rows)if(await sha256(row.payload)!==row.sha256)unverifiedEntryIds.push(row.id);
     if(unverifiedEntryIds.length&&!allowUnverified)throw fault('Una copia no supera la verificacion; no afirmar que el archivo esta verificado');
-    return {format:'ft-record-checkpoints-v1',ownerId:this.ownerId,exportedAt:new Date().toISOString(),entries:rows,verified:!unverifiedEntryIds.length,unverifiedEntryIds};
+    return {format:'ft-record-checkpoints-v1',ownerId:this.ownerId,exportedAt:new Date().toISOString(),entries:rows,heads,verified:!unverifiedEntryIds.length,unverifiedEntryIds};
+  }
+  async archivePlan(fileText){
+    let archive;try{archive=JSON.parse(fileText);}catch(_error){throw fault('El archivo no es una copia JSON valida');}
+    if(archive?.format!=='ft-record-checkpoints-v1'||archive.ownerId!==this.ownerId||!Array.isArray(archive.entries)||archive.verified!==true||archive.incomplete)throw fault('La copia no corresponde al usuario o esta incompleta');
+    const current=await this.exportCopies(),saved=new Map();
+    for(const row of archive.entries){
+      if(row.ownerId!==this.ownerId||saved.has(row.id)||typeof row.payload!=='string'||await sha256(row.payload)!==row.sha256)throw fault('El archivo no supera la verificacion de contenido');
+      saved.set(row.id,row);
+    }
+    for(const row of current.entries)if(JSON.stringify(saved.get(row.id))!==JSON.stringify(row))throw fault('Hay copias mas recientes o distintas que no estan en el archivo; exporta de nuevo');
+    const protectedIds=new Set(current.heads.map(head=>head.id));
+    const byId=new Map(current.entries.map(row=>[row.id,row]));
+    // Keep current bases and explicitly preserved conflict copies. Older linked
+    // history is recoverable from the verified archive, never silently discarded.
+    for(const id of protectedIds){
+      const row=byId.get(id);if(!row)throw fault('La copia actual no esta completa; no se archiva');
+      const event=JSON.parse(row.payload);
+      if(row.baseId)protectedIds.add(row.baseId);
+      if(event.kind==='resolved-remote'&&event.previousId)protectedIds.add(event.previousId);
+    }
+    const removable=current.entries.filter(row=>!protectedIds.has(row.id));
+    return {archiveSha256:await sha256(fileText),entries:current.entries,heads:current.heads,ids:removable.map(row=>row.id),bytes:removable.reduce((sum,row)=>sum+new TextEncoder().encode(row.payload).length,0)};
+  }
+  async archiveOldCopies(fileText,expectedSha256){
+    const plan=await this.archivePlan(fileText);
+    if(plan.archiveSha256!==expectedSha256)throw fault('El archivo cambio desde la confirmacion; no se archiva');
+    if(!plan.ids.length)return {archived:0,bytes:0};
+    const db=await this.open();
+    await new Promise((resolve,reject)=>{
+      const transaction=db.transaction(['entries','heads'],'readwrite'),entries=transaction.objectStore('entries'),heads=transaction.objectStore('heads');
+      const rowsRequest=entries.index('owner').getAll(this.ownerId),headsRequest=heads.getAll();let rows,currentHeads,mismatch=false;
+      const check=()=>{
+        if(!rows||!currentHeads)return;
+        const stable=value=>JSON.stringify([...value].sort((a,b)=>(a.id||a.key).localeCompare(b.id||b.key)));
+        if(stable(rows)!==stable(plan.entries)||stable(currentHeads)!==stable(plan.heads)){mismatch=true;transaction.abort();return;}
+        for(const id of plan.ids)entries.delete(id);
+      };
+      rowsRequest.onsuccess=()=>{rows=rowsRequest.result;check();};
+      headsRequest.onsuccess=()=>{currentHeads=headsRequest.result.filter(head=>JSON.parse(head.key)[0]===this.ownerId);check();};
+      transaction.oncomplete=resolve;transaction.onabort=()=>reject(mismatch?fault('Otra pestana cambio las copias; no se ha archivado nada'):transaction.error||fault('No se ha completado el archivado'));
+    });
+    return {archived:plan.ids.length,bytes:plan.bytes};
+  }
+  async restoreArchivedCopies(fileText){
+    let archive;try{archive=JSON.parse(fileText);}catch(_error){throw fault('Archivo de copia invalido');}
+    if(archive?.format!=='ft-record-checkpoints-v1'||archive.ownerId!==this.ownerId||!Array.isArray(archive.entries)||archive.verified!==true)throw fault('Copia incompatible');
+    const ids=new Set();
+    for(const row of archive.entries){
+      const event=JSON.parse(row.payload);
+      if(ids.has(row.id)||row.ownerId!==this.ownerId||row.key!==this.key(event.namespace)||await sha256(row.payload)!==row.sha256)throw fault('Copia incompatible o alterada');
+      ids.add(row.id);
+    }
+    const db=await this.open();let restored=0;
+    await new Promise((resolve,reject)=>{
+      const transaction=db.transaction('entries','readwrite'),entries=transaction.objectStore('entries');let mismatch=false;
+      for(const row of archive.entries){const request=entries.get(row.id);request.onsuccess=()=>{
+        if(request.result&&JSON.stringify(request.result)!==JSON.stringify(row)){mismatch=true;transaction.abort();return;}
+        if(!request.result){entries.add(row);restored++;}
+      };}
+      transaction.oncomplete=resolve;transaction.onabort=()=>reject(mismatch?fault('Una copia existente es diferente; no se ha sustituido'):transaction.error||fault('Recuperacion local no completada'));
+    });
+    return {restored,headsChanged:false};
+  }
+  async health(storage=globalThis.navigator?.storage){
+    const db=await this.open(),stats=await new Promise((resolve,reject)=>{
+      const transaction=db.transaction('entries','readonly'),request=transaction.objectStore('entries').index('owner').openCursor(this.ownerId);
+      let entries=0,historyBytes=0;
+      request.onsuccess=()=>{const cursor=request.result;if(!cursor)return;entries++;historyBytes+=new TextEncoder().encode(cursor.value.payload).length;cursor.continue();};
+      transaction.oncomplete=()=>resolve({entries,historyBytes});transaction.onabort=()=>reject(transaction.error||fault('No se pudo comprobar el historial local'));
+    });let estimate=null,persistent=null;
+    try{estimate=await storage?.estimate?.();persistent=await storage?.persisted?.();}catch(_error){}
+    const usage=Number.isFinite(estimate?.usage)?estimate.usage:null,quota=Number.isFinite(estimate?.quota)?estimate.quota:null;
+    return {...stats,usage,quota,persistent,lowSpace:quota!==null&&usage!==null&&(usage/quota>=0.8||quota-usage<20*1024*1024)};
   }
   async close(){if(this.database)(await this.database).close();this.database=null;}
 }
