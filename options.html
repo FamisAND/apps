@@ -7605,8 +7605,8 @@ function showSaveFlash(msg){
   const el = document.getElementById('autoSaveTs');
   if(!el) return;
   const prev = el.textContent;
-  el.style.color = '#3fb68b';
-  el.textContent = msg;
+  el.style.color = window.FTRecords&&FTRecords.pending()?'#ffca64':'#3fb68b';
+  el.textContent = window.FTRecords?FTRecords.saveNotice(msg):msg;
   setTimeout(()=>{ el.style.color=''; el.textContent = prev || ''; }, 2000);
 }
 

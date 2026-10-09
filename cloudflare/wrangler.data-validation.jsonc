@@ -1,0 +1,10 @@
+{
+  "name": "full-training-data-validation",
+  "compatibility_date": "2026-10-08",
+  "d1_databases": [{
+    "binding": "DATA_DB",
+    "database_name": "full-training-data",
+    "database_id": "bf9b6cd9-ed4c-484a-bc79-03fe9c396857",
+    "migrations_dir": "business-migrations"
+  }]
+}

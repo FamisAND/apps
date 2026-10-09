@@ -1,0 +1,18 @@
+{
+  "name": "full-training-private",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-08",
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {"directory": "./public", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none"},
+  "vars": {
+    "ADMIN_EMAIL": "sergiofamisr@gmail.com",
+    "GITHUB_REPO": "FamisAND/appdata",
+    "GITHUB_BRANCH": "main",
+    "TEAM_DOMAIN": "https://fulltraining.cloudflareaccess.com",
+    "POLICY_AUD": "bca4cc8697f6cc74b6063e86dad4fefd9cd164b5d483749e797314b578b9844d",
+    "RECORDS_ENABLED": "false",
+    "DATA_WRITES_ENABLED": "false"
+  },
+  "d1_databases": [{"binding": "AUTH_DB", "database_name": "full-training-auth", "database_id": "4aaab3a9-c02e-4818-9223-3ed9d8d3b442", "migrations_dir": "migrations"}]
+}

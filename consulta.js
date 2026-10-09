@@ -784,7 +784,10 @@ function tobSave(silent){
   }
   tobSaveFailed=false;
   if(!silent && typeof GitHubSync !== 'undefined' && GitHubSync.markDirty){ GitHubSync.markDirty(); }
-  tobBadge('Guardado local');
+  if(window.FTRecords){
+    tobBadge('Pendiente de confirmar');
+    FTRecords.waitForDrafts('training_online').catch(()=>{tobSaveFailed=true;tobBadge('No confirmado');});
+  }else tobBadge('Guardado local');
   return true;
 }
 
@@ -797,6 +800,7 @@ function tobBadge(text){
 
 function tobToast(msg, type){
   if(tobSaveFailed && type==='green') return;
+  if(window.FTRecords && type==='green' && /guardad/i.test(msg) && FTRecords.pending()){msg=FTRecords.saveNotice(msg);type='';}
   const t = document.getElementById('tobToast'); if(!t) return;
   t.textContent = msg;
   t.className = 'tob-toast show ' + (type || '');
@@ -7084,6 +7088,10 @@ async function tobMenusLoad(){
 // Además: marca el catálogo como "sucio" y programa una subida a GitHub
 // para que el catálogo se sincronice entre ordenadores.
 function tobMenusSave(){
+  if(window.FTRecords){
+    tobKvPut(TOB_MENUS_KV,tobMenusDB).then(()=>tobMenusSyncSchedule()).catch(error=>tobToast('No confirmado: '+error.message,'red'));
+    return;
+  }
   tobMenusDB._syncTs = Date.now();
   tobKvPut(TOB_MENUS_KV, tobMenusDB).catch(e => {
     console.warn('[menus] save IndexedDB falló:', e);
@@ -7155,6 +7163,14 @@ function tobMenusSyncMerge(local, remote){
 // Descarga el catálogo remoto y lo fusiona con el local.
 async function tobMenusSyncPull(opts){
   opts = opts || {};
+  if(window.FTRecords){
+    try{
+      const namespace=TOB_MENUS_SYNC_SECTION;
+      const value=FTRecords.states.get(namespace)?.state==='confirmed'?await FTRecords.refresh(namespace):await FTRecords.open(namespace);
+      Object.assign(tobMenusDB,value);tobMenusSyncStatus(FTRecords.states.get(namespace)?.state==='confirmed'?'Copia central verificada':'Borrador conservado pendiente','ok');
+      if(typeof tobIngRender==='function')tobIngRender();if(typeof tobRecRender==='function')tobRecRender();return true;
+    }catch(error){tobMenusSyncStatus('No confirmado: '+error.message,'error');return false;}
+  }
   if(!tobMenusSyncLoggedIn()){
     if(opts.manual) tobToast('No has iniciado sesión con GitHub', 'red');
     return false;
@@ -7217,6 +7233,14 @@ async function tobMenusSyncPull(opts){
 // Sube el catálogo local a GitHub (fusionado con el remoto).
 async function tobMenusSyncPush(opts){
   opts = opts || {};
+  if(window.FTRecords){
+    try{
+      await FTRecords.waitForDrafts(TOB_MENUS_SYNC_SECTION);
+      if(FTRecords.client.pending.has(TOB_MENUS_SYNC_SECTION))await FTRecords.retry(TOB_MENUS_SYNC_SECTION);
+      else await FTRecords.save(TOB_MENUS_SYNC_SECTION,structuredClone(tobMenusDB));
+      tobMenusSyncStatus('Guardado central confirmado','ok');return true;
+    }catch(error){tobMenusSyncStatus('No confirmado: '+error.message,'error');if(opts.manual)tobToast(error.message,'red');return false;}
+  }
   if(!tobMenusSyncLoggedIn()){
     if(opts.manual) tobToast('No has iniciado sesión con GitHub', 'red');
     return false;
@@ -7257,6 +7281,9 @@ async function tobMenusSyncPush(opts){
 
 // Push diferido (debounced) — se llama tras cada cambio local.
 function tobMenusSyncSchedule(delay){
+  if(window.FTRecords){
+    clearTimeout(_tobMenusSyncTimer);_tobMenusSyncTimer=setTimeout(()=>tobMenusSyncPush(),delay||2500);tobMenusSyncStatus('Pendiente de confirmar','work');return;
+  }
   if(!tobMenusSyncLoggedIn()) return;
   try { localStorage.setItem(TOB_MENUS_SYNC_DIRTY, '1'); } catch(e){}
   clearTimeout(_tobMenusSyncTimer);
@@ -7317,6 +7344,11 @@ function tobImgDB(){
 
 // Key/value en IndexedDB — para datos grandes que no caben en localStorage.
 async function tobKvPut(key, value){
+  if(window.FTRecords&&key===TOB_MENUS_KV){
+    const current=FTRecords.values.get(TOB_MENUS_SYNC_SECTION);
+    if(JSON.stringify(current)===JSON.stringify(value))return;
+    return FTRecords.setDraft(TOB_MENUS_SYNC_SECTION,value);
+  }
   const db = await tobImgDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TOB_KV_STORE, 'readwrite');
@@ -7326,6 +7358,7 @@ async function tobKvPut(key, value){
   });
 }
 async function tobKvGet(key){
+  if(window.FTRecords&&key===TOB_MENUS_KV)return FTRecords.open(TOB_MENUS_SYNC_SECTION);
   const db = await tobImgDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TOB_KV_STORE, 'readonly');
@@ -9529,7 +9562,7 @@ function tobMcRefreshSaveState(){
     return;
   }
   const dirty = tobMcIsDirty();
-  el.textContent = dirty ? '● Sin guardar' : '✓ Guardado';
+  el.textContent = dirty ? '● Sin guardar' : window.FTRecords ? FTRecords.saveNotice('Guardado central confirmado') : '✓ Guardado';
   el.style.color = dirty ? '#f59e0b' : '#4ade80';
 }
 

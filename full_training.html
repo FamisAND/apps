@@ -1016,7 +1016,8 @@ function save(){
     throw error;
   }
   const b=document.getElementById('saveBadge');
-  if(b){b.textContent='Guardado local';setTimeout(()=>b.textContent='',1600);}
+  if(b){b.textContent=window.FTRecords?'Pendiente de confirmar':'Guardado local';setTimeout(()=>b.textContent='',1600);}
+  if(window.FTRecords)FTRecords.waitForDrafts('training').catch(()=>{ftSaveFailed=true;if(b)b.textContent='NO confirmado';});
   updateExportBtn();
 }
 
@@ -1070,7 +1071,7 @@ function fmtN(v,dec=2){if(v==null||isNaN(Number(v)))return'—';return Number(v)
 function monthKey(y,m){return`${y}-${String(m).padStart(2,'0')}`;}
 function curKey(sec){return monthKey(curMo[sec].y,curMo[sec].m);}
 function mLabel(y,m){return`${MES[m-1]} ${y}`;}
-function toast(msg,type='green'){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast t-${type} show`;setTimeout(()=>t.className='toast',2300);}
+function toast(msg,type='green'){if(window.FTRecords&&type==='green'&&/guardad/i.test(msg)&&FTRecords.pending()){msg=FTRecords.saveNotice(msg);type='';}const t=document.getElementById('toast');t.textContent=msg;t.className=`toast t-${type} show`;setTimeout(()=>t.className='toast',2300);}
 function closeModal(id){document.getElementById(id).classList.add('hidden');}
 
 // Get member conditions at a given monthKey

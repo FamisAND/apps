@@ -111,7 +111,7 @@ function load(){
   migrateClientCfg();
 }
 function save(){ localStorage.setItem(SK, JSON.stringify(profiles)); flashSave(); }
-function flashSave(){ const b=document.getElementById("saveBadge"); if(!b)return; b.textContent="✓"; setTimeout(()=>b.textContent="",1500); }
+function flashSave(){ const b=document.getElementById("saveBadge"); if(!b)return; b.textContent=window.FTRecords?'Pendiente de confirmar':"✓";if(window.FTRecords)FTRecords.waitForDrafts('facturas').catch(()=>{b.textContent='NO confirmado';});setTimeout(()=>b.textContent="",1500); }
 function prof(){ return profiles.find(p=>p.id===curId); }
 
 function showScreen(id){
@@ -1670,7 +1670,7 @@ function saveFactura(){
     if(idx>=0) p.facturas[idx] = f;
   }
   save();
-  toast("✓ Factura guardada");
+  toast(window.FTRecords?FTRecords.saveNotice('Factura guardada'):"✓ Factura guardada");
   editingFactura = null;
   showTab("facturas");
 }

@@ -88,7 +88,7 @@
   // ─── SERVICE WORKER (PWA) ──────────────────────────────────
   // Registra el SW una vez la página termine de cargar.
   // Para desactivar: ver service-worker.js (cabecera con instrucciones).
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !window.FTSession) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./service-worker.js').catch(err => {
         console.warn('[SW] No se pudo registrar:', err);

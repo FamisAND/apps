@@ -556,7 +556,7 @@ let editObjId=null;
 
 function uid(){return Math.random().toString(36).slice(2,9);}
 function load(){try{profiles=JSON.parse(localStorage.getItem(SK)||"[]");}catch{profiles=[];}}
-function save(){localStorage.setItem(SK,JSON.stringify(profiles));const b=document.getElementById("saveBadge");b.textContent="✓";setTimeout(()=>b.textContent="",1800);}
+function save(){localStorage.setItem(SK,JSON.stringify(profiles));const b=document.getElementById("saveBadge");b.textContent=window.FTRecords?'Pendiente de confirmar':"✓";if(window.FTRecords)FTRecords.waitForDrafts('patrimonio').catch(()=>{b.textContent='NO confirmado';});setTimeout(()=>b.textContent="",1800);}
 function prof(){return profiles.find(p=>p.id===curId);}
 
 function defaultSections(){
@@ -4468,7 +4468,7 @@ function importData(ev){
 // ══════════════════════════════
 // TOAST
 // ══════════════════════════════
-function toast(msg,type="green"){const t=document.getElementById("toast");t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className="toast",3000);}
+function toast(msg,type="green"){if(window.FTRecords&&type==='green'&&/guardad/i.test(msg)&&FTRecords.pending()){msg=FTRecords.saveNotice(msg);type='';}const t=document.getElementById("toast");t.textContent=msg;t.className=`toast ${type} show`;setTimeout(()=>t.className="toast",3000);}
 
 // ══════════════════════════════
 // INIT

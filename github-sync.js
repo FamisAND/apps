@@ -34,6 +34,8 @@ let _blocked = false;
 let _pushPromise = null;
 let _reloadRequired = false;
 let _safetyDBPromise;
+function recordMode(){return window.FTSession?.dataMode==='records';}
+function recordBridge(){if(!window.FTRecords)throw new Error('La copia central no se ha cargado; no se usaran datos semilla.');return window.FTRecords;}
 
 function same(a,b){
   const canonical = v => Array.isArray(v) ? v.map(canonical)
@@ -198,6 +200,7 @@ async function exclusive(operation){
   throw new Error('Este navegador no permite coordinar guardados seguros entre pestanas. Usa Chrome actualizado.');
 }
 async function exportSafetyCopy(){
+  if(recordMode())return recordBridge().exportDownload();
   const values={};Object.keys(DATA_KEYS).forEach(s=>{values[s]=readSection(s);});
   if(typeof window.ghEditorSnapshot==='function')values.editor=window.ghEditorSnapshot();
   const legacyArchive=await readLegacyArchive();
@@ -207,6 +210,7 @@ async function exportSafetyCopy(){
 function reportConflict(error){
   _blocked=true;
   showStatus('Conflicto: datos conservados. Exporta y revisa.', 'error');
+  if(recordMode()){recordBridge().status(_section||'training_online','conflict',error);return;}
   if(document.getElementById('ghSafetyConflict'))return;
   const panel=document.createElement('div');panel.id='ghSafetyConflict';
   panel.style.cssText='position:fixed;bottom:50px;right:10px;max-width:440px;padding:16px;background:#15191e;color:#eee;border:1px solid #f59e0b;border-radius:6px;z-index:100002;font:13px sans-serif;visibility:visible';
@@ -304,6 +308,7 @@ async function ghFetch(path, opts){
 }
 
 async function pullRaw(){
+  if(recordMode())throw new Error('En el sistema por registros no se leen snapshots completos de GitHub.');
   if(window.FTSession){
     await window.FTSession.ready;
     const res=await fetch('/api/data',{cache:'no-store',credentials:'same-origin'});
@@ -403,6 +408,7 @@ async function pullRaw(){
 //     locales hechos entre el primer intento y el retry.
 //   - Sin `rebuild`, se bloquea el conflicto para no reponer datos antiguos.
 async function pushRaw(payload, rebuild, attempt, expectedSha){
+  if(recordMode())throw new Error('No se permite subir archivos ni secciones completas al sistema por registros.');
   attempt = attempt || 0;
   const branch = getBranch();
   const sha = expectedSha;
@@ -526,6 +532,12 @@ function _cleanupLegacyOversize(){
 // re-sincronizar innecesariamente.
 async function pullAndApplyAll(opts){
   opts=opts||{};
+  if(recordMode()){
+    const bridge=recordBridge();
+    if(opts.resolveRemote){await exportSafetyCopy();await bridge.keepCopyAndLoadRemote(_section);_blocked=false;_dirty=false;return {fresh:false};}
+    if(_dirty||bridge.pending())throw conflict('Hay un borrador conservado; no se descargara encima.');
+    location.reload();return {fresh:false};
+  }
   showStatus('⟳ sincronizando…', 'work');
   try {
     return await exclusive(async()=>{
@@ -592,6 +604,7 @@ let _securityCache = null;
 // Devuelve TODO el contenido del data.json (no solo __security).
 // Se usa principalmente desde dashboard-auth.js para detectar inconsistencias.
 async function fetchFullData(){
+  if(recordMode()){const bridge=recordBridge();return Object.fromEntries([...bridge.values].map(([key,value])=>[key,structuredClone(value)]));}
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');
   const content = remote.content || {};
@@ -601,6 +614,7 @@ async function fetchFullData(){
 }
 
 async function fetchSecuritySection(){
+  if(recordMode())return {};
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');
   _securityCache = (remote.content && remote.content.__security) || {};
@@ -619,6 +633,7 @@ async function updateSecuritySection(updater){
 // updater contra el remoto FRESCO, de modo que nunca se revierten secciones ajenas.
 async function updateSection(sectionName, updater){
   if(!sectionName || typeof sectionName !== 'string') throw new Error('sectionName requerido');
+  if(recordMode())return recordBridge().update(sectionName,updater);
   return exclusive(async()=>{
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');
@@ -649,6 +664,7 @@ async function updateSection(sectionName, updater){
 
 // Lectura de una sección arbitraria (ej. __ia_config).
 async function fetchSection(sectionName,opts){
+  if(recordMode())return opts?.preserveBase?recordBridge().peek(sectionName):recordBridge().open(sectionName);
   const remote = await pullRaw();
   setCachedSha(remote.sha || '');
   const value=(remote.content && remote.content[sectionName]) || null;
@@ -795,6 +811,19 @@ function doPush(){
 }
 async function performPush(){
   _pushTimer = null;
+  if(recordMode()){
+    if(!_section)return;
+    const bridge=recordBridge(),value=readSection(_section);_pushInFlight=true;
+    showStatus('Confirmando guardado central...', 'work');
+    try{
+      const pending=bridge.client.pending.get(_section);
+      if(pending){if(!same(value,pending.value))throw conflict('El formulario difiere del guardado pendiente; conserva y revisa ambas copias.');await bridge.retry(_section);}
+      else await bridge.save(_section,value);
+      _dirty=!same(readSection(_section),value);_blocked=false;showStatus('Guardado central confirmado', 'ok');
+    }catch(error){_blocked=true;showStatus('No confirmado: '+error.message,'error');throw error;}
+    finally{_pushInFlight=false;}
+    return;
+  }
   if(_blocked)throw conflict('Sincronizacion bloqueada: revisa el conflicto antes de guardar.');
   if(!_section)return;
   _pushInFlight = true;
@@ -940,6 +969,13 @@ function bootstrapAutoSync(){
 async function runBootstrapAutoSync(){
   if(window.FTSession)await window.FTSession.ready;
   if(!isLoggedIn()){ _removeOverlay(); return; }
+  if(recordMode()){
+    const bridge=recordBridge();
+    if(_section&&!bridge.values.has(_section))throw new Error('Modulo sin copia verificada');
+    _dirty=!!_section&&bridge.states.get(_section)?.state!=='confirmed';_blocked=false;_removeOverlay();
+    showStatus(_dirty?'Borrador conservado pendiente de confirmar':window.FTSession.writesEnabled?'Copia central verificada':'Solo lectura: copia central verificada',_dirty?'work':'ok');
+    return true;
+  }
 
   let alreadySynced = false;
   try { alreadySynced = !!sessionStorage.getItem('__gh_synced_session'); } catch(_e){}
@@ -972,6 +1008,11 @@ async function runBootstrapAutoSync(){
 }
 
 async function manualResync(){
+  if(recordMode()){
+    try{await flush();if(recordBridge().pending())throw new Error('Quedan borradores pendientes; exporta y revisa antes de recargar.');location.reload();}
+    catch(error){showStatus('No confirmado: '+error.message,'error');}
+    return;
+  }
   const badge = _findBadge();
   if(badge){
     badge.textContent = '⟳ sincronizando…';
@@ -1029,7 +1070,7 @@ window.GitHubSync = {
   preserve,
   archiveLegacyStorage, readLegacyArchive, restoreLegacyStorage, openRecoveryArchive,
   reconcileCatalog,
-  hasPendingChanges:()=>_dirty||_pushInFlight||_blocked,
+  hasPendingChanges:()=>_dirty||_pushInFlight||_blocked||!!window.ghHasUnsavedChanges?.()||(recordMode()&&recordBridge().pending()),
   suspend:()=>{_blocked=true;clearTimeout(_pushTimer);_pushTimer=null;},
   get ready(){return _bootstrapPromise||Promise.resolve(true);},
 };

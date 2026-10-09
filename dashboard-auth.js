@@ -154,6 +154,15 @@ function wireShowButtons(root){
 // ──────────────────────────────────────────────────────────────────
 
 async function gate(opts){
+  if(window.FTSession){
+    document.body.style.visibility='hidden';
+    await window.FTSession.ready;
+    await window.FTSession.requireSection(opts.section);
+    await window.GitHubSync.ready;
+    window.GitHubSync.enableAutoPush();
+    document.body.style.visibility='';
+    return;
+  }
   if(!window.GitHubSync || !window.GitHubSync.isLoggedIn()){
     window.location.href = 'index.html';
     return new Promise(()=>{}); // never resolves
@@ -315,6 +324,12 @@ function flowEnterPin(ui, section, expectedHash){
 // ──────────────────────────────────────────────────────────────────
 
 async function changePin(section, title){
+  if(window.FTSession){
+    await FTSession.ready;
+    if(FTSession.user.role==='admin') location.href='session-admin.html';
+    else alert('El acceso se gestiona con tu cuenta. Contacta con el administrador.');
+    return;
+  }
   injectCSS();
   // Guardamos el estado de visibility del body por si justo en este momento
   // alguien llama desde el dashboard cargado

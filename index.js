@@ -122,11 +122,12 @@ async function goMenu(){
 // Lee localStorage de cada app y rellena los KPIs no sensibles.
 // Sin importes, sin saldos. Solo: % progreso, nº activas, fecha objetivo, nº clientes.
 function computeKpis(){
-  computePatKpi();
-  computeOptKpi();
-  computeFtKpi();
-  computeFacKpi();
-  computeToKpi();
+  const allowed=section=>!window.FTSession||FTSession.permitted(section);
+  if(allowed('patrimonio')) computePatKpi();
+  if(allowed('options')) computeOptKpi();
+  if(allowed('training')) computeFtKpi();
+  if(allowed('facturas')) computeFacKpi();
+  if(allowed('training_online')) computeToKpi();
 }
 
 const MO3 = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
@@ -418,6 +419,7 @@ function computeToKpi(){
 }
 
 function askLogout(){
+  if(window.FTSession){FTSession.logout().catch(error=>alert(error.message));return;}
   if(!confirm('Esto borra el token de ESTE dispositivo. Tus datos en GitHub no se tocan. ¿Continuar?')) return;
   // Reset flags de autenticación
   _configAuthenticated = false;
@@ -578,7 +580,9 @@ function applyDashboardVisibility(){
   const hidden = new Set((getDashboardVisibility().hidden || []).map(String));
   document.querySelectorAll('.menu-card[data-dashboard-id]').forEach(card => {
     const id = card.getAttribute('data-dashboard-id');
-    card.style.display = hidden.has(id) ? 'none' : '';
+    const section={full_training:'training',consulta:'training_online'}[id]||id;
+    const denied=window.FTSession&&!FTSession.permitted(section);
+    card.style.display = hidden.has(id)||denied ? 'none' : '';
   });
 }
 
@@ -856,6 +860,10 @@ GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 })();
 
 (function init(){
+  if(window.FTSession){
+    window.FTSession.ready.then(goLoading).catch(()=>{});
+    return;
+  }
   if(!GitHubSync.isLoggedIn()){
     show('setupScreen');
     setTimeout(()=>document.getElementById('setupRepo').focus(), 100);
