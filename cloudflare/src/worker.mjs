@@ -19,6 +19,9 @@ function sessionUnavailable(url){
   const retry='/auth/start?next='+encodeURIComponent(nextPage(url));
   return new Response(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sesion no disponible</title></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:560px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">No se ha podido abrir la sesion</h1><p>El navegador no ha enviado una sesion valida. No se han cargado ni modificado tus datos.</p><a href="${retry}" style="color:#8dcef1">Reintentar acceso</a></main></body></html>`,{status:401,headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8'}});
 }
+export function recordLoadingHtml(){
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Full Training</title><script src="/app-session.js"></script></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:600px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">Cargando datos verificados</h1><p id="ftLoadMessage" role="status">Comprobando sesion y copias conservadas...</p><button id="ftLoadRetry" hidden onclick="location.reload()">Reintentar</button> <button id="ftLoadExport" hidden>Exportar copia conservada</button></main><script type="module" src="/record-loader.mjs" onerror="document.getElementById('ftLoadMessage').textContent='No se han podido cargar los archivos de la aplicacion. No se han borrado tus datos. Reintenta la carga.';document.getElementById('ftLoadRetry').hidden=false"></script></body></html>`;
+}
 function tokenFrom(request){return (request.headers.get('Cookie')||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(COOKIE+'='))?.slice(COOKIE.length+1);}
 async function body(request){
   const limit=15*1024*1024;
@@ -163,7 +166,7 @@ export function createWorker(dependencies={}){
       if(FILE_MODULE[file]&&!canAccess(user,FILE_MODULE[file]))fail(403,'Modulo no autorizado');
       const recordPage=env.RECORDS_ENABLED==='true'&&file.endsWith('.html')&&file!=='session-admin.html';
       if(recordPage&&request.headers.get('X-FT-Prepared')!=='records-v1'){
-        return new Response('<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Full Training</title><script src="/app-session.js"></script></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:600px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">Cargando datos verificados</h1><p id="ftLoadMessage" role="status">Comprobando sesion y copias conservadas...</p><button id="ftLoadRetry" hidden onclick="location.reload()">Reintentar</button> <button id="ftLoadExport" hidden>Exportar copia conservada</button></main><script type="module" src="/record-loader.mjs"></script></body></html>',{headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8'}});
+        return new Response(recordLoadingHtml(),{headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8'}});
       }
       const response=await env.ASSETS.fetch(new Request(new URL('/'+file,url),request));
       const secured=new Response(response.body,response);for(const [key,value]of Object.entries(securityHeaders))secured.headers.set(key,value);

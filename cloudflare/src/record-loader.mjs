@@ -3,8 +3,21 @@ import {FILE_NAMESPACE} from './record-layout.mjs';
 import {showStorageDialog} from './storage-dialog.mjs';
 import {RecordMedia} from './media-client.mjs';
 import {PrivateSettingsClient} from './settings-client.mjs';
+import {readResponse} from './request.mjs';
 const file=location.pathname.split('/').at(-1)||'index.html';
 let bridge;
+let loading=true,stage='Comprobando la sesion',lastProgress=Date.now();
+const labels={training:'Full Training',training_online:'Consulta',tob_menus_catalog:'Catalogo de recetas',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',__dashboard_config:'Dashboard'};
+function loadMessage(text){stage=text;lastProgress=Date.now();const node=document.getElementById('ftLoadMessage');if(node)node.textContent=text;}
+function loadProgress(event){
+  const name=labels[event.namespace]||'Datos';
+  const detail={local:'comprobando copias locales',recover:'recuperando la copia conservada',reconstruct:'reconstruyendo datos verificados',copy:'verificando la copia local'}[event.phase];
+  loadMessage(name+': '+(detail||('pagina '+event.page+', '+event.records+' registros verificados'))+'...');
+}
+const watchdog=setInterval(()=>{
+  if(!loading||Date.now()-lastProgress<30000)return;
+  const message=document.getElementById('ftLoadMessage');if(message)message.textContent=stage+'. Esta tardando mas de lo habitual. No borres datos ni copias locales.';
+},5000);
 function unsavedEditor(){try{return !!window.ghHasUnsavedChanges?.();}catch(_error){return true;}}
 function download(value){
   const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));
@@ -58,15 +71,20 @@ function mount(){
 }
 try{
   await window.FTSession.ready;
-  bridge=new RecordBridge({session:()=>window.FTSession});bridge.media=new RecordMedia(bridge);bridge.settings=new PrivateSettingsClient(bridge);window.FTRecords=bridge;
+  bridge=new RecordBridge({session:()=>window.FTSession,onProgress:loadProgress});bridge.media=new RecordMedia(bridge);bridge.settings=new PrivateSettingsClient(bridge);window.FTRecords=bridge;
   bridge.exportDownload=async()=>download(await bridge.exportCopies(window.ghEditorSnapshot?.()||null));
-  await bridge.openAll();if(bridge.allowed('training_online'))await bridge.settings.load();bridge.installStorage(localStorage,Storage.prototype);
+  await bridge.openAll({includeCatalog:file!=='index.html'});
+  if(file!=='index.html'&&bridge.allowed('training_online')){loadMessage('Comprobando configuracion de Consulta...');await bridge.settings.load();}
+  bridge.installStorage(localStorage,Storage.prototype);
   window.addEventListener('beforeunload',event=>{if(bridge.pending()){event.preventDefault();event.returnValue='Hay cambios pendientes de confirmar';}});
-  const response=await fetch('/'+file,{credentials:'same-origin',cache:'no-store',headers:{'X-FT-Prepared':'records-v1'}});
-  if(!response.ok)throw new Error('No se pudo cargar el modulo ('+response.status+')');
-  const html=await response.text();document.open();document.write(html);document.close();
+  loadMessage('Abriendo el modulo...');
+  const html=await readResponse('/'+file,{credentials:'same-origin',cache:'no-store',headers:{'X-FT-Prepared':'records-v1'}},response=>{
+    if(!response.ok)throw new Error('No se pudo cargar el modulo ('+response.status+')');return response.text();
+  });
+  loading=false;clearInterval(watchdog);document.open();document.write(html);document.close();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 }catch(error){
+  loading=false;clearInterval(watchdog);
   const message=document.getElementById('ftLoadMessage');if(message)message.textContent='No se ha cargado una copia verificada: '+error.message;
   const retry=document.getElementById('ftLoadRetry');if(retry)retry.hidden=false;
   const copy=document.getElementById('ftLoadExport');if(copy){copy.hidden=!bridge;copy.onclick=()=>bridge.exportDownload().catch(error=>alert(error.message));}

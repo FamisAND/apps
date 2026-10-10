@@ -861,7 +861,7 @@ GitHubSync.setStatusElement(document.getElementById('ghSyncBadge'));
 
 (function init(){
   if(window.FTSession){
-    window.FTSession.ready.then(goLoading).catch(()=>{});
+    window.FTSession.ready.then(()=>window.FTSession.dataMode==='records'?goMenu():goLoading()).catch(()=>{});
     return;
   }
   if(!GitHubSync.isLoggedIn()){

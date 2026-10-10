@@ -69,6 +69,36 @@ test('checkpoint failure prevents transmission; failed confirmation checkpoint s
 test('corrupt downloads never replace the verified base or report success',async()=>{
   const f=await fixture();try{const client=f.client();f.corruptResponse=true;await assert.rejects(()=>client.load('training_online'),/verificado/);assert.equal(client.bases.size,0);assert.equal(f.copies.length,0);}finally{f.db.close();}
 });
+
+test('a stalled download never replaces a base or writes a checkpoint',async()=>{
+  const copies=[],client=new RecordClient({requestTimeoutMs:20,fetchImpl:async()=>new Promise(()=>{}),checkpoint:async event=>copies.push(event)});
+  await assert.rejects(client.load('training_online'),{status:504});
+  assert.equal(client.bases.size,0);assert.equal(client.pending.size,0);assert.equal(client.busy.size,0);assert.equal(copies.length,0);
+});
+
+test('a commit response timeout preserves the pending request and retries without duplication',async()=>{
+  const f=await fixture();try{
+    const client=f.client(),value=await client.load('training_online');value.clientes[0].mediciones[0].peso=61;
+    const send=client.fetch;let stall=true;client.requestTimeoutMs=20;
+    client.fetch=async(url,options)=>{const response=await send(url,options);if(options.method==='POST'&&stall){stall=false;return new Promise(()=>{});}return response;};
+    await assert.rejects(client.save('training_online',value),{status:504});
+    const requestId=client.pending.get('training_online').requestId;
+    assert.equal(client.bases.get('training_online').value.clientes[0].mediciones[0].peso,60);
+    client.requestTimeoutMs=1000;
+    const receipt=await client.retry('training_online');assert.equal(receipt.requestId,requestId);assert.equal(receipt.replayed,true);
+    assert.equal(f.db.prepare('SELECT count(*) AS n FROM write_requests').get().n,1);assert.equal(client.pending.size,0);
+  }finally{f.db.close();}
+});
+
+test('load progress contains counts and stages, never record values or a false confirmation',async()=>{
+  const f=await fixture();try{
+    const client=f.client(),events=[];client.onProgress=event=>events.push(event);
+    await client.load('training_online');
+    assert.deepEqual(events.map(event=>event.phase),['download','verified-page','reconstruct','copy']);
+    assert.ok(events.at(-1).records>0);
+    for(const event of events){assert.equal(event.namespace,'training_online');assert.equal(Object.hasOwn(event,'value'),false);assert.equal(Object.hasOwn(event,'payload'),false);}
+  }finally{f.db.close();}
+});
 test('an ordinary bulk edit commits all related records in one atomic request',async()=>{
   const f=await fixture();try{const client=f.client();const value=await client.load('training_online');value.clientes.push(...Array.from({length:40},(_,i)=>({id:'new-'+i,mediciones:[]})));await client.save('training_online',value);assert.deepEqual(await f.client().load('training_online'),value);assert.equal(f.postCount,1);}finally{f.db.close();}
 });

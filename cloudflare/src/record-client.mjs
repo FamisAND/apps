@@ -1,6 +1,7 @@
 import {sha256} from './hash.mjs';
 import {unpackSnapshot,packSnapshot} from './snapshot-codec.mjs';
 import {isPhotoNamespace} from './media-format.mjs';
+import {readResponse} from './request.mjs';
 function failure(message,status){const error=new Error(message);error.status=status;return error;}
 async function changedRecords(base,value){
   const operations=[];
@@ -19,9 +20,9 @@ async function verifyRecord(record,key){
   if(!record||typeof key!=='string'||!key||record.key!==key||!Number.isSafeInteger(record.version)||record.version<1||typeof record.deleted!=='boolean'||!Object.hasOwn(record,'value')||record.deleted&&record.value!==null||await sha256(JSON.stringify(record.value))!==record.sha256)throw failure('No se ha verificado un registro de la copia',503);
 }
 export class RecordClient {
-  constructor({fetchImpl=globalThis.fetch.bind(globalThis),checkpoint}={}){
+  constructor({fetchImpl=globalThis.fetch.bind(globalThis),checkpoint,onProgress=()=>{},requestTimeoutMs=30000}={}){
     if(typeof checkpoint!=='function')throw new Error('A verified durable checkpoint is required before editing');
-    this.fetch=fetchImpl;this.checkpoint=checkpoint;this.bases=new Map();this.pending=new Map();this.busy=new Set();
+    this.fetch=fetchImpl;this.checkpoint=checkpoint;this.onProgress=onProgress;this.requestTimeoutMs=requestTimeoutMs;this.bases=new Map();this.pending=new Map();this.busy=new Set();
   }
   async exclusive(namespace,action){
     if(this.busy.has(namespace))throw failure('Ya hay una operacion en curso para este modulo',409);
@@ -29,32 +30,38 @@ export class RecordClient {
     try{return await action();}finally{this.busy.delete(namespace);}
   }
   async response(url,options){
-    const response=await this.fetch(url,{credentials:'same-origin',cache:'no-store',...options});
-    if(!response.ok){let message='Operacion central rechazada';try{message=(await response.json()).error||message;}catch(_e){}throw failure(message,response.status);}
-    return response.json();
+    return readResponse(url,{fetchImpl:this.fetch,timeoutMs:this.requestTimeoutMs,credentials:'same-origin',cache:'no-store',...options},async response=>{
+      if(!response.ok){let message='Operacion central rechazada';try{message=(await response.json()).error||message;}catch(_e){}throw failure(message,response.status);}
+      return response.json();
+    });
   }
+  progress(event){try{this.onProgress(event);}catch(_error){}}
   async load(namespace,{allowEmpty=false}={}){
     if(allowEmpty&&!isPhotoNamespace(namespace))throw failure('Solo las fotos nuevas admiten una base vacia',400);
     return this.exclusive(namespace,()=>this.loadInternal(namespace,allowEmpty));
   }
   async loadInternal(namespace,allowEmpty=false){
     if(this.pending.has(namespace))throw failure('Hay un guardado pendiente de confirmar; no se descarga encima',409);
-    const records=new Map();let cursor='',generation=null,datasetId=null;
+    const records=new Map();let cursor='',generation=null,datasetId=null,pageNumber=0;
     do{
+      this.progress({namespace,phase:'download',page:++pageNumber,records:records.size});
       const query=new URLSearchParams({cursor});if(generation!==null)query.set('generation',String(generation));
       const page=await this.response('/api/records/'+encodeURIComponent(namespace)+'?'+query);
       if(generation!==null&&(generation!==page.generation||datasetId!==page.datasetId))throw failure('La copia central cambio durante la descarga',409);
       if(!Number.isSafeInteger(page.generation)||page.generation<0||typeof page.datasetId!=='string'||!page.datasetId||!Array.isArray(page.records))throw failure('Respuesta central invalida',503);
       generation=page.generation;datasetId=page.datasetId;
+      for(let offset=0;offset<page.records.length;offset+=32)await Promise.all(page.records.slice(offset,offset+32).map(record=>verifyRecord(record,record?.key)));
       for(const record of page.records){
-        await verifyRecord(record,record?.key);
         if(records.has(record.key))throw failure('La copia contiene registros duplicados',503);
         records.set(record.key,record);
       }
+      this.progress({namespace,phase:'verified-page',page:pageNumber,records:records.size});
       const next=page.nextCursor;if(next!==null&&(typeof next!=='string'||next<=cursor))throw failure('Paginacion central invalida',503);cursor=next;
     }while(cursor);
+    this.progress({namespace,phase:'reconstruct',records:records.size});
     const value=!records.size&&allowEmpty?null:await unpackSnapshot(new Map([...records].filter(([,record])=>!record.deleted).map(([key,record])=>[key,record.value])));
     const emptyAllowed=allowEmpty?{emptyAllowed:true}:{};
+    this.progress({namespace,phase:'copy',records:records.size});
     await this.checkpoint({kind:'verified-load',namespace,datasetId,generation,records:[...records],value,...emptyAllowed});
     this.bases.set(namespace,{datasetId,generation,records,value,...emptyAllowed});
     return structuredClone(value);

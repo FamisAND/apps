@@ -1,11 +1,18 @@
 # Full Training: funcionamiento y recuperacion
 
-## Estado real al 9 de octubre de 2026
+## Estado real al 10 de octubre de 2026
 
 La migracion tecnica esta activada. Trabajar desde
 `https://full-training-private.sergiofamisr.workers.dev/`.
 Cloudflare guarda los cambios por registro; GitHub appdata queda como archivo
 privado de solo lectura. No se borraron los almacenamientos originales.
+
+Se publico la correccion del bucle de carga del inicio, version
+9d58cb7d-07a2-43cd-b179-d0668b9d1e61. La portada abre el panel despues de cargar
+la copia verificada, sin solicitar otra recarga automaticamente. Ahora muestra
+el modulo y la fase de carga; los fallos de descarga ofrecen Reintentar.
+Los 10.364 registros y sus versiones coinciden antes y despues del despliegue.
+Ver DASHBOARD-CARGA-20261010.md para las pruebas y el limite de verificacion real.
 
 El acceso recibio una correccion el 9 de octubre. Sergio confirmo
 con captura el panel real: Administrador y Activo. En Chrome se puede guardar como marcador
@@ -24,8 +31,10 @@ del origen antiguo bloquean edicion y ofrecen enlace privado y exportacion.
 
 El usuario autorizo completar el corte sin estar en el ordenador. No se ha
 hecho una nueva comprobacion interactiva autentificada de sus modulos desde
-Chrome tras el despliegue, ni una prueba en dos ordenadores fisicos. Las pruebas
-aisladas de los cinco HTML y las de concurrencia contra D1 real si han pasado.
+Chrome tras el despliegue, ni una prueba en dos ordenadores fisicos. Chrome llega
+a Cloudflare Access y necesita identificar al usuario. Las pruebas aisladas
+incluyen ahora la portada, index.html y los cinco HTML; todas han pasado.
+Las pruebas anteriores de concurrencia contra D1 real tambien pasaron.
 
 ## Que papel tiene cada sistema
 

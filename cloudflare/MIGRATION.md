@@ -1,5 +1,16 @@
 # Migracion con conservacion de datos
 
+## Correccion Del Inicio: 10 De Octubre
+
+Publicado el arreglo del bucle de recarga en modo records, version
+9d58cb7d-07a2-43cd-b179-d0668b9d1e61. Se mantienen el dataset activo, ambas bases
+D1, Access y el secreto de cifrado. Comparacion posterior: 10.364 registros,
+todas sus versiones a 1 y cero solicitudes normales de escritura, como antes
+del despliegue. No se han ejecutado migraciones ni cambios de datos.
+La validacion aislada de siete accesos HTML y las 87 pruebas pasan.
+La verificacion interactiva real en Chrome espera la identificacion de Sergio.
+Detalles en DASHBOARD-CARGA-20261010.md.
+
 ## Estado al 9 de octubre de 2026
 
 El corte tecnico esta completado, con autorizacion del usuario para terminarlo

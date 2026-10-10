@@ -6,13 +6,14 @@ const fault=(message,status=409)=>Object.assign(new Error(message),{status});
 const raw=value=>typeof value==='string'?value:JSON.stringify(value);
 const parsed=value=>{try{return JSON.parse(value);}catch(_error){return value;}};
 export class RecordBridge {
-  constructor({session,fetchImpl=globalThis.fetch.bind(globalThis),store,onStatus=()=>{}}={}){
+  constructor({session,fetchImpl=globalThis.fetch.bind(globalThis),store,onStatus=()=>{},onProgress=()=>{}}={}){
     if(typeof session!=='function')throw fault('Se requiere una sesion verificada');
     const current=session();if(!current?.active||current.dataMode!=='records'||!current.user?.id)throw fault('El almacenamiento central no esta disponible',423);
     this.session=session;this.ownerId=current.user.id;this.store=store||new CheckpointStore({ownerId:this.ownerId});
-    this.fetch=fetchImpl;this.onStatus=onStatus;this.values=new Map();this.shadow=new Map();this.drafts=new Map();this.errors=new Map();this.saving=new Set();this.states=new Map();
-    this.client=new RecordClient({fetchImpl,checkpoint:event=>this.store.checkpoint(event)});
+    this.fetch=fetchImpl;this.onStatus=onStatus;this.onProgress=onProgress;this.values=new Map();this.shadow=new Map();this.drafts=new Map();this.errors=new Map();this.saving=new Set();this.states=new Map();
+    this.client=new RecordClient({fetchImpl,checkpoint:event=>this.store.checkpoint(event),onProgress:event=>this.progress(event)});
   }
+  progress(event){try{this.onProgress(event);}catch(_error){}}
   allowed(namespace){const current=this.session(),module=NAMESPACE_MODULE[namespace]||(isPhotoNamespace(namespace)?'training_online':null);return current?.active&&current.user?.id===this.ownerId&&current.dataMode==='records'&&module&&(current.user.role==='admin'||current.user.permissions.includes(module));}
   status(namespace,state,error=null){this.states.set(namespace,{state,error:error?.message||null});try{this.onStatus({namespace,state,error:error?.message||null});}catch(_error){}}
   assertWrite(namespace){
@@ -28,15 +29,17 @@ export class RecordBridge {
   async open(namespace,{allowEmpty=false}={}){
     if(!this.allowed(namespace))throw fault('Modulo no autorizado',403);
     if(this.values.has(namespace))return structuredClone(this.values.get(namespace));
+    this.progress({namespace,phase:'local'});
     const stored=await this.store.state(namespace);let value;
     if(stored?.pending||stored?.draft){
+      this.progress({namespace,phase:'recover'});
       await this.client.restore(namespace,{base:stored.base,pending:stored.pending});
       value=structuredClone(stored.pending?.value??stored.draft.value);
       this.status(namespace,stored.pending?'pending':'draft');
     }else{value=await this.client.load(namespace,{allowEmpty});this.status(namespace,'confirmed');}
     this.hydrate(namespace,value);return structuredClone(value);
   }
-  async openAll(){for(const namespace of Object.keys(NAMESPACE_MODULE))if(this.allowed(namespace))await this.open(namespace);}
+  async openAll({includeCatalog=true}={}){for(const namespace of Object.keys(NAMESPACE_MODULE))if(this.allowed(namespace)&&(includeCatalog||namespace!=='tob_menus_catalog'))await this.open(namespace);}
   setDraft(namespace,value){
     this.assertWrite(namespace);const copy=structuredClone(value),base=this.client.bases.get(namespace);
     this.hydrate(namespace,copy);this.status(namespace,'copying');

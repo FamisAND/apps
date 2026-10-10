@@ -1,6 +1,6 @@
 # Cloudflare: estado y activacion segura
 
-## Estado al 9 de octubre de 2026
+## Estado al 10 de octubre de 2026
 
 Piloto privado: https://full-training-private.sergiofamisr.workers.dev
 
@@ -14,11 +14,14 @@ Consultar MIGRATION.md y OPERACION.md para las pruebas y los limites pendientes.
 - Dataset complete-1614c79e9164d6c2, estado active, 10.364 registros.
 - Seis conjuntos originales, configuracion del dashboard, 539 fotos por ID y
   ajustes privados cifrados. Reconstruccion exacta, comprobada con exportacion D1.
-- Version desplegada activa: 31935f52-439a-4b92-b8d3-fa3e15284350.
+- Version desplegada activa: 9d58cb7d-07a2-43cd-b179-d0668b9d1e61.
+- Corregido el bucle de recarga de la portada en modo records. Progreso visible,
+  peticiones con plazo y carga inicial sin catalogo ni configuracion IA innecesarios.
+  Ver DASHBOARD-CARGA-20261010.md: 87 pruebas y siete accesos HTML aislados correctos.
 - Access All traffic, Solo Sergio, ocho horas, audiencia real fijada.
 - Login real de Sergio como Administrador/Activo ya comprobado por captura.
-  No se ha repetido una comprobacion interactiva autentificada de los modulos
-  despues del corte: Chrome esta cerrado y no disponible para automatizacion.
+  La comprobacion real posterior sigue pendiente: Chrome llega a Cloudflare
+  Access, pero no dispone de una sesion verificada de Sergio para abrir el panel.
 - Ningun perfil, ID de cliente, clave antigua o almacenamiento original borrado.
 
 La D1 anterior rehearsal-b49b1b75c2a67350 se conserva como staging; tambien se

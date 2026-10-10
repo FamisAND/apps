@@ -47,6 +47,17 @@ async function fixture(){
 test('the bridge requires a verified session and can never infer admin from a local flag',()=>{
   for(const session of [{active:false,dataMode:'records',user:{id:'admin',role:'admin'}},{active:true,dataMode:'legacy',user:{id:'admin',role:'admin'}},{active:true,dataMode:'records',user:{role:'admin'}}])assert.throws(()=>new RecordBridge({session:()=>session}),{status:423});
 });
+
+test('dashboard startup can omit only the unused recipe catalog without changing module permissions',async()=>{
+  const f=await fixture();try{
+    const bridge=f.make(),opened=[];bridge.open=async namespace=>{opened.push(namespace);};
+    await bridge.openAll({includeCatalog:false});
+    assert.deepEqual(opened,['training','training_online','options','patrimonio','facturas','__dashboard_config']);
+    opened.length=0;await bridge.openAll();assert.ok(opened.includes('tob_menus_catalog'));
+    f.session.user.role='user';f.session.user.permissions=['options'];opened.length=0;
+    await bridge.openAll({includeCatalog:false});assert.deepEqual(opened,['options']);
+  }finally{f.db.close();}
+});
 test('a draft survives reopening without replacing it with the central copy',async()=>{
   const f=await fixture();try{
     const copies=new Copies(),bridge=f.make(copies),value=await bridge.open('training_online');value.tob_online_v2.clientes[0].peso=61;

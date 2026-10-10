@@ -15,6 +15,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   const {FILE_MODULE,COMMON_FILES,RECORD_FILES}=await import('../src/policy.mjs');
   const {openSettings}=await import('../src/settings-crypto.mjs');
   const {publicAiConfig}=await import('../src/private-settings.mjs');
+  const {recordLoadingHtml}=await import('../src/worker.mjs');
   const bytes=await readFile(source),original=JSON.parse(bytes.toString('utf8')),bundle=JSON.parse(await readFile(bundleFile,'utf8'));
   const verification=JSON.parse(await readFile(path.join(path.dirname(bundleFile),'verification.private.json'),'utf8'));
   assert.equal(await sha256(bytes.toString('utf8')),verification.sourceSha256);
@@ -29,13 +30,13 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   db.exec('BEGIN');for(const section of bundle.namespaces)for(const row of section.records)insert.run('html-fixture',section.namespace,row.key,1,'import',row.payload,row.sha256,0,'isolated-import',null,new Date().toISOString());db.exec('COMMIT');db.exec("UPDATE datasets SET status='active'");
   function prepare(sql){let values=[];return {bind(...args){values=args;return this;},async first(){return db.prepare(sql).get(...values)||null;},async all(){return {results:db.prepare(sql).all(...values)};},async run(){return db.prepare(sql).run(...values);}};}
   const binding={prepare,async batch(statements){db.exec('BEGIN');try{for(const statement of statements)await statement.run();db.exec('COMMIT');}catch(error){db.exec('ROLLBACK');throw error;}}};
-  let writesEnabled=false;const requests=[];
+  let writesEnabled=false;const requests=[],reads=[];let settingsReads=0;
   const server=http.createServer(async(request,response)=>{
     const url=new URL(request.url,'http://127.0.0.1');
     try{
       let value;
       if(url.pathname==='/api/session')value={user:{id:'isolated-admin',name:'Test admin',role:'admin',active:true,permissions:[]},dataMode:'records',writesEnabled,modules:{}};
-      else if(url.pathname==='/api/settings/ai'&&request.method==='GET')value={version:1,cfg:aiConfig};
+      else if(url.pathname==='/api/settings/ai'&&request.method==='GET'){settingsReads++;value={version:1,cfg:aiConfig};}
       else if(url.pathname.startsWith('/api/records/')){
         const namespace=url.pathname.split('/')[3];assert.ok(bundle.namespaces.some(section=>section.namespace===namespace));
         if(request.method==='POST'){
@@ -43,12 +44,12 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
           let raw='';for await(const chunk of request)raw+=chunk;
           const body=JSON.parse(raw);requests.push({requestId:body.requestId,namespace,operations:body.operations.length});
           value=await commitRecords(binding,'html-fixture',namespace,'isolated-admin',body);
-        }else value=await listRecords(binding,'html-fixture',namespace,url.searchParams.get('cursor')||'',url.searchParams.has('generation')?Number(url.searchParams.get('generation')):null);
+        }else{reads.push(namespace);value=await listRecords(binding,'html-fixture',namespace,url.searchParams.get('cursor')||'',url.searchParams.has('generation')?Number(url.searchParams.get('generation')):null);}
       }else{
         const file=url.pathname.slice(1)||'index.html';
         if(!COMMON_FILES.has(file)&&!FILE_MODULE[file])throw Object.assign(new Error('Not in static allowlist'),{status:404});
         if(file.endsWith('.html')&&file!=='session-admin.html'&&request.headers['x-ft-prepared']!=='records-v1'){
-          response.setHeader('Content-Type','text/html;charset=utf-8');response.end('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script src="/app-session.js"></script></head><body><p id="ftLoadMessage">Loading verified fixture</p><button id="ftLoadRetry" hidden onclick="location.reload()">Retry</button><button id="ftLoadExport" hidden>Export</button><script type="module" src="/record-loader.mjs"></script></body></html>');return;
+          response.setHeader('Content-Type','text/html;charset=utf-8');response.end(recordLoadingHtml());return;
         }
         const body=await readFile(path.join(RECORD_FILES.has(file)?path.join(root,'cloudflare','src'):root,file));
         response.setHeader('Content-Type',(file.endsWith('.html')?'text/html':/\.(js|mjs)$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'application/json')+';charset=utf-8');response.end(body);return;
@@ -77,11 +78,15 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     if(file==='consulta.html')await page.waitForFunction(()=>typeof tobDB!=='undefined'&&tobDB.clientes?.length>0,null,{timeout:30000});
   }
   try{
-    for(const file of ['full_training.html','consulta.html','patrimonio.html','options.html','facturas.html']){
+    for(const file of ['','index.html','full_training.html','consulta.html','patrimonio.html','options.html','facturas.html']){
+      const readOffset=reads.length,settingsBefore=settingsReads,isDashboard=!file||file==='index.html';
       const page=await context.newPage(),errors=[];pageSetup(page);page.on('pageerror',error=>errors.push(error.message));
+      let navigations=0;page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
       await loaded(page,file);
+      if(isDashboard){await page.locator('#menuScreen.active').waitFor({timeout:30000});await page.waitForTimeout(1500);assert.equal(navigations,1,'Dashboard automatically reloaded after verified startup');}
       const state=await page.evaluate(()=>({owner:FTRecords.ownerId,dataMode:FTSession.dataMode,writesEnabled:FTSession.writesEnabled,loaded:FTRecords.values.size,visible:document.body.innerText.length,status:document.querySelector('#ftRecordStatus').textContent}));
-      assert.equal(state.owner,'isolated-admin');assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);assert.equal(state.loaded,7);assert.ok(state.visible>100);assert.match(state.status,/solo lectura/);
+      assert.equal(state.owner,'isolated-admin');assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);assert.equal(state.loaded,isDashboard?6:7);assert.ok(state.visible>100);assert.match(state.status,/solo lectura/);
+      if(isDashboard){assert.equal(reads.slice(readOffset).includes('tob_menus_catalog'),false);assert.equal(settingsReads,settingsBefore);}
       assert.ok(!errors.length,'JavaScript errors in '+file+': '+errors.join(' | '));
       if(file==='consulta.html'){
         const expectedConsulta=typeof original.training_online.tob_online_v2==='string'?JSON.parse(original.training_online.tob_online_v2):original.training_online.tob_online_v2;
@@ -95,8 +100,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         },catalog.recetas.find(recipe=>recipe._fotoLocal).id);
         assert.ok(photo.width>0&&photo.height>0&&photo.colors>10,'Central recipe image is blank or failed to decode');
       }
-      await page.screenshot({path:path.join(output,file.replace('.html','-desktop.png')),fullPage:true});
-      summary.push({file,loaded:true,errors:0,legacyGitHubRequests:0});await page.close();console.log(file+': verified isolated read-only startup');
+      await page.screenshot({path:path.join(output,(file||'root.html').replace('.html','-desktop.png')),fullPage:true});
+      summary.push({file:file||'/',loaded:true,errors:0,legacyGitHubRequests:0});await page.close();console.log((file||'/')+': verified isolated read-only startup');
     }
     assert.equal(requests.length,0,'Read-only startup issued a write');assert.equal(forbidden,0,'A migrated HTML tried GitHub directly');
     writesEnabled=true;const page=await context.newPage();pageSetup(page);await loaded(page,'consulta.html');
