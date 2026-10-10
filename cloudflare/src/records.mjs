@@ -14,6 +14,11 @@ export async function dataset(db,id,write=false){
 }
 function publicRecord(row){return {key:row.record_key,version:row.version,value:JSON.parse(row.payload),sha256:row.payload_sha256,deleted:!!row.deleted,actorId:row.actor_id,updatedAt:row.updated_at};}
 async function generation(db,id){return (await db.prepare('SELECT COALESCE(MAX(rowid),0) AS generation FROM write_requests WHERE dataset_id=?').bind(id).first()).generation;}
+export async function recordStatus(db,id,namespace){
+  await dataset(db,id);const current=await generation(db,id);
+  const row=await db.prepare('SELECT COALESCE(MAX(w.rowid),0) AS changed FROM record_versions v JOIN write_requests w ON w.dataset_id=v.dataset_id AND w.request_id=v.request_id WHERE v.dataset_id=? AND v.namespace=? AND v.request_id IS NOT NULL').bind(id,namespace).first();
+  const latest=await generation(db,id);return {datasetId:id,generation:latest,changedGeneration:row.changed,stable:current===latest};
+}
 export async function listRecords(db,id,namespace,cursor='',expectedGeneration=null){
   await dataset(db,id);
   if(cursor&&!validKey(cursor))fail(400,'Cursor invalido');
@@ -36,7 +41,7 @@ export async function recordHistory(db,id,namespace,key,before=Number.MAX_SAFE_I
   const rows=results.slice(0,8);
   return {records:rows.map(publicRecord),beforeVersion:results.length>8?rows.at(-1).version:null};
 }
-export async function commitRecords(db,id,namespace,actorId,value){
+export async function commitRecords(db,id,namespace,actorId,value,sessionId=null){
   await dataset(db,id,true);
   const {requestId,operations}=value||{};
   if(value?.datasetId!==id)fail(409,'El conjunto activo cambio; no se ha guardado sobre otra copia');
@@ -64,6 +69,7 @@ export async function commitRecords(db,id,namespace,actorId,value){
   const receipt={datasetId:id,requestId,committedAt:at,records:prepared.map(op=>({key:op.key,version:op.expectedVersion+1,sha256:op.hash,deleted:op.action==='delete'}))};
   // D1 batch is transactional: the revision trigger aborts the entire request on any stale record.
   const statements=[db.prepare('INSERT INTO write_requests VALUES(?,?,?,?,?,?)').bind(id,requestId,actorId,hash,JSON.stringify(receipt),at)];
+  if(sessionId)statements.push(db.prepare('INSERT INTO session_commits VALUES(?,?,?,?,?,?)').bind(id,requestId,sessionId,namespace,actorId,at));
   // Nine rows use 99 bound parameters, below D1's 100-parameter limit.
   for(let offset=0;offset<prepared.length;offset+=9){
     const group=prepared.slice(offset,offset+9),args=[];

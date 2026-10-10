@@ -11,7 +11,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   for(const file of [source,bundleFile,output])if(!file.toLowerCase().split(path.sep).includes('.full-training-backups'))throw new Error('Keep real-data test files outside the published repository');
   await mkdir(output);
   const {packSnapshot,unpackSnapshot}=await import('../src/snapshot-codec.mjs');
-  const {listRecords,commitRecords,sha256}=await import('../src/records.mjs');
+  const {listRecords,commitRecords,sha256,recordStatus}=await import('../src/records.mjs');
   const {FILE_MODULE,COMMON_FILES,RECORD_FILES}=await import('../src/policy.mjs');
   const {openSettings}=await import('../src/settings-crypto.mjs');
   const {publicAiConfig}=await import('../src/private-settings.mjs');
@@ -44,7 +44,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
           let raw='';for await(const chunk of request)raw+=chunk;
           const body=JSON.parse(raw);requests.push({requestId:body.requestId,namespace,operations:body.operations.length});
           value=await commitRecords(binding,'html-fixture',namespace,'isolated-admin',body);
-        }else{reads.push(namespace);value=await listRecords(binding,'html-fixture',namespace,url.searchParams.get('cursor')||'',url.searchParams.has('generation')?Number(url.searchParams.get('generation')):null);}
+        }else{reads.push(namespace);value=url.pathname.endsWith('/status')?await recordStatus(binding,'html-fixture',namespace):await listRecords(binding,'html-fixture',namespace,url.searchParams.get('cursor')||'',url.searchParams.has('generation')?Number(url.searchParams.get('generation')):null);}
       }else{
         const file=url.pathname.slice(1)||'index.html';
         if(!COMMON_FILES.has(file)&&!FILE_MODULE[file])throw Object.assign(new Error('Not in static allowlist'),{status:404});
@@ -85,7 +85,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       await loaded(page,file);
       if(isDashboard){await page.locator('#menuScreen.active').waitFor({timeout:30000});await page.waitForTimeout(1500);assert.equal(navigations,1,'Dashboard automatically reloaded after verified startup');}
       const state=await page.evaluate(()=>({owner:FTRecords.ownerId,dataMode:FTSession.dataMode,writesEnabled:FTSession.writesEnabled,loaded:FTRecords.values.size,visible:document.body.innerText.length,status:document.querySelector('#ftRecordStatus').textContent}));
-      assert.equal(state.owner,'isolated-admin');assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);assert.equal(state.loaded,isDashboard?6:7);assert.ok(state.visible>100);assert.match(state.status,/solo lectura/);
+      assert.equal(state.owner,'isolated-admin');assert.equal(state.dataMode,'records');assert.equal(state.writesEnabled,false);assert.equal(state.loaded,file==='consulta.html'?7:6);assert.ok(state.visible>100);assert.match(state.status,/solo lectura/);
       if(isDashboard){assert.equal(reads.slice(readOffset).includes('tob_menus_catalog'),false);assert.equal(settingsReads,settingsBefore);}
       assert.ok(!errors.length,'JavaScript errors in '+file+': '+errors.join(' | '));
       if(file==='consulta.html'){
@@ -129,8 +129,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     assert.equal(await recovered.evaluate(({ci,mi})=>tobDB.clientes[ci].mediciones[mi].pes,changed),pending.peso);
     assert.equal(requests.filter(request=>request.requestId===pending.requestId).length,1);
     await recovered.setViewportSize({width:390,height:844});await recovered.screenshot({path:path.join(output,'consulta-mobile.png'),fullPage:true});
-    await recovered.getByRole('button',{name:'Copias y espacio',exact:true}).click();
-    await recovered.getByRole('dialog').waitFor();await recovered.screenshot({path:path.join(output,'storage-mobile.png'),fullPage:true});
+    await recovered.getByLabel('Herramientas y copias',{exact:true}).click();await recovered.getByRole('button',{name:'Copias y espacio',exact:true}).click();
+    await recovered.getByRole('dialog').waitFor();await recovered.locator('.ft-stats strong').first().waitFor();await recovered.screenshot({path:path.join(output,'storage-mobile.png'),fullPage:false});
     const storageFits=await recovered.getByRole('dialog').evaluate(element=>element.scrollWidth<=element.clientWidth&&element.getBoundingClientRect().right<=innerWidth);
     assert.ok(storageFits,'Storage dialog overflows on mobile');
     const rows=db.prepare("SELECT record_key,payload FROM records WHERE namespace='training_online' AND deleted=0").all();

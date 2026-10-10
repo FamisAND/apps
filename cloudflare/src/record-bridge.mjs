@@ -36,7 +36,7 @@ export class RecordBridge {
       await this.client.restore(namespace,{base:stored.base,pending:stored.pending});
       value=structuredClone(stored.pending?.value??stored.draft.value);
       this.status(namespace,stored.pending?'pending':'draft');
-    }else{value=await this.client.load(namespace,{allowEmpty});this.status(namespace,'confirmed');}
+    }else{value=await this.client.load(namespace,{allowEmpty,cachedBase:stored?.base});this.status(namespace,'confirmed');}
     this.hydrate(namespace,value);return structuredClone(value);
   }
   async openAll({includeCatalog=true}={}){for(const namespace of Object.keys(NAMESPACE_MODULE))if(this.allowed(namespace)&&(includeCatalog||namespace!=='tob_menus_catalog'))await this.open(namespace);}

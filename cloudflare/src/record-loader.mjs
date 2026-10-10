@@ -11,7 +11,7 @@ const labels={training:'Full Training',training_online:'Consulta',tob_menus_cata
 function loadMessage(text){stage=text;lastProgress=Date.now();const node=document.getElementById('ftLoadMessage');if(node)node.textContent=text;}
 function loadProgress(event){
   const name=labels[event.namespace]||'Datos';
-  const detail={local:'comprobando copias locales',recover:'recuperando la copia conservada',reconstruct:'reconstruyendo datos verificados',copy:'verificando la copia local'}[event.phase];
+  const detail={local:'comprobando copias locales',cache:'copia al dia, verificando integridad',recover:'recuperando la copia conservada',reconstruct:'reconstruyendo datos verificados',copy:'verificando la copia local'}[event.phase];
   loadMessage(name+': '+(detail||('pagina '+event.page+', '+event.records+' registros verificados'))+'...');
 }
 const watchdog=setInterval(()=>{
@@ -27,11 +27,11 @@ function mount(){
   window.addEventListener('beforeunload',event=>{if(bridge.pending()||bridge.settings?.pending||unsavedEditor()){event.preventDefault();event.returnValue='Hay cambios pendientes de confirmar';}});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)window.FTSession.refresh().catch(()=>{});});
   window.FTSession.decorate();const bar=document.getElementById('ftSessionBar');if(!bar||bar.querySelector('#ftRecordStatus'))return;
-  const group=document.createElement('div');group.style.cssText='display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:1';
-  const status=document.createElement('span');status.id='ftRecordStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.style.cssText='flex:1;min-width:140px';group.appendChild(status);
-  function button(label,action){const node=document.createElement('button');node.textContent=label;node.onclick=()=>action().catch(error=>alert(error.message));group.appendChild(node);return node;}
-  const exportButton=button('Exportar copia',()=>bridge.exportDownload());exportButton.title='Conservar copias locales y borradores en un archivo privado';
-  const retry=button('Reintentar',async()=>{
+  const group=document.createElement('div');group.className='ft-record-group';
+  const status=document.createElement('span');status.id='ftRecordStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');group.appendChild(status);
+  function button(label,name,action,menu=false){const node=window.FTSession.control('button',label,name);node.onclick=()=>{if(menu)node.closest('details').open=false;action().catch(error=>alert(error.message));};if(menu){node.className='ft-menu-command';node.append(document.createTextNode(label));document.getElementById('ftSessionMenuItems').prepend(node);}else group.appendChild(node);return node;}
+  button('Exportar copia','download',()=>bridge.exportDownload(),true);
+  const retry=button('Reintentar','retry',async()=>{
     if(bridge.settings?.pending){await bridge.settings.save(bridge.settings.pending.cfg);return;}
     const namespace=[...bridge.states].find(([,s])=>s.state!=='confirmed')?.[0]||FILE_NAMESPACE[file];
     if(!namespace)return;
@@ -39,25 +39,26 @@ function mount(){
     if(bridge.client.pending.has(namespace))await bridge.retry(namespace);
     else if(window.GitHubSync)await window.GitHubSync.flush();
   });
-  button('Copias y espacio',()=>showStorageDialog(bridge,download));
-  const compare=button('Comparar versiones',async()=>{
+  button('Copias y espacio','storage',()=>showStorageDialog(bridge,download),true);
+  const compare=button('Comparar versiones','compare',async()=>{
     const namespace=[...bridge.states].find(([,s])=>s.state!=='confirmed')?.[0]||FILE_NAMESPACE[file];
     if(!namespace)return;
     const remote=await bridge.peek(namespace),local=structuredClone(bridge.values.get(namespace));
-    const dialog=document.createElement('dialog');dialog.style.cssText='max-width:900px;width:90%;border-radius:4px;padding:20px;background:#15191e;color:#fff;border:1px solid #555';
+    const dialog=document.createElement('dialog');dialog.className='ft-dialog';dialog.style.width='min(900px,94vw)';
     const title=document.createElement('h2');title.textContent='Revisar conflicto';title.style.fontSize='18px';dialog.appendChild(title);
     const text=document.createElement('p');text.textContent='La copia local no se ha subido. Cargar la central conserva el borrador en el historial local; no sobrescribe la central.';dialog.appendChild(text);
     const area=document.createElement('textarea');area.readOnly=true;area.value=JSON.stringify({modulo:namespace,copiaLocal:local,copiaCentral:remote},null,2);area.style.cssText='box-sizing:border-box;width:100%;height:280px;background:#0d1115;color:#eee';area.setAttribute('aria-label','Comparacion de versiones');dialog.appendChild(area);
-    const copy=document.createElement('button');copy.textContent='Exportar ambas';copy.onclick=()=>download({namespace,local,remote,editor:window.ghEditorSnapshot?.()||null});dialog.appendChild(copy);
-    const load=document.createElement('button');load.textContent='Conservar copia y cargar central';load.onclick=async()=>{
+    const actions=document.createElement('div');actions.className='ft-actions';dialog.appendChild(actions);
+    const copy=document.createElement('button');copy.className='ft-button';copy.textContent='Exportar ambas';copy.onclick=()=>download({namespace,local,remote,editor:window.ghEditorSnapshot?.()||null});actions.appendChild(copy);
+    const load=document.createElement('button');load.className='ft-button';load.textContent='Conservar copia y cargar central';load.onclick=async()=>{
       if(!confirm('Se conservara la copia local y se cargara la central. El formulario actual se cerrara. ¿Continuar?'))return;
       load.disabled=true;
       try{await bridge.exportDownload();await bridge.keepCopyAndLoadRemote(namespace);location.reload();}catch(error){load.disabled=false;alert(error.message);}
-    };dialog.appendChild(load);
-    const close=document.createElement('button');close.textContent='Volver';close.onclick=()=>{dialog.close();dialog.remove();};dialog.appendChild(close);
+    };actions.appendChild(load);
+    const close=document.createElement('button');close.className='ft-button';close.textContent='Volver';close.onclick=()=>{dialog.close();dialog.remove();};actions.appendChild(close);
     document.body.appendChild(dialog);dialog.showModal();
   });
-  bar.appendChild(group);
+  bar.insertBefore(group,document.getElementById('ftSessionTools'));window.FTIcons?.refresh();
   const spacer=document.createElement('div');spacer.setAttribute('aria-hidden','true');document.body.appendChild(spacer);
   function render(){
     const states=[...bridge.states.values()],error=states.find(state=>state.error),pending=states.some(state=>state.state!=='confirmed')||!!bridge.settings?.pending,editor=unsavedEditor();
@@ -73,8 +74,8 @@ try{
   await window.FTSession.ready;
   bridge=new RecordBridge({session:()=>window.FTSession,onProgress:loadProgress});bridge.media=new RecordMedia(bridge);bridge.settings=new PrivateSettingsClient(bridge);window.FTRecords=bridge;
   bridge.exportDownload=async()=>download(await bridge.exportCopies(window.ghEditorSnapshot?.()||null));
-  await bridge.openAll({includeCatalog:file!=='index.html'});
-  if(file!=='index.html'&&bridge.allowed('training_online')){loadMessage('Comprobando configuracion de Consulta...');await bridge.settings.load();}
+  await bridge.openAll({includeCatalog:file==='consulta.html'});
+  if(file==='consulta.html'&&bridge.allowed('training_online')){loadMessage('Comprobando configuracion de Consulta...');await bridge.settings.load();}
   bridge.installStorage(localStorage,Storage.prototype);
   window.addEventListener('beforeunload',event=>{if(bridge.pending()){event.preventDefault();event.returnValue='Hay cambios pendientes de confirmar';}});
   loadMessage('Abriendo el modulo...');

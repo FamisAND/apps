@@ -6,6 +6,7 @@ import {commitRecords,listRecords,recordHistory,sha256} from '../src/records.mjs
 import {packSnapshot,unpackSnapshot} from '../src/snapshot-codec.mjs';
 function fixture(status='active'){
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../business-migrations/0001_records.sql',import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../business-migrations/0002_session_commits.sql',import.meta.url),'utf8'));
   db.prepare('INSERT INTO datasets VALUES(?,?,?,?,?)').run('fixture',status,'synthetic',1,'2026-10-08');
   function prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}
   const binding={prepare,async batch(statements){db.exec('BEGIN');try{const result=[];for(const statement of statements)result.push(await statement.run());db.exec('COMMIT');return result;}catch(error){db.exec('ROLLBACK');throw error;}}};

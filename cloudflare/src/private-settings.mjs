@@ -39,7 +39,7 @@ function mergeAi(existing,patch){
   cfg.provider=patch.provider;cfg.key=cfg.keys[cfg.provider]||'';cfg.model=cfg.models[cfg.provider]||'';cfg.maxPasadas=0;cfg._ts=Date.now();
   return cfg;
 }
-export async function saveAiSettings(db,id,secret,actorId,request){
+export async function saveAiSettings(db,id,secret,actorId,request,sessionId=null){
   const {requestId,expectedVersion,cfg}=request||{};
   if(typeof requestId!=='string'||!/^[\w-]{16,80}$/.test(requestId)||!Number.isSafeInteger(expectedVersion)||expectedVersion<1)fail(400,'Referencia de configuracion invalida');
   const inputHash=await sha256(JSON.stringify({expectedVersion,cfg}));
@@ -57,7 +57,7 @@ export async function saveAiSettings(db,id,secret,actorId,request){
   const value=structuredClone(current.value);value.sections.__ia_config=mergeAi(value.sections.__ia_config,cfg);value.request={id:requestId,hash:inputHash};
   const sealed=await sealSettings(value,secret,id);
   let receipt;
-  try{receipt=await commitRecords(db,id,'private_settings',actorId,{datasetId:id,requestId,operations:[{key:'root',expectedVersion,value:sealed}]});}
+  try{receipt=await commitRecords(db,id,'private_settings',actorId,{datasetId:id,requestId,operations:[{key:'root',expectedVersion,value:sealed}]},sessionId);}
   catch(error){const saved=await replay();if(saved)return saved;throw error;}
   return {version:receipt.records[0].version,cfg:publicAiConfig(value),requestId,replayed:false};
 }

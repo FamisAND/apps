@@ -7,6 +7,7 @@ import {filterData,validateSection,canAccess} from '../src/policy.mjs';
 import {verifyIdentity} from '../src/access.mjs';
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../migrations/0001_auth.sql',import.meta.url),'utf8'));
+  db.exec(readFileSync(new URL('../migrations/0002_session_policy.sql',import.meta.url),'utf8'));
   const binding={prepare(sql){let args=[];const query=db.prepare(sql);return {bind(...values){args=values;return this;},async first(){return query.get(...args)||null;},async all(){return {results:query.all(...args)};},async run(){return query.run(...args);}};}};
   const env={AUTH_DB:binding,ADMIN_EMAIL:'admin@example.test',GITHUB_REPO:'fixture/data',DATA_WRITES_ENABLED:'false',ASSETS:{fetch:async()=>new Response('SYNTHETIC ASSET')}};
   const worker=createWorker({verifyIdentity:async request=>{const email=request.headers.get('fixture-identity');if(!email)throw new Error('No identity');return {email,iat:Number(request.headers.get('fixture-iat'))||Math.floor(Date.now()/1000)-10,exp:Math.floor(Date.now()/1000)+3600};}});

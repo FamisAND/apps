@@ -2,8 +2,21 @@
   "name": "full-training-gateway",
   "private": true,
   "type": "module",
-  "scripts": {"test": "node --test test/*.test.mjs", "build": "node prepare-assets.mjs", "dev": "npm run build && wrangler dev", "deploy": "npm run build && wrangler deploy"},
-  "dependencies": {"jose": "^6.1.0"},
-  "devDependencies": {"wrangler": "^4.0.0"},
-  "overrides": {"sharp": "0.35.5"}
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "build": "node prepare-assets.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "jose": "^6.1.0",
+    "lucide": "0.577.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "wrangler": "^4.0.0"
+  },
+  "overrides": {
+    "sharp": "0.35.5"
+  }
 }

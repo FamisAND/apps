@@ -36,8 +36,17 @@ export class RecordClient {
     });
   }
   progress(event){try{this.onProgress(event);}catch(_error){}}
-  async load(namespace,{allowEmpty=false}={}){
+  async load(namespace,{allowEmpty=false,cachedBase=null}={}){
     if(allowEmpty&&!isPhotoNamespace(namespace))throw failure('Solo las fotos nuevas admiten una base vacia',400);
+    if(cachedBase){
+      const status=await this.response('/api/records/'+encodeURIComponent(namespace)+'/status');
+      const matching=status.changedGeneration===undefined?status.generation===cachedBase.generation:status.stable===true&&Number.isSafeInteger(status.changedGeneration)&&status.changedGeneration>=0&&status.changedGeneration<=cachedBase.generation&&cachedBase.generation<=status.generation;
+      if(status.datasetId===cachedBase.datasetId&&Number.isSafeInteger(status.generation)&&status.generation>=0&&matching){
+        this.progress({namespace,phase:'cache'});
+        try{return await this.restore(namespace,{base:cachedBase});}
+        catch(error){if(this.bases.has(namespace))throw error;this.progress({namespace,phase:'cache-miss'});}
+      }
+    }
     return this.exclusive(namespace,()=>this.loadInternal(namespace,allowEmpty));
   }
   async loadInternal(namespace,allowEmpty=false){
@@ -110,8 +119,8 @@ export class RecordClient {
       const base=state?.base;
       if(!base||base.namespace!==namespace||typeof base.datasetId!=='string'||!base.datasetId||!Number.isSafeInteger(base.generation)||base.generation<0||!Array.isArray(base.records))throw failure('Copia base local invalida',409);
       const records=new Map();
+      for(let offset=0;offset<base.records.length;offset+=32)await Promise.all(base.records.slice(offset,offset+32).map(([key,record])=>verifyRecord(record,key)));
       for(const [key,record]of base.records){
-        await verifyRecord(record,key);
         if(records.has(key))throw failure('Copia base local duplicada',409);
         records.set(key,record);
       }

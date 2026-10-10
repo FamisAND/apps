@@ -1,7 +1,9 @@
 import {verifyIdentity} from './access.mjs';
 import {MODULES,SECTION_MODULE,FILE_MODULE,COMMON_FILES,canAccess,publicUser,filterData,validateSection} from './policy.mjs';
 import {readData,writeSection} from './github.mjs';
-import {listRecords,recordHistory,commitRecords} from './records.mjs';
+import {listRecords,recordHistory,commitRecords,recordStatus} from './records.mjs';
+import {sessionPolicy,sessionDeadline,validateSessionPolicy} from './session-policy.mjs';
+import {sessionCounts,sessionChanges} from './session-activity.mjs';
 import {isPhotoNamespace} from './media-format.mjs';
 import {loadPrivateSettings,publicAiConfig,saveAiSettings,AI_PROVIDERS} from './private-settings.mjs';
 import {aiText} from './ai-proxy.mjs';
@@ -16,11 +18,11 @@ async function digest(value){return [...new Uint8Array(await crypto.subtle.diges
 function cookie(token,maxAge=28800){return `${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;}
 function nextPage(url){const next=url.searchParams.get('next')||'/index.html';return /^\/[a-z_\-]+\.html$/.test(next)?next:'/index.html';}
 function sessionUnavailable(url){
-  const retry='/auth/start?next='+encodeURIComponent(nextPage(url));
+  const retry='/cdn-cgi/access/logout';
   return new Response(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sesion no disponible</title></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:560px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">No se ha podido abrir la sesion</h1><p>El navegador no ha enviado una sesion valida. No se han cargado ni modificado tus datos.</p><a href="${retry}" style="color:#8dcef1">Reintentar acceso</a></main></body></html>`,{status:401,headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8'}});
 }
 export function recordLoadingHtml(){
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Full Training</title><script src="/app-session.js"></script></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:600px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">Cargando datos verificados</h1><p id="ftLoadMessage" role="status">Comprobando sesion y copias conservadas...</p><button id="ftLoadRetry" hidden onclick="location.reload()">Reintentar</button> <button id="ftLoadExport" hidden>Exportar copia conservada</button></main><script type="module" src="/record-loader.mjs" onerror="document.getElementById('ftLoadMessage').textContent='No se han podido cargar los archivos de la aplicacion. No se han borrado tus datos. Reintenta la carga.';document.getElementById('ftLoadRetry').hidden=false"></script></body></html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Full Training</title><link id="ftSessionStyles" rel="stylesheet" href="/session-ui.css"><script src="/app-session.js"></script></head><body style="margin:0;background:#15191e"><main class="ft-loading"><div class="ft-loading-mark" aria-hidden="true"></div><h1>Abriendo Full Training</h1><p id="ftLoadMessage" role="status">Comprobando sesion y copias conservadas...</p><button class="ft-button" id="ftLoadRetry" hidden onclick="location.reload()">Reintentar</button> <button class="ft-button" id="ftLoadExport" hidden>Exportar copia conservada</button></main><script type="module" src="/record-loader.mjs" onerror="document.getElementById('ftLoadMessage').textContent='No se han podido cargar los archivos de la aplicacion. No se han borrado tus datos. Reintenta la carga.';document.getElementById('ftLoadRetry').hidden=false"></script></body></html>`;
 }
 function tokenFrom(request){return (request.headers.get('Cookie')||'').split(';').map(v=>v.trim()).find(v=>v.startsWith(COOKIE+'='))?.slice(COOKIE.length+1);}
 async function body(request){
@@ -35,10 +37,10 @@ async function body(request){
 async function audit(env,actor,action,target){await env.AUTH_DB.prepare('INSERT INTO audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),actor,action,target,now()).run();}
 async function getSession(request,env,identity){
   const token=tokenFrom(request);if(!token||! /^[a-f0-9]{64}$/.test(token))fail(401,'Inicia sesion');
-  const row=await env.AUTH_DB.prepare('SELECT s.id AS session_id,s.session_version AS issued_version,s.expires_at,s.last_seen,s.revoked,u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?').bind(await digest(token)).first();
-  if(!row||row.revoked||!row.active||row.expires_at<=now()||row.last_seen<now()-1800||row.issued_version!==row.session_version||row.email!==identity.email)fail(401,'Sesion caducada o revocada');
-  if(now()-row.last_seen>=30)await env.AUTH_DB.prepare('UPDATE sessions SET last_seen=? WHERE id=? AND revoked=0').bind(now(),row.session_id).run();
-  return {...publicUser(row),sessionId:row.session_id};
+  const row=await env.AUTH_DB.prepare('SELECT s.id AS session_id,s.created_at AS issued_at,s.session_version AS issued_version,s.expires_at,s.last_seen,s.revoked,u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?').bind(await digest(token)).first();
+  const policy=await sessionPolicy(env.AUTH_DB);
+  if(!row||row.revoked||!row.active||sessionDeadline({...row,created_at:row.issued_at},policy)<=now()||row.issued_version!==row.session_version||row.email!==identity.email)fail(401,'Sesion caducada o revocada');
+  return {...publicUser(row),sessionId:row.session_id,session:{lastActivity:row.last_seen,expiresAt:Math.min(row.expires_at,row.issued_at+policy.maxHours*3600),...policy}};
 }
 export function createWorker(dependencies={}){
   const identify=dependencies.verifyIdentity||verifyIdentity;
@@ -57,7 +59,7 @@ export function createWorker(dependencies={}){
         if(!user||!user.active)fail(403,'Usuario no autorizado');
         if(identity.iat<=user.reauth_after)fail(401,'Vuelve a identificarte en Cloudflare Access para abrir otra sesion');
         const token=[...crypto.getRandomValues(new Uint8Array(32))].map(v=>v.toString(16).padStart(2,'0')).join('');
-        const expires=Math.min(now()+28800,identity.exp);
+        const policy=await sessionPolicy(env.AUTH_DB),expires=Math.min(now()+policy.maxHours*3600,identity.exp);
         await env.AUTH_DB.prepare('INSERT INTO sessions VALUES (?,?,?,?,?,?,0)').bind(await digest(token),user.id,user.session_version,now(),now(),expires).run();
         return new Response(null,{status:303,headers:{...securityHeaders,Location:'/auth/complete?next='+encodeURIComponent(nextPage(url)),'Set-Cookie':cookie(token,expires-now())}});
       }
@@ -66,6 +68,7 @@ export function createWorker(dependencies={}){
         // A rejected cookie gets an explicit error, never another automatic login.
         if(e.status===401&&pathname==='/auth/complete')return sessionUnavailable(url);
         const isPage=pathname==='/'||pathname.endsWith('.html')&&(COMMON_FILES.has(pathname.slice(1))||FILE_MODULE[pathname.slice(1)]);
+        if(e.status===401&&isPage&&tokenFrom(request))return sessionUnavailable(url);
         if(e.status===401 && request.method==='GET'&&isPage)return new Response(null,{status:303,headers:{...securityHeaders,Location:'/auth/start?next='+encodeURIComponent(pathname)}});
         throw e;
       }
@@ -73,7 +76,12 @@ export function createWorker(dependencies={}){
         if(request.method!=='GET')fail(405,'Metodo no permitido');
         return new Response(null,{status:303,headers:{...securityHeaders,Location:nextPage(url)}});
       }
-      if(pathname==='/api/session')return json({user:{...user,repo:env.GITHUB_REPO},modules:MODULES,heartbeatSeconds:25,dataMode:env.RECORDS_ENABLED==='true'?'records':'legacy',writesEnabled:env.DATA_WRITES_ENABLED==='true'});
+      if(pathname==='/api/session/activity'){
+        if(request.method!=='POST')fail(405,'Metodo no permitido');csrf(request);
+        if(now()-user.session.lastActivity>=15){await env.AUTH_DB.prepare('UPDATE sessions SET last_seen=? WHERE id=? AND revoked=0').bind(now(),user.sessionId).run();user.session.lastActivity=now();}
+        return json({session:user.session});
+      }
+      if(pathname==='/api/session'){const {sessionId,session,...identity}=user;return json({user:{...identity,repo:env.GITHUB_REPO},session,modules:MODULES,heartbeatSeconds:25,dataMode:env.RECORDS_ENABLED==='true'?'records':'legacy',writesEnabled:env.DATA_WRITES_ENABLED==='true'});}
       if(pathname==='/api/logout'){
         if(request.method!=='POST')fail(405,'Metodo no permitido');csrf(request);
         await env.AUTH_DB.prepare('UPDATE sessions SET revoked=1 WHERE id=?').bind(user.sessionId).run();
@@ -90,7 +98,7 @@ export function createWorker(dependencies={}){
         if(env.DATA_WRITES_ENABLED!=='true')fail(423,'Cambios y llamadas IA desactivados hasta validar el traslado');
         if(pathname==='/api/settings/ai'){
           if(user.role!=='admin')fail(403,'Solo administracion puede cambiar claves o reglas');
-          return json(await saveAiSettings(dataDB,env.ACTIVE_DATASET_ID,env.SETTINGS_ENCRYPTION_KEY,user.id,await body(request)));
+          return json(await saveAiSettings(dataDB,env.ACTIVE_DATASET_ID,env.SETTINGS_ENCRYPTION_KEY,user.id,await body(request),user.sessionId));
         }
         const value=await body(request);
         if(!AI_PROVIDERS.includes(value.provider))fail(400,'Proveedor de IA no admitido');
@@ -100,18 +108,19 @@ export function createWorker(dependencies={}){
         return json({text:await aiText(saved.value,value,{admin:user.role==='admin',fetchImpl:dependencies.aiFetch||globalThis.fetch})});
       }
       if(pathname.startsWith('/api/records/')){
-        const match=pathname.match(/^\/api\/records\/([\w]+)(\/(commit|history))?$/);
+        const match=pathname.match(/^\/api\/records\/([\w]+)(\/(commit|history|status))?$/);
         if(!match)fail(404,'Ruta de registros inexistente');
         const namespace=match[1],module=SECTION_MODULE[namespace]||(isPhotoNamespace(namespace)?'training_online':null);
         if(!module||!canAccess(user,module))fail(403,'Registros no autorizados');
         if(env.RECORDS_ENABLED!=='true')fail(423,'Almacenamiento por registros en preparacion');
         const dataDB=env.DATA_DB?.withSession?env.DATA_DB.withSession('first-primary'):env.DATA_DB;
         if(!match[3]&&request.method==='GET')return json(await listRecords(dataDB,env.ACTIVE_DATASET_ID,namespace,url.searchParams.get('cursor')||'',url.searchParams.has('generation')?Number(url.searchParams.get('generation')):null));
+        if(match[3]==='status'&&request.method==='GET')return json(await recordStatus(dataDB,env.ACTIVE_DATASET_ID,namespace));
         if(match[3]==='history'&&request.method==='GET')return json(await recordHistory(dataDB,env.ACTIVE_DATASET_ID,namespace,url.searchParams.get('key'),url.searchParams.has('before')?Number(url.searchParams.get('before')):Number.MAX_SAFE_INTEGER));
         if(match[3]==='commit'&&request.method==='POST'){
           csrf(request);
           if(env.DATA_WRITES_ENABLED!=='true')fail(423,'Escrituras reales desactivadas hasta validar el traslado');
-          return json(await commitRecords(dataDB,env.ACTIVE_DATASET_ID,namespace,user.id,await body(request)));
+          return json(await commitRecords(dataDB,env.ACTIVE_DATASET_ID,namespace,user.id,await body(request),user.sessionId));
         }
         fail(405,'Metodo de registros no permitido');
       }
@@ -121,10 +130,23 @@ export function createWorker(dependencies={}){
           const result=await env.AUTH_DB.prepare('SELECT * FROM users ORDER BY created_at,email').all();return json({users:result.results.map(publicUser)});
         }
         if(pathname==='/api/admin/sessions'&&request.method==='GET'){
-          const result=await env.AUTH_DB.prepare('SELECT s.id,u.name,u.email,s.created_at,s.last_seen,s.expires_at,s.revoked,(s.session_version=u.session_version AND u.active=1) AS valid_version FROM sessions s JOIN users u ON u.id=s.user_id ORDER BY s.last_seen DESC LIMIT 200').all();return json({sessions:result.results});
+          const policy=await sessionPolicy(env.AUTH_DB);
+          const result=await env.AUTH_DB.prepare('SELECT s.id,u.name,u.email,s.created_at,s.last_seen,s.expires_at,s.revoked,(s.session_version=u.session_version AND u.active=1) AS valid_version FROM sessions s JOIN users u ON u.id=s.user_id ORDER BY s.created_at DESC,s.id DESC LIMIT 10').all();
+          const counts=env.RECORDS_ENABLED==='true'?await sessionCounts(env.DATA_DB,env.ACTIVE_DATASET_ID,result.results.map(row=>row.id)):[];
+          return json({sessions:result.results.map(row=>({...row,deadline:sessionDeadline(row,policy),activity:counts.filter(item=>item.session_id===row.id).map(({module,saves})=>({module,saves}))})),policy});
+        }
+        const activity=pathname.match(/^\/api\/admin\/sessions\/([a-f0-9]{64})\/changes$/);
+        if(activity&&request.method==='GET'){
+          if(env.RECORDS_ENABLED!=='true')fail(423,'Actividad por registros no activada');
+          return json(await sessionChanges(env.DATA_DB,env.ACTIVE_DATASET_ID,activity[1],url.searchParams.has('before')?Number(url.searchParams.get('before')):Number.MAX_SAFE_INTEGER));
         }
         if(pathname==='/api/admin/audit'&&request.method==='GET')return json(await env.AUTH_DB.prepare('SELECT * FROM audit ORDER BY created_at DESC LIMIT 100').all());
         csrf(request);
+        if(pathname==='/api/admin/session-policy'&&request.method==='PATCH'){
+          const value=await body(request);if(!validateSessionPolicy(value))fail(400,'Usa 5-480 minutos y 1-24 horas; la inactividad no puede superar la duracion maxima');
+          await env.AUTH_DB.prepare('UPDATE session_policy SET idle_minutes=?,max_hours=?,updated_at=? WHERE id=1').bind(value.idleMinutes,value.maxHours,now()).run();
+          await audit(env,user.id,'session-policy',JSON.stringify(value));return json({ok:true});
+        }
         if(pathname==='/api/admin/users'&&request.method==='POST'){
           const value=await body(request),email=String(value.email||'').trim().toLowerCase(),name=String(value.name||'').trim();
           if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||name.length<1||name.length>100||email===env.ADMIN_EMAIL?.toLowerCase())fail(400,'Usuario invalido');

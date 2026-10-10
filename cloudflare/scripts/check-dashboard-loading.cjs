@@ -19,7 +19,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   }
   const origin='http://127.0.0.1:48899',root=path.resolve(__dirname,'..','..');
   const browser=await chromium.launch({channel:'msedge',headless:true});
-  let centralWrites=0,externalRequests=0,blockedFontRequests=0;
+  let centralWrites=0,externalRequests=0,blockedFontRequests=0,activityRequests=0;
+  const session=()=>({lastActivity:Math.floor(Date.now()/1000),expiresAt:Math.floor(Date.now()/1000)+28800,idleMinutes:30,maxHours:8});
   try{
     for(const entry of ['/','/index.html','/missing-module.html','/failed-records.html']){
       const failModule=entry==='/missing-module.html',failRecords=entry==='/failed-records.html';
@@ -36,12 +37,14 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
             if(url.hostname==='fonts.googleapis.com'&&url.pathname==='/css2')blockedFontRequests++;else externalRequests++;
             return route.abort();
           }
+          if(url.pathname==='/api/session/activity'){activityRequests++;return route.fulfill({json:{session:session()}});}
           if(request.method()!=='GET'){centralWrites++;return route.fulfill({status:423,json:{error:'Synthetic read-only fixture'}});}
-          if(url.pathname==='/api/session')return route.fulfill({json:{user:{id:'synthetic-admin',name:'Test admin',role:'admin',active:true,permissions:[]},dataMode:'records',writesEnabled:false,modules:{}}});
+          if(url.pathname==='/api/session')return route.fulfill({json:{user:{id:'synthetic-admin',name:'Test admin',role:'admin',active:true,permissions:[]},session:session(),dataMode:'records',writesEnabled:false,modules:{}}});
           if(url.pathname.startsWith('/api/records/')){
             const namespace=url.pathname.split('/')[3];reads.push(namespace);
             if(failRecords)return route.fulfill({status:503,json:{error:'Synthetic records unavailable'}});
             assert.ok(records.has(namespace),'Unexpected namespace: '+namespace);
+            if(url.pathname.endsWith('/status'))return route.fulfill({json:{datasetId:'synthetic-dashboard',generation:1,changedGeneration:0,stable:true}});
             const rows=records.get(namespace),start=Number(url.searchParams.get('cursor')||0),end=Math.min(start+200,rows.length);
             return route.fulfill({json:{datasetId:'synthetic-dashboard',generation:1,records:rows.slice(start,end),nextCursor:end<rows.length?String(end).padStart(8,'0'):null}});
           }
@@ -68,16 +71,24 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
           assert.deepEqual(await page.evaluate(()=>FTRecords.values.get('training_online')),fixtures.training_online);
           assert.match(await page.locator('#ftRecordStatus').textContent(),/solo lectura/);
           assert.deepEqual(errors,[]);
+          const copiesBefore=(await page.evaluate(()=>FTRecords.store.health())).entries;
+          const readOffset=reads.length;await page.reload({waitUntil:'domcontentloaded'});await page.locator('#ftRecordStatus').waitFor({timeout:60000});
+          assert.equal(reads.length-readOffset,6,'Reopening unchanged data must use six lightweight status reads');
+          assert.equal((await page.evaluate(()=>FTRecords.store.health())).entries,copiesBefore,'Unchanged navigation must not accumulate duplicate backups');
+          assert.equal(navigations,2,'Cache reopen must navigate only once');
           await page.screenshot({path:path.join(output,entry==='/'?'root-desktop.png':'index-desktop.png'),fullPage:true});
+          await page.getByLabel('Herramientas y copias',{exact:true}).click();await page.getByRole('button',{name:'Copias y espacio',exact:true}).click();await page.getByRole('dialog').waitFor();await page.locator('.ft-stats strong').first().waitFor();assert.ok(activityRequests>0,'Activity tracking must survive prepared document replacement');
+          await page.screenshot({path:path.join(output,entry==='/'?'copies-desktop.png':'copies-index.png'),fullPage:true});
+          await page.getByRole('button',{name:'Cerrar',exact:true}).click();
           await page.setViewportSize({width:390,height:844});
           await page.screenshot({path:path.join(output,entry==='/'?'root-mobile.png':'index-mobile.png'),fullPage:true});
         }
         assert.equal(await page.evaluate(()=>__testReadStored.call(localStorage,'tob_online_v2')),'SYNTHETIC ORIGINAL COPY');
-        assert.equal(navigations,1);
+        assert.equal(navigations,failModule||failRecords?1:2);
         console.log(entry+': verified, '+reads.length+' record-page reads, no reload loop');
       }finally{await context.close();}
     }
     assert.equal(centralWrites,0);assert.equal(externalRequests,0);
-    console.log(JSON.stringify({status:'SYNTHETIC_DASHBOARD_VERIFIED',records:[...records.values()].reduce((sum,rows)=>sum+rows.length,0),centralWrites,externalRequests,blockedFontRequests,productionAccess:false,output}));
+    console.log(JSON.stringify({status:'SYNTHETIC_DASHBOARD_VERIFIED',records:[...records.values()].reduce((sum,rows)=>sum+rows.length,0),centralWrites,activityRequests,externalRequests,blockedFontRequests,productionAccess:false,output}));
   }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
