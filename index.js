@@ -110,8 +110,13 @@ async function syncNow(btn){
 }
 
 async function goMenu(){
-  document.getElementById('menuRepo').textContent     = GitHubSync.getRepo() || '—';
-  document.getElementById('menuRepoFull').textContent = GitHubSync.getRepo() || '—';
+  const central=window.FTSession?.dataMode==='records',source=central?'Cloudflare':GitHubSync.getRepo() || '—';
+  document.getElementById('menuRepo').textContent     = source;
+  document.getElementById('menuRepoFull').textContent = source;
+  if(central){
+    const refresh=document.querySelector('#menuScreen button[onclick="syncNow(this)"]');
+    if(refresh){refresh.replaceChildren(FTSession.icon('retry'),document.createTextNode(' Actualizar'));refresh.title='Actualizar datos centrales';refresh.setAttribute('aria-label','Actualizar datos centrales');}
+  }
   await loadDashboardVisibilityConfig();
   computeKpis();
   applyDashboardVisibility();

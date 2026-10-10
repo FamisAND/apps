@@ -65,6 +65,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         }else{
           await page.locator('#menuScreen.active').waitFor({timeout:60000});
           await page.locator('#ftRecordStatus').waitFor();
+          assert.equal(await page.locator('#ghSyncBadge').isVisible(),false,'Record mode must have only one visible save indicator');
+          assert.equal(await page.locator('#lastUpd').isVisible(),false,'Static legacy SYNC OK must not contradict the central state');
+          assert.equal(await page.locator('#menuRepo').textContent(),'Cloudflare');await page.getByRole('button',{name:'Actualizar datos centrales',exact:true}).waitFor();
+          const bar=await page.locator('#ftSessionBar').boundingBox();assert.ok(bar.width<600&&bar.height<=44,'Healthy desktop footer must be compact');
           await page.waitForTimeout(1500);assert.equal(navigations,1,'Dashboard entered a reload loop');
           assert.equal(await page.evaluate(()=>FTRecords.values.size),6);
           assert.equal(reads.includes('tob_menus_catalog'),false);
@@ -81,7 +85,13 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
           await page.screenshot({path:path.join(output,entry==='/'?'copies-desktop.png':'copies-index.png'),fullPage:true});
           await page.getByRole('button',{name:'Cerrar',exact:true}).click();
           await page.setViewportSize({width:390,height:844});
+          assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Mobile footer must not overflow');
           await page.screenshot({path:path.join(output,entry==='/'?'root-mobile.png':'index-mobile.png'),fullPage:true});
+          await page.evaluate(()=>FTRecords.status('training_online','conflict',new Error('Otra sesion ha cambiado la medicion. No se ha sobrescrito.')));
+          await page.getByText('No confirmado: Otra sesion ha cambiado la medicion.',{exact:false}).waitFor();
+          await page.getByLabel('Comparar versiones',{exact:true}).waitFor({state:'visible'});
+          assert.equal(await page.locator('#ghSyncBadge').isVisible(),false);
+          await page.screenshot({path:path.join(output,entry==='/'?'conflict-mobile.png':'conflict-index-mobile.png'),fullPage:true});
         }
         assert.equal(await page.evaluate(()=>__testReadStored.call(localStorage,'tob_online_v2')),'SYNTHETIC ORIGINAL COPY');
         assert.equal(navigations,failModule||failRecords?1:2);

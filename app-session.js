@@ -24,7 +24,7 @@ function lock(message){
     const text=document.createElement('p');text.textContent=message;box.appendChild(text);
     const actions=document.createElement('div');actions.className='ft-actions';
     const copy=document.createElement('button');copy.className='ft-button';copy.textContent='Exportar cambios locales';copy.onclick=()=>Promise.resolve(window.FTRecords?.exportDownload?window.FTRecords.exportDownload():window.GitHubSync?.exportSafetyCopy()).catch(error=>text.textContent=error.message);actions.appendChild(copy);
-    const login=document.createElement('a');login.href='/cdn-cgi/access/logout';login.className='ft-button ft-primary';login.textContent='Volver a identificarme';login.onclick=()=>{if((window.GitHubSync?.hasPendingChanges?.()||window.ghHasUnsavedChanges?.())&&!confirm('Conserva o exporta tus cambios antes de salir. El formulario se cerrara. ¿Continuar?'))return false;};actions.appendChild(login);
+    const login=document.createElement('a');login.href='/auth/restart';login.className='ft-button ft-primary';login.textContent='Volver a identificarme';login.onclick=()=>{if((window.GitHubSync?.hasPendingChanges?.()||window.ghHasUnsavedChanges?.())&&!confirm('Conserva o exporta tus cambios antes de salir. El formulario se cerrara. ¿Continuar?'))return false;};actions.appendChild(login);
     box.appendChild(actions);shield.appendChild(box);document.body.appendChild(shield);
   };
   if(document.body)render();else document.addEventListener('DOMContentLoaded',render,{once:true});
@@ -82,7 +82,8 @@ window.FTSession={ready,get user(){return user;},get active(){return active;},ge
     active=false;location.href='/cdn-cgi/access/logout';
   },permitted};
 function decorate(){
-  if(!user||document.getElementById('ftSessionBar'))return;ui();
+  if(!user)return;document.documentElement.dataset.ftDataMode=dataMode;
+  if(document.getElementById('ftSessionBar'))return;ui();
   document.querySelectorAll('a[href]').forEach(link=>{const file=link.getAttribute('href').split('?')[0].replace(/^\.\//,'');const section=Object.keys(sections).find(key=>sections[key]===file);if(section&&!permitted(section))link.hidden=true;});
   const bar=document.createElement('div');bar.id='ftSessionBar';bar.setAttribute('aria-label','Sesion y guardado');
   const identity=document.createElement('span');identity.className='ft-identity';identity.append(icon('user'),document.createTextNode(user.name));bar.appendChild(identity);

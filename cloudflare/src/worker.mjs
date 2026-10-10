@@ -11,15 +11,17 @@ const COOKIE='__Host-ft_session';
 const now=()=>Math.floor(Date.now()/1000);
 const securityHeaders={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin','X-Frame-Options':'DENY'};
 function json(value,status=200,extra={}){return new Response(JSON.stringify(value),{status,headers:{...securityHeaders,'Content-Type':'application/json',...extra}});}
-function fail(status,message){const e=new Error(message);e.status=status;throw e;}
+function fail(status,message,code){const e=new Error(message);e.status=status;e.code=code;throw e;}
 function csrf(request){if(request.headers.get('Origin')!==new URL(request.url).origin)fail(403,'Origen no autorizado');}
 async function digest(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 // Access returns from another site; safe top-level navigation must carry the session.
 function cookie(token,maxAge=28800){return `${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;}
 function nextPage(url){const next=url.searchParams.get('next')||'/index.html';return /^\/[a-z_\-]+\.html$/.test(next)?next:'/index.html';}
-function sessionUnavailable(url){
-  const retry='/cdn-cgi/access/logout';
-  return new Response(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sesion no disponible</title></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:560px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">No se ha podido abrir la sesion</h1><p>El navegador no ha enviado una sesion valida. No se han cargado ni modificado tus datos.</p><a href="${retry}" style="color:#8dcef1">Reintentar acceso</a></main></body></html>`,{status:401,headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8'}});
+function sessionUnavailable(code){
+  const expired=code==='session-expired',heading=expired?'La sesion ha caducado':'No se ha podido abrir la sesion';
+  const message=expired?'Se ha cumplido el tiempo de inactividad o la duracion maxima.':'El navegador no ha enviado una sesion valida o el acceso ha cambiado.';
+  // Only discard the rejected login cookie. Local copies and central data stay untouched.
+  return new Response(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${heading}</title></head><body style="margin:0;background:#15191e;color:#fff;font:15px sans-serif"><main style="max-width:560px;margin:15vh auto;padding:24px"><h1 style="font-size:22px">${heading}</h1><p style="line-height:1.6">${message} Vuelve a identificarte para continuar.</p><p style="line-height:1.6">No se han cargado ni modificado tus datos. Las copias locales se conservan.</p><a href="/auth/restart" style="display:inline-block;margin-top:12px;padding:10px 16px;border:1px solid #3d9b82;border-radius:4px;background:#176d59;color:#fff;text-decoration:none">Reintentar acceso</a></main></body></html>`,{status:401,headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8','Set-Cookie':cookie('',0)}});
 }
 export function recordLoadingHtml(){
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Full Training</title><link id="ftSessionStyles" rel="stylesheet" href="/session-ui.css"><script src="/app-session.js"></script></head><body style="margin:0;background:#15191e"><main class="ft-loading"><div class="ft-loading-mark" aria-hidden="true"></div><h1>Abriendo Full Training</h1><p id="ftLoadMessage" role="status">Comprobando sesion y copias conservadas...</p><button class="ft-button" id="ftLoadRetry" hidden onclick="location.reload()">Reintentar</button> <button class="ft-button" id="ftLoadExport" hidden>Exportar copia conservada</button></main><script type="module" src="/record-loader.mjs" onerror="document.getElementById('ftLoadMessage').textContent='No se han podido cargar los archivos de la aplicacion. No se han borrado tus datos. Reintenta la carga.';document.getElementById('ftLoadRetry').hidden=false"></script></body></html>`;
@@ -38,8 +40,9 @@ async function audit(env,actor,action,target){await env.AUTH_DB.prepare('INSERT 
 async function getSession(request,env,identity){
   const token=tokenFrom(request);if(!token||! /^[a-f0-9]{64}$/.test(token))fail(401,'Inicia sesion');
   const row=await env.AUTH_DB.prepare('SELECT s.id AS session_id,s.created_at AS issued_at,s.session_version AS issued_version,s.expires_at,s.last_seen,s.revoked,u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?').bind(await digest(token)).first();
+  if(!row||row.revoked||!row.active||row.issued_version!==row.session_version||row.email!==identity.email)fail(401,'Sesion caducada o revocada');
   const policy=await sessionPolicy(env.AUTH_DB);
-  if(!row||row.revoked||!row.active||sessionDeadline({...row,created_at:row.issued_at},policy)<=now()||row.issued_version!==row.session_version||row.email!==identity.email)fail(401,'Sesion caducada o revocada');
+  if(sessionDeadline({...row,created_at:row.issued_at},policy)<=now())fail(401,'Sesion caducada o revocada','session-expired');
   return {...publicUser(row),sessionId:row.session_id,session:{lastActivity:row.last_seen,expiresAt:Math.min(row.expires_at,row.issued_at+policy.maxHours*3600),...policy}};
 }
 export function createWorker(dependencies={}){
@@ -49,6 +52,10 @@ export function createWorker(dependencies={}){
       const url=new URL(request.url),pathname=url.pathname;
       if(!env.AUTH_DB)fail(503,'Base de sesiones no configurada');
       let identity;try{identity=await identify(request,env);}catch(_e){fail(403,'Acceso central no verificado');}
+      if(pathname==='/auth/restart'){
+        if(request.method!=='GET')fail(405,'Metodo no permitido');
+        return new Response(null,{status:303,headers:{...securityHeaders,Location:'/cdn-cgi/access/logout','Set-Cookie':cookie('',0)}});
+      }
       if(pathname==='/auth/start'){
         if(request.method!=='GET')fail(405,'Metodo no permitido');
         const existing=await env.AUTH_DB.prepare('SELECT * FROM users WHERE email=?').bind(identity.email).first();
@@ -66,9 +73,9 @@ export function createWorker(dependencies={}){
       let user;
       try{user=await getSession(request,env,identity);}catch(e){
         // A rejected cookie gets an explicit error, never another automatic login.
-        if(e.status===401&&pathname==='/auth/complete')return sessionUnavailable(url);
+        if(e.status===401&&pathname==='/auth/complete')return sessionUnavailable(e.code);
         const isPage=pathname==='/'||pathname.endsWith('.html')&&(COMMON_FILES.has(pathname.slice(1))||FILE_MODULE[pathname.slice(1)]);
-        if(e.status===401&&isPage&&tokenFrom(request))return sessionUnavailable(url);
+        if(e.status===401&&isPage&&tokenFrom(request))return sessionUnavailable(e.code);
         if(e.status===401 && request.method==='GET'&&isPage)return new Response(null,{status:303,headers:{...securityHeaders,Location:'/auth/start?next='+encodeURIComponent(pathname)}});
         throw e;
       }

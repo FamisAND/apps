@@ -24,7 +24,34 @@ test('login completion stops rejected-cookie redirects without issuing another s
   const response=await f.request('/auth/complete?next=/session-admin.html');
   assert.equal(response.status,401);assert.equal(response.headers.get('Location'),null);
   const html=await response.text();assert.match(html,/Reintentar acceso/);assert.doesNotMatch(html,/http-equiv|window\.location|location\.href/);
+  assert.match(response.headers.get('Set-Cookie'),/^__Host-ft_session=;.*Max-Age=0/);
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,before);
+}finally{f.db.close();}});
+
+test('explicit reidentification clears only the app cookie and never changes session records',async()=>{const f=fixture();try{
+  const cookie=await f.login();f.db.prepare('UPDATE sessions SET revoked=1').run();
+  const before=JSON.stringify(f.db.prepare('SELECT * FROM sessions').all());
+  const response=await f.request('/auth/restart',{cookie});
+  assert.equal(response.status,303);assert.equal(response.headers.get('Location'),'/cdn-cgi/access/logout');
+  assert.match(response.headers.get('Set-Cookie'),/^__Host-ft_session=; Path=\/; Secure; HttpOnly; SameSite=Lax; Max-Age=0$/);
+  assert.equal(JSON.stringify(f.db.prepare('SELECT * FROM sessions').all()),before);
+  assert.equal((await f.request('/auth/restart',{method:'POST',cookie})).status,405);
+  assert.equal((await f.request('/auth/restart',{email:''})).status,403);
+}finally{f.db.close();}});
+
+test('expired-cookie recovery completes with a new explicit login and no redirect cycle',async()=>{const f=fixture();try{
+  f.env.RECORDS_ENABLED='true';
+  const cookie=await f.login();f.db.prepare('UPDATE sessions SET last_seen=?').run(Math.floor(Date.now()/1000)-1801);
+  const expired=await f.request('/consulta.html',{cookie});assert.equal(expired.status,401);
+  assert.match(await expired.text(),/La sesion ha caducado/);assert.match(expired.headers.get('Set-Cookie'),/Max-Age=0/);
+  assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,1);
+  const retry=await f.request('/auth/restart',{cookie});assert.equal(retry.status,303);
+  const enter=await f.request('/consulta.html');assert.equal(enter.status,303);assert.equal(enter.headers.get('Location'),'/auth/start?next=%2Fconsulta.html');
+  const login=await f.request(enter.headers.get('Location'));const fresh=login.headers.get('Set-Cookie').split(';')[0];
+  assert.notEqual(fresh,cookie);assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,2);
+  const complete=await f.request(login.headers.get('Location'),{cookie:fresh});assert.equal(complete.status,303);assert.equal(complete.headers.get('Location'),'/consulta.html');
+  assert.equal((await f.request('/consulta.html',{cookie:fresh})).status,200);
+  assert.equal((await f.request('/api/session',{cookie})).status,401);
 }finally{f.db.close();}});
 
 test('unauthenticated assets cannot start extra login redirects or sessions',async()=>{const f=fixture();try{

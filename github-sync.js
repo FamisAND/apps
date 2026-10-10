@@ -821,7 +821,7 @@ async function performPush(){
       if(pending){if(!same(value,pending.value))throw conflict('El formulario difiere del guardado pendiente; conserva y revisa ambas copias.');await bridge.retry(_section);}
       else await bridge.save(_section,value);
       _dirty=!same(readSection(_section),value);_blocked=false;showStatus('Guardado central confirmado', 'ok');
-    }catch(error){_blocked=true;showStatus('No confirmado: '+error.message,'error');throw error;}
+    }catch(error){_blocked=true;bridge.status(_section,error.syncConflict?'conflict':'error',error);showStatus('No confirmado: '+error.message,'error');throw error;}
     finally{_pushInFlight=false;}
     return;
   }

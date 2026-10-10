@@ -29,7 +29,7 @@ test('background session checks never extend idle expiry; trusted activity endpo
 test('expired activity cannot revive a session and expired HTML does not silently log in',async()=>{
   const f=authFixture();try{const cookie=await f.login();f.db.prepare('UPDATE sessions SET last_seen=?').run(Math.floor(Date.now()/1000)-1801);
     assert.equal((await f.request('/api/session',cookie)).status,401);assert.equal((await f.request('/api/session/activity',cookie,'POST')).status,401);
-    const page=await f.request('/index.html',cookie);assert.equal(page.status,401);assert.equal(page.headers.get('Location'),null);assert.match(await page.text(),/cdn-cgi\/access\/logout/);assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,1);
+    const page=await f.request('/index.html',cookie);assert.equal(page.status,401);assert.equal(page.headers.get('Location'),null);assert.match(await page.text(),/auth\/restart/);assert.match(page.headers.get('Set-Cookie'),/Max-Age=0/);assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,1);
   }finally{f.db.close();}
 });
 test('idle settings validate ranges, require admin and CSRF, and hard expiry bounds active sessions',async()=>{

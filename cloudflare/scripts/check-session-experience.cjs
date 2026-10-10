@@ -32,6 +32,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         await page.clock.fastForward(1000);await page.locator('#ftSessionWarning').waitFor();assert.equal(activityPosts,0);
         await page.screenshot({path:path.join(output,'idle-warning.png'),fullPage:true});await page.clock.fastForward(12000);await page.locator('#ftSessionLock').waitFor();assert.equal(activityPosts,0);assert.equal(await page.evaluate(()=>FTSession.active),false);
         await page.screenshot({path:path.join(output,'idle-locked.png'),fullPage:true});
+        assert.equal(await page.getByRole('link',{name:'Volver a identificarme'}).getAttribute('href'),'/auth/restart');
       }else if(mode==='continue'){
         await page.clock.fastForward(1000);await page.locator('#ftSessionWarning').waitFor();await page.getByRole('button',{name:'Seguir trabajando'}).click();await page.waitForFunction(()=>FTSession.active);await page.clock.fastForward(1000);assert.ok(activityPosts>=1);await page.locator('#ftSessionWarning').waitFor({state:'detached'});
       }else assert.equal(await page.getByLabel('Usuarios y sesiones',{exact:true}).count(),0);
