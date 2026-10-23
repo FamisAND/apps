@@ -545,7 +545,8 @@ const DASHBOARD_APPS = [
   { id:'options', label:'Opciones', file:'options.html' },
   { id:'full_training', label:'Full Training', file:'full_training.html' },
   { id:'facturas', label:'Facturas', file:'facturas.html' },
-  { id:'consulta', label:'Consulta', file:'consulta.html' }
+  { id:'consulta', label:'Consulta', file:'consulta.html' },
+  { id:'funding', label:'Tracker de Fondeo', file:'funding.html' }
 ];
 let _dashboardVisibilityLoaded = false;
 let _dashboardVisibility = { hidden: [] };

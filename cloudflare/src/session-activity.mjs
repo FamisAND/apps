@@ -1,4 +1,4 @@
-const labels={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',tob_menus_catalog:'Catalogo',__dashboard_config:'Dashboard',private_settings:'Configuracion de Consulta'};
+const labels={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Tracker de Fondeo',tob_menus_catalog:'Catalogo',__dashboard_config:'Dashboard',private_settings:'Configuracion de Consulta'};
 function fields(node){
   if(node?.type==='object')return Object.fromEntries(node.entries||[]);
   if(node?.type==='value'&&node.value&&typeof node.value==='object'&&!Array.isArray(node.value))return Object.fromEntries(Object.entries(node.value).map(([key,value])=>[key,{type:'value',value}]));

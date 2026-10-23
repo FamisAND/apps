@@ -7,7 +7,7 @@ import {readResponse} from './request.mjs';
 const file=location.pathname.split('/').at(-1)||'index.html';
 let bridge;
 let loading=true,stage='Comprobando la sesion',lastProgress=Date.now();
-const labels={training:'Full Training',training_online:'Consulta',tob_menus_catalog:'Catalogo de recetas',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',__dashboard_config:'Dashboard'};
+const labels={training:'Full Training',training_online:'Consulta',tob_menus_catalog:'Catalogo de recetas',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Tracker de Fondeo',__dashboard_config:'Dashboard'};
 function loadMessage(text){stage=text;lastProgress=Date.now();const node=document.getElementById('ftLoadMessage');if(node)node.textContent=text;}
 function loadProgress(event){
   const name=labels[event.namespace]||'Datos';
@@ -37,6 +37,7 @@ function mount(){
     if(!namespace)return;
     if(bridge.errors.has(namespace))await bridge.persistDraft(namespace);
     if(bridge.client.pending.has(namespace))await bridge.retry(namespace);
+    else if(namespace==='funding')await bridge.save(namespace);
     else if(window.GitHubSync)await window.GitHubSync.flush();
   });
   button('Copias y espacio','storage',()=>showStorageDialog(bridge,download),true);
@@ -74,7 +75,7 @@ try{
   await window.FTSession.ready;
   bridge=new RecordBridge({session:()=>window.FTSession,onProgress:loadProgress});bridge.media=new RecordMedia(bridge);bridge.settings=new PrivateSettingsClient(bridge);window.FTRecords=bridge;
   bridge.exportDownload=async()=>download(await bridge.exportCopies(window.ghEditorSnapshot?.()||null));
-  await bridge.openAll({includeCatalog:file==='consulta.html'});
+  await bridge.openAll({includeCatalog:file==='consulta.html',includeFunding:file==='funding.html'});
   if(file==='consulta.html'&&bridge.allowed('training_online')){loadMessage('Comprobando configuracion de Consulta...');await bridge.settings.load();}
   bridge.installStorage(localStorage,Storage.prototype);
   window.addEventListener('beforeunload',event=>{if(bridge.pending()){event.preventDefault();event.returnValue='Hay cambios pendientes de confirmar';}});

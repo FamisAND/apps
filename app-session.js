@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 let user=null,active=false,locked=false,dataMode='legacy',writesEnabled=false,session=null,activityAt=0,lastSent=0,sending=false,verifyingExpiry=false;
-const sections={training:'full_training.html',training_online:'consulta.html',options:'options.html',patrimonio:'patrimonio.html',facturas:'facturas.html'};
+const sections={training:'full_training.html',training_online:'consulta.html',options:'options.html',patrimonio:'patrimonio.html',facturas:'facturas.html',funding:'funding.html'};
 function permitted(section){return active&&(user.role==='admin'||user.permissions.includes(section));}
 function ui(){
   if(!document.getElementById('ftSessionStyles')){const link=document.createElement('link');link.id='ftSessionStyles';link.rel='stylesheet';link.href='/session-ui.css';document.head.appendChild(link);}

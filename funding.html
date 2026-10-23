@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111518">
+<title>Tracker de Fondeo | Full Training</title>
+<link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="funding.css">
+<link rel="stylesheet" href="session-ui.css">
+<script defer src="session-icons.js"></script>
+<script defer src="funding-chart.umd.js"></script>
+<script defer src="funding-model.js"></script>
+<script defer src="funding.js"></script>
+</head>
+<body class="theme-opt funding-app">
+<header class="funding-header">
+  <a class="icon-button" href="index.html" title="Volver al panel" aria-label="Volver al panel"><span data-ft-icon="back"></span></a>
+  <span class="brand-mark" data-ft-icon="funding" aria-hidden="true"></span>
+  <div class="funding-brand"><h1>Tracker de Fondeo</h1><span id="bookCurrency">USD</span></div>
+  <div class="header-actions"><button class="secondary" id="exportJson" title="Exportar todo el historial" disabled><span data-ft-icon="download"></span><span>Copia JSON</span></button><button id="newAccount" disabled><span data-ft-icon="plus"></span>Nueva evaluacion</button></div>
+</header>
+<nav class="funding-tabs" aria-label="Secciones de fondeo">
+  <button data-tab="dashboard" class="active" aria-current="page">Dashboard</button><button data-tab="accounts">Cuentas</button><button data-tab="movements">Movimientos</button><button data-tab="statistics">Estadisticas</button>
+</nav>
+<main>
+  <div id="previewNotice" class="notice" hidden>Vista local. Los datos de esta prueba no se envian a Cloudflare.</div>
+  <div id="notice" class="notice" role="status" hidden></div>
+  <section class="filter-bar" aria-label="Filtros">
+    <label>Empresa<select id="companyFilter"><option value="">Todas las empresas</option></select></label>
+    <label>Tipo de cuenta<select id="sizeFilter"><option value="">Todos los tipos</option></select></label>
+    <label>Periodo<select id="periodFilter"><option value="all">Todo el historico</option><option value="12">Ultimo ano</option><option value="6">Ultimos seis meses</option><option value="3">Ultimos tres meses</option><option value="custom">Personalizado</option></select></label>
+    <label class="custom-period" hidden>Desde<input type="date" id="fromDate"></label><label class="custom-period" hidden>Hasta<input type="date" id="toDate"></label>
+    <button class="secondary" id="newMovement" disabled><span data-ft-icon="plus"></span>Movimiento</button>
+  </section>
+  <div id="dashboardView" class="funding-view">
+    <section id="mainKpis" class="kpi-strip" aria-label="Resultados economicos"></section>
+    <section class="chart-section">
+      <div class="section-heading"><div><h2>Rentabilidad economica</h2><p id="chartPeriod"></p></div><label class="check-label"><input type="checkbox" id="eventMarkers"> Eventos</label></div>
+      <div class="chart-frame"><canvas id="mainChart" role="img" aria-label="Gastos, retiradas y beneficio neto acumulados"></canvas><div id="chartEmpty" class="chart-empty" hidden>Sin movimientos en este periodo</div></div>
+      <div id="chartError" class="notice" hidden>No se ha podido cargar la grafica. Los registros y calculos siguen disponibles.</div>
+    </section>
+    <section class="operations-band"><div class="section-heading"><h2>Estado del negocio</h2><button class="text-button" data-goto="accounts">Ver cuentas <span data-ft-icon="outgoing"></span></button></div><div id="operationsKpis" class="operations-grid"></div></section>
+    <section class="operations-band"><div class="section-heading"><h2>Conversion y eficiencia</h2><button class="text-button" data-goto="statistics">Ver estadisticas <span data-ft-icon="outgoing"></span></button></div><div id="efficiencyKpis" class="statistics-grid"></div></section>
+    <section class="recent-section"><div class="section-heading"><h2>Ultimos movimientos</h2><button class="text-button" data-goto="movements">Ver todos <span data-ft-icon="outgoing"></span></button></div><div id="recentMovements" class="table-wrap"></div></section>
+  </div>
+  <div id="accountsView" class="funding-view" hidden>
+    <div class="section-heading"><h2>Cuentas</h2><div class="inline-controls"><input id="accountSearch" type="search" placeholder="Buscar cuenta o empresa" aria-label="Buscar cuenta"><select id="stateFilter" aria-label="Estado"><option value="">Todos los estados</option><option value="evaluation">En evaluacion</option><option value="failed">Evaluacion fallida</option><option value="funded">Fondeada activa</option><option value="closed">Fondeada cerrada</option></select><label class="check-label"><input id="showDeletedAccounts" type="checkbox"> Retiradas del listado</label></div></div>
+    <div id="accountsTable" class="table-wrap"></div>
+  </div>
+  <div id="movementsView" class="funding-view" hidden>
+    <div class="section-heading"><h2>Movimientos economicos</h2><div class="inline-controls"><select id="movementType" aria-label="Tipo de movimiento"><option value="">Todos los eventos</option></select><label class="check-label"><input id="showVoided" type="checkbox"> Anulados / eliminados</label><button class="secondary" id="exportCsv"><span data-ft-icon="download"></span>CSV</button><button class="secondary" id="importJson"><span data-ft-icon="upload"></span>Importar JSON</button></div></div>
+    <div id="movementsTable" class="table-wrap"></div>
+  </div>
+  <div id="statisticsView" class="funding-view" hidden>
+    <div class="section-heading"><h2>Estadisticas</h2><button class="icon-button" id="definitions" title="Criterios de calculo" aria-label="Criterios de calculo"><span data-ft-icon="filter"></span></button></div>
+    <div id="statisticsKpis" class="statistics-grid"></div>
+    <section><h3>Por empresa</h3><div id="companyStats" class="table-wrap"></div></section>
+    <section><h3>Por tipo de cuenta</h3><div id="sizeStats" class="table-wrap"></div></section>
+    <div class="secondary-charts"><section><h3>Resultado mensual</h3><div class="small-chart"><canvas id="monthlyChart" role="img" aria-label="Beneficio neto mensual"></canvas></div></section><section><h3>Capital disponible por eventos</h3><div class="small-chart"><canvas id="bankrollChart" role="img" aria-label="Evolucion del bankroll"></canvas></div></section></div>
+  </div>
+</main>
+<dialog id="editor"><form id="eventForm"><div class="dialog-heading"><h2 id="editorTitle"></h2><button type="button" class="icon-button" data-close="editor" aria-label="Cerrar" title="Cerrar"><span data-ft-icon="close"></span></button></div><div id="formFields" class="form-grid"></div><p id="formError" class="form-error" role="alert"></p><div class="dialog-footer"><button type="button" class="secondary" data-close="editor">Cancelar</button><button id="saveEvent" type="submit"><span data-ft-icon="check"></span>Guardar evento</button></div></form></dialog>
+<dialog id="accountDetail" class="account-detail"><div id="accountDetailContent"></div></dialog>
+<dialog id="infoDialog"><div class="dialog-heading"><h2 id="infoTitle"></h2><button class="icon-button" data-close="infoDialog" aria-label="Cerrar" title="Cerrar"><span data-ft-icon="close"></span></button></div><div id="infoContent"></div></dialog>
+<input id="importFile" type="file" accept=".json,application/json" hidden>
+</body>
+</html>

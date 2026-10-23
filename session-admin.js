@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const modules={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas'};
+const modules={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Tracker de Fondeo'};
 const status=document.getElementById('status');
 function element(tag,text){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;}
 function permissions(container,selected=[]){for(const [key,name]of Object.entries(modules)){const label=element('label');const input=element('input');input.type='checkbox';input.value=key;input.checked=selected.includes(key);label.append(input,document.createTextNode(name));container.append(label);}}
