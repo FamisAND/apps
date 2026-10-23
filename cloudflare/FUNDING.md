@@ -114,6 +114,18 @@ No habia namespace funding en el respaldo del dataset activo.
 
 ## Verificacion y publicacion
 
+Publicado el 23/10/2026 en el Worker privado existente:
+`https://full-training-private.sergiofamisr.workers.dev/funding.html`.
+Version: `21b46ef3-5f62-45e6-9e52-eb6ea42efc0e`.
+Codigo: commit `9d91459`, subido a `main`. Se publicaron 48 assets permitidos,
+sin cambios de esquema, dataset, bases o variables. Pruebas automatizadas:
+104 del gateway/almacenamiento/permisos y 25 de calculo; ambas suites superadas.
+Comprobacion posterior sin sesion: panel, tracker, JS, API funding y administracion
+redirigen a `fulltraining.cloudflareaccess.com` (302). No se ha usado una sesion
+real del usuario para registrar pruebas en produccion. El recorrido funcional y
+la restauracion se probaron en navegadores aislados con SQLite en memoria o una
+IndexedDB de prueba nueva, sin modificar perfiles personales.
+
 Pruebas de calculo: libro vacio, ciclo completo, pendientes, resets, renovaciones,
 reembolsos, splits/comisiones, FX, fechas imposibles, medias/medianas, cierres,
 drawdown, periodos, importacion idempotente y conflictos de ID.
