@@ -119,6 +119,7 @@ function tobPdfNumberField(doc,field,kind){
 }
 
 async function tobBuildSourcePdf(cli,a,pl,it,preview,returnBytes=false){
+  return tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes);
   const {PDFDocument,StandardFonts,rgb}=PDFLib;
   const doc=await PDFDocument.create(),form=doc.getForm();
   const font=await doc.embedFont(StandardFonts.Helvetica),bold=await doc.embedFont(StandardFonts.HelveticaBold);

@@ -1409,9 +1409,6 @@
       <label class="tob-lbl">Líneas del circuito (una por línea)</label>
       <textarea class="tob-textarea" id="tobEjEditCircLineas" rows="3" placeholder="CURL con BARRA&#10;HIPEREXTENSION&#10;CALF MACHINE"></textarea>
     </div>
-    <div style="font-size:.7rem;color:var(--mute2);margin-top:6px;font-family:DM Mono,monospace;">
-      Los cambios aplican a los 6 microciclos. Si quieres distinto plan por microciclo, edita el JSON desde "Editar ejercicios" (modo avanzado).
-    </div>
     <div style="display:flex;gap:8px;margin-top:18px;justify-content:space-between;">
       <button class="tob-action danger" onclick="tobDeleteCurrentEj()">🗑 Eliminar este ejercicio</button>
       <div style="display:flex;gap:8px;">
@@ -1501,7 +1498,11 @@ DashboardAuth.gate({ section: 'training_online', title: 'Consulta' });
 })();
 </script>
 <script src="biio-source.js"></script>
+<script src="exercise-library.js"></script>
+<script src="routine-support.js"></script>
 <script src="biio-support.js"></script>
 <script src="consulta.js"></script>
+<script src="routine-ui.js"></script>
+<script src="routine-pdf.js"></script>
 </body>
 </html>

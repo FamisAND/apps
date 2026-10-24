@@ -331,6 +331,15 @@ function tobRutinaChartItems(rutina){
         });
       } else {
         items.push({ key: ej.id, name: ej.nombre, ej, entId: en.id, lineIdx: null });
+        const names=new Set();
+        for(const client of tobDB.clientes||[])for(const a of client.asignaciones||[]){
+          if(!(a.rutina?.entrenos||[]).includes(en))continue;
+          for(const it of a.iteraciones||[])for(const entries of Object.values(it.sesiones||{})){
+            const name=entries?.[en.id]?.ejs?.[ej.id]?.prescripcion?.nombre;
+            if(name&&name!==ej.nombre)names.add(name);
+          }
+        }
+        [...names].sort().forEach((name,i)=>items.push({key:ej.id+'_variant_'+i,name,ej:{...ej,nombre:name,_routineBaseName:ej.nombre},entId:en.id,lineIdx:null}));
       }
     });
   });
@@ -341,9 +350,10 @@ function tobEjRowsFromSesion(ses, ej, lineIdx){
   if(!ses || !ej) return [];
   const data = ses.ejs?.[ej.id];
   if(!data) return [];
+  if(lineIdx==null && FTRoutine.resultName(ej,data)!==ej.nombre)return [];
   if(lineIdx != null){
-    const sr = data.lineas?.[lineIdx];
-    return sr ? [sr] : [];
+    const count=ej.circuitoLineas?.length||1;
+    return (data.lineas||[]).filter((row,index)=>index%count===lineIdx);
   }
   return data.series || [];
 }
@@ -1022,7 +1032,7 @@ function tobCreateAsignacion(plantId){
   return {
     id: tobUid('asig'),
     plantillaId: plantId,
-    fechaInicio: new Date().toISOString().slice(0,10),
+    fechaInicio: FTRoutine.localToday(),
     estado: 'en_curso',
     notas: '',
     // Copia el numMicro de la plantilla (3-7) para que la asignación use las
@@ -1159,7 +1169,7 @@ function tobOpenAsignarModal(cli){
       if(!existente.iteraciones) existente.iteraciones = [];
       const num = existente.iteraciones.length
         ? Math.max(...existente.iteraciones.map(i => i.numero || 0)) + 1 : 1;
-      const it = { id: tobUid('it'), numero: num, fechaInicio: new Date().toISOString().slice(0,10), sesiones: {} };
+      const it = { id: tobUid('it'), numero: num, fechaInicio: FTRoutine.localToday(), sesiones: {} };
       existente.iteraciones.push(it);
       existente.estado = 'en_curso'; // vuelve a estar activa: la está entrenando otra vez
       tobSave();
@@ -1248,6 +1258,7 @@ function tobOpenPlantillaModal(pl){
   document.getElementById('tobPlSexo').value = pl?.sexo || 'H';
   document.getElementById('tobPlDescripcion').value = pl?.descripcion || '';
   document.getElementById('tobPlDef').value = pl ? tobPlantillaToText(pl) : '';
+  document.getElementById('tobPlDef').readOnly=!!pl;
   document.getElementById('tobPlantillaModalBg').dataset.editId = pl?.id || '';
   // Mostrar el editor por-ejercicio solo si la plantilla ya existe (tiene id)
   const wrap = document.getElementById('tobPlEjListWrap');
@@ -1307,6 +1318,13 @@ function tobSavePlantilla(){
   const categoria = document.getElementById('tobPlCategoria').value;
   const sexo = document.getElementById('tobPlSexo').value;
   const descripcion = document.getElementById('tobPlDescripcion').value.trim();
+  const existingId=document.getElementById('tobPlantillaModalBg').dataset.editId;
+  if(existingId){
+    const existing=tobDB.plantillas.find(p=>p.id===existingId);if(!existing){tobToast('Plantilla no encontrada','red');return;}
+    if(document.getElementById('tobPlDef').value!==tobPlantillaToText(existing)){tobToast('Edita cada ejercicio y su microciclo desde el editor; no se reemplazará la estructura existente.','red');return;}
+    Object.assign(existing,{macrociclo,nombre,categoria,sexo,descripcion});
+    if(!tobSave())return;tobClosePlantillaModal();tobRenderPlantillas();return;
+  }
   const entrenos = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
   if(!entrenos.length){ tobToast('Define al menos un ejercicio', 'red'); return; }
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
@@ -1440,7 +1458,7 @@ function tobSetIt(id){ tobCurrentItId = id; tobRenderItTabs(); tobRenderEntreno(
 function tobAddIteracion(){
   const a = tobAsig(); if(!a) return;
   const num = Math.max(...a.iteraciones.map(i => i.numero)) + 1;
-  const it = { id: tobUid('it'), numero: num, fechaInicio: new Date().toISOString().slice(0,10), sesiones: {} };
+  const it = { id: tobUid('it'), numero: num, fechaInicio: FTRoutine.localToday(), sesiones: {} };
   a.iteraciones.push(it);
   tobCurrentItId = it.id;
   tobSave();
@@ -1490,6 +1508,8 @@ function tobRenderEntreno(){
   if(!en){ document.getElementById('tobEntContent').innerHTML = '<div class="tob-card">Selecciona un entreno</div>'; return; }
 
   const it = tobIt();
+  if(tobRoutineMode==='client'){tobRoutineRenderClient(en,it);return;}
+  const chartSection=document.getElementById('tobChartsGrid')?.closest('.tob-card');if(chartSection)chartSection.hidden=false;
   const microHeaders = Array.from({length: en.numMicro || tobNumMicroOf(a.rutina)}, (_,i) => i+1);
   const micros = microHeaders.map(n => `${n}º`);
 
@@ -1498,11 +1518,10 @@ function tobRenderEntreno(){
   // Fila de fechas en cabecera de la sección
   const fechasRow = microHeaders.map(mn => {
     const s = it ? (it.sesiones[mn]?.[en.id]) : null;
-    return `<td class="micro-col"><input class="fecha" type="date" value="${s?.fecha||''}"
-      onchange="tobSetFecha(${mn},'${en.id}',this.value)"></td>`;
+    return `<td class="micro-col">${tobRoutineDateInput(it,a,mn,en.id)}</td>`;
   }).join('');
 
-  let html = `<div class="tob-card">
+  let html = tobRoutineTools(en)+`<div class="tob-card">
     <table class="tob-ej-grid">
       <thead><tr>
         <th class="row-lbl" style="width:170px;">Fecha</th>
@@ -1543,12 +1562,14 @@ function tobRenderEntreno(){
   </div>`;
 
   document.getElementById('tobEntContent').innerHTML = tobMigrationNotice(a) + html;
+  window.FTIcons?.refresh();
 }
 
 function tobRenderEjBlock(ej, en, microHeaders, it){
+  const planFor=mn=>tobRoutinePlan(ej,mn,it,en.id);
   // Plan por microciclo (fila plan)
   const planRow = microHeaders.map(mn => {
-    const plan = tobPlanFor(ej, mn);
+    const plan = planFor(mn);
     return `<td class="micro-col">${tobEsc(tobPlanLabel(plan))}</td>`;
   }).join('');
 
@@ -1556,14 +1577,14 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
   // Estilo Full Training: muestra 3 valores apilados de reps target (15/12/10 → 15, 12, 10 en celdas separadas?
   // Mejor: ponerlos en una sola celda como "15 / 12 / 10" en plan row. Ya está.
 
-  const seriesN = Math.max(0, ...microHeaders.map(mn => tobPlanFor(ej, mn).series ?? 3));
+  const seriesN = Math.max(0, ...microHeaders.map(mn => Math.max(planFor(mn).series??0,it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.series?.length||0)));
   const rows = [];
 
   // Filas de series (kg + rep por columna)
   for(let s = 0; s < seriesN; s++){
     const cells = microHeaders.map(mn => {
-      const plan = tobPlanFor(ej, mn);
-      if(s >= plan.series) return `<td class="micro-col" style="color:var(--mute2)">—</td>`;
+      const plan = planFor(mn);
+      if(s >= plan.series && !it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.series?.[s]) return `<td class="micro-col" style="color:var(--mute2)">—</td>`;
       const ses = it ? (it.sesiones[mn]?.[en.id]) : null;
       const sr = ses?.ejs?.[ej.id]?.series?.[s] || { kg:null, reps:null };
       const repsTarget = Array.isArray(plan.repsTarget) ? (plan.repsTarget[s] || plan.repsTarget[0]) : plan.repsTarget;
@@ -1583,11 +1604,11 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
   let bodyRows;
   if(ej.tipo === 'circuito' && Array.isArray(ej.circuitoLineas) && ej.circuitoLineas.length){
     // Una fila por ejercicio del circuito
-    const rounds = ej.source ? Math.max(1,...microHeaders.map(mn=>tobPlanFor(ej,mn).recordSlots||0)) : 1;
+    const rounds = Math.max(1,...microHeaders.map(mn=>Math.max(ej.source?planFor(mn).recordSlots||0:1,Math.ceil((it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.lineas?.length||0)/ej.circuitoLineas.length))));
     const circuitRows = Array.from({length:rounds},(_,round)=>ej.circuitoLineas.map(name=>rounds>1?`${round+1}ª · ${name}`:name)).flat();
     bodyRows = circuitRows.map((lineaName, i) => {
       const cells = microHeaders.map(mn => {
-        if(ej.source && i >= (tobPlanFor(ej,mn).recordSlots||0)*ej.circuitoLineas.length) return '<td>—</td>';
+        if(ej.source && i >= (planFor(mn).recordSlots||0)*ej.circuitoLineas.length && !it?.sesiones?.[mn]?.[en.id]?.ejs?.[ej.id]?.lineas?.[i]) return '<td>—</td>';
         const ses = it ? (it.sesiones[mn]?.[en.id]) : null;
         const sr = ses?.ejs?.[ej.id]?.lineas?.[i] || { kg:null, reps:null };
         return `<td class="micro-col">
@@ -1607,14 +1628,15 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
 
   // Plan label row con detalles de reps target
   const planDetail = microHeaders.map(mn => {
-    const plan = tobPlanFor(ej, mn);
+    const plan = planFor(mn);
     const repsArr = Array.isArray(plan.repsTarget) ? plan.repsTarget : [plan.repsTarget];
-    return `<td class="micro-col">${tobEsc(tobPlanLabel(plan))}${plan.indicaciones ? `<details><summary>Indicaciones y carga</summary>${tobEsc(plan.indicaciones)}</details>` : ''}</td>`;
+    const effective=FTRoutine.effective(ej,mn,it,en.id);
+    return `<td class="micro-col"><strong>${tobEsc(effective.nombre)}</strong><br>${tobEsc(tobPlanLabel(plan))}${plan.porcentaje?' · '+tobEsc(plan.porcentaje):''}${plan.indicaciones ? `<details><summary>Indicaciones y carga</summary>${tobEsc(plan.indicaciones)}</details>` : ''}<button class="routine-icon" title="Editar solo microciclo ${mn}" aria-label="Editar microciclo ${mn} ${tobEsc(effective.nombre)}" onclick="tobRoutineOpenEditor('${en.id}','${ej.id}',${mn})"><span data-ft-icon="edit"></span></button></td>`;
   }).join('');
 
   // Pausa row
   const pausaRow = microHeaders.map(mn => {
-    const plan = tobPlanFor(ej, mn);
+    const plan = planFor(mn);
     return `<td class="micro-col">${tobEsc(plan.pausa||'—')}</td>`;
   }).join('');
 
@@ -1626,7 +1648,6 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
       <span class="tob-ej-name">${tobEsc(ej.nombre)}</span>
       ${tipoLabel}
       ${subTitle}
-      <button class="tob-action ghost" style="margin-left:auto;padding:4px 10px;font-size:.7rem;" onclick="tobOpenEjEditor('${en.id}','${ej.id}')" title="Editar este ejercicio (renombrar, cambiar plan, eliminar) — preserva los datos registrados">✏️ Editar</button>
     </div>
     <table class="tob-ej-grid">
       <thead><tr>
@@ -1824,6 +1845,8 @@ function tobRenderCharts(){
 
 // ═══ PDF (igual que antes, simplificado) ═══
 async function tobGeneratePdf(){
+  if(!tobAsig()){tobToast('Abre una rutina antes','red');return;}
+  return tobBuildVisualRoutinePdf(tobDB.clientes.find(c=>c.id===tobCurrentAsig?.clienteId),tobAsig(),tobDB.plantillas.find(p=>p.id===tobAsig()?.plantillaId),tobIt(),false);
   const a = tobAsig(); if(!a){ tobToast('Sin rutina abierta', 'red'); return; }
   const cli = tobDB.clientes.find(c => c.id === tobCurrentAsig.clienteId);
   const pl = tobDB.plantillas.find(p => p.id === a.plantillaId);
@@ -1953,6 +1976,7 @@ function tobHandlePdfFile(ev){ const f=ev.target.files[0]; if(f) tobReadPdfFile(
 // Accepta: ISO (aaaa-mm-dd), dd/mm/aaaa, dd-mm-aaaa, dd.mm.aaaa, any de 2 dígits i aaaa/mm/dd.
 // Si no reconeix el format, retorna el valor tal qual (no destrueix dades).
 function tobNormalizeFecha(v){
+  if(window.FTRoutine)return FTRoutine.fullDate(v)||v;
   if(!v) return v;
   v = String(v).trim();
   let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);                     // ISO
@@ -1965,6 +1989,8 @@ function tobNormalizeFecha(v){
 }
 
 async function tobReadPdfFile(file){
+  if(typeof tobImportRoutinePdf!=='function'){tobToast('No se ha cargado el importador seguro. Recarga antes de importar.','red');return;}
+  return tobImportRoutinePdf(file);
   const a = tobAsig(); if(!a){ tobToast('Abre una rutina antes', 'red'); return; }
   const it = tobIt(); if(!it){ tobToast('Sin iteración activa', 'red'); return; }
   const status = document.getElementById('tobPdfStatus');
@@ -2055,6 +2081,9 @@ function tobGetSesionIt(it, microNum, entId){
 
 // ═══ EDITAR rutina (la copia editable del cliente) ═══
 function tobOpenEditPlantilla(){
+  tobRoutineSetMode('matrix');
+  document.getElementById('tobEntContent').scrollIntoView({behavior:'smooth',block:'start'});
+  return;
   const a = tobAsig(); if(!a) return;
   // Hacemos modal de edición usando el mismo modal de plantilla pero con identificador especial
   // que indica que es rutina del cliente, no plantilla maestra
@@ -2074,6 +2103,7 @@ const _origSavePl = tobSavePlantilla;
 tobSavePlantilla = function(){
   const editId = document.getElementById('tobPlantillaModalBg').dataset.editId;
   if(editId === '__asig__'){
+    tobToast('Utiliza el ajuste de cada microciclo. No se reemplazará la estructura de la rutina.','red');return;
     const a = tobAsig(); if(!a){ tobClosePlantillaModal(); return; }
     const parsed = tobParsePlantillaDef(document.getElementById('tobPlDef').value);
     if(!parsed.length){ tobToast('Sin ejercicios', 'red'); return; }
@@ -3434,11 +3464,7 @@ function tobBuildFichaData(cli){
   // la ficha — la idea es centrar el control de progresión.
   const ejNames = new Set();
   (cli.asignaciones||[]).forEach(a => {
-    (a.rutina?.entrenos||[]).forEach(en => {
-      (en.ejercicios||[]).forEach(ej => {
-        if(_tobEjEnGrafica(ej)) ejNames.add(ej.nombre);
-      });
-    });
+    for(const item of tobRutinaChartItems(a.rutina))if(_tobEjEnGrafica(item.ej))ejNames.add(item.name);
   });
   // Para cada ejercicio: lista de {kg, fecha, asigLabel} de cada rutina-iteración
   const ejHistory = {};
@@ -3463,7 +3489,8 @@ function tobBuildFichaData(cli){
             const series = s.ejs?.[ej.id]?.series;
             if(!series) return;
             series.forEach(sr => {
-              if((sr.kg||0) > (ejMaxIt[ej.nombre]||0)) ejMaxIt[ej.nombre] = sr.kg;
+              const name=FTRoutine.resultName(ej,s.ejs?.[ej.id]);
+              if((sr.kg||0) > (ejMaxIt[name]||0)) ejMaxIt[name] = sr.kg;
             });
           });
           if(s.fecha && s.fecha > lastFecha) lastFecha = s.fecha;
@@ -4760,6 +4787,7 @@ async function tobDownloadPlantillaPdf(plantId){
 }
 
 async function tobBuildPdfRutina(cli, a, pl, it, preview){
+  return tobBuildVisualRoutinePdf(cli,a,pl,it,preview);
   if(a.rutina?.entrenos?.some(en=>en.ejercicios?.some(ej=>ej.source))) return tobBuildSourcePdf(cli,a,pl,it,preview);
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
@@ -5203,8 +5231,9 @@ function tobBuildEjChartConfigByName(cli, ejNombre){
           const en = a.rutina?.entrenos.find(e => e.id === entId);
           if(!en) return;
           en.ejercicios.forEach(ej => {
-            if(ej.nombre !== ejNombre || ej.tipo === 'circuito') return;
-            const best = tobEjBestSetScoreFromSesion(s, ej, null);
+            const name=FTRoutine.resultName(ej,s.ejs?.[ej.id]);
+            if(name !== ejNombre || ej.tipo === 'circuito') return;
+            const best = tobEjBestSetScoreFromSesion(s, {...ej,nombre:name,_routineBaseName:ej.nombre}, null);
             if(!best || !s.fecha) return;
             points.push({ fecha: s.fecha, val: best.e1rm, ...best });
           });
@@ -5516,8 +5545,7 @@ async function tobBuildPdfHistorico(cli){
     // gráfica en el PDF. El resto del trabajo del cliente sigue ahí dentro
     // de cada sesión, pero no satura el histórico con accesorios.
     const ejNamesSet = new Set();
-    (cli.asignaciones||[]).forEach(a => (a.rutina?.entrenos||[]).forEach(en =>
-      (en.ejercicios||[]).forEach(ej => { if(_tobEjEnGrafica(ej)) ejNamesSet.add(ej.nombre); })));
+    (cli.asignaciones||[]).forEach(a => {for(const item of tobRutinaChartItems(a.rutina))if(_tobEjEnGrafica(item.ej))ejNamesSet.add(item.name);});
     const volChartItems = [];
     [...ejNamesSet].forEach(name => {
       const cfg = tobBuildEjChartConfigByName(cli, name);
@@ -5604,6 +5632,8 @@ function tobCalcPeriodo(cli){
 let _tobEditingEj = null;   // { context, plantillaId?, entrenoId, ejId, isNew }
 
 function tobOpenEjEditor(entrenoId, ejId){
+  if(ejId){tobRoutineOpenEditor(entrenoId,ejId,tobRoutineMicro);return;}
+  if(!confirm('Añadir una posición al plan base de este cliente afecta a todos sus microciclos e iteraciones. Para modificar una sesión, utiliza su lápiz. ¿Añadir al plan base?'))return;
   // Contexto: asignación
   const a = tobAsig(); if(!a) return;
   const en = a.rutina.entrenos.find(e => e.id === entrenoId); if(!en) return;
@@ -5622,20 +5652,29 @@ function tobOpenEjEditorPlantilla(plantillaId, entrenoId, ejId){
 }
 
 function _tobFillEjEditorForm(ej, en){
+  let selector=document.getElementById('tobEjEditMicro');
+  if(!selector){const label=document.createElement('label');label.className='tob-lbl';label.textContent='Microciclo de la plantilla ';selector=document.createElement('select');selector.id='tobEjEditMicro';selector.className='tob-select';label.append(selector);document.getElementById('tobEjEditorTitle').after(label);}
+  const pl=_tobEditingEj.context==='plantilla'?tobDB.plantillas.find(p=>p.id===_tobEditingEj.plantillaId):tobAsig()?.rutina;
+  const mn=_tobEditingEj.micro||1;
+  selector.innerHTML=Array.from({length:en.numMicro||tobNumMicroOf(pl)},(_,i)=>`<option value="${i+1}" ${i+1===mn?'selected':''}>${i+1}</option>`).join('');
+  selector.parentElement.hidden=!ej;
+  selector.onchange=()=>{if(!confirm('Cambiar de microciclo descartará los campos que no hayas guardado. ¿Continuar?')){selector.value=String(mn);return;}_tobEditingEj.micro=Number(selector.value);_tobFillEjEditorForm(ej,en);};
   document.getElementById('tobEjEditorTitle').textContent = ej ? `Editar: ${ej.nombre}` : `Añadir ejercicio a Entreno ${en.letra}`;
   document.getElementById('tobEjEditName').value = ej?.nombre || '';
   document.getElementById('tobEjEditTipo').value = ej?.tipo || 'normal';
   document.getElementById('tobEjEditSub').value = ej?.subtitle || '';
-  const plan = ej ? tobPlanFor(ej, 1) : { series: 3, repsTarget: [10], pausa: '' };
+  const plan = ej ? tobPlanFor(ej, mn) : { series: 3, repsTarget: [10], pausa: '' };
   document.getElementById('tobEjEditSeries').value = plan.series ?? 3;
   document.getElementById('tobEjEditReps').value = Array.isArray(plan.repsTarget) ? plan.repsTarget.join('/') : (plan.repsTarget || '');
   document.getElementById('tobEjEditPausa').value = plan.pausa || '';
   document.getElementById('tobEjEditCircLineas').value = (ej?.circuitoLineas || []).join('\n');
   tobEjEditorTipoChange();
   document.getElementById('tobEjEditorBg').classList.add('on');
+  if(typeof tobRoutineTemplateValues==='function')_tobEditingEj.initial=JSON.stringify(tobRoutineTemplateValues());
 }
 
-function tobCloseEjEditor(){
+function tobCloseEjEditor(force=false){
+  if(!force&&typeof tobRoutineTemplateDirty==='function'&&tobRoutineTemplateDirty()&&!confirm('¿Descartar los cambios de la plantilla sin guardar?'))return;
   _tobEditingEj = null;
   document.getElementById('tobEjEditorBg').classList.remove('on');
 }
@@ -5664,7 +5703,8 @@ function tobSaveEj(){
   if(!nombre){ tobToast('Falta el nombre', 'red'); return; }
   const tipo = document.getElementById('tobEjEditTipo').value;
   const subtitle = document.getElementById('tobEjEditSub').value.trim();
-  const series = parseInt(document.getElementById('tobEjEditSeries').value) || 3;
+  const series = Number(document.getElementById('tobEjEditSeries').value);
+  if(!Number.isInteger(series)||series<0||series>30){tobToast('Series: entero entre 0 y 30','red');return;}
   const repsRaw = document.getElementById('tobEjEditReps').value.trim();
   const repsTarget = repsRaw.split('/').map(s => s.trim()).filter(Boolean);
   const pausa = document.getElementById('tobEjEditPausa').value.trim();
@@ -5677,7 +5717,7 @@ function tobSaveEj(){
     ? tobDB.plantillas.find(p => p.id === _tobEditingEj.plantillaId)
     : tobAsig()?.rutina;
   const planByMicro = {};
-  for(let mn=1; mn<=tobNumMicroOf(_ctx); mn++){
+  for(let mn=1; mn<=(en.numMicro||tobNumMicroOf(_ctx)); mn++){
     planByMicro[mn] = { series, repsTarget, pausa };
   }
 
@@ -5689,21 +5729,23 @@ function tobSaveEj(){
       circuitoLineas: circLineas || undefined,
       planByMicro
     });
-    tobToast('✓ Ejercicio añadido', 'green');
   } else {
     const ej = en.ejercicios.find(x => x.id === _tobEditingEj.ejId); if(!ej) return;
     ej.nombre = nombre;
     ej.subtitle = subtitle;
     ej.tipo = tipo;
     if(tipo === 'circuito') ej.circuitoLineas = circLineas; else delete ej.circuitoLineas;
-    ej.planByMicro = planByMicro;
-    delete ej.planBase;
-    tobToast('✓ Ejercicio actualizado', 'green');
+    const mn=_tobEditingEj.micro||1,oldPlan=tobPlanFor(ej,mn);
+    const changes={};
+    if(series!==oldPlan.series)changes.series=series;
+    if(JSON.stringify(repsTarget)!==JSON.stringify((Array.isArray(oldPlan.repsTarget)?oldPlan.repsTarget:[oldPlan.repsTarget]).map(String)))changes.repsTarget=repsTarget;
+    if(pausa!==oldPlan.pausa)changes.pausa=pausa;
+    if(Object.keys(changes).length){ej.planByMicro||={};ej.planByMicro[mn]={...oldPlan,...changes};if(changes.series!==undefined||changes.repsTarget)delete ej.planByMicro[mn].label;}
   }
-  tobSave();
+  if(!tobSave())return;
   const ctx = _tobEditingEj.context;
   const plId = _tobEditingEj.plantillaId;
-  tobCloseEjEditor();
+  tobCloseEjEditor(true);
   // Re-render según contexto
   if(ctx === 'plantilla'){
     const pl = tobDB.plantillas.find(p => p.id === plId);
@@ -5749,6 +5791,7 @@ function tobAddEjToPlantilla(plantillaId, entrenoId){
 
 // Render lista de ejercicios dentro del modal de plantilla
 function tobRenderPlEjList(pl){
+  if(document.getElementById('tobPlantillaModalBg').dataset.editId===pl.id)document.getElementById('tobPlDef').value=tobPlantillaToText(pl);
   const cont = document.getElementById('tobPlEjList');
   if(!cont) return;
   if(!pl || !pl.entrenos || !pl.entrenos.length){
@@ -6946,7 +6989,7 @@ function tobExportClienteExcel(cliId){
   // ── HOJA 3: Rutinas (sesiones, una fila por serie) ───────────
   const rutHeader = [
     'Rutina','Inici','Estat','Iteració','Microcicle','Entreno','Data sessió',
-    'Exercici','Sèrie / línia','Kg','Reps','Volum (kg×reps)'
+    'Exercici','Sèrie / línia','Kg','Reps','Volum (kg×reps)','Pla','Percentatge','Descans','Indicacions'
   ];
   const rutRows = [rutHeader];
   (cli.asignaciones || []).forEach(a => {
@@ -6966,12 +7009,16 @@ function tobExportClienteExcel(cliId){
               const reps = sr.reps ?? '';
               const vol = (sr.kg != null && sr.reps != null) ? +(sr.kg * sr.reps).toFixed(1) : '';
               const lblSerie = ej.tipo === 'circuito'
-                ? (ej.circuitoLineas?.[ix] || ('Línia '+(ix+1)))
+                ? (`${Math.floor(ix/(ej.circuitoLineas?.length||1))+1} · `+(ej.circuitoLineas?.[ix%(ej.circuitoLineas?.length||1)] || ('Línia '+(ix+1))))
                 : ('Sèrie '+(ix+1));
               rutRows.push([
                 rutName, a.fechaInicio || '', a.estado || 'en curs',
                 'It. '+(it.numero || 1), Number(mn), entLbl,
-                ses.fecha || '', ej.nombre || '', lblSerie, kg, reps, vol
+                ses.fecha || '', FTRoutine.resultName(ej,datos), lblSerie, kg, reps, vol,
+                tobPlanLabel(FTRoutine.effective(ej,Number(mn),it,entId).plan),
+                FTRoutine.effective(ej,Number(mn),it,entId).plan.porcentaje||'',
+                FTRoutine.effective(ej,Number(mn),it,entId).plan.pausa||'',
+                FTRoutine.effective(ej,Number(mn),it,entId).plan.indicaciones||''
               ]);
             });
           });
@@ -7002,9 +7049,10 @@ function tobExportClienteExcel(cliId){
             const series = ses.ejs?.[ej.id]?.series || [];
             series.forEach(sr => {
               if(sr.kg == null) return;
-              const cur = prMap[ej.nombre];
+              const name=FTRoutine.resultName(ej,ses.ejs?.[ej.id]);
+              const cur = prMap[name];
               if(!cur || sr.kg > cur.kg){
-                prMap[ej.nombre] = { kg: sr.kg, fecha: ses.fecha || '', rutina: rutName, it: it.numero || 1 };
+                prMap[name] = { kg: sr.kg, fecha: ses.fecha || '', rutina: rutName, it: it.numero || 1 };
               }
             });
           });

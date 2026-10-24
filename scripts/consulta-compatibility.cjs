@@ -15,6 +15,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     const page=await context.newPage();
     await page.goto('http://127.0.0.1:'+server.address().port);
     await page.evaluate(raw=>{localStorage.setItem('tob_online_v2',raw);window.GitHubSync={ready:Promise.resolve(false)};},raw);
+    await page.addScriptTag({path:path.join(__dirname,'..','routine-support.js')});
     await page.addScriptTag({content:source});
     await page.evaluate(async()=>{tobRenderClientes=()=>{};tobRenderPlantillas=()=>{};await tobLoad();});
     assert.equal(await page.evaluate(()=>localStorage.getItem('tob_online_v2')),raw);
