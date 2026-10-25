@@ -1,12 +1,7 @@
 /* Optional routine presentation and per-session prescriptions. No startup writes. */
-let tobRoutineMode='client',tobRoutineMicro=1,tobRoutineEditor=null;
+let tobRoutineMicro=1,tobRoutineEditor=null;
 function tobRoutinePlan(ej,mn,it,entId){return FTRoutine.effective(ej,mn,it,entId).plan;}
 function tobRoutineMovement(ej){return FTExercises.resolve(ej.nombre,tobDB.exerciseAliases||{},ej.libraryId);}
-function tobRoutineTools(en){
-  const total=en.numMicro||tobNumMicroOf(tobAsig().rutina);tobRoutineMicro=Math.max(1,Math.min(tobRoutineMicro,total));
-  return `<div class="routine-tools"><div class="routine-segments" role="group" aria-label="Vista de rutina">${[['client','Vista cliente'],['matrix','Todos los microciclos']].map(([v,l])=>`<button class="${tobRoutineMode===v?'on':''}" onclick="tobRoutineSetMode('${v}')">${l}</button>`).join('')}</div><label>Microciclo <select aria-label="Microciclo activo" onchange="tobRoutineMicro=Number(this.value);tobRenderEntreno()">${Array.from({length:total},(_,i)=>`<option ${i+1===tobRoutineMicro?'selected':''}>${i+1}</option>`).join('')}</select></label></div>`;
-}
-function tobRoutineSetMode(mode){tobRoutineMode=mode;tobRenderEntreno();}
 function tobRoutineDateInput(it,a,mn,entId){
   const value=it?.sesiones?.[mn]?.[entId]?.fecha||'';
   return `<input class="routine-date" type="text" inputmode="numeric" maxlength="10" aria-label="Fecha microciclo ${mn}" placeholder="DD/MM" title="${tobEsc(value||'DD/MM; admite DD/MM/AAAA para confirmar el año')}" value="${tobEsc(FTRoutine.shortDate(value))}" onchange="tobRoutineSetDate(${mn},'${entId}',this)">`;
@@ -23,30 +18,24 @@ function tobRoutinePhotos(movement){
   if(!movement)return '<span class="routine-unmatched">Ejercicio sin asociar</span>';
   return `<div class="routine-photos">${movement.images.map((src,i)=>`<figure><img src="${src}" alt="${tobEsc(movement.name)}: ${i?'posición final':'posición inicial'}" loading="lazy" width="575" height="305"><figcaption>${i?'Final':'Inicio'}</figcaption></figure>`).join('')}</div>`;
 }
-function tobRoutineRenderClient(en,it){
-  const chartSection=document.getElementById('tobChartsGrid')?.closest('.tob-card');if(chartSection)chartSection.hidden=true;
-  const a=tobAsig(),mn=tobRoutineMicro,s=it?.sesiones?.[mn]?.[en.id];
-  let html=tobRoutineTools(en)+`<section class="routine-session"><h3>${tobEsc(en.nombre||en.letra)} · Microciclo ${mn}</h3><div class="routine-session-row"><label>Fecha ${tobRoutineDateInput(it,a,mn,en.id)}</label><span>${tobEsc(en.indicaciones?.[mn]||'')}</span></div></section>`;
-  for(const original of [...(en.ejercicios||[])].sort((a,b)=>(a.orden||0)-(b.orden||0))){
-    const ej=FTRoutine.effective(original,mn,it,en.id),plan=ej.plan,movement=tobRoutineMovement(ej),record=s?.ejs?.[ej.id];
-    const circuit=ej.tipo==='circuito',arr=circuit?'lineas':'series';
-    const programmed=circuit?(original.source?(plan.recordSlots||0)*(ej.circuitoLineas?.length||0):(ej.circuitoLineas?.length||0)):(plan.series||0);
-    const count=Math.max(programmed,record?.[arr]?.length||0);
-    html+=`<article class="routine-exercise"><header><div><h4>${tobEsc(ej.nombre)}</h4><span class="routine-equipment">${tobEsc(movement?.equipment||'')}</span></div><button class="routine-icon" title="Editar solo este microciclo" aria-label="Editar ${tobEsc(ej.nombre)} solo microciclo ${mn}" onclick="tobRoutineOpenEditor('${en.id}','${ej.id}',${mn})"><span data-ft-icon="edit"></span></button></header>
-      ${tobRoutinePhotos(movement)}
-      <div class="routine-prescription"><strong>${tobEsc(tobPlanLabel(plan))}</strong>${plan.porcentaje?`<strong>${tobEsc(plan.porcentaje)}</strong>`:''}<span>Descanso: ${tobEsc(plan.pausa||'Sin indicación')}</span>${['cargaObjetivo','rir','rpe','tempo'].map(k=>plan[k]?`<span>${{cargaObjetivo:'Carga',rir:'RIR',rpe:'RPE',tempo:'Tempo'}[k]}: ${tobEsc(plan[k])}</span>`:'').join('')}</div>
-      ${ej.subtitle||plan.indicaciones?`<div class="routine-coach"><b>Entrenador</b><p>${tobEsc([ej.subtitle,plan.indicaciones].filter(Boolean).join('\n'))}</p></div>`:''}
-      ${movement?`<details class="routine-technique"><summary>Cómo hacerlo</summary><p>${tobEsc(movement.technique)}</p></details>`:''}
-      ${circuit?`<p>${(ej.circuitoLineas||[]).map(tobEsc).join(' / ')}</p>`:''}
-      ${circuit?`<div class="routine-circuit-guides">${(ej.circuitoLineas||[]).map(name=>{const guide=FTExercises.resolve(name,tobDB.exerciseAliases||{});return `<details class="routine-technique"><summary>${tobEsc(name)}</summary>${tobRoutinePhotos(guide)}${guide?`<p>${tobEsc(guide.technique)}</p>`:''}</details>`;}).join('')}</div>`:''}
-      <table class="routine-results"><thead><tr><th>${circuit?'Ronda / ejercicio':'Serie'}</th><th>Objetivo</th><th>Kg</th><th>Reps</th></tr></thead><tbody>${Array.from({length:count},(_,i)=>{
-        const row=record?.[arr]?.[i]||{},targetIndex=circuit?Math.floor(i/(ej.circuitoLineas?.length||1)):i,target=Array.isArray(plan.repsTarget)?(plan.repsTarget[targetIndex]??plan.repsTarget[0]):plan.repsTarget;
-        const label=circuit?`${Math.floor(i/(ej.circuitoLineas?.length||1))+1} · ${ej.circuitoLineas?.[i%(ej.circuitoLineas?.length||1)]||''}`:`${i+1}`;
-        return `<tr><th>${tobEsc(label)}${i>=programmed?' (hist.)':''}</th><td>${tobEsc(i<programmed?target||'—':'—')}</td>${['kg','reps'].map(k=>`<td><input aria-label="${k} serie ${i+1} ${tobEsc(ej.nombre)}" type="text" inputmode="${k==='kg'?'decimal':'numeric'}" data-tob-number="${k}" value="${tobEsc(row[k]??'')}" onchange="tobSetEjVal('${ej.id}','${en.id}',${mn},${i},'${k}',this.value,'${arr}')"></td>`).join('')}</tr>`;
-      }).join('')}</tbody></table><label class="routine-comment">Comentarios<textarea rows="2" onchange="tobSetComment('${ej.id}','${en.id}',${mn},this.value)">${tobEsc(record?.comentario||'')}</textarea></label></article>`;
-  }
-  html+=`<section class="routine-session"><label class="routine-comment">Comentario del día<textarea maxlength="300" rows="2" onchange="tobSetSessionComment('${en.id}',${mn},this.value)">${tobEsc(s?.comentario||'')}</textarea></label><p>Aeróbico: ${tobEsc(en.cardioByMicro?.[mn]?.label||'Sin indicación')}</p><div class="routine-session-row">${['tipo','tiempo','intensidad'].map(k=>`<label>${{tipo:'Tipo',tiempo:'Tiempo',intensidad:'Intensidad'}[k]}<input value="${tobEsc(s?.aerobica?.[k]||'')}" onchange="tobSetAerobica(${mn},'${en.id}','${k}',this.value)"></label>`).join('')}</div></section>`;
-  document.getElementById('tobEntContent').innerHTML=tobMigrationNotice(a)+html;window.FTIcons?.refresh();
+function tobRoutineGuides(a,it){
+  return (a.rutina?.entrenos||[]).map(en=>{
+    const items=new Map(),total=en.numMicro||tobNumMicroOf(a.rutina);
+    for(const base of [...(en.ejercicios||[])].sort((a,b)=>(a.orden||0)-(b.orden||0)))for(let mn=1;mn<=total;mn++){
+      const ej=FTRoutine.effective(base,mn,it,en.id);
+      for(const name of ej.tipo==='circuito'?(ej.circuitoLineas||[]):[ej.nombre]){
+        const movement=ej.tipo==='circuito'?FTExercises.resolve(name,tobDB.exerciseAliases||{}):tobRoutineMovement(ej);
+        const subtitle=ej.tipo==='circuito'?'':ej.subtitle||'',key=(movement?.id||FTExercises.normalize(name))+'|'+subtitle;
+        if(!items.has(key))items.set(key,{name,movement,subtitle,illustration:movement?null:FTExercises.referenceIllustration(name)});
+      }
+    }
+    return {name:en.nombre||'Entreno '+(en.letra||en.id),items:[...items.values()]};
+  });
+}
+function tobRoutineRenderAppendix(a,it){
+  const target=document.getElementById('tobRoutineAppendix');if(!target)return;
+  target.innerHTML=`<header class="routine-appendix-title"><h3>Cómo realizar los ejercicios</h3><a class="routine-icon" href="#tobEntContent" title="Volver al registro" aria-label="Volver al registro"><span data-ft-icon="back"></span></a></header>`+
+    tobRoutineGuides(a,it).map(group=>`<section class="routine-guide-group"><h4>${tobEsc(group.name)}</h4>${group.items.map(({name,movement,subtitle,illustration})=>`<article class="routine-guide"><div class="routine-guide-copy"><h5>${tobEsc(name)}</h5>${subtitle?`<p class="routine-guide-cue">${tobEsc(subtitle)}</p>`:''}${illustration?`<p class="routine-guide-cue">Alternativa ilustrada: ${tobEsc(illustration.name)}</p>`:''}<p>${tobEsc((movement||illustration)?.technique||'Ejercicio sin asociar. Consulta la variante con tu entrenador.')}</p></div>${tobRoutinePhotos(movement||illustration)}</article>`).join('')}</section>`).join('');
 }
 function tobRoutineEditorValues(){
   if(!tobRoutineEditor)return null;

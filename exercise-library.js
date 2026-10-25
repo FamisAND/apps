@@ -23,7 +23,12 @@
     const matches=entries.filter(e=>[e.name,...e.aliases].some(a=>normalize(a)===key));
     return matches.length===1?matches[0]:null;
   }
-  const api={entries,normalize,byId,resolve};
+  // Illustrations of the explicit alternatives in the supplied appendix, not movement aliases.
+  function referenceIllustration(name){
+    const references={'remo o seal row':'chest-supported-row','remo seal row':'chest-supported-row','dominadas o lat machine':'lat-pulldown','dominadas lat machine':'lat-pulldown'};
+    return byId(references[normalize(name)]);
+  }
+  const api={entries,normalize,byId,resolve,referenceIllustration};
   if(typeof module==='object'&&module.exports)module.exports=api;
   root.FTExercises=api;
 })(typeof window==='undefined'?globalThis:window);

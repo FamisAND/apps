@@ -1,7 +1,7 @@
 const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 (async()=>{
-  const root=path.resolve(__dirname,'..'),out=path.resolve(process.argv[2]||'../tmp/routine-qa-20261024');await fs.mkdir(out,{recursive:true});
+  const root=path.resolve(__dirname,'..'),out=path.resolve(process.argv[2]||'../tmp/routine-qa-20261025');await fs.mkdir(out,{recursive:true});
   const modules=process.env.RUNTIME_MODULES||'C:/Users/sergi/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules';
   const browser=await chromium.launch({channel:'msedge',headless:true});let errors=[];
   try{
@@ -29,16 +29,20 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       tobStoredRaw=JSON.stringify(tobDB);localStorage.setItem(TOB_KEY,tobStoredRaw);window.baseline=JSON.stringify(tobDB);
       tobOpenAsignacion('client-test',a.id,'iteration-test');
     });
-    assert.equal(await page.locator('.routine-exercise').count(),await page.evaluate(()=>tobAsig().rutina.entrenos[0].ejercicios.length));
+    assert.equal(await page.locator('#tobEntContent .tob-ej-block').count(),await page.evaluate(()=>tobAsig().rutina.entrenos[0].ejercicios.length));
+    assert.equal(await page.locator('#tobEntContent .routine-date').count(),6);
+    assert.equal(await page.locator('#tobEntContent img').count(),0,'No images mixed into the editable register');
+    assert.equal(await page.locator('.routine-segments,.routine-exercise').count(),0,'No replacement card workflow');
+    assert.equal(await page.evaluate(()=>!!(document.getElementById('tobChartsGrid').compareDocumentPosition(document.getElementById('tobRoutineAppendix'))&Node.DOCUMENT_POSITION_FOLLOWING)),true,'Visual appendix comes after the complete register and charts');
     assert.equal(await page.evaluate(()=>JSON.stringify(tobDB)),await page.evaluate(()=>window.baseline),'opening must not mutate records');
     assert.ok(await page.locator('.routine-photos img').count()>0);
-    await page.locator('.routine-photos img').first().waitFor();assert.ok(await page.locator('.routine-photos img').first().evaluate(el=>el.complete&&el.naturalWidth>500));
-    await page.screenshot({path:path.join(out,'routine-desktop.png'),fullPage:true});
+    await page.locator('.routine-photos img').first().scrollIntoViewIfNeeded();await page.waitForFunction(()=>document.querySelector('.routine-photos img').naturalWidth>500);
+    await page.locator('#tobEntContent').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,'routine-desktop.png')});
     const old=await page.evaluate(()=>JSON.stringify(tobDB));
     await page.evaluate(()=>tobOpenEjEditorPlantilla('template-test','A','ej_A_0'));
     await page.locator('#tobEjEditMicro').selectOption('3');await page.locator('#tobEjEditorBg button').filter({hasText:'Guardar'}).click();
     assert.equal(await page.evaluate(()=>JSON.stringify(tobDB)),old,'opening/saving source micro3 must not flatten plans');
-    await page.evaluate(()=>tobRoutineOpenEditor('A','ej_A_0',3));await page.locator('#routineEditRest').fill('2 minutos');
+    await page.locator('.tob-ej-block').first().locator('.routine-plan-edit').nth(2).click();await page.locator('#routineEditRest').fill('2 minutos');
     await page.locator('#routineEditPercent').fill('70%');
     assert.equal(await page.evaluate(()=>ghHasUnsavedChanges()),true);
     await page.locator('#routineEditName').fill('Prensa 45°');await page.locator('#routineEditLibrary').selectOption('leg-press-45');await page.locator('#routineRememberAlias').check();
@@ -50,18 +54,27 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       const baseline=JSON.parse(window.baseline);if(JSON.stringify(a.rutina)!==JSON.stringify(baseline.clientes[0].asignaciones[0].rutina))throw Error('base changed');
       if(JSON.stringify(tobDB.clientes[1])!==JSON.stringify(baseline.clientes[1]))throw Error('other client changed');
       if(JSON.stringify(a.iteraciones[1])!==JSON.stringify(baseline.clientes[0].asignaciones[0].iteraciones[1]))throw Error('other iteration changed');
-      tobSetEjVal(ej.id,'A',3,0,'kg','80','series');tobSetEjVal(ej.id,'A',3,0,'reps','10','series');
     });
+    const firstBlock=page.locator('.tob-ej-block').first();
+    const kg=firstBlock.locator('input[data-tob-number=kg]').nth(2),reps=firstBlock.locator('input[data-tob-number=reps]').nth(2);
+    assert.equal(await kg.isEditable(),true);assert.equal(await reps.isEditable(),true);
+    await kg.fill('80');await kg.press('Tab');await reps.fill('10');await reps.press('Tab');
+    assert.equal(await page.evaluate(()=>tobIt().sesiones[3].A.ejs.ej_A_0.series[0].kg),80);
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem(TOB_KEY)).clientes[0].asignaciones[0].iteraciones[0].sesiones[3].A.ejs.ej_A_0.series[0].reps),10);
     await page.evaluate(()=>tobRoutineOpenEditor('A','ej_A_0',3));await page.locator('#routineEditName').fill('Peso muerto');await page.locator('#routineEditor button').filter({hasText:'Guardar ajuste'}).click();
     assert.match(await page.locator('#routineEditorError').innerText(),/resultados/);await page.evaluate(()=>tobRoutineCloseEditor(true));
     const scores=await page.evaluate(()=>{const a=tobAsig(),s=tobIt().sesiones[3].A,items=tobRutinaChartItems(a.rutina);return items.filter(x=>x.ej.id==='ej_A_0').map(x=>[x.name,tobEjRowsFromSesion(s,x.ej,null).length]);});
     assert.equal(scores.find(x=>x[0]==='BOX SQUAT')[1],0);assert.equal(scores.find(x=>x[0]==='Prensa 45°')[1],1);
     await page.evaluate(()=>{tobRoutineMicro=3;tobRenderEntreno();});
-    const date=page.locator('.routine-date');await date.fill('02/01');await date.dispatchEvent('change');assert.equal(await page.evaluate(()=>tobIt().sesiones[3].A.fecha),'2027-01-02');
+    const date=page.locator('.routine-date').nth(2);await date.fill('02/01');await date.dispatchEvent('change');assert.equal(await page.evaluate(()=>tobIt().sesiones[3].A.fecha),'2027-01-02');
     await date.fill('31/02');await date.dispatchEvent('change');assert.equal(await page.evaluate(()=>tobIt().sesiones[3].A.fecha),'2027-01-02');await date.fill('02/01');await date.dispatchEvent('change');
-    await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.locator('.routine-session h3').first().click();await page.locator('.routine-exercise').first().screenshot({path:path.join(out,'routine-mobile.png')});
+    await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.locator('.tob-ej-head').first().click();await firstBlock.screenshot({path:path.join(out,'routine-mobile.png')});
+    assert.equal(await firstBlock.evaluate(el=>el.scrollWidth>el.clientWidth),true,'The same matrix scrolls on mobile');
+    await firstBlock.evaluate(el=>{el.scrollLeft=el.scrollWidth;});await firstBlock.screenshot({path:path.join(out,'routine-mobile-last-columns.png')});
     const bytes=await page.evaluate(async()=>Array.from(await tobBuildVisualRoutinePdf(tobDB.clientes[0],tobAsig(),tobDB.plantillas[0],tobIt(),false,true)));
     await fs.writeFile(path.join(out,'routine-synthetic.pdf'),Buffer.from(bytes));
+    const blank=await page.evaluate(async()=>{const original=JSON.parse(window.baseline),cli=original.clientes[0],a=cli.asignaciones[0];return Array.from(await tobBuildVisualRoutinePdf(cli,a,original.plantillas[0],a.iteraciones[0],false,true));});
+    await fs.writeFile(path.join(out,'routine-layout-preview.pdf'),Buffer.from(blank));
     await page.evaluate(async()=>{
       const bytes=await tobBuildVisualRoutinePdf(tobDB.clientes[0],tobAsig(),tobDB.plantillas[0],tobIt(),false,true),pdf=await PDFLib.PDFDocument.load(bytes);
       pdf.getForm().getTextField('fecha_A_1').setText('30/12');pdf.getForm().getTextField('ej_ej_A_0_1_A_series_0_kg').setText('20');
@@ -76,6 +89,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       if(JSON.stringify(tobDB)!==window.beforeBad)throw Error('Wrong iteration mutated database');
     });
     assert.match(await page.locator('#tobPdfStatus').innerText(),/otro cliente, rutina o iteración/);
+    if(process.env.ROUTINE_CLIENT_PDF){
+      const external=await fs.readFile(process.env.ROUTINE_CLIENT_PDF);
+      await page.evaluate(async bytes=>{tobCurrentItId='iteration-test';await tobReadPdfFile(new File([new Uint8Array(bytes)],'client-filled.pdf'));if(tobIt().sesiones[1]?.A?.ejs?.ej_A_0?.series?.[0]?.kg!==42.5)throw Error('Independent client PDF import failed: '+document.getElementById('tobPdfStatus').textContent);},Array.from(external));
+    }
     await page.evaluate(()=>{tobCurrentItId='iteration-test';tobRoutineOpenEditor('A','ej_A_3',3);});
     await page.locator('#routineEditSeries').fill('4');await page.locator('#routineEditor button').filter({hasText:'Guardar ajuste'}).click();
     await page.evaluate(()=>{
@@ -98,7 +115,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       }
       return reports;
     });assert.equal(templateChecks.length,16);await fs.writeFile(path.join(out,'template-pdf-checks.json'),JSON.stringify(templateChecks,null,2));
-    await page.setViewportSize({width:1280,height:950});await page.evaluate(()=>{tobCurrentItId='iteration-test';tobRoutineMode='matrix';tobRenderEntreno();});await page.screenshot({path:path.join(out,'routine-matrix.png'),fullPage:true});
-    assert.deepEqual(errors,[]);console.log('Routine UI: isolated overrides, preserved templates/history, dates, numeric results, identity-safe PDF import and desktop/mobile passed');
+    await page.setViewportSize({width:1280,height:950});await page.evaluate(()=>{tobCurrentItId='iteration-test';tobRenderEntreno();});await page.locator('#tobEntContent').screenshot({path:path.join(out,'routine-matrix.png')});await page.locator('#tobRoutineAppendix').screenshot({path:path.join(out,'routine-appendix.png')});
+    assert.deepEqual(errors,[]);console.log('Original editable matrix restored; appendix last; UI input saving, scoped overrides, history, PDF import and all 16 source exports passed');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error.stack);process.exitCode=1;});

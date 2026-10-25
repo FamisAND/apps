@@ -1508,12 +1508,11 @@ function tobRenderEntreno(){
   if(!en){ document.getElementById('tobEntContent').innerHTML = '<div class="tob-card">Selecciona un entreno</div>'; return; }
 
   const it = tobIt();
-  if(tobRoutineMode==='client'){tobRoutineRenderClient(en,it);return;}
   const chartSection=document.getElementById('tobChartsGrid')?.closest('.tob-card');if(chartSection)chartSection.hidden=false;
   const microHeaders = Array.from({length: en.numMicro || tobNumMicroOf(a.rutina)}, (_,i) => i+1);
   const micros = microHeaders.map(n => `${n}º`);
 
-  const ejercicios = (en.ejercicios||[]).sort((x,y) => (x.orden||0)-(y.orden||0));
+  const ejercicios = [...(en.ejercicios||[])].sort((x,y) => (x.orden||0)-(y.orden||0));
 
   // Fila de fechas en cabecera de la sección
   const fechasRow = microHeaders.map(mn => {
@@ -1521,7 +1520,7 @@ function tobRenderEntreno(){
     return `<td class="micro-col">${tobRoutineDateInput(it,a,mn,en.id)}</td>`;
   }).join('');
 
-  let html = tobRoutineTools(en)+`<div class="tob-card">
+  let html = `<div class="tob-card">
     <table class="tob-ej-grid">
       <thead><tr>
         <th class="row-lbl" style="width:170px;">Fecha</th>
@@ -1562,11 +1561,13 @@ function tobRenderEntreno(){
   </div>`;
 
   document.getElementById('tobEntContent').innerHTML = tobMigrationNotice(a) + html;
+  tobRoutineRenderAppendix(a,it);
   window.FTIcons?.refresh();
 }
 
 function tobRenderEjBlock(ej, en, microHeaders, it){
   const planFor=mn=>tobRoutinePlan(ej,mn,it,en.id);
+  const localNotes=microHeaders.some(mn=>{const effective=FTRoutine.effective(ej,mn,it,en.id);return effective.nombre!==ej.nombre||effective.subtitle!==ej.subtitle;});
   // Plan por microciclo (fila plan)
   const planRow = microHeaders.map(mn => {
     const plan = planFor(mn);
@@ -1631,7 +1632,8 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
     const plan = planFor(mn);
     const repsArr = Array.isArray(plan.repsTarget) ? plan.repsTarget : [plan.repsTarget];
     const effective=FTRoutine.effective(ej,mn,it,en.id);
-    return `<td class="micro-col"><strong>${tobEsc(effective.nombre)}</strong><br>${tobEsc(tobPlanLabel(plan))}${plan.porcentaje?' · '+tobEsc(plan.porcentaje):''}${plan.indicaciones ? `<details><summary>Indicaciones y carga</summary>${tobEsc(plan.indicaciones)}</details>` : ''}<button class="routine-icon" title="Editar solo microciclo ${mn}" aria-label="Editar microciclo ${mn} ${tobEsc(effective.nombre)}" onclick="tobRoutineOpenEditor('${en.id}','${ej.id}',${mn})"><span data-ft-icon="edit"></span></button></td>`;
+    const notes=[localNotes?effective.subtitle:'',plan.indicaciones,...['cargaObjetivo','rir','rpe','tempo'].filter(k=>plan[k]).map(k=>`${{cargaObjetivo:'Carga',rir:'RIR',rpe:'RPE',tempo:'Tempo'}[k]}: ${plan[k]}`)].filter(Boolean).join('\n');
+    return `<td class="micro-col">${effective.nombre!==ej.nombre?`<strong class="routine-local-name">${tobEsc(effective.nombre)}</strong>`:''}<span>${tobEsc(tobPlanLabel(plan))}${plan.porcentaje?' · '+tobEsc(plan.porcentaje):''}</span><button class="routine-icon routine-plan-edit" title="Editar solo microciclo ${mn}" aria-label="Editar microciclo ${mn} ${tobEsc(effective.nombre)}" onclick="tobRoutineOpenEditor('${en.id}','${ej.id}',${mn})"><span data-ft-icon="edit"></span></button>${notes?`<details><summary>Indicaciones y carga</summary><div class="routine-cell-notes">${tobEsc(notes)}</div></details>`:''}</td>`;
   }).join('');
 
   // Pausa row
@@ -1640,7 +1642,7 @@ function tobRenderEjBlock(ej, en, microHeaders, it){
     return `<td class="micro-col">${tobEsc(plan.pausa||'—')}</td>`;
   }).join('');
 
-  const subTitle = ej.subtitle ? `<span class="tob-ej-sub">${tobEsc(ej.subtitle)}</span>` : '';
+  const subTitle = !localNotes&&ej.subtitle ? `<span class="tob-ej-sub">${tobEsc(ej.subtitle)}</span>` : '';
   const tipoLabel = ej.tipo === 'circuito' ? '<span class="tob-ej-sub" style="color:var(--acc2);">· circuito ·</span>' : '';
 
   return `<div class="tob-ej-block">
@@ -2081,7 +2083,7 @@ function tobGetSesionIt(it, microNum, entId){
 
 // ═══ EDITAR rutina (la copia editable del cliente) ═══
 function tobOpenEditPlantilla(){
-  tobRoutineSetMode('matrix');
+  tobRenderEntreno();
   document.getElementById('tobEntContent').scrollIntoView({behavior:'smooth',block:'start'});
   return;
   const a = tobAsig(); if(!a) return;

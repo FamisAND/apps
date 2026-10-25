@@ -1,4 +1,4 @@
-# Visual routines, 24 October 2026
+# Editable Routines And Final Visual Appendix
 
 This is an additive update to Consulta, not a routine migration or a client portal.
 There are no new tables, storage keys, profile IDs, source-plan rewrites or startup
@@ -12,8 +12,12 @@ seeds. Existing assignments keep their own routine copies and exercise IDs.
 - A patch contains only changed exercise properties and changed `plan` fields.
   Unknown fields, source cells, results and comments remain intact. Removing a
   patch does not remove results. Substitution is blocked after recording results.
-- Client view selects one microcycle. Matrix view retains all microcycles. The
-  exercise pencil edits the current client, iteration, microcycle, day and slot.
+- The original editable matrix remains the only primary routine view: all
+  microcycles in columns, Kg/Reps for each set, rest and comments. No new
+  single-microcycle card workflow replaces it. The pencil in each column edits
+  the current client, iteration, microcycle, day and slot.
+- Exercise photos and explanations are a final appendix, after the complete
+  training register and charts, never interleaved with result fields.
 - Template editing is separate. Existing template text is read-only; changing a
   header cannot parse and replace its entire exercise tree. Its exercise editor
   changes only the selected microcycle's plan, preserving other plans/metadata.
@@ -30,7 +34,10 @@ reference, not whole pages containing client information. Total size: 714,277
 bytes. No external image service or per-client image copy is used.
 
 Ambiguous alternatives such as rowing/seal-row and pull-ups/lat-machine are not
-silently identified as one movement. The trainer may explicitly associate a
+silently identified as one movement. The final appendix can show the specific
+alternative pictured in the supplied reference, explicitly labeled as an
+illustrated alternative; this does not associate, rename or store a movement.
+The trainer may explicitly associate a
 variant and opt to reuse that mapping in the optional `exerciseAliases` property
 inside `tob_online_v2`. Unmatched names remain visible without invented images.
 Future catalog additions need reviewed images, variants and provenance.
@@ -42,8 +49,10 @@ Short dates use the iteration's period and neighboring sessions within an
 anchored window. Missing/ambiguous years and impossible dates are rejected rather
 than guessed. New assignment/iteration starts use the local calendar date.
 
-`routine-pdf.js` exports editable prescription matrices plus a reusable visual
-appendix. Existing field names remain compatible; subject metadata identifies
+`routine-pdf.js` preserves the supplied reference's cover, black exercise headers,
+compact microcycle columns and editable Kg/Reps cells. Photos and explanations
+are appended after every training day. Exercise blocks stay together where they
+fit; long blocks continue under a repeated exercise header. Existing field names remain compatible; subject metadata identifies
 client, assignment, iteration, period and movement identity. Private assignment
 notes are not exported. Import validates the entire document in a staged copy
 before applying anything and asks before replacing filled values. Legacy PDFs
