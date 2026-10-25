@@ -163,12 +163,20 @@ export function createWorker(dependencies={}){
           await env.AUTH_DB.prepare("INSERT INTO users (id,email,name,role,permissions,created_at) VALUES (?,?,?,'user',?,?)").bind(id,email,name,JSON.stringify([...new Set(permissions)]),now()).run();await audit(env,user.id,'create-user',id);return json({id},201);
         }
         const match=pathname.match(/^\/api\/admin\/users\/([\w-]+)(\/revoke)?$/);
-        if(match&&['PATCH','POST'].includes(request.method)){
-          if(request.method!==(match[2]?'POST':'PATCH'))fail(405,'Metodo no permitido');
+        if(match){
+          if(!(match[2]?['POST']:['PATCH','DELETE']).includes(request.method))fail(405,'Metodo no permitido');
           const target=await env.AUTH_DB.prepare('SELECT * FROM users WHERE id=?').bind(match[1]).first();if(!target)fail(404,'Usuario inexistente');
-          if(target.id===user.id||target.id==='root-admin')fail(400,'El administrador principal no se puede desactivar ni expulsar desde aqui');
+          if(target.id===user.id||target.id==='root-admin')fail(400,'El administrador principal no se puede modificar desde aqui');
           if(match[2]){
             await env.AUTH_DB.prepare('UPDATE users SET session_version=session_version+1,reauth_after=? WHERE id=?').bind(now(),target.id).run();await audit(env,user.id,'revoke-sessions',target.id);return json({ok:true});
+          }
+          if(request.method==='DELETE'){
+            await env.AUTH_DB.batch([
+              env.AUTH_DB.prepare('UPDATE users SET active=0,session_version=session_version+1,reauth_after=? WHERE id=?').bind(now(),target.id),
+              env.AUTH_DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id),
+              env.AUTH_DB.prepare('DELETE FROM users WHERE id=?').bind(target.id),
+              env.AUTH_DB.prepare('INSERT INTO audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),user.id,'delete-user',target.id,now())
+            ]);return json({ok:true});
           }
           const value=await body(request);const permissions=value.permissions??JSON.parse(target.permissions);
           if(!Array.isArray(permissions)||permissions.some(p=>!MODULES[p])||!['user','admin'].includes(value.role??target.role)||typeof(value.active??!!target.active)!=='boolean')fail(400,'Permisos invalidos');

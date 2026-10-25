@@ -8,13 +8,15 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   try{
     for(const mode of ['admin','idle','continue','user']){
       const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
-      let lastActivity=Math.floor(Date.now()/1000)-(['idle','continue'].includes(mode)?1790:0),activityPosts=0,policyWrites=0;const expiresAt=Math.floor(Date.now()/1000)+28800;
-      const state=()=>({user:{id:'synthetic-'+mode,name:'Usuario ejemplo',role:mode==='user'?'user':'admin',active:true,permissions:[]},session:{lastActivity,expiresAt,idleMinutes:30,maxHours:8},dataMode:'records',writesEnabled:true});
+      let lastActivity=Math.floor(Date.now()/1000)-(['idle','continue'].includes(mode)?1790:0),activityPosts=0,policyWrites=0,deletedUsers=0;const expiresAt=Math.floor(Date.now()/1000)+28800;
+      const state=()=>({user:{id:mode==='user'?'synthetic-user':'root-admin',name:'Usuario ejemplo',email:'admin@example.test',role:mode==='user'?'user':'admin',active:true,permissions:[]},session:{lastActivity,expiresAt,idleMinutes:30,maxHours:8},dataMode:'records',writesEnabled:true});
+      let users=[state().user,{id:'removable-user',name:'Usuario eliminable',email:'remove@example.test',role:'user',active:true,permissions:['training_online']}];
       await page.clock.install();
       await context.route('**/*',async route=>{const request=route.request(),url=new URL(request.url());assert.equal(url.origin,origin,'No production or external requests');
         if(url.pathname==='/api/session')return route.fulfill({json:state()});
         if(url.pathname==='/api/session/activity'){activityPosts++;lastActivity=Math.floor(Date.now()/1000);return route.fulfill({json:{session:state().session}});}
-        if(url.pathname==='/api/admin/users')return route.fulfill({json:{users:[state().user]}});
+        if(url.pathname==='/api/admin/users')return route.fulfill({json:{users}});
+        if(url.pathname==='/api/admin/users/removable-user'&&request.method()==='DELETE'){deletedUsers++;users=users.filter(user=>user.id!=='removable-user');return route.fulfill({json:{ok:true}});}
         if(url.pathname==='/api/admin/sessions')return route.fulfill({json:{policy:{idleMinutes:30,maxHours:8},sessions:Array.from({length:10},(_,i)=>({id:String(i).padStart(64,'a'),name:'Usuario '+(i+1),email:'ejemplo'+i+'@example.test',created_at:lastActivity-i*3600,last_seen:lastActivity-i*3600,deadline:expiresAt,valid_version:i===0,revoked:0,activity:i===0?[{module:'Consulta',saves:2}]:[]}))}});
         if(url.pathname.endsWith('/changes'))return route.fulfill({json:{changes:[{at:new Date().toISOString(),module:'Consulta',items:[{action:'Alta',type:'Medicion',label:'',client:'Cliente ejemplo',fields:['peso','cintura']},{action:'Cambio',type:'Menu',label:'Menu semanal',client:'Cliente ejemplo',fields:['dias']}]}],nextCursor:null}});
         if(url.pathname==='/api/admin/session-policy'){policyWrites++;assert.deepEqual(request.postDataJSON(),{idleMinutes:45,maxHours:6});return route.fulfill({json:{ok:true}});}
@@ -24,6 +26,8 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       });
       await page.goto(origin+'/session-admin.html',{waitUntil:'domcontentloaded'});await page.locator('#ftSessionBar').waitFor();
       if(mode==='admin'){
+        assert.equal(await page.getByRole('button',{name:'Eliminar usuario'}).first().isDisabled(),true);
+        page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Eliminar usuario'}).last().click();await page.getByText('Usuario eliminable').waitFor({state:'detached'});assert.equal(deletedUsers,1);
         await page.getByRole('button',{name:'2 guardados'}).click();await page.getByText('Alta de medicion',{exact:false}).waitFor();
         await page.screenshot({path:path.join(output,'sessions-desktop.png'),fullPage:true});
         await page.locator('#idleMinutes').fill('45');await page.locator('#maxHours').fill('6');await page.getByRole('button',{name:'Guardar tiempos'}).click();await page.getByText('Tiempos guardados.',{exact:false}).waitFor();assert.equal(policyWrites,1);

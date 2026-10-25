@@ -16,8 +16,9 @@ async function refresh(){
     const active=element('input');active.type='checkbox';active.checked=user.active;const activeLabel=element('label');activeLabel.append(active,document.createTextNode('Activo'));state.append(role,activeLabel);row.append(state);
     const access=element('td'),list=element('div');list.className='permissions';permissions(list,user.role==='admin'?Object.keys(modules):user.permissions);if(user.role==='admin')list.title='El administrador tiene acceso a todos los modulos.';access.append(list);row.append(access);
     const commands=element('td'),buttons=element('div');buttons.className='row';const save=element('button','Guardar');save.type='button';save.onclick=()=>action(save,()=>api('users/'+user.id,'PATCH',{role:role.value,active:active.checked,permissions:selected(list)}));
-    const revoke=element('button','Expulsar sesiones');revoke.type='button';revoke.className='danger';revoke.onclick=()=>{if(confirm('¿Expulsar todas las sesiones de '+user.name+'?'))action(revoke,()=>api('users/'+user.id+'/revoke','POST',{}));};buttons.append(save,revoke);commands.append(buttons);row.append(commands);
-    if(user.id==='root-admin'){role.disabled=true;active.disabled=true;list.querySelectorAll('input').forEach(input=>input.disabled=true);save.disabled=true;revoke.disabled=true;}
+    const revoke=element('button','Expulsar sesiones');revoke.type='button';revoke.className='danger';revoke.onclick=()=>{if(confirm('¿Expulsar todas las sesiones de '+user.name+'?'))action(revoke,()=>api('users/'+user.id+'/revoke','POST',{}));};
+    const remove=element('button','Eliminar usuario');remove.type='button';remove.className='danger';remove.onclick=()=>{if(confirm('¿Eliminar a '+user.name+'? Se cerrarán todas sus sesiones y ya no podrá entrar.'))action(remove,()=>api('users/'+user.id,'DELETE'));};buttons.append(save,revoke,remove);commands.append(buttons);row.append(commands);
+    if(user.id==='root-admin'){role.disabled=true;active.disabled=true;list.querySelectorAll('input').forEach(input=>input.disabled=true);save.disabled=true;revoke.disabled=true;remove.disabled=true;}
     target.append(row);
     [...row.children].forEach((cell,index)=>cell.dataset.label=['Usuario','Rol y estado','Acceso','Acciones'][index]);
   }
