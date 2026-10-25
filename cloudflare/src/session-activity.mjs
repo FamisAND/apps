@@ -1,4 +1,4 @@
-const labels={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Tracker de Fondeo',tob_menus_catalog:'Catalogo',__dashboard_config:'Dashboard',private_settings:'Configuracion de Consulta'};
+const labels={dashboard:'Inicio',admin:'Usuarios y sesiones',training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Tracker de Fondeo',tob_menus_catalog:'Catalogo',__dashboard_config:'Dashboard',private_settings:'Configuracion de Consulta'};
 function fields(node){
   if(node?.type==='object')return Object.fromEntries(node.entries||[]);
   if(node?.type==='value'&&node.value&&typeof node.value==='object'&&!Array.isArray(node.value))return Object.fromEntries(Object.entries(node.value).map(([key,value])=>[key,{type:'value',value}]));
@@ -17,8 +17,32 @@ function describe(row){
 }
 export async function sessionCounts(db,datasetId,ids){
   if(!ids.length)return [];
-  const {results}=await db.prepare('SELECT session_id,namespace,count(*) AS saves FROM session_commits WHERE dataset_id=? AND session_id IN ('+ids.map(()=>'?').join(',')+') GROUP BY session_id,namespace').bind(datasetId,...ids).all();
-  return results.map(row=>({...row,module:labels[row.namespace]||'Imagenes'}));
+  const rows=[];
+  for(let offset=0;offset<ids.length;offset+=80){const group=ids.slice(offset,offset+80),{results}=await db.prepare('SELECT session_id,namespace,count(*) AS saves FROM session_commits WHERE dataset_id=? AND session_id IN ('+group.map(()=>'?').join(',')+') GROUP BY session_id,namespace').bind(datasetId,...group).all();rows.push(...results);}
+  return rows.map(row=>({...row,module:labels[row.namespace]||'Imagenes'}));
+}
+
+export async function recordPageVisit(db,{sessionId,userId,path,module,at}){
+  await db.prepare('INSERT INTO session_page_visits (session_id,user_id,path,module,opened_at,last_active_at,active_seconds) VALUES (?,?,?,?,?,?,0)').bind(sessionId,userId,path,module,at,at).run();
+}
+
+export async function recordPageActivity(db,{sessionId,userId,path,module,at}){
+  const latest=await db.prepare('SELECT id,last_active_at FROM session_page_visits WHERE session_id=? AND path=? ORDER BY opened_at DESC,id DESC LIMIT 1').bind(sessionId,path).first();
+  if(!latest){await recordPageVisit(db,{sessionId,userId,path,module,at});return;}
+  const elapsed=Math.max(0,at-latest.last_active_at),active=elapsed<=60?Math.min(30,elapsed):0;
+  await db.prepare('UPDATE session_page_visits SET last_active_at=?,active_seconds=active_seconds+? WHERE id=?').bind(at,active,latest.id).run();
+}
+
+export async function sessionVisitCounts(db,cutoff,ids){
+  if(!ids.length)return [];
+  const rows=[];
+  for(let offset=0;offset<ids.length;offset+=80){const group=ids.slice(offset,offset+80),{results}=await db.prepare('SELECT session_id,module,path,count(*) AS visits,sum(active_seconds) AS active_seconds,max(last_active_at) AS last_at FROM session_page_visits WHERE opened_at>=? AND session_id IN ('+group.map(()=>'?').join(',')+') GROUP BY session_id,module,path').bind(cutoff,...group).all();rows.push(...results);}
+  return rows.map(row=>({...row,module:labels[row.module]||row.module}));
+}
+
+export async function sessionVisits(db,sessionId,cutoff){
+  const {results}=await db.prepare('SELECT id,module,path,opened_at,last_active_at,active_seconds FROM session_page_visits WHERE session_id=? AND opened_at>=? ORDER BY opened_at DESC,id DESC LIMIT 201').bind(sessionId,cutoff).all();
+  return {visits:results.slice(0,200).map(row=>({...row,module:labels[row.module]||row.module})),visitsTruncated:results.length>200};
 }
 export async function sessionChanges(db,datasetId,sessionId,before=Number.MAX_SAFE_INTEGER){
   if(!Number.isSafeInteger(before)||before<1)throw Object.assign(new Error('Referencia de actividad invalida'),{status:400});

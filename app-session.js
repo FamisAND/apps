@@ -43,7 +43,7 @@ async function sendActivity(){
   if(!active||!session||locked||sending||document.hidden||activityAt<=lastSent||Date.now()-lastSent<15000)return;
   sending=true;const at=activityAt;
   try{
-    const response=await fetch('/api/session/activity',{method:'POST',credentials:'same-origin'});
+    const response=await fetch('/api/session/activity?page='+encodeURIComponent(location.pathname),{method:'POST',credentials:'same-origin'});
     if(!response.ok)throw new Error('La sesion no se puede renovar. Tus cambios locales se conservan.');
     const result=await response.json();session=result.session;lastSent=at;
   }catch(error){lock(error.message);}finally{sending=false;}

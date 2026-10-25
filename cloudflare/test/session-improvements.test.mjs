@@ -13,8 +13,8 @@ function database(migrations){
   const binding={prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};},async batch(statements){db.exec('BEGIN');try{for(const statement of statements)await statement.run();db.exec('COMMIT');}catch(error){db.exec('ROLLBACK');throw error;}}};return {db,binding};
 }
 function authFixture(){
-  const f=database(['migrations/0001_auth.sql','migrations/0002_session_policy.sql']);
-  const env={AUTH_DB:f.binding,ADMIN_EMAIL:'admin@example.test'};
+  const f=database(['migrations/0001_auth.sql','migrations/0002_session_policy.sql','migrations/0003_session_page_visits.sql']);
+  const env={AUTH_DB:f.binding,ADMIN_EMAIL:'admin@example.test',ASSETS:{fetch:async()=>new Response('SYNTHETIC ASSET')}};
   const worker=createWorker({verifyIdentity:async request=>({email:request.headers.get('test-email')||'admin@example.test',iat:1,exp:Math.floor(Date.now()/1000)+86400})});
   const request=(path,cookie,method='GET',body,extra={})=>worker.fetch(new Request('https://fixture.test'+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(method!=='GET'?{Origin:'https://fixture.test'}:{}),...extra},...(body?{body:JSON.stringify(body)}:{})}),env);
   async function login(){const response=await request('/auth/start');return response.headers.get('Set-Cookie').split(';')[0];}
@@ -45,8 +45,18 @@ test('idle settings validate ranges, require admin and CSRF, and hard expiry bou
     f.db.prepare('UPDATE sessions SET created_at=?').run(Math.floor(Date.now()/1000)-14401);assert.equal((await f.request('/api/session',cookie)).status,401);
   }finally{f.db.close();}
 });
-test('latest-session display is limited to ten without deleting older history',async()=>{
-  const f=authFixture();try{let cookie;for(let i=0;i<12;i++)cookie=await f.login();const result=await (await f.request('/api/admin/sessions',cookie)).json();assert.equal(result.sessions.length,10);assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,12);}finally{f.db.close();}
+test('session history covers 30 days, supports shorter windows and never deletes older rows',async()=>{
+  const f=authFixture();try{let cookie;for(let i=0;i<12;i++)cookie=await f.login();const oldest=f.db.prepare('SELECT id FROM sessions LIMIT 1').get().id;f.db.prepare('UPDATE sessions SET last_seen=? WHERE id=?').run(Math.floor(Date.now()/1000)-31*86400,oldest);
+    const result=await (await f.request('/api/admin/sessions?days=30',cookie)).json();assert.equal(result.sessions.length,11);assert.equal(result.windowDays,30);assert.equal(result.truncated,false);assert.equal(f.db.prepare('SELECT count(*) AS n FROM sessions').get().n,12);
+    assert.equal((await f.request('/api/admin/sessions?days=31',cookie)).status,400);
+  }finally{f.db.close();}
+});
+test('page visits and approximate active time are attributed to the verified session',async()=>{
+  const f=authFixture();try{const cookie=await f.login();f.env.RECORDS_ENABLED='true';assert.equal((await f.request('/index.html',cookie)).status,200);const visit=f.db.prepare('SELECT * FROM session_page_visits').get();assert.equal(visit.path,'/index.html');assert.equal(visit.module,'dashboard');
+    f.db.prepare('UPDATE session_page_visits SET last_active_at=?').run(Math.floor(Date.now()/1000)-20);assert.equal((await f.request('/api/session/activity?page=%2Findex.html',cookie,'POST')).status,200);assert.ok(f.db.prepare('SELECT active_seconds FROM session_page_visits').get().active_seconds>=19);
+    f.env.RECORDS_ENABLED='false';const result=await (await f.request('/api/admin/sessions?days=30',cookie)).json();assert.equal(result.sessions[0].visits[0].module,'Inicio');assert.equal(result.sessions[0].visits[0].visits,1);assert.ok(result.sessions[0].visits[0].activeSeconds>=19);
+    assert.equal((await f.request('/api/session/activity?page=%2Funknown.html',cookie,'POST')).status,400);
+  }finally{f.db.close();}
 });
 test('session attribution is transactional, immutable and not duplicated or reassigned on replay',async()=>{
   const f=database(['business-migrations/0001_records.sql','business-migrations/0002_session_commits.sql']);try{

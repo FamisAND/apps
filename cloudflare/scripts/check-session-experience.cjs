@@ -17,16 +17,19 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         if(url.pathname==='/api/session/activity'){activityPosts++;lastActivity=Math.floor(Date.now()/1000);return route.fulfill({json:{session:state().session}});}
         if(url.pathname==='/api/admin/users')return route.fulfill({json:{users}});
         if(url.pathname==='/api/admin/users/removable-user'&&request.method()==='DELETE'){deletedUsers++;users=users.filter(user=>user.id!=='removable-user');return route.fulfill({json:{ok:true}});}
-        if(url.pathname==='/api/admin/sessions')return route.fulfill({json:{policy:{idleMinutes:30,maxHours:8},sessions:Array.from({length:10},(_,i)=>({id:String(i).padStart(64,'a'),name:'Usuario '+(i+1),email:'ejemplo'+i+'@example.test',created_at:lastActivity-i*3600,last_seen:lastActivity-i*3600,deadline:expiresAt,valid_version:i===0,revoked:0,activity:i===0?[{module:'Consulta',saves:2}]:[]}))}});
-        if(url.pathname.endsWith('/changes'))return route.fulfill({json:{changes:[{at:new Date().toISOString(),module:'Consulta',items:[{action:'Alta',type:'Medicion',label:'',client:'Cliente ejemplo',fields:['peso','cintura']},{action:'Cambio',type:'Menu',label:'Menu semanal',client:'Cliente ejemplo',fields:['dias']}]}],nextCursor:null}});
+        if(url.pathname==='/api/admin/sessions')return route.fulfill({json:{policy:{idleMinutes:30,maxHours:8},windowDays:30,truncated:false,sessions:Array.from({length:10},(_,i)=>({id:String(i).padStart(64,'a'),name:'Usuario '+(i+1),email:'ejemplo'+i+'@example.test',created_at:lastActivity-i*3600,last_seen:lastActivity-i*3600,deadline:expiresAt,valid_version:i===0,revoked:0,activity:i===0?[{module:'Consulta',saves:2}]:[],visits:i===0?[{module:'Consulta',path:'/consulta.html',visits:3,activeSeconds:480,lastAt:lastActivity}]:[]}))}});
+        if(url.pathname.endsWith('/changes'))return route.fulfill({json:{visits:[{id:1,module:'Consulta',path:'/consulta.html',opened_at:lastActivity-600,last_active_at:lastActivity-120,active_seconds:480}],visitsTruncated:false,changes:[{at:new Date().toISOString(),module:'Consulta',items:[{action:'Alta',type:'Medicion',label:'',client:'Cliente ejemplo',fields:['peso','cintura'],version:1},{action:'Cambio',type:'Menu',label:'Menu semanal',client:'Cliente ejemplo',fields:['dias'],version:2}]}],nextCursor:null}});
         if(url.pathname==='/api/admin/session-policy'){policyWrites++;assert.deepEqual(request.postDataJSON(),{idleMinutes:45,maxHours:6});return route.fulfill({json:{ok:true}});}
-        const file=url.pathname.slice(1);assert.ok(['session-admin.html','session-admin.js','app-session.js','session-ui.css','session-icons.js'].includes(file));let body=await readFile(path.join(root,file));
+        const file=url.pathname.slice(1);assert.ok(['session-admin.html','session-admin-v2.js','app-session.js','session-ui.css','session-icons.js'].includes(file));let body=await readFile(path.join(root,file));
         if(file==='session-admin.html')body=Buffer.from(body.toString().replace('<head>','<head><script src="/app-session.js"></script>'));
         return route.fulfill({contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript',body});
       });
       if(mode==='owner-switch')await page.addInitScript(()=>localStorage.setItem('__ft_session_owner','root-admin'));
       await page.goto(origin+'/session-admin.html',{waitUntil:'domcontentloaded'});await page.locator('#ftSessionBar').waitFor();
       if(mode==='admin'){
+        assert.equal(await page.locator('#accessLink').inputValue(),origin+'/auth/start?next=%2Findex.html');
+        await page.locator('#sessionFilter').selectOption('edited');assert.equal(await page.locator('#sessions>tr:not(.activity-detail)').count(),1);await page.locator('#sessionFilter').selectOption('all');
+        await page.locator('#sessionSearch').fill('Usuario 10');assert.equal(await page.locator('#sessions>tr:not(.activity-detail)').count(),1);await page.locator('#sessionSearch').fill('');
         assert.equal(await page.getByRole('button',{name:'Eliminar usuario'}).first().isDisabled(),true);
         page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Eliminar usuario'}).last().click();await page.getByText('Usuario eliminable').waitFor({state:'detached'});assert.equal(deletedUsers,1);
         await page.getByRole('button',{name:'2 guardados'}).click();await page.getByText('Alta de medicion',{exact:false}).waitFor();

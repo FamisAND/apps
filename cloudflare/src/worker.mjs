@@ -3,7 +3,7 @@ import {MODULES,SECTION_MODULE,FILE_MODULE,COMMON_FILES,canAccess,publicUser,fil
 import {readData,writeSection} from './github.mjs';
 import {listRecords,recordHistory,commitRecords,recordStatus} from './records.mjs';
 import {sessionPolicy,sessionDeadline,validateSessionPolicy} from './session-policy.mjs';
-import {sessionCounts,sessionChanges} from './session-activity.mjs';
+import {sessionCounts,sessionChanges,recordPageVisit,recordPageActivity,sessionVisitCounts,sessionVisits} from './session-activity.mjs';
 import {isPhotoNamespace} from './media-format.mjs';
 import {loadPrivateSettings,publicAiConfig,saveAiSettings,AI_PROVIDERS} from './private-settings.mjs';
 import {aiText} from './ai-proxy.mjs';
@@ -17,6 +17,12 @@ async function digest(value){return [...new Uint8Array(await crypto.subtle.diges
 // Access returns from another site; safe top-level navigation must carry the session.
 function cookie(token,maxAge=28800){return `${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;}
 function nextPage(url){const next=url.searchParams.get('next')||'/index.html';return /^\/[a-z_\-]+\.html$/.test(next)?next:'/index.html';}
+function historyDays(url){const value=Number(url.searchParams.get('days')||30);if(!Number.isInteger(value)||value<1||value>30)fail(400,'El historial admite entre 1 y 30 dias');return value;}
+function pageActivity(pathname,user){
+  const path=pathname==='/'?'/index.html':pathname,file=path.slice(1),module=file==='index.html'?'dashboard':FILE_MODULE[file];
+  if(!file.endsWith('.html')||!module||!canAccess(user,module))fail(400,'Pagina de actividad invalida');
+  return {path,module};
+}
 function sessionUnavailable(code){
   const expired=code==='session-expired',heading=expired?'La sesion ha caducado':'No se ha podido abrir la sesion';
   const message=expired?'Se ha cumplido el tiempo de inactividad o la duracion maxima.':'El navegador no ha enviado una sesion valida o el acceso ha cambiado.';
@@ -85,7 +91,9 @@ export function createWorker(dependencies={}){
       }
       if(pathname==='/api/session/activity'){
         if(request.method!=='POST')fail(405,'Metodo no permitido');csrf(request);
-        if(now()-user.session.lastActivity>=15){await env.AUTH_DB.prepare('UPDATE sessions SET last_seen=? WHERE id=? AND revoked=0').bind(now(),user.sessionId).run();user.session.lastActivity=now();}
+        const at=now();
+        if(at-user.session.lastActivity>=15){await env.AUTH_DB.prepare('UPDATE sessions SET last_seen=? WHERE id=? AND revoked=0').bind(at,user.sessionId).run();user.session.lastActivity=at;}
+        const reported=url.searchParams.get('page');if(reported){const page=pageActivity(new URL(reported,'https://activity.invalid').pathname,user);await recordPageActivity(env.AUTH_DB,{sessionId:user.sessionId,userId:user.id,...page,at});}
         return json({session:user.session});
       }
       if(pathname==='/api/session'){const {sessionId,session,...identity}=user;return json({user:{...identity,repo:env.GITHUB_REPO},session,modules:MODULES,heartbeatSeconds:25,dataMode:env.RECORDS_ENABLED==='true'?'records':'legacy',writesEnabled:env.DATA_WRITES_ENABLED==='true'});}
@@ -137,15 +145,18 @@ export function createWorker(dependencies={}){
           const result=await env.AUTH_DB.prepare('SELECT * FROM users ORDER BY created_at,email').all();return json({users:result.results.map(publicUser)});
         }
         if(pathname==='/api/admin/sessions'&&request.method==='GET'){
-          const policy=await sessionPolicy(env.AUTH_DB);
-          const result=await env.AUTH_DB.prepare('SELECT s.id,u.name,u.email,s.created_at,s.last_seen,s.expires_at,s.revoked,(s.session_version=u.session_version AND u.active=1) AS valid_version FROM sessions s JOIN users u ON u.id=s.user_id ORDER BY s.created_at DESC,s.id DESC LIMIT 10').all();
-          const counts=env.RECORDS_ENABLED==='true'?await sessionCounts(env.DATA_DB,env.ACTIVE_DATASET_ID,result.results.map(row=>row.id)):[];
-          return json({sessions:result.results.map(row=>({...row,deadline:sessionDeadline(row,policy),activity:counts.filter(item=>item.session_id===row.id).map(({module,saves})=>({module,saves}))})),policy});
+          const days=historyDays(url),cutoff=now()-days*86400,policy=await sessionPolicy(env.AUTH_DB);
+          const result=await env.AUTH_DB.prepare('SELECT s.id,u.name,u.email,s.created_at,s.last_seen,s.expires_at,s.revoked,(s.session_version=u.session_version AND u.active=1) AS valid_version FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.last_seen>=? ORDER BY s.last_seen DESC,s.id DESC LIMIT 501').bind(cutoff).all();
+          const rows=result.results.slice(0,500),ids=rows.map(row=>row.id);
+          const counts=env.RECORDS_ENABLED==='true'?await sessionCounts(env.DATA_DB,env.ACTIVE_DATASET_ID,ids):[],visits=await sessionVisitCounts(env.AUTH_DB,cutoff,ids);
+          return json({sessions:rows.map(row=>({...row,deadline:sessionDeadline(row,policy),activity:counts.filter(item=>item.session_id===row.id).map(({module,saves})=>({module,saves})),visits:visits.filter(item=>item.session_id===row.id).map(({module,path,visits,active_seconds,last_at})=>({module,path,visits,activeSeconds:active_seconds,lastAt:last_at}))})),policy,windowDays:days,truncated:result.results.length>500});
         }
         const activity=pathname.match(/^\/api\/admin\/sessions\/([a-f0-9]{64})\/changes$/);
         if(activity&&request.method==='GET'){
-          if(env.RECORDS_ENABLED!=='true')fail(423,'Actividad por registros no activada');
-          return json(await sessionChanges(env.DATA_DB,env.ACTIVE_DATASET_ID,activity[1],url.searchParams.has('before')?Number(url.searchParams.get('before')):Number.MAX_SAFE_INTEGER));
+          const days=historyDays(url),before=url.searchParams.has('before')?Number(url.searchParams.get('before')):Number.MAX_SAFE_INTEGER;
+          const changes=env.RECORDS_ENABLED==='true'?await sessionChanges(env.DATA_DB,env.ACTIVE_DATASET_ID,activity[1],before):{changes:[],nextCursor:null};
+          if(before!==Number.MAX_SAFE_INTEGER)return json(changes);
+          return json({...changes,...await sessionVisits(env.AUTH_DB,activity[1],now()-days*86400)});
         }
         if(pathname==='/api/admin/audit'&&request.method==='GET')return json(await env.AUTH_DB.prepare('SELECT * FROM audit ORDER BY created_at DESC LIMIT 100').all());
         csrf(request);
@@ -173,6 +184,7 @@ export function createWorker(dependencies={}){
           if(request.method==='DELETE'){
             await env.AUTH_DB.batch([
               env.AUTH_DB.prepare('UPDATE users SET active=0,session_version=session_version+1,reauth_after=? WHERE id=?').bind(now(),target.id),
+              env.AUTH_DB.prepare('DELETE FROM session_page_visits WHERE user_id=?').bind(target.id),
               env.AUTH_DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id),
               env.AUTH_DB.prepare('DELETE FROM users WHERE id=?').bind(target.id),
               env.AUTH_DB.prepare('INSERT INTO audit VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),user.id,'delete-user',target.id,now())
@@ -203,10 +215,12 @@ export function createWorker(dependencies={}){
       if(FILE_MODULE[file]&&!canAccess(user,FILE_MODULE[file]))fail(403,'Modulo no autorizado');
       const recordPage=env.RECORDS_ENABLED==='true'&&file.endsWith('.html')&&file!=='session-admin.html';
       if(recordPage&&request.headers.get('X-FT-Prepared')!=='records-v1'){
+        await recordPageVisit(env.AUTH_DB,{sessionId:user.sessionId,userId:user.id,...pageActivity('/'+file,user),at:now()});
         return new Response(recordLoadingHtml(),{headers:{...securityHeaders,'Content-Type':'text/html;charset=utf-8'}});
       }
       const response=await env.ASSETS.fetch(new Request(new URL('/'+file,url),request));
       const secured=new Response(response.body,response);for(const [key,value]of Object.entries(securityHeaders))secured.headers.set(key,value);
+      if(file.endsWith('.html')&&!recordPage&&response.ok)await recordPageVisit(env.AUTH_DB,{sessionId:user.sessionId,userId:user.id,...pageActivity('/'+file,user),at:now()});
       if(file.endsWith('.html')&&!recordPage)return new HTMLRewriter().on('head',{element(element){element.prepend('<script src="/app-session.js"></script>',{html:true});}}).transform(secured);
       return secured;
     }catch(error){return json({error:error.status?error.message:'No se ha completado la operacion'},error.status||503);}
