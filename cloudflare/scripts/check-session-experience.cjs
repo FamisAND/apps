@@ -6,10 +6,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
   const output=path.resolve(process.argv[2]||'test-output/session-experience');await mkdir(output,{recursive:true});
   const browser=await chromium.launch({channel:'msedge',headless:true});const origin='http://127.0.0.1:48909',root=path.resolve(__dirname,'..','..');
   try{
-    for(const mode of ['admin','idle','continue','user']){
+    for(const mode of ['admin','idle','continue','user','owner-switch']){
       const context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
       let lastActivity=Math.floor(Date.now()/1000)-(['idle','continue'].includes(mode)?1790:0),activityPosts=0,policyWrites=0,deletedUsers=0;const expiresAt=Math.floor(Date.now()/1000)+28800;
-      const state=()=>({user:{id:mode==='user'?'synthetic-user':'root-admin',name:'Usuario ejemplo',email:'admin@example.test',role:mode==='user'?'user':'admin',active:true,permissions:[]},session:{lastActivity,expiresAt,idleMinutes:30,maxHours:8},dataMode:'records',writesEnabled:true});
+      const state=()=>({user:{id:mode==='user'?'synthetic-user':mode==='owner-switch'?'second-admin':'root-admin',name:'Usuario ejemplo',email:'admin@example.test',role:mode==='user'?'user':'admin',active:true,permissions:[]},session:{lastActivity,expiresAt,idleMinutes:30,maxHours:8},dataMode:'records',writesEnabled:true});
       let users=[state().user,{id:'removable-user',name:'Usuario eliminable',email:'remove@example.test',role:'user',active:true,permissions:['training_online']}];
       await page.clock.install();
       await context.route('**/*',async route=>{const request=route.request(),url=new URL(request.url());assert.equal(url.origin,origin,'No production or external requests');
@@ -24,6 +24,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         if(file==='session-admin.html')body=Buffer.from(body.toString().replace('<head>','<head><script src="/app-session.js"></script>'));
         return route.fulfill({contentType:file.endsWith('.html')?'text/html':file.endsWith('.css')?'text/css':'text/javascript',body});
       });
+      if(mode==='owner-switch')await page.addInitScript(()=>localStorage.setItem('__ft_session_owner','root-admin'));
       await page.goto(origin+'/session-admin.html',{waitUntil:'domcontentloaded'});await page.locator('#ftSessionBar').waitFor();
       if(mode==='admin'){
         assert.equal(await page.getByRole('button',{name:'Eliminar usuario'}).first().isDisabled(),true);
@@ -39,6 +40,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         assert.equal(await page.getByRole('link',{name:'Volver a identificarme'}).getAttribute('href'),'/auth/restart');
       }else if(mode==='continue'){
         await page.clock.fastForward(1000);await page.locator('#ftSessionWarning').waitFor();await page.getByRole('button',{name:'Seguir trabajando'}).click();await page.waitForFunction(()=>FTSession.active);await page.clock.fastForward(1000);assert.ok(activityPosts>=1);await page.locator('#ftSessionWarning').waitFor({state:'detached'});
+      }else if(mode==='owner-switch'){
+        assert.equal(await page.locator('#ftSessionLock').count(),0);
+        assert.equal(await page.evaluate(()=>localStorage.getItem('__ft_session_owner')),'second-admin');
       }else assert.equal(await page.getByLabel('Usuarios y sesiones',{exact:true}).count(),0);
       assert.deepEqual(errors,[]);await context.close();console.log(mode+': verified');
     }

@@ -67,7 +67,7 @@ function tick(){
 }
 const ready=check().then(result=>{
   const owner=localStorage.getItem('__ft_session_owner');
-  if(owner&&owner!==user.id)throw new Error('Este perfil de Chrome contiene datos de otro usuario. Utiliza un perfil separado; no se borrara informacion.');
+  if(owner&&owner!==user.id&&dataMode!=='records')throw new Error('Este perfil de Chrome contiene datos de otro usuario. Utiliza un perfil separado; no se borrara informacion.');
   localStorage.setItem('__ft_session_owner',user.id);return result;
 }).catch(error=>{lock(error.message);throw error;});
 ready.catch(()=>{});
