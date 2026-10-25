@@ -115,7 +115,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       }
       return reports;
     });assert.equal(templateChecks.length,16);await fs.writeFile(path.join(out,'template-pdf-checks.json'),JSON.stringify(templateChecks,null,2));
-    await page.setViewportSize({width:1280,height:950});await page.evaluate(()=>{tobCurrentItId='iteration-test';tobRenderEntreno();});await page.locator('#tobEntContent').screenshot({path:path.join(out,'routine-matrix.png')});await page.locator('#tobRoutineAppendix').screenshot({path:path.join(out,'routine-appendix.png')});
+    await page.setViewportSize({width:1280,height:950});await page.evaluate(()=>{tobCurrentItId='iteration-test';tobRenderEntreno();});await page.locator('#tobEntContent').screenshot({path:path.join(out,'routine-matrix.png')});
+    await page.locator('#tobRoutineAppendix img').evaluateAll(async imgs=>{for(const img of imgs)img.loading='eager';await Promise.all(imgs.map(img=>img.decode()));if(imgs.some(img=>!img.naturalWidth))throw Error('Appendix image did not decode');});
+    await page.locator('#tobRoutineAppendix').screenshot({path:path.join(out,'routine-appendix.png')});
     assert.deepEqual(errors,[]);console.log('Original editable matrix restored; appendix last; UI input saving, scoped overrides, history, PDF import and all 16 source exports passed');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error.stack);process.exitCode=1;});

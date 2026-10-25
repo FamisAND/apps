@@ -149,9 +149,9 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
     let index=0;
     for(const {name,movement,subtitle,illustration}of group.items){
       const shown=movement||illustration;
-      const nameH=rows(name,188,11,bold).length*14,cue=[subtitle||movement?.equipment,illustration?'Alternativa ilustrada: '+illustration.name:''].filter(Boolean).join('\n')||'Ejercicio sin asociar',cueH=rows(cue,188,8,bold).length*11;
+      const nameH=rows(name,188,11,bold).length*14,cue=[subtitle||movement?.equipment,illustration?'Variante ilustrada: '+illustration.name:'',!movement?FTExercises.referenceNote(name):'',shown?.generated?'Ilustracion generada por IA':''].filter(Boolean).join('\n')||'Ejercicio sin asociar',cueH=rows(cue,188,8,bold).length*11;
       const technique=shown?.technique||'Consulta con tu entrenador la variante y su ejecución. No se ha asociado una fotografía por suposición.';
-      const h=Math.max(126,nameH+cueH+rows(technique,188,8).length*11+24);
+      const h=Math.max(shown?.generated?180:126,nameH+cueH+rows(technique,188,8).length*11+24);
       if(index===0||index>=3||y-h<38){next('Cómo realizar los ejercicios');text('ANEXO VISUAL · '+group.name,M,y,W-2*M,8,bold,ink);y-=20;index=0;}
       const top=y;
       if(top-h<38)throw Error('Una explicación es demasiado larga para el anexo. Revisa su extensión antes de exportar.');

@@ -1,0 +1,288 @@
+{
+  "mode": "built-in image_gen",
+  "created": "2026-10-25",
+  "images": [
+    {
+      "id": "barbell-bench-press",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-f9dd9758-56c2-4b30-b6f2-4249b47787bf.png",
+      "prompt": "Use case: scientific-educational. Create ONE exercise photography asset for a personal-training manual: BARBELL FLAT BENCH PRESS. A clean diptych with exactly two equal side-by-side panels separated by a narrow white vertical gutter, left starting position and right bottom position of the SAME movement. Same adult female athletic instructor, dark teal fitted sports shirt, black leggings, neutral well-lit gym, no logos, no labels, no text, no arrows. Full body and equipment clearly visible, side three-quarter camera at bench height, landscape 3:2 overall. Flat bench inside a rack with safety bars, feet flat on floor, buttocks and upper back remain on bench, neutral wrists and forearms vertical at bottom. Left: bar held over chest with arms extended. Right: bar lowered to lower chest, elbows about45degrees from torso, controlled anatomically accurate posture. Moderate small weight plates, continuous barbell correct hands fingers. Catalog photographic realism, bright neutral background, no bystanders. This is only this one exercise, NOT a sheet of different exercises.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "barbell-back-squat",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-5c44e028-78d5-42c6-a86a-c4ee207fd32d.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: BARBELL BACK SQUAT. Bar rests on upper back, never neck, inside a squat rack with safety rails. Left standing tall; right bottom squat with hips around knee height, heels down, knees aligned with toes, neutral spine. Side three-quarter view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "standing-barbell-press",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-16a456c9-7428-41ff-85ee-1c4aa75ba15e.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STRICT STANDING BARBELL OVERHEAD PRESS. Left bar at front shoulders and clavicles, elbows slightly forward; right arms extended with bar stacked over shoulders and hips. Knees straight but not locked, ribs down, neutral spine. Full body side three-quarter view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "parallel-bar-dip",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-131ea499-5bc0-4d76-a715-cc54452ae876.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: TRICEPS DIP ON PARALLEL BARS, not bench dips. Left top support arms extended, feet suspended behind; right elbows bent about90degrees with shoulders not below elbows, torso nearly upright. Clearly show both hands on separate parallel bars.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "lying-leg-curl",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-2435d433-3ce1-42af-b4be-996d0211500e.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: LYING LEG CURL MACHINE. Instructor prone on padded bench, knees aligned with pivot, single padded roller behind lower ankles. Left legs nearly straight; right both knees bent about90degrees raising roller toward buttocks. Hips stay on pad, side view reveals mechanism.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "seated-leg-curl",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-d57ea9da-465d-4064-acdb-c8bfa4c66f70.png",
+      "prompt": "Photorealistic two-panel exercise demonstration of SEATED HAMSTRING CURL on a Life Fitness style seated leg curl machine, no brand text. Athlete female adult teal t-shirt black leggings. EXACT STRICT SIDE VIEW FACING LEFT. Bench seat horizontal, back vertical, thighs horizontal on seat and thigh restraint above thighs. Left photo: legs extend horizontally FORWARD to the LEFT, calves rest on top of a lower working roller near Achilles. Right photo: thighs remain horizontal on seat but calves rotate DOWN AND BACK TO THE RIGHT under seat; feet end UNDER the athlete's BUTTOCKS. Lower working roller contacts BACK of ankles and is pulled BACKWARDS under seat to RIGHT, never against front shins. Knees at90degrees or slightly more flexion, heels pointing BACK beneath seat. Show knee curl from extended legs to hooked-under-seat legs. Real gym coherent machine. No text arrows or labels. Full equipment two equal panels divided vertically by white line.",
+      "review": "withheld-machine-contact-needs-review"
+    },
+    {
+      "id": "flat-dumbbell-press",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-fc16b13d-37ca-4d4e-8a71-6d6a0b0164c5.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: FLAT DUMBBELL BENCH PRESS, not overhead. Left dumbbells over chest with arms extended; right dumbbells beside chest, elbows about45degrees from torso. Flat bench, feet on floor, side three-quarter camera.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "seated-dumbbell-press",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-bbcf9879-41b9-49d0-97b0-ef0a1f1ba620.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SEATED DUMBBELL SHOULDER PRESS. Bench upright backrest about80degrees. Left dumbbells beside shoulders elbows underneath wrists; right dumbbells overhead with arms extended. Back and buttocks remain supported, full body front three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "incline-barbell-press",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-e8e519fd-bcc9-4d38-b129-ed52ce3bee80.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: 45 DEGREE INCLINE BARBELL BENCH PRESS. Clearly visible bench backrest45degrees, rack with safeties. Left arms extended above upper chest; right bar at upper chest, wrists above elbows. Buttocks on seat, feet on floor. Side three-quarter view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "incline-dumbbell-press",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-d3a7eb4a-fa86-4596-b397-ef657d581b0d.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: 45 DEGREE INCLINE DUMBBELL BENCH PRESS. Left arms extended above upper chest; right dumbbells alongside upper chest with wrists above elbows. Clearly45degree bench, feet grounded, back and buttocks supported, side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "leg-press-calf",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-c33a4501-6b73-4b80-9f1d-9d32d3f17ba8.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: CALF RAISE ON45DEGREE LEG PRESS. Side view of seated reclined instructor, knees almost straight fixed, balls of feet secured on lower edge of footplate, heels free. Left ankles dorsiflexed heels lowered; right plantarflexed pressing toes into plate. Modest ankle-only motion, safety stops visible.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "pull-up",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-7ab4a737-7460-4f0c-8041-a9e77aceb14c.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: PRONATED PULL UP shoulder-width overhand grip. Left hanging with arms extended shoulders controlled; right chin above horizontal bar and elbows flexed down. Both feet suspended, no kicking, no pulldown machine. Front three-quarter full body.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "chin-up",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-542cebef-8972-4bcb-b7ba-7ca4c75fb066.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SUPINATED CHIN UP palms facing instructor, shoulder-width underhand grip clearly visible. Left hanging arms extended; right chin above bar elbows bent close to torso. Full body front three-quarter, feet suspended, no swinging.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "leg-extension",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-608037a4-bd67-4ef1-8767-56edbd47aa43.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SEATED LEG EXTENSION MACHINE. Thighs on seat, back supported, padded roller on FRONT of lower shins just above ankles. Left knees bent90degrees; right knees nearly straight lifting roller forward. Same machine coherent side view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "bent-over-barbell-row",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-038f701c-5f21-492a-bde7-e356c8ed369b.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: BENT OVER BARBELL ROW pronated grip. Torso fixed about30degrees above horizontal, knees soft, hip hinge and neutral spine. Left arms hanging straight bar below shoulders; right bar toward lower ribs elbows behind torso. Side three-quarter view, no body swing.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "seal-barbell-row",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-4d28ceb6-1880-4207-b2ab-623a5a9ee323.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: BARBELL SEAL ROW. Prone on HIGH HORIZONTAL flat bench, bench elevated enough to allow full arm extension. Chest and abdomen supported, feet not used for pulling. Left bar hanging under shoulders; right bar pulled toward underside of bench lower chest. Side three-quarter, visible bar path not through bench legs.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "t-bar-row",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-d855b5a4-8ecd-4d22-a6cc-8218e6f0e843.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: LANDMINE T BAR ROW WITH V HANDLE. Bar anchored at far end on floor behind instructor, loaded end between legs held using V handle, feet straddling shaft. Left arms extended in hip hinge; right loaded end pulled toward abdomen, torso unchanged. Full body side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "one-arm-dumbbell-row",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-128eae86-47bc-4a4f-9ca5-ea4e4f1e7634.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: ONE ARM DUMBBELL ROW bench supported. Left hand and left knee on flat bench, right foot on floor, right hand holds dumbbell. Left panel right arm hangs; right panel right elbow pulls toward hip. Neutral spine horizontal torso, exact same support points, side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "forward-lunge",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-681831cf-82f5-48ab-9903-2f34cbf9a0a7.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: FORWARD LUNGE bodyweight. Left standing feet hip-width hands on hips; right one foot stepped forward, both knees bent approximately90degrees, rear knee near floor, front heel grounded. Upright neutral torso, whole body side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "split-squat",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-799ca1d4-ca84-40ca-969b-88b93b62596c.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STATIC SPLIT SQUAT, not Bulgarian. BOTH feet on floor fixed split stance, rear heel raised. Left top position knees nearly straight; right lowered until rear knee near ground and front knee around90degrees. Hands on hips, upright torso, same foot positions in both panels.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "lying-ez-triceps-extension",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-b12e944c-8a6c-4340-a809-a7e230c7fc66.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: LYING EZ BAR TRICEPS EXTENSION skull crusher. Flat bench, feet on floor. Left upper arms vertical elbows straight EZ bar above shoulders; right upper arms remain vertical elbows bent bar just above forehead, no contact with head. Small light EZ bar, side view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "glute-ham-raise",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-57454d83-293d-48fa-b30d-ce7494454401.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: GLUTE HAM RAISE ON GHD. Knees supported near curved thigh pad, ankles securely between rollers at footplate. Left torso upright with knees flexed; right body extended horizontally from knees through head in straight line, arms crossed chest. Accurate GHD apparatus, side view. This is knee flexion, not back hyperextension.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "donkey-calf-machine",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-7bcbff72-3916-4f0b-a578-bf8f5a3ada11.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: DONKEY CALF RAISE MACHINE. Instructor hip hinge torso horizontal forearms on front support, padded machine load rests over pelvis NOT spine. Feet on raised block heels free, knees nearly straight. Left heels lowered; right on tiptoes. Side view, anatomically coherent machine.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "floor-crunch",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-c881a54e-9096-4ba6-80d5-e82ffb765e4a.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: FLOOR ABDOMINAL CRUNCH, not sit up. Supine knees bent feet flat arms crossed chest. Left head and shoulders resting on mat; right shoulder blades raised slightly by spinal flexion while lower back pelvis remain on mat. Side view whole body.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "supinated-lat-pulldown",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-1f228777-1345-4916-9e86-9305bc69afb2.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SUPINATED CLOSE SHOULDER WIDTH LAT PULLDOWN. Seated facing high pulley, knees under thigh pads, palms facing instructor underhand grip clearly visible. Left arms overhead; right bar toward upper chest elbows beside torso, torso only slightly leaned back. Front three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "supinated-barbell-row",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-3121a889-595e-4ddf-959c-14464b6eeb23.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: UNDERHAND SUPINATED BENT OVER BARBELL ROW. Palms facing forwards/upwards, hip hinge torso30degrees above horizontal knees soft. Left arms extended bar below shoulders; right bar toward waist elbows close to trunk. NOT inverted bodyweight row. Side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "dumbbell-fly",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-73875381-3083-45ab-95bc-e334af7888bd.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: FLAT DUMBBELL CHEST FLY. Supine on flat bench feet grounded. Left dumbbells together over chest elbows slightly bent; right arms open to sides with same slight elbow bend, upper arms level with torso not below bench. Light dumbbells, front elevated three-quarter view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "cable-fly",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-8e608253-9586-4bed-bdd4-cb9aba340577.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STANDING CABLE CHEST FLY. Two separate pulleys at shoulder height behind each side, cables straight to handles. Left arms opened wide slight elbow bend; right hands meet in front of chest in hug motion. Staggered stance, torso stable, front three-quarter full body.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "forearm-plank",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-8f5d4b1e-0087-47e7-8c2d-e948bc6f04bf.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: FOREARM PLANK isometric. BOTH panels show correct same sustained posture, two slightly different side three-quarter views, no invented motion. Elbows directly under shoulders forearms on mat toes supporting feet, straight line ears shoulders hips ankles. No sag or pike, fully clothed instructor.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "dumbbell-lateral-raise",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-721c762b-fb5f-425b-b80f-2c4387d8a9dd.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STANDING DUMBBELL LATERAL RAISE. Left arms down by sides holding light dumbbells; right arms raised out laterally to shoulder height, elbows slightly bent, hands in scapular plane slightly forward. Neutral wrists and shoulders, no shrug. Full body front three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "kneeling-landmine-rotation",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-bcb36a12-669b-4f3b-99a9-ddc679904f02.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: TALL KNEELING LANDMINE ROTATION. Both knees on padded mat, hips extended upright, far barbell end anchored on floor ahead, both hands hold near end together. Left loaded end near left shoulder; right across to right shoulder in controlled shallow arc. Torso stable no exaggerated twisting, front view clearly shows both knees and anchor.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "incline-dumbbell-curl",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-975f9254-85b5-47bc-b81c-b0405744552d.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: INCLINE DUMBBELL CURL simultaneous BOTH arms, not alternating. Bench backrest tilted45degrees above horizontal, instructor reclines with back supported. LEFT PANEL: BOTH arms extended down fully and both dumbbells beside the floor, no arm bent. RIGHT PANEL: BOTH elbows flexed, both dumbbells raised near shoulders, upper arms still hang vertically alongside bench. Palms face forward supinated. Same camera side three-quarter frame in both, feet flat.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "spider-curl",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-2d34cedf-ec3b-4193-b836-ef4a39fc536d.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SPIDER CURL WITH DUMBBELLS. Chest supported prone against45degree incline bench, feet stable on floor behind, arms hanging vertically in front. Left elbows straight dumbbells down; right elbows flexed dumbbells toward shoulders. Upper arms stationary and chest supported. Side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "neutral-grip-pull-up",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-39ef9d92-294e-4c78-a80e-f05e6e1e4639.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: NARROW NEUTRAL GRIP PULL UP. Two short overhead parallel handles shoulder width, palms facing each other. Left hanging arms extended; right chin at handle height elbows down close to torso. Feet suspended no swinging, full body front three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "wide-grip-pull-up",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-7b2f9616-0d8f-4b56-b311-6d72aced61bd.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: WIDE OVERHAND PULL UP. Grip moderately wider than shoulders palms forward. Left arms extended overhead; right chin above bar upper chest approaches bar IN FRONT of face, elbows down/out. Feet suspended no swinging. Front three-quarter full body.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "straight-arm-pulldown",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-f2f13983-3661-403b-bb26-d5c1ca7090c7.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STRAIGHT ARM CABLE PULLDOWN. Standing facing high cable, slight hip hinge knees soft. Left arms forward overhead around head height holding straight bar; right straight arms press bar to thighs, elbows stay nearly extended. Cable visibly connects bar to high pulley, side view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "trx-row",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-0fa23253-b922-4f3e-9e07-575974c47624.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SUSPENSION STRAP BODYWEIGHT ROW. Two straps anchored high in front, feet on floor heels grounded, body leaning back in straight line. Left arms extended holding handles; right elbows drawn behind ribs chest toward hands. Taut straps correct anchor, side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "chest-press-machine",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-59bb8c67-be63-4098-9a1e-f54208cdc637.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: SEATED CHEST PRESS MACHINE. Upright backrest, handles at mid-chest height. Left elbows bent handles near chest; right arms extended forward. Back buttocks supported feet planted, coherent commercial gym machine, side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "fitball-crunch",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-45547bbc-f14e-4d78-80f4-fc28dc85922a.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STABILITY BALL ABDOMINAL CRUNCH. Lumbar and middle back supported on large exercise ball, feet wide firmly on floor knees90degrees. Arms crossed chest. Left upper back gently extended over ball; right small crunch lifting shoulder blades while pelvis stays supported. Side view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "banded-barbell-hip-thrust",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-a77ebde3-3851-41db-8d28-e88b6455855d.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: BARBELL HIP THRUST WITH LOOP BAND ABOVE KNEES. Upper back supported on stable bench, padded bar across hip crease, clear teal loop resistance band above both knees. Left hips lowered; right hips extended torso horizontal shins vertical, chin slightly tucked. Feet grounded, side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "cable-front-raise",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-336b3cb8-bce9-467d-bbc5-2c72d60b43cb.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: TWO ARM LOW CABLE FRONT RAISE. Standing facing away from low pulley behind, cable travels between legs to small straight bar in hands. Left hands at front thighs; right arms raised forward shoulder height elbows slightly bent. Torso upright stable, full body side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "reverse-cable-fly",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-4c146afa-3002-45e0-af9d-1c96d2ab124d.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STANDING REVERSE CABLE FLY rear deltoids. Facing twin adjustable pulleys at shoulder height. Cables cross: right hand holds left pulley cable and left hand right cable. Left arms reach forward crossed; right arms open out to sides at shoulder height, elbows slightly bent. Rear three-quarter view shows scapula and clear cables.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "cable-glute-kickback",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-aa7bed41-29d2-44f1-95b2-2b5388f94532.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: STANDING SINGLE LEG LOW CABLE GLUTE KICKBACK. Ankle cuff on working right ankle connected to low pulley in front. Hands on machine support slight torso hinge. Left working leg under hips; right working leg extended backwards about25degrees, knee soft and spine unchanged. Grounded left leg stable, full body side view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "reverse-lunge",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-152c6fcf-ff2c-4606-aa19-d4820ff20043.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: REVERSE LUNGE bodyweight. Left standing feet hip width hands on hips; right right foot stepped backwards resting on toes, front left foot stays planted, both knees bent90degrees rear knee near floor. Upright trunk full body side three-quarter.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "ab-wheel-rollout",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-67d76af0-72dd-4a91-a287-0f522c233b43.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: KNEELING AB WHEEL ROLLOUT. Both knees on mat hands gripping small ab wheel handles. Left wheel close under shoulders hips flexed; right wheel rolled forward, arms near overhead body extended diagonally knees to shoulders with neutral lumbar spine, no sag. Side view whole body wheel visible.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "kneeling-cable-crunch",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-7df26f0e-60eb-4b48-ac4d-d9975d80e62a.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: KNEELING CABLE ABDOMINAL CRUNCH. Kneeling facing high pulley holding rope ends by temples. Left torso fairly upright hips over knees; right spine flexes ribs toward pelvis elbows move toward thighs, hips stay nearly fixed. Cable high and taut, side view.",
+      "review": "visually-reviewed"
+    },
+    {
+      "id": "dead-stop-barbell-curl",
+      "path": "C:\\Users\\sergi\\.codex\\generated_images\\019f21b0-b58c-7331-9ead-e30d690ae7fc\\exec-70e7c5a0-c69e-473a-b97d-3087ee810ba2.png",
+      "prompt": "Use case: scientific-educational. ONE exercise photography asset for a training manual. Exactly two equal side-by-side panels, narrow white vertical gutter at exact middle, starting position LEFT, finishing position RIGHT. Same adult female athletic instructor in dark teal sports shirt, black leggings and gym shoes in both panels, neutral bright gym, photographic realism. Landscape overall image. Full body AND equipment visible with generous margins. Anatomically correct realistic grip, joints, machine and cable paths. Moderate/light load. No text, no letters, no arrows, no branding, no watermark, no bystanders. This is a diptych of ONE movement only. Exercise and detailed positions: DEAD STOP BARBELL BICEPS CURL FROM SAFETY PINS. Standing inside rack, two safety pins set at lower thigh bar height, palms up. Left bar resting on pins arms almost straight; right bar curled near shoulders upper arms fixed alongside torso. Clear pins below bar, no hip or back swing, full body three-quarter.",
+      "review": "visually-reviewed"
+    }
+  ]
+}

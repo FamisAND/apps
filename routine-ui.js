@@ -16,7 +16,7 @@ function tobRoutineSetDate(mn,entId,input){
 }
 function tobRoutinePhotos(movement){
   if(!movement)return '<span class="routine-unmatched">Ejercicio sin asociar</span>';
-  return `<div class="routine-photos">${movement.images.map((src,i)=>`<figure><img src="${src}" alt="${tobEsc(movement.name)}: ${i?'posición final':'posición inicial'}" loading="lazy" width="575" height="305"><figcaption>${i?'Final':'Inicio'}</figcaption></figure>`).join('')}</div>`;
+  return `<div class="routine-photos${movement.generated?' routine-photos--generated':''}">${movement.images.map((src,i)=>`<figure><img src="${src}" alt="${tobEsc(movement.name)}: ${i?'posición final':'posición inicial'}" loading="lazy" width="575" height="305"><figcaption>${movement.id==='forearm-plank'?'Mantener':i?'Final':'Inicio'}${movement.generated?' · Ilustración IA':''}</figcaption></figure>`).join('')}</div>`;
 }
 function tobRoutineGuides(a,it){
   return (a.rutina?.entrenos||[]).map(en=>{
@@ -25,8 +25,12 @@ function tobRoutineGuides(a,it){
       const ej=FTRoutine.effective(base,mn,it,en.id);
       for(const name of ej.tipo==='circuito'?(ej.circuitoLineas||[]):[ej.nombre]){
         const movement=ej.tipo==='circuito'?FTExercises.resolve(name,tobDB.exerciseAliases||{}):tobRoutineMovement(ej);
-        const subtitle=ej.tipo==='circuito'?'':ej.subtitle||'',key=(movement?.id||FTExercises.normalize(name))+'|'+subtitle;
-        if(!items.has(key))items.set(key,{name,movement,subtitle,illustration:movement?null:FTExercises.referenceIllustration(name)});
+        const subtitle=ej.tipo==='circuito'?'':ej.subtitle||'';
+        const alternatives=movement?[null]:FTExercises.referenceIllustrations(name);
+        for(const illustration of alternatives.length?alternatives:[null]){
+          const key=(movement?.id||FTExercises.normalize(name))+'|'+subtitle+'|'+(illustration?.id||'');
+          if(!items.has(key))items.set(key,{name,movement,subtitle,illustration});
+        }
       }
     }
     return {name:en.nombre||'Entreno '+(en.letra||en.id),items:[...items.values()]};
@@ -35,7 +39,7 @@ function tobRoutineGuides(a,it){
 function tobRoutineRenderAppendix(a,it){
   const target=document.getElementById('tobRoutineAppendix');if(!target)return;
   target.innerHTML=`<header class="routine-appendix-title"><h3>Cómo realizar los ejercicios</h3><a class="routine-icon" href="#tobEntContent" title="Volver al registro" aria-label="Volver al registro"><span data-ft-icon="back"></span></a></header>`+
-    tobRoutineGuides(a,it).map(group=>`<section class="routine-guide-group"><h4>${tobEsc(group.name)}</h4>${group.items.map(({name,movement,subtitle,illustration})=>`<article class="routine-guide"><div class="routine-guide-copy"><h5>${tobEsc(name)}</h5>${subtitle?`<p class="routine-guide-cue">${tobEsc(subtitle)}</p>`:''}${illustration?`<p class="routine-guide-cue">Alternativa ilustrada: ${tobEsc(illustration.name)}</p>`:''}<p>${tobEsc((movement||illustration)?.technique||'Ejercicio sin asociar. Consulta la variante con tu entrenador.')}</p></div>${tobRoutinePhotos(movement||illustration)}</article>`).join('')}</section>`).join('');
+    tobRoutineGuides(a,it).map(group=>`<section class="routine-guide-group"><h4>${tobEsc(group.name)}</h4>${group.items.map(({name,movement,subtitle,illustration})=>`<article class="routine-guide"><div class="routine-guide-copy"><h5>${tobEsc(name)}</h5>${subtitle?`<p class="routine-guide-cue">${tobEsc(subtitle)}</p>`:''}${illustration?`<p class="routine-guide-cue">Variante ilustrada: ${tobEsc(illustration.name)}</p>`:''}${!movement&&FTExercises.referenceNote(name)?`<p class="routine-guide-cue">${tobEsc(FTExercises.referenceNote(name))}</p>`:''}<p>${tobEsc((movement||illustration)?.technique||'Ejercicio sin asociar. Consulta la variante con tu entrenador.')}</p></div>${tobRoutinePhotos(movement||illustration)}</article>`).join('')}</section>`).join('');
 }
 function tobRoutineEditorValues(){
   if(!tobRoutineEditor)return null;

@@ -1223,6 +1223,7 @@ tr.tob-cli-inactivo > td:nth-child(2){ opacity:1; }  /* estado y acciones siempr
 .routine-photos{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:860px}
 .routine-photos figure{margin:0;min-width:0}
 .routine-photos img{width:100%;height:auto;aspect-ratio:1.9;object-fit:contain;display:block;border-radius:4px;background:#20231f}
+.routine-photos--generated img{aspect-ratio:1;background:#e7ebe9}
 .routine-photos figcaption{font-size:11px;color:var(--mute,#aaa);padding:4px 0}
 .routine-editor{max-width:700px!important;max-height:90vh;overflow:auto}
 .routine-editor h3{font-size:19px;margin-bottom:8px}

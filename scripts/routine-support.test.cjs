@@ -34,5 +34,6 @@ test('conservative aliases distinguish materials and alternatives',()=>{
 test('reference alternatives have labeled illustrations without changing exercise identity',()=>{
   assert.equal(L.resolve('REMO o SEAL ROW'),null);assert.equal(L.referenceIllustration('REMO o SEAL ROW').id,'chest-supported-row');
   assert.equal(L.resolve('DOMINADAS (o LAT MACHINE)'),null);assert.equal(L.referenceIllustration('DOMINADAS (o LAT MACHINE)').id,'lat-pulldown');
-  assert.equal(L.referenceIllustration('REMO'),null);assert.equal(L.referenceIllustration('DOMINADAS'),null);
+  assert.equal(L.resolve('REMO'),null);assert.equal(L.referenceIllustration('REMO').id,'bent-over-barbell-row');
+  assert.equal(L.resolve('DOMINADAS').id,'pull-up');assert.equal(L.referenceIllustration('DOMINADAS'),null);
 });
