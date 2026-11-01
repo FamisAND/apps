@@ -4,7 +4,7 @@
 
 Integrada en el Tracker existente, conservando Cuentas, Movimientos, Dashboard, importación/exportación y almacenamiento. No es una segunda aplicación. El mismo código modular se empaqueta en el HTML local autocontenido.
 
-El HTML local y su ZIP están actualizados. El build del panel privado está preparado y las pruebas de su persistencia pasan. **El despliegue de Cloudflare no está publicado**: Wrangler rechazó el comando por ausencia de `CLOUDFLARE_API_TOKEN` o sesión de autenticación utilizable. No se usó una cuenta temporal ni se cambiaron los datos de negocio.
+Actualización del 2 de noviembre de 2026: publicado en Cloudflare, versión daaca711-9494-4856-bbf5-d0f0bdb001a8. El formulario ahora tiene siete campos y un único identificador; el analizador visible calcula solo evaluación. Ver FUNDING-SIMPLE.md. Este documento conserva la descripción del motor completo anterior, que sigue disponible internamente para compatibilidad. El HTML local y su ZIP también están actualizados.
 
 ## Funcionalidades implementadas
 
@@ -85,6 +85,6 @@ Para la rentabilidad:
 7. Los gastos generales sin cuenta se mantienen en el Dashboard, pero se muestran como no asignados en cohortes. No se reparten arbitrariamente. Las comisiones ya descontadas del neto son informativas.
 8. Los tiempos de eventos completados excluyen cuentas pendientes y fechas ausentes; no representan la espera esperada de todas las compras. No se sustituye activación desconocida por aprobación ni cobro desconocido por solicitud.
 9. Las configuraciones importadas de FondeoLab pueden requerir completar reparto, topes, plazo y semántica de límites. El JSON original permanece guardado y los archivos de Descargas no se modifican.
-10. Falta confirmar el despliegue privado con una credencial de Cloudflare válida. Las pruebas centrales fueron sobre una base sintética en memoria, no sobre datos de producción ni una sesión autenticada del usuario.
+10. Despliegue privado confirmado el 2 de noviembre de 2026. Se verificaron la versión activa y la conservación de variables y bases. Las pruebas de escritura se hicieron con datos sintéticos, sin crear cuentas reales en producción.
 
 Los cambios no ejecutan operaciones de compra, pago o retirada: solo registran hechos y calculan escenarios.

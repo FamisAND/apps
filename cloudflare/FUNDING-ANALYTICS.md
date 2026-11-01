@@ -1,10 +1,10 @@
 # Identificadores y Analytics por cuenta
 
-Ampliación del Tracker de Fondeo existente, 1 de noviembre de 2026. Conserva el analizador, las normas individuales, las cohortes, las plantillas y el libro económico anteriores.
+Ampliación del Tracker de Fondeo existente, actualizada el 2 de noviembre de 2026. Conserva el analizador, las normas individuales, las cohortes, las plantillas y el libro económico anteriores.
 
 ## Uso
 
-1. Crear o editar una cuenta y rellenar sus identificadores de evaluación y fondeada. Se pueden buscar desde Cuentas y copiar desde la ficha; las ediciones conservan los valores anteriores.
+1. Crear o editar una cuenta y rellenar su único Identificador de cuenta. Se puede buscar desde Cuentas y copiar desde la ficha; las ediciones conservan los valores anteriores. El formulario se limita a siete campos de evaluación. Las referencias antiguas de evaluación y fondeada se conservan internamente para compatibilidad.
 2. Abrir **Analytics** en esa cuenta. Seleccionar o arrastrar un CSV en **Importar operaciones CSV**.
 3. Indicar la zona horaria del archivo, revisar las columnas y pulsar **Revisar importación**. La aplicación no adivina la zona de fechas sin offset. Se admiten zonas IANA, como America/Chicago, America/New_York, Europe/Andorra o UTC.
 4. Revisar nuevas, repetidas, actualizadas y ambiguas. Confirmar la cuenta cuando el identificador no coincide o no puede verificarse. Resolver cada ambigüedad antes de guardar.
@@ -56,4 +56,4 @@ El CSV modifica exclusivamente Analytics. No genera eventos de retirada, cobro, 
 
 El HTML autónomo se genera con `node scripts/build-funding-standalone.cjs`. Las dos versiones usan los mismos cálculos. Se actualizan el HTML de la carpeta apps, su carpeta de distribución y el ZIP. Hay una copia previa fuera del repositorio.
 
-Los archivos de código están preparados para el panel privado. El despliegue de Cloudflare sigue pendiente de una credencial válida, como ya se indicó en la ampliación anterior; las pruebas de persistencia usan una base sintética, no los datos de producción del usuario.
+Publicado el 2 de noviembre de 2026 en full-training-private.sergiofamisr.workers.dev, versión daaca711-9494-4856-bbf5-d0f0bdb001a8. El formulario simplificado y la verificación de publicación se documentan en FUNDING-SIMPLE.md. Las pruebas de persistencia usan una base sintética; el despliegue no ejecutó migraciones ni escrituras de datos del usuario.
