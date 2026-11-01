@@ -56,4 +56,5 @@ El CSV modifica exclusivamente Analytics. No genera eventos de retirada, cobro, 
 
 El HTML autónomo se genera con `node scripts/build-funding-standalone.cjs`. Las dos versiones usan los mismos cálculos. Se actualizan el HTML de la carpeta apps, su carpeta de distribución y el ZIP. Hay una copia previa fuera del repositorio.
 
-Publicado el 2 de noviembre de 2026 en full-training-private.sergiofamisr.workers.dev, versión daaca711-9494-4856-bbf5-d0f0bdb001a8. El formulario simplificado y la verificación de publicación se documentan en FUNDING-SIMPLE.md. Las pruebas de persistencia usan una base sintética; el despliegue no ejecutó migraciones ni escrituras de datos del usuario.
+Publicado el 2 de noviembre de 2026 en full-training-private.sergiofamisr.workers.dev, versión 114e58cc-5a7a-4898-904f-08f05243b9cc. El formulario de compra simplificado, el analizador completo restaurado y la verificación de publicación se documentan en FUNDING-SIMPLE.md. Las pruebas de persistencia usan una base sintética; el despliegue no ejecutó migraciones ni escrituras de datos del usuario.
+

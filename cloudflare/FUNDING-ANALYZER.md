@@ -4,7 +4,7 @@
 
 Integrada en el Tracker existente, conservando Cuentas, Movimientos, Dashboard, importación/exportación y almacenamiento. No es una segunda aplicación. El mismo código modular se empaqueta en el HTML local autocontenido.
 
-Actualización del 2 de noviembre de 2026: publicado en Cloudflare, versión daaca711-9494-4856-bbf5-d0f0bdb001a8. El formulario ahora tiene siete campos y un único identificador; el analizador visible calcula solo evaluación. Ver FUNDING-SIMPLE.md. Este documento conserva la descripción del motor completo anterior, que sigue disponible internamente para compatibilidad. El HTML local y su ZIP también están actualizados.
+Actualización del 2 de noviembre de 2026: publicado en Cloudflare, versión 114e58cc-5a7a-4898-904f-08f05243b9cc. El formulario de compra y edición de evaluaciones tiene siete campos y un único identificador visible. El analizador completo de rentabilidad mantiene sus fases de evaluación y fondeada, el primer retiro, el ROI y las demás funciones descritas aquí. Ver FUNDING-SIMPLE.md. El HTML local y su ZIP también están actualizados.
 
 ## Funcionalidades implementadas
 
@@ -88,3 +88,4 @@ Para la rentabilidad:
 10. Despliegue privado confirmado el 2 de noviembre de 2026. Se verificaron la versión activa y la conservación de variables y bases. Las pruebas de escritura se hicieron con datos sintéticos, sin crear cuentas reales en producción.
 
 Los cambios no ejecutan operaciones de compra, pago o retirada: solo registran hechos y calculan escenarios.
+
