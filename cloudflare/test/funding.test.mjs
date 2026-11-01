@@ -9,6 +9,7 @@ import {listRecords,commitRecords,recordStatus} from '../src/records.mjs';
 import {FILE_MODULE,canAccess} from '../src/policy.mjs';
 const M=createRequire(import.meta.url)('../../funding-model.js');
 const A=createRequire(import.meta.url)('../../funding-analysis.js');
+const T=createRequire(import.meta.url)('../../funding-trades.js');
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../business-migrations/0001_records.sql',import.meta.url),'utf8'));db.prepare('INSERT INTO datasets VALUES(?,?,?,?,?)').run('test','active','synthetic',1,'2026-10-23');
   function prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}
@@ -28,4 +29,11 @@ test('funding draft, commit, lost receipt retry and reopen preserve account and 
   const copy=await f.bridge().open('funding');assert.deepEqual(copy.funding_tracker_v1,book);assert.equal(M.metrics(copy.funding_tracker_v1,{end:'2026-10-23'}).net,-7500);
   assert.equal(f.db.prepare("SELECT count(*) AS n FROM records WHERE namespace<>'funding'").get().n,0);
 }finally{f.db.close();}});
-test('funding module permissions are independent and every static asset is protected',()=>{for(const file of ['funding.html','funding.js','funding-model.js','funding.css','funding-chart.umd.js','funding-analysis.js','funding-analysis-ui.js'])assert.equal(FILE_MODULE[file],'funding');const user={active:true,role:'user',permissions:['options','training_online']};assert.equal(canAccess(user,'funding'),false);assert.equal(canAccess({...user,permissions:['funding']},'funding'),true);assert.equal(canAccess({...user,permissions:['funding']},'training_online'),false);});
+test('funding module permissions are independent and every static asset is protected',()=>{for(const file of ['funding.html','funding.js','funding-model.js','funding.css','funding-chart.umd.js','funding-analysis.js','funding-analysis-ui.js','funding-trades.js','funding-trades-ui.js'])assert.equal(FILE_MODULE[file],'funding');const user={active:true,role:'user',permissions:['options','training_online']};assert.equal(canAccess(user,'funding'),false);assert.equal(canAccess({...user,permissions:['funding']},'funding'),true);assert.equal(canAccess({...user,permissions:['funding']},'training_online'),false);});
+
+test('trading Analytics, source CSV chunks and identifiers survive cloud roundtrip without changing cash',async()=>{const f=fixture();try{
+ const bridge=f.bridge();await bridge.open('funding');const book=M.empty(),rows=Array.from({length:150},(_,i)=>({id:'row-'+i,importId:'csv',external:'SYNTHETIC',symbol:'MNQ',contract:'MNQZ26',side:'long',quantity:1,opened:1793000000000+i*1000,closed:1793000060000+i*1000,net:1000,gross:1200,fees:200,currency:'USD',raw:{source:'Synthetic CSV row'}}));
+ const analytics={...T.empty(),rows,settings:{timeZone:'UTC',dayStart:0,currency:'USD'},imports:[{id:'csv',hash:'synthetic-only',base64:Buffer.from('synthetic original file\n'.repeat(10000)).toString('base64')}]};
+ book.accounts.push({id:'account',company:'Synthetic',name:'50K',externalIds:{evaluation:'E-1',funded:'F-1'},analytics});book.events.push({id:'purchase',accountId:'account',type:'purchase',date:'2026-10-01',order:1,money:M.money(75,'USD',1,'USD')});M.validate(book);
+ await bridge.setDraft('funding',{funding_tracker_v1:book});await bridge.save('funding');const copy=(await f.bridge().open('funding')).funding_tracker_v1;assert.deepEqual(copy,book);assert.equal(M.metrics(copy).net,-7500);assert.equal(T.analytics(copy.accounts[0].analytics,analytics.settings).total.net,150000);assert.equal(f.db.prepare("SELECT count(*) AS n FROM records WHERE record_key LIKE '%/c:%'").get().n>0,true);
+ }finally{f.db.close();}});

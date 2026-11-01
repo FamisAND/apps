@@ -24,3 +24,5 @@ export function validateSection(section,value){
 
 FILE_MODULE['funding-analysis.js']='funding';
 FILE_MODULE['funding-analysis-ui.js']='funding';
+FILE_MODULE['funding-trades.js']='funding';
+FILE_MODULE['funding-trades-ui.js']='funding';

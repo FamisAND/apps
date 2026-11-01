@@ -71,6 +71,12 @@
     const ids=new Set(),accounts=new Map();
     for(const a of db.accounts){
       if(typeof a.id!=='string'||!a.id||ids.has(a.id)||typeof a.company!=='string'||!a.company.trim()||typeof a.name!=='string'||!a.name.trim())fail('Cuenta incompleta o ID duplicado.');
+      if(a.externalIds&&(!['evaluation','funded'].every(k=>typeof a.externalIds[k]==='string'&&a.externalIds[k].length<=150)))fail('Identificador externo no válido.');
+      if(a.analytics){const t=a.analytics;if(t.version!==1||!Array.isArray(t.rows)||!Array.isArray(t.imports)||!t.settings||typeof t.settings.timeZone!=='string'||!Number.isInteger(t.settings.dayStart)||t.settings.dayStart<0||t.settings.dayStart>23)fail('Analytics incompatible.');
+        try{if(t.settings.timeZone)new Intl.DateTimeFormat('en',{timeZone:t.settings.timeZone});}catch{fail('Zona de Analytics inválida.');}
+        const rowIds=new Set(),imports=new Set();for(const f of t.imports){if(typeof f.id!=='string'||imports.has(f.id)||typeof f.hash!=='string'||typeof f.base64!=='string')fail('Historial CSV no válido.');imports.add(f.id);}
+        let total=0;for(const r of t.rows){if(typeof r.id!=='string'||!r.id||rowIds.has(r.id)||!imports.has(r.importId)||!Number.isSafeInteger(r.net)||!['gross','fees'].every(k=>r[k]==null||Number.isSafeInteger(r[k]))||r.gross!=null&&r.fees!=null&&r.gross-r.fees!==r.net||!Number.isFinite(r.closed)||r.opened!=null&&(!Number.isFinite(r.opened)||r.opened>r.closed)||!Number.isFinite(r.quantity)||r.quantity<=0||!['long','short'].includes(r.side)||typeof r.symbol!=='string'||!/^[A-Z]{3}$/.test(r.currency)||r.currency!==t.settings.currency)fail('Operación de Analytics no válida.');total+=Math.abs(r.net)+Math.abs(r.gross||0)+Math.abs(r.fees||0);if(!Number.isSafeInteger(total))fail('Analytics supera el rango monetario seguro.');rowIds.add(r.id);}
+      }
       ids.add(a.id);accounts.set(a.id,a);
     }
     const eventIds=new Set(),dispositions=new Set();let totalAmount=0;
@@ -164,7 +170,7 @@
   }
   function csv(rows){return '\ufeff'+rows.map(row=>row.map(v=>'"'+(typeof v==='number'?String(v):String(v??'').replace(/^[\s]*[=+@\-\t\r]/,"'$&")).replaceAll('"','""')+'"').join(';')).join('\r\n');}
   function exportRows(db){
-    return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt];})],
+    return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada','Identificador evaluación','Identificador fondeada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt,a.externalIds?.evaluation,a.externalIds?.funded];})],
       events:[['ID','Cuenta ID','Empresa','Evento','Fecha','Importe original','Divisa','Cambio a '+db.baseCurrency,'Importe '+db.baseCurrency,'Solicitud ID','Gasto original ID','Comision ya descontada','Notas','Anulado','Eliminado'],...db.events.map(e=>[e.id,e.accountId,db.accounts.find(a=>a.id===e.accountId)?.company,TYPES[e.type],e.date,e.money?.minor==null?'':e.money.minor/100,e.money?.currency,e.money?.rate,e.money?.baseMinor==null?'':e.money.baseMinor/100,e.requestId,e.expenseId,e.feeDeductedMinor==null?'':e.feeDeductedMinor/100,e.notes,!!e.voidedAt,!!e.deletedAt])]};
   }
   return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,metrics,summary,merge,csv,exportRows,order,clone};

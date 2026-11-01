@@ -120,7 +120,7 @@ runtime = runtime.slice(0, localBootStart) + `  async function boot(){
   }
 ` + runtime.slice(bootCall);
 
-runtime=runtime.replace('  boot();', "  let chosenAnalysisId=null;FundingAnalysisUI.mount({get:()=>M.clone(db),mutate,notice,setAnalysisId:id=>{chosenAnalysisId=id;},newAccount:conditions=>showEditor({kind:'account',conditions,analysisId:chosenAnalysisId})});\n  boot();");
+runtime=runtime.replace('  boot();', "  let chosenAnalysisId=null;FundingAnalysisUI.mount({get:()=>M.clone(db),mutate,notice,setAnalysisId:id=>{chosenAnalysisId=id;},newAccount:conditions=>showEditor({kind:'account',conditions,analysisId:chosenAnalysisId})});\n  FundingTradesUI.mount({get:()=>M.clone(db),save:saveTrades,retry:retryTrades,pending:()=>unsavedBook,editable:()=>canEdit});\n  boot();");
 
 html = html
   .replace(/<link rel="stylesheet" href="[^"]+">\s*/g, '')
@@ -140,7 +140,7 @@ const css = [read('design-system.css'), read('funding.css'), `
 `].join('\n');
 
 html = html.replace('</head>', `<style>\n${css}\n</style>\n</head>`);
-html = html.replace('</body>', ()=>`<script>\n${inlineScript(read('session-icons.js'))}\n</script>\n<script>\n${inlineScript(read('funding-chart.umd.js'))}\n</script>\n<script>\n${inlineScript(read('funding-model.js'))}\n</script>\n<script>\n${inlineScript(read('funding-analysis.js'))}\n</script>\n<script>\n${inlineScript(read('funding-analysis-ui.js'))}\n</script>\n<script>\n${inlineScript(runtime)}\n</script>\n</body>`);
+html = html.replace('</body>', ()=>`<script>\n${inlineScript(read('session-icons.js'))}\n</script>\n<script>\n${inlineScript(read('funding-chart.umd.js'))}\n</script>\n<script>\n${inlineScript(read('funding-model.js'))}\n</script>\n<script>\n${inlineScript(read('funding-analysis.js'))}\n</script>\n<script>\n${inlineScript(read('funding-analysis-ui.js'))}\n</script>\n<script>\n${inlineScript(read('funding-trades.js'))}\n</script>\n<script>\n${inlineScript(read('funding-trades-ui.js'))}\n</script>\n<script>\n${inlineScript(runtime)}\n</script>\n</body>`);
 html = `<!-- Archivo local independiente generado desde Full Training. No contiene datos personales ni conexion a Cloudflare. -->\n${html}`;
 
 fs.writeFileSync(output, html, 'utf8');
