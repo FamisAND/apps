@@ -2,7 +2,7 @@
   const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.FundingModel=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  const TYPES={purchase:'Compra de evaluacion',renewal:'Renovacion',reset:'Reset',activation:'Activacion',expense:'Otro gasto',approved:'Evaluacion aprobada',failed:'Evaluacion fallida',closed:'Cuenta cerrada',requested:'Retirada solicitada',received:'Retirada cobrada',rejected:'Retirada rechazada',cancelled:'Retirada cancelada',refund:'Reembolso',capital:'Aportacion al bankroll'};
+  const TYPES={fundedFailed:'Suspensión de fondeada',started:'Inicio de evaluación',payoutApproved:'Retirada aprobada',purchase:'Compra de evaluacion',renewal:'Renovacion',reset:'Reset',activation:'Activacion',expense:'Otro gasto',approved:'Evaluacion aprobada',failed:'Evaluacion fallida',closed:'Cuenta cerrada',requested:'Retirada solicitada',received:'Retirada cobrada',rejected:'Retirada rechazada',cancelled:'Retirada cancelada',refund:'Reembolso',capital:'Aportacion al bankroll'};
   const COSTS=new Set(['purchase','renewal','reset','activation','expense']);
   const CASH=new Set([...COSTS,'received','refund','capital','requested']);
   const LIVE=e=>!e.voidedAt&&!e.deletedAt;
@@ -53,10 +53,10 @@
       }else if(e.type==='failed'){
         if(!current||current.status!=='pending'||approvedDate)fail('Solo se puede marcar como fallida una evaluacion abierta.');
         current.status='failed';current.endDate=e.date;status='failed';closeDate=e.date;
-      }else if(e.type==='closed'){
+      }else if(['closed','fundedFailed'].includes(e.type)){
         if(status!=='funded')fail('Solo se puede cerrar una cuenta fondeada activa.');
         status='closed';closeDate=e.date;
-      }else if(['requested','received','rejected','cancelled'].includes(e.type)){
+      }else if(['requested','payoutApproved','received','rejected','cancelled'].includes(e.type)){
         if(!approvedDate)fail('Las retiradas requieren una evaluacion aprobada en esa fecha.');
         if(e.type==='requested'&&status!=='funded')fail('La solicitud debe ser anterior al cierre de la cuenta.');
       }
@@ -67,6 +67,7 @@
   function validate(db){
     if(!db||db.schemaVersion!==1||!['USD','EUR'].includes(db.baseCurrency)||!Array.isArray(db.accounts)||!Array.isArray(db.events))fail('Formato de Tracker de Fondeo incompatible.');
     if(db.accounts.length>10000||db.events.length>50000)fail('El archivo es demasiado grande para una importacion normal.');
+    if(db.analysis){if(db.analysis.version!==1||!Array.isArray(db.analysis.templates)||!Array.isArray(db.analysis.saved))fail('Extensión del analizador incompatible.');const extensionIds=new Set();for(const item of [...db.analysis.templates,...db.analysis.saved]){if(!item||typeof item.id!=='string'||!item.id||extensionIds.has(item.id)||typeof item.name!=='string'||!item.config||item.config.version!==1)fail('Configuración o análisis no válido.');extensionIds.add(item.id);}}
     const ids=new Set(),accounts=new Map();
     for(const a of db.accounts){
       if(typeof a.id!=='string'||!a.id||ids.has(a.id)||typeof a.company!=='string'||!a.company.trim()||typeof a.name!=='string'||!a.name.trim())fail('Cuenta incompleta o ID duplicado.');
@@ -91,10 +92,10 @@
     for(const e of db.events.filter(LIVE)){
       if(e.requestId){
         const request=db.events.find(r=>r.id===e.requestId&&LIVE(r));
-        if(!request||request.type!=='requested'||request.accountId!==e.accountId||order(request,e)>0||!['received','rejected','cancelled'].includes(e.type))fail('La resolucion no corresponde a una solicitud valida anterior.');
-        if(dispositions.has(e.requestId))fail('Esta solicitud ya tiene una resolucion. No se puede cobrar dos veces.');dispositions.add(e.requestId);
+        if(!request||request.type!=='requested'||request.accountId!==e.accountId||order(request,e)>0||!['received','payoutApproved','rejected','cancelled'].includes(e.type))fail('La resolucion no corresponde a una solicitud valida anterior.');
+        if(e.type!=='payoutApproved'&&dispositions.has(e.requestId))fail('Esta solicitud ya tiene una resolucion. No se puede cobrar dos veces.');if(e.type!=='payoutApproved')dispositions.add(e.requestId);
       }
-      if(['rejected','cancelled'].includes(e.type)&&!e.requestId)fail('Selecciona la solicitud que vas a resolver.');
+      if(['payoutApproved','rejected','cancelled'].includes(e.type)&&!e.requestId)fail('Selecciona la solicitud que vas a resolver.');
       if(e.type==='refund'){
         const original=db.events.find(r=>r.id===e.expenseId&&LIVE(r));
         if(!original||!COSTS.has(original.type)||original.accountId!==e.accountId||original.money.currency!==e.money.currency||order(original,e)>0)fail('El reembolso debe vincularse al gasto original, en su misma divisa.');
@@ -124,7 +125,7 @@
     const attempts=states.flatMap(s=>s.attempts),cohort=attempts.filter(a=>a.startDate>=start&&a.startDate<=end);
     const completed=attempts.filter(a=>a.status!=='pending'&&a.endDate>=start&&a.endDate<=end),passed=completed.filter(a=>a.status==='approved');
     const funded=states.filter(s=>s.approvedDate&&s.approvedDate>=start&&s.approvedDate<=end),paid=funded.filter(s=>s.firstReceived);
-    const pendingClaim=s=>s.events.some(e=>e.type==='requested'&&!s.events.some(r=>r.requestId===e.id));
+    const pendingClaim=s=>s.events.some(e=>e.type==='requested'&&!s.events.some(r=>r.type!=='payoutApproved'&&r.requestId===e.id));
     const known=funded.filter(s=>s.firstReceived||s.status==='closed'&&!pendingClaim(s));
     const approvalDays=passed.map(a=>day(a.approvedDate)-day(a.startDate)),payoutDays=paid.map(s=>day(s.firstReceived.date)-day(s.approvedDate));
     const evalCosts=period.filter(e=>['purchase','reset'].includes(e.type)).reduce((sum,e)=>sum+amount(e),0)-period.filter(e=>e.type==='refund'&&['purchase','reset'].includes(db.events.find(x=>x.id===e.expenseId)?.type)).reduce((sum,e)=>sum+amount(e),0);
@@ -158,6 +159,7 @@
       else if(JSON.stringify(stable(existing))===JSON.stringify(stable(item)))duplicates++;
       else fail('Conflicto con un ID existente. No se ha importado nada; conserva ambos archivos y revisa las diferencias.');
     }
+    if(incoming.analysis){if(incoming.analysis.version!==1)fail('Analizador incompatible.');next.analysis ||= {version:1,templates:[],saved:[]};for(const key of ['templates','saved'])for(const item of incoming.analysis[key]||[]){const old=next.analysis[key].find(x=>x.id===item.id);if(!old){next.analysis[key].push(clone(item));added++;}else if(JSON.stringify(stable(old))!==JSON.stringify(stable(item)))fail('Conflicto en configuración o análisis guardado.');else duplicates++;}}
     validate(next);return {value:next,added,duplicates};
   }
   function csv(rows){return '\ufeff'+rows.map(row=>row.map(v=>'"'+(typeof v==='number'?String(v):String(v??'').replace(/^[\s]*[=+@\-\t\r]/,"'$&")).replaceAll('"','""')+'"').join(';')).join('\r\n');}

@@ -21,3 +21,6 @@ export function validateSection(section,value){
   if(!SECTION_MODULE[section] || !value || typeof value!=='object' || Array.isArray(value))throw new Error('Invalid section');
   if(DATA_KEYS[section] && Object.keys(value).some(key=>!DATA_KEYS[section].includes(key)))throw new Error('Unexpected storage key');
 }
+
+FILE_MODULE['funding-analysis.js']='funding';
+FILE_MODULE['funding-analysis-ui.js']='funding';

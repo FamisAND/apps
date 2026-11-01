@@ -8,6 +8,7 @@ import {RecordClient} from '../src/record-client.mjs';
 import {listRecords,commitRecords,recordStatus} from '../src/records.mjs';
 import {FILE_MODULE,canAccess} from '../src/policy.mjs';
 const M=createRequire(import.meta.url)('../../funding-model.js');
+const A=createRequire(import.meta.url)('../../funding-analysis.js');
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../business-migrations/0001_records.sql',import.meta.url),'utf8'));db.prepare('INSERT INTO datasets VALUES(?,?,?,?,?)').run('test','active','synthetic',1,'2026-10-23');
   function prepare(sql){let args=[];return {bind(...values){args=values;return this;},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return db.prepare(sql).run(...args);}};}
@@ -20,11 +21,11 @@ function fixture(){
 }
 test('new tracker starts empty without any database writes; other empty modules still fail closed',async()=>{const f=fixture();try{const bridge=f.bridge();assert.deepEqual(await bridge.open('funding'),{funding_tracker_v1:null});assert.equal(f.db.prepare('SELECT count(*) AS n FROM records').get().n,0);assert.equal(f.db.prepare('SELECT count(*) AS n FROM write_requests').get().n,0);assert.deepEqual(await f.bridge().open('funding'),{funding_tracker_v1:null});const client=new RecordClient({fetchImpl:f.fetchImpl,checkpoint:async()=>{}});await assert.rejects(()=>client.load('training_online',{allowEmpty:true}),{status:400});await assert.rejects(()=>client.load('training_online'));}finally{f.db.close();}});
 test('funding draft, commit, lost receipt retry and reopen preserve account and event IDs',async()=>{const f=fixture();try{
-  const bridge=f.bridge();await bridge.open('funding');const book=M.empty();book.accounts.push({id:'account',company:'Synthetic',name:'25K'});book.events.push({id:'purchase',accountId:'account',type:'purchase',date:'2026-10-19',order:1,money:M.money(75,'USD',1,'USD')});M.validate(book);
+  const bridge=f.bridge();await bridge.open('funding');const book=M.empty();book.accounts.push({id:'account',company:'Synthetic',name:'25K',conditions:A.blank()});book.analysis={version:1,templates:[{id:'test-config',name:'Personal',config:A.blank()}],saved:[]};book.events.push({id:'purchase',accountId:'account',type:'purchase',date:'2026-10-19',order:1,money:M.money(75,'USD',1,'USD')});M.validate(book);
   await bridge.setDraft('funding',{funding_tracker_v1:book});assert.deepEqual((await f.bridge().open('funding')).funding_tracker_v1,book);
   f.lose();await assert.rejects(()=>bridge.save('funding'),/Lost receipt/);assert.ok(f.states.get('funding').pending);
   await bridge.retry('funding');assert.equal(f.db.prepare('SELECT count(*) AS n FROM write_requests').get().n,1);
   const copy=await f.bridge().open('funding');assert.deepEqual(copy.funding_tracker_v1,book);assert.equal(M.metrics(copy.funding_tracker_v1,{end:'2026-10-23'}).net,-7500);
   assert.equal(f.db.prepare("SELECT count(*) AS n FROM records WHERE namespace<>'funding'").get().n,0);
 }finally{f.db.close();}});
-test('funding module permissions are independent and every static asset is protected',()=>{for(const file of ['funding.html','funding.js','funding-model.js','funding.css','funding-chart.umd.js'])assert.equal(FILE_MODULE[file],'funding');const user={active:true,role:'user',permissions:['options','training_online']};assert.equal(canAccess(user,'funding'),false);assert.equal(canAccess({...user,permissions:['funding']},'funding'),true);assert.equal(canAccess({...user,permissions:['funding']},'training_online'),false);});
+test('funding module permissions are independent and every static asset is protected',()=>{for(const file of ['funding.html','funding.js','funding-model.js','funding.css','funding-chart.umd.js','funding-analysis.js','funding-analysis-ui.js'])assert.equal(FILE_MODULE[file],'funding');const user={active:true,role:'user',permissions:['options','training_online']};assert.equal(canAccess(user,'funding'),false);assert.equal(canAccess({...user,permissions:['funding']},'funding'),true);assert.equal(canAccess({...user,permissions:['funding']},'training_online'),false);});

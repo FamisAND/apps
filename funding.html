@@ -11,6 +11,8 @@
 <script defer src="session-icons.js"></script>
 <script defer src="funding-chart.umd.js"></script>
 <script defer src="funding-model.js"></script>
+<script defer src="funding-analysis.js"></script>
+<script defer src="funding-analysis-ui.js"></script>
 <script defer src="funding.js"></script>
 </head>
 <body class="theme-opt funding-app">
@@ -21,7 +23,7 @@
   <div class="header-actions"><button class="secondary" id="exportJson" title="Exportar todo el historial" disabled><span data-ft-icon="download"></span><span>Copia JSON</span></button><button id="newAccount" disabled><span data-ft-icon="plus"></span>Nueva evaluacion</button></div>
 </header>
 <nav class="funding-tabs" aria-label="Secciones de fondeo">
-  <button data-tab="dashboard" class="active" aria-current="page">Dashboard</button><button data-tab="accounts">Cuentas</button><button data-tab="movements">Movimientos</button><button data-tab="statistics">Estadisticas</button>
+  <button data-tab="dashboard" class="active" aria-current="page">Dashboard</button><button data-tab="accounts">Cuentas</button><button data-tab="movements">Movimientos</button><button data-tab="analyzer">Analizador</button><button data-tab="statistics">Estadisticas</button>
 </nav>
 <main>
   <div id="previewNotice" class="notice" hidden>Vista local. Los datos de esta prueba no se envian a Cloudflare.</div>
@@ -54,11 +56,12 @@
   </div>
   <div id="statisticsView" class="funding-view" hidden>
     <div class="section-heading"><h2>Estadisticas</h2><button class="icon-button" id="definitions" title="Criterios de calculo" aria-label="Criterios de calculo"><span data-ft-icon="filter"></span></button></div>
-    <div id="statisticsKpis" class="statistics-grid"></div>
+    <div id="conditionStats"></div><details><summary>Estadísticas anteriores por eventos</summary><div id="statisticsKpis" class="statistics-grid"></div>
     <section><h3>Por empresa</h3><div id="companyStats" class="table-wrap"></div></section>
     <section><h3>Por tipo de cuenta</h3><div id="sizeStats" class="table-wrap"></div></section>
     <div class="secondary-charts"><section><h3>Resultado mensual</h3><div class="small-chart"><canvas id="monthlyChart" role="img" aria-label="Beneficio neto mensual"></canvas></div></section><section><h3>Capital disponible por eventos</h3><div class="small-chart"><canvas id="bankrollChart" role="img" aria-label="Evolucion del bankroll"></canvas></div></section></div>
-  </div>
+  </details></div>
+  <div id="analyzerView" class="funding-view" hidden><div class="section-heading"><h2>Analizador</h2></div><div id="analysisEditor"></div></div>
 </main>
 <dialog id="editor"><form id="eventForm"><div class="dialog-heading"><h2 id="editorTitle"></h2><button type="button" class="icon-button" data-close="editor" aria-label="Cerrar" title="Cerrar"><span data-ft-icon="close"></span></button></div><div id="formFields" class="form-grid"></div><p id="formError" class="form-error" role="alert"></p><div class="dialog-footer"><button type="button" class="secondary" data-close="editor">Cancelar</button><button id="saveEvent" type="submit"><span data-ft-icon="check"></span>Guardar evento</button></div></form></dialog>
 <dialog id="accountDetail" class="account-detail"><div id="accountDetailContent"></div></dialog>
