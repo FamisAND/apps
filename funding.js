@@ -50,7 +50,7 @@
   }
   function renderAccounts(metrics){
     const rows=sorted(accountRows(metrics),'accounts');
-    $('accountsTable').innerHTML=rows.length?`<table><thead><tr>${head('Empresa','company','accounts')}${head('Cuenta','name','accounts')}${head('Inicio','start','accounts')}${head('Estado','status','accounts')}${head('Aprobacion','approved','accounts')}${head('Resultado acumulado','net','accounts',true)}<th></th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.account.deletedAt?'struck':''}"><td>${esc(r.company)}<small>${esc(r.id.slice(0,8))}</small></td><td><button class="text-button" data-action="detail" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(r.account.externalIds?.evaluation||'')}${r.account.externalIds?.funded?' / '+esc(r.account.externalIds.funded):''}</small></td><td>${date(r.start)}</td><td><span class="status-pill status-${r.status}">${STATES[r.status]}</span></td><td>${date(r.approved)}</td><td class="numeric ${r.net<0?'negative':'positive'}">${format(r.net)}</td><td class="row-actions">${action('analytics','Analytics','funding',`data-id="${esc(r.id)}"`)}${iconButton('detail','Ver ficha','outgoing',`data-id="${esc(r.id)}"`)}</td></tr>`).join('')}</tbody></table>`:empty('accounts');
+    $('accountsTable').innerHTML=rows.length?`<table><thead><tr>${head('Empresa','company','accounts')}${head('Cuenta','name','accounts')}${head('Inicio','start','accounts')}${head('Estado','status','accounts')}${head('Aprobacion','approved','accounts')}${head('Resultado acumulado','net','accounts',true)}<th></th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.account.deletedAt?'struck':''}"><td>${esc(r.company)}<small>${esc(r.id.slice(0,8))}</small></td><td><button class="text-button" data-action="detail" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(r.account.externalIds?.evaluation||r.account.externalIds?.funded||'')}</small></td><td>${date(r.start)}</td><td><span class="status-pill status-${r.status}">${STATES[r.status]}</span></td><td>${date(r.approved)}</td><td class="numeric ${r.net<0?'negative':'positive'}">${format(r.net)}</td><td class="row-actions">${action('analytics','Analytics','funding',`data-id="${esc(r.id)}"`)}${iconButton('detail','Ver ficha','outgoing',`data-id="${esc(r.id)}"`)}</td></tr>`).join('')}</tbody></table>`:empty('accounts');
   }
   function renderMovements(target,events,compact=false){
     if(!events.length){$(target).innerHTML=empty('events');return;}
@@ -115,13 +115,11 @@
     if(!canEdit){notice('Este acceso esta en solo lectura.',true);return;}
     if(unsavedBook){notice('Hay un guardado pendiente. Reintenta el mismo guardado antes de crear otro evento.',true);return;}
     if(editor&&dirty&&!confirm('Hay un formulario sin guardar. Descartar ese formulario?'))return;
-    editor=spec;dirty=false;$('formError').textContent='';$('saveEvent').innerHTML=icons('check')+'Guardar evento';const current=db.events.find(e=>e.id===spec.eventId),account=db.accounts.find(a=>a.id===(spec.accountId||current?.accountId));
-    if(spec.kind==='account'){
-      const first=false;
-      $('editorTitle').textContent='Nueva evaluacion';
-      $('formFields').innerHTML=input('company','Empresa',first?'Earn2Trade':'','text','required maxlength="100" list="companies"')+`<datalist id="companies">${[...new Set(activeAccounts().map(a=>a.company))].map(v=>option(v,v)).join('')}</datalist>`+input('name','Tipo / nombre de cuenta',first?'TCP25':'','text','required maxlength="100"')+input('date','Fecha de compra',first?'2026-10-19':M.today(),'date','required')+input('amount','Coste de compra',first?'75':'','text','inputmode="decimal" required')+select('currency','Divisa',['USD','EUR','GBP','CAD','AUD','CHF'].map(c=>option(c,c,'USD')).join(''))+(db.events.length?'':select('baseCurrency','Divisa del libro',['USD','EUR'].map(c=>option(c,c,db.baseCurrency)).join('')))+input('rate',`Cambio a ${db.baseCurrency} por unidad`,'1','text','inputmode="decimal"',true)+textArea('');
-    }else if(spec.kind==='editAccount'){
-      $('editorTitle').textContent='Editar cuenta';$('formFields').innerHTML=input('company','Empresa',account.company,'text','required maxlength="100"')+input('name','Tipo / nombre',account.name,'text','required maxlength="100"')+textArea(account.notes);
+    editor=spec;dirty=false;$('formError').textContent='';$('saveEvent').innerHTML=icons('check')+(spec.kind==='account'||spec.kind==='editAccount'?'Guardar cuenta':'Guardar evento');const current=db.events.find(e=>e.id===spec.eventId),account=db.accounts.find(a=>a.id===(spec.accountId||current?.accountId));
+    if(spec.kind==='account'||spec.kind==='editAccount'){
+      const c=spec.conditions||account?.conditions,price=spec.kind==='editAccount'?db.events.find(e=>e.accountId===account.id&&e.type==='purchase')?.money?.minor/100:c?.price;
+      $('editorTitle').textContent=spec.kind==='account'?'Nueva evaluación':'Editar evaluación';
+      $('formFields').innerHTML=input('externalEvaluation','Identificador de cuenta',account?.externalIds?.evaluation||account?.externalIds?.funded||'','text',(spec.kind==='account'?'required ':'')+'maxlength="150"')+input('company','Empresa',account?.company||c?.company||'','text','required maxlength="100" list="companies"')+'<datalist id="companies">'+[...new Set(activeAccounts().map(a=>a.company))].map(v=>option(v,v)).join('')+'</datalist>'+input('amount','Precio ('+(account?.currency||db.baseCurrency)+')',price??'','text','required inputmode="decimal"')+FundingAnalysisUI.accountFields(c?{conditions:c}:account)+'<small class="full">'+(spec.kind==='account'?'Compra de hoy · '+esc(db.baseCurrency):'Los cambios quedan guardados en el historial.')+'</small>';
     }else{
       const type=current?.type||spec.type;editor.type=type;$('editorTitle').textContent=current?'Editar: '+M.TYPES[type]:M.TYPES[type];
       const accountOptions=option('','Gasto general / negocio',account?.id)+activeAccounts().map(a=>option(a.id,a.company+' / '+a.name,account?.id)).join('');
@@ -135,7 +133,6 @@
       if(type==='refund')html+=select('expenseId','Gasto que se devuelve',option('','Seleccionar gasto',current?.expenseId||spec.expenseId)+db.events.filter(e=>M.LIVE(e)&&M.COSTS.has(e.type)&&(!account||e.accountId===account.id)).map(e=>option(e.id,date(e.date)+' / '+M.TYPES[e.type]+' / '+format(e.money.minor,e.money.currency),current?.expenseId||spec.expenseId)).join(''),true);
       html+=textArea(current?.notes);$('formFields').innerHTML=html;
     }
-    if(spec.kind==='account'||spec.kind==='editAccount'){$('formFields').insertAdjacentHTML('afterbegin',input('externalEvaluation','Identificador de cuenta · evaluación',account?.externalIds?.evaluation||'','text','maxlength="150"')+input('externalFunded','Identificador de cuenta · fondeada',account?.externalIds?.funded||'','text','maxlength="150"'));$('formFields').insertAdjacentHTML('beforeend',FundingAnalysisUI.accountFields(spec.conditions?{conditions:spec.conditions}:account));if(spec.conditions){$('formFields').querySelector('[name=company]').value=spec.conditions.company||'';$('formFields').querySelector('[name=name]').value=spec.conditions.program||'';$('formFields').querySelector('[name=amount]').value=spec.conditions.price??'';}}
     updateFxField();$('editor').showModal();refreshIcons();
   }
   function updateFxField(){const form=$('eventForm'),currency=form.elements.currency?.value,base=form.elements.baseCurrency?.value||db.baseCurrency,rate=form.elements.rate;if(rate){if(rate.dataset.currency&&rate.dataset.currency!==currency||rate.dataset.base&&rate.dataset.base!==base)rate.value=currency===base?'1':'';rate.dataset.currency=currency;rate.dataset.base=base;rate.required=currency!==base;rate.readOnly=currency===base;rate.parentElement.firstChild.textContent=`Cambio: 1 ${currency} = X ${base}`;if(currency===base)rate.value='1';}}
@@ -149,15 +146,19 @@
     try{
       if(editor?.waiting&&unsavedBook){await (adapter.retry?adapter.retry():adapter.save(db));unsavedBook=false;dirty=false;$('editor').close();editor=null;notice('');render();if(detailId&&$('accountDetail').open)showDetail(detailId);return;}
       const form=new FormData($('eventForm')),value=Object.fromEntries(form),next=M.clone(db),at=new Date().toISOString();
+      if(editor.kind==='account'){value.date=M.today();value.currency=next.baseCurrency;value.rate='1';value.name=value.externalEvaluation.trim();value.notes='';}
       if(editor.kind==='editAccount'){
-        const index=next.accounts.findIndex(a=>a.id===editor.accountId);next.accounts[index]=revise(next.accounts[index],{company:value.company.trim(),name:value.name.trim(),notes:value.notes,externalIds:{evaluation:value.externalEvaluation.trim(),funded:value.externalFunded.trim()},conditions:FundingAnalysisUI.readAccount($('accountConditions'),next.accounts[index].conditions)});
+        const index=next.accounts.findIndex(a=>a.id===editor.accountId),old=next.accounts[index],conditions=FundingAnalysisUI.readAccount($('accountConditions'),old.conditions),price=M.minor(value.amount),purchase=next.events.find(e=>e.accountId===old.id&&e.type==='purchase');
+        Object.assign(conditions,{company:value.company.trim(),price:price/100});
+        next.accounts[index]=revise(old,{company:value.company.trim(),name:old.nameFromIdentifier?value.externalEvaluation.trim()||old.name:old.name,externalIds:{...old.externalIds,evaluation:value.externalEvaluation.trim(),funded:old.externalIds?.funded||''},conditions});
+        if(purchase&&purchase.money.minor!==price){const eventIndex=next.events.indexOf(purchase);next.events[eventIndex]=revise(purchase,{money:M.money(value.amount,purchase.money.currency,purchase.money.rate,next.baseCurrency)});}
       }else{
         if(!db.events.length&&value.baseCurrency)next.baseCurrency=value.baseCurrency;
         let accountId=value.accountId||editor.accountId||null;
         if(editor.kind==='account'){
           const duplicate=db.accounts.some(a=>!a.deletedAt&&a.company.toLowerCase()===value.company.trim().toLowerCase()&&a.name.toLowerCase()===value.name.trim().toLowerCase()&&M.state(db,a.id).attempts[0]?.startDate===value.date);
           if(duplicate&&!confirm('Ya existe una cuenta de esa empresa y tipo con la misma fecha de compra. Crear otra cuenta distinta?'))return;
-          accountId=id();next.accounts.push({id:accountId,company:value.company.trim(),name:value.name.trim(),currency:value.currency,notes:value.notes,externalIds:{evaluation:value.externalEvaluation.trim(),funded:value.externalFunded.trim()},createdAt:at,conditions:FundingAnalysisUI.readAccount($('accountConditions'),editor.conditions),analysisId:editor.analysisId||null});
+          accountId=id();next.accounts.push({id:accountId,company:value.company.trim(),name:value.name.trim(),currency:value.currency,notes:value.notes,externalIds:{evaluation:value.externalEvaluation.trim(),funded:''},nameFromIdentifier:true,createdAt:at,conditions:FundingAnalysisUI.readAccount($('accountConditions'),editor.conditions),analysisId:editor.analysisId||null});
         }
         const original=next.events.find(e=>e.id===editor.eventId),type=editor.kind==='account'?'purchase':original?.type||editor.type;
         if(type==='capital')accountId=null;
