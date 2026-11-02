@@ -99,7 +99,7 @@
         const ids=new Set(m.states.map(s=>s.account.id)),show=$('showVoided').checked;
         renderMovements('movementsTable',db.events.filter(e=>(show||M.LIVE(e))&&e.date>=f.start&&e.date<=f.end&&(!e.accountId?(!f.company&&!f.size):ids.has(e.accountId))&&(!$('movementType').value||e.type===$('movementType').value)));
       }
-      if(tab==='statistics'){renderStats(m);FundingAnalysisUI.stats(db,filters());}if(tab==='analyzer')FundingAnalysisUI.show();refreshIcons();
+      if(tab==='statistics'){renderStats(m);$('trackerStatsSummary').innerHTML=stat('Beneficio neto real',format(m.net),'Cobros recibidos menos gastos efectivos')+stat('ROI económico',number(m.roi,'%'),'Sobre gastos efectivos')+stat('Retiradas cobradas',format(m.received),'Solo dinero recibido')+stat('Drawdown económico máximo',format(m.maxDrawdown),'Según movimientos registrados');FundingAnalysisUI.stats(db,filters());}if(tab==='analyzer'){FundingAnalysisUI.show();FundingLabV4.open();}refreshIcons();
     }catch(error){notice(error.message,true);}
   }
   async function commit(next){if(!canEdit)throw new Error('Este acceso esta en solo lectura.');M.validate(next);unsavedBook=true;if(editor){editor.waiting=true;for(const field of $('formFields').querySelectorAll('input,select,textarea'))field.disabled=true;}db=next;updateFilterOptions();render();await adapter.save(next);unsavedBook=false;notice('');if(detailId&&$('accountDetail').open)showDetail(detailId);}
@@ -267,5 +267,6 @@
   }
   let chosenAnalysisId=null;FundingAnalysisUI.mount({get:()=>M.clone(db),mutate,notice,setAnalysisId:id=>{chosenAnalysisId=id;},newAccount:conditions=>showEditor({kind:'account',conditions,analysisId:chosenAnalysisId})});
   FundingTradesUI.mount({get:()=>M.clone(db),save:saveTrades,retry:retryTrades,pending:()=>unsavedBook,editable:()=>canEdit});
+  FundingLabV4.mount({get:()=>M.clone(db),save:saveTrades,editable:()=>canEdit,notice});
   boot();
 })();

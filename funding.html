@@ -13,6 +13,7 @@
 <script defer src="funding-model.js"></script>
 <script defer src="funding-analysis.js"></script>
 <script defer src="funding-analysis-ui.js"></script>
+<script defer src="funding-lab-v4.js"></script>
 <script defer src="funding-trades.js"></script>
 <script defer src="funding-trades-ui.js"></script>
 <script defer src="funding.js"></script>
@@ -25,7 +26,7 @@
   <div class="header-actions"><button class="secondary" id="exportJson" title="Exportar todo el historial" disabled><span data-ft-icon="download"></span><span>Copia JSON</span></button><button id="newAccount" disabled><span data-ft-icon="plus"></span>Nueva evaluacion</button></div>
 </header>
 <nav class="funding-tabs" aria-label="Secciones de fondeo">
-  <button data-tab="dashboard" class="active" aria-current="page">Dashboard</button><button data-tab="accounts">Cuentas</button><button data-tab="movements">Movimientos</button><button data-tab="analyzer">Analizador</button><button data-tab="statistics">Estadisticas</button>
+  <button data-tab="dashboard" class="active" aria-current="page">Dashboard</button><button data-tab="accounts">Cuentas</button><button data-tab="movements">Movimientos</button><button data-tab="statistics">Estadisticas</button><button data-tab="analyzer">Analizar empresas</button>
 </nav>
 <main>
   <div id="previewNotice" class="notice" hidden>Vista local. Los datos de esta prueba no se envian a Cloudflare.</div>
@@ -58,12 +59,12 @@
   </div>
   <div id="statisticsView" class="funding-view" hidden>
     <div class="section-heading"><h2>Estadisticas</h2><button class="icon-button" id="definitions" title="Criterios de calculo" aria-label="Criterios de calculo"><span data-ft-icon="filter"></span></button></div>
-    <div id="conditionStats"></div><details><summary>Estadísticas anteriores por eventos</summary><div id="statisticsKpis" class="statistics-grid"></div>
+    <section class="tracker-stats-summary"><h3>Resumen económico real</h3><div id="trackerStatsSummary" class="statistics-grid"></div></section><div id="conditionStats"></div><details><summary>Estadísticas anteriores por eventos</summary><div id="statisticsKpis" class="statistics-grid"></div>
     <section><h3>Por empresa</h3><div id="companyStats" class="table-wrap"></div></section>
     <section><h3>Por tipo de cuenta</h3><div id="sizeStats" class="table-wrap"></div></section>
     <div class="secondary-charts"><section><h3>Resultado mensual</h3><div class="small-chart"><canvas id="monthlyChart" role="img" aria-label="Beneficio neto mensual"></canvas></div></section><section><h3>Capital disponible por eventos</h3><div class="small-chart"><canvas id="bankrollChart" role="img" aria-label="Evolucion del bankroll"></canvas></div></section></div>
   </details></div>
-  <div id="analyzerView" class="funding-view" hidden><div class="section-heading"><h2>Analizador</h2></div><div id="analysisEditor"></div></div>
+  <div id="analyzerView" class="funding-view" hidden><div class="section-heading"><h2>Analizador de empresas de fondeo</h2></div><iframe id="fundingLabFrame" class="funding-lab-frame" title="FondeoLab · Rachas y rentabilidad" loading="lazy"></iframe><details id="advancedAnalyzer"><summary>Herramientas avanzadas y análisis anteriores</summary><div id="analysisEditor"></div></details></div>
 </main>
 <dialog id="editor"><form id="eventForm"><div class="dialog-heading"><h2 id="editorTitle"></h2><button type="button" class="icon-button" data-close="editor" aria-label="Cerrar" title="Cerrar"><span data-ft-icon="close"></span></button></div><div id="formFields" class="form-grid"></div><p id="formError" class="form-error" role="alert"></p><div class="dialog-footer"><button type="button" class="secondary" data-close="editor">Cancelar</button><button id="saveEvent" type="submit"><span data-ft-icon="check"></span>Guardar evento</button></div></form></dialog>
 <dialog id="tradeAnalytics" class="trade-analytics" aria-label="Analytics de cuenta"></dialog>
