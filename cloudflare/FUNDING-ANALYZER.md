@@ -4,7 +4,7 @@
 
 Integrada en el Tracker existente, conservando Cuentas, Movimientos, Dashboard, importación/exportación y almacenamiento. No es una segunda aplicación. El mismo código modular se empaqueta en el HTML local autocontenido.
 
-Actualización del 2 de noviembre de 2026: publicado en Cloudflare, versión 114e58cc-5a7a-4898-904f-08f05243b9cc. El formulario de compra y edición de evaluaciones tiene siete campos y un único identificador visible. El analizador completo de rentabilidad mantiene sus fases de evaluación y fondeada, el primer retiro, el ROI y las demás funciones descritas aquí. Ver FUNDING-SIMPLE.md. El HTML local y su ZIP también están actualizados.
+Actualización del 2 de noviembre de 2026: publicado en Cloudflare, versión a2402ac2-590d-4e3d-9383-5a139bacb27d. El formulario de compra y edición tiene siete campos y un identificador visible. La vista principal «Analizar empresas» usa FondeoLab v4 con los mismos campos y cálculos del HTML adjunto por el usuario. El analizador avanzado descrito aquí, sus plantillas y resultados anteriores permanecen accesibles en una sección plegada. Ver FUNDING-SIMPLE.md. El HTML local y su ZIP también están actualizados.
 
 ## Funcionalidades implementadas
 
