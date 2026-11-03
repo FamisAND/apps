@@ -37,46 +37,81 @@
   function empty(baseCurrency='USD'){return {schemaVersion:1,baseCurrency,accounts:[],events:[]};}
   function order(a,b){return a.date.localeCompare(b.date)||(a.order||0)-(b.order||0)||a.id.localeCompare(b.id);}
   function eventsFor(db,accountId,end='2200-12-31'){return db.events.filter(e=>e.accountId===accountId&&LIVE(e)&&e.date<=end).sort(order);}
+  function stages(db,accountId){
+    const s=state(db,accountId),byAttempt=new Map(s.attempts.map(a=>[a.id,a]));let number=0;
+    return s.events.filter(e=>['purchase','reset','approved'].includes(e.type)).map(e=>{
+      if(e.type!=='approved')number++;
+      return {id:e.id,kind:e.type==='approved'?'funded':'evaluation',source:e.type,number,startDate:e.date,status:e.type==='approved'?s.status:byAttempt.get(e.id)?.status||'pending'};
+    });
+  }
+  function activeStageId(db,account){
+    const list=stages(db,account.id),explicit=account.activeAttemptId;
+    if(explicit&&list.some(stage=>stage.id===explicit))return explicit;
+    const latest=list.at(-1);if(!latest)return null;
+    if(latest.kind==='funded'&&account.analytics?.rows?.length){
+      const evaluation=account.externalIds?.evaluation||'',funded=account.externalIds?.funded||'';
+      const ids=[...new Set(account.analytics.rows.map(row=>String(row.external||'').trim()).filter(Boolean))];
+      if(!funded||ids.length===1&&ids[0].toLowerCase()===evaluation.toLowerCase()&&ids[0].toLowerCase()!==funded.toLowerCase())return list.at(-2)?.id||latest.id;
+    }
+    return latest.id;
+  }
   function attemptInfo(db,account,attemptId){
-    const attempts=state(db,account.id).attempts,active=attempts.at(-1)?.id;
-    if(!attempts.some(a=>a.id===attemptId))fail('El intento no existe en esta cuenta.');
-    if(attemptId===active)return {externalId:account.externalIds?.evaluation||account.externalIds?.funded||'',analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
-    return account.attemptProfiles?.[attemptId]||{externalId:'',analytics:null,identifierHistory:[]};
+    const list=stages(db,account.id),stage=list.find(s=>s.id===attemptId);
+    if(!stage)fail('La fase no existe en esta cuenta.');
+    if(attemptId===activeStageId(db,account))return {externalId:stage.kind==='funded'?account.externalIds?.funded||(account.activeAttemptId===attemptId?account.externalIds?.evaluation||'':''):account.externalIds?.evaluation||account.externalIds?.funded||'',analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
+    const profile=account.attemptProfiles?.[attemptId];if(profile)return profile;
+    const fallback=stage.kind==='evaluation'&&list.at(-1)?.kind==='funded'&&list.at(-2)?.id===attemptId?account.externalIds?.evaluation||'':stage.kind==='funded'?account.externalIds?.funded||'':'';
+    return {externalId:fallback,analytics:null,identifierHistory:[]};
   }
   function setAttemptIdentifier(db,accountId,attemptId,value,at=new Date().toISOString()){
     const account=db.accounts.find(a=>a.id===accountId),externalId=String(value??'').trim();
     if(!account)fail('Cuenta inexistente.');
     if(!externalId||externalId.length>150)fail('Escribe el identificador nuevo de la cuenta (máximo 150 caracteres).');
-    const attempts=state(db,accountId).attempts,active=attempts.at(-1)?.id;
-    if(!attempts.some(a=>a.id===attemptId))fail('El intento no existe en esta cuenta.');
-    if(attempts.some(a=>a.id!==attemptId&&attemptInfo(db,account,a.id).externalId.toLowerCase()===externalId.toLowerCase()))fail('Este identificador ya corresponde a otro intento de la cuenta.');
+    const list=stages(db,accountId),active=activeStageId(db,account),stage=list.find(s=>s.id===attemptId);
+    if(!stage)fail('La fase no existe en esta cuenta.');
+    if(list.some(s=>s.id!==attemptId&&attemptInfo(db,account,s.id).externalId.toLowerCase()===externalId.toLowerCase()))fail('Este identificador ya corresponde a otra fase de la cuenta.');
     if(attemptId===active){
-      const previous=account.externalIds?.evaluation||account.externalIds?.funded||'';
+      const previous=attemptInfo(db,account,attemptId).externalId;
       if(previous===externalId)return;
+      if(stage.kind==='funded'){
+        const prior=list.at(-2),oldEvaluation=account.externalIds?.evaluation||'';
+        if(prior&&!account.attemptProfiles?.[prior.id]&&oldEvaluation&&oldEvaluation!==externalId){account.attemptProfiles||={};account.attemptProfiles[prior.id]={externalId:oldEvaluation,analytics:null,identifierHistory:[]};}
+      }
       account.identifierHistory||=[];if(previous)account.identifierHistory.push({at,previous});
-      account.externalIds={...account.externalIds,evaluation:externalId,funded:account.externalIds?.funded||''};
+      account.externalIds={...account.externalIds,evaluation:externalId,funded:stage.kind==='funded'?externalId:account.externalIds?.funded||''};
+      if(account.nameFromIdentifier)account.name=externalId;
+    }else if(list.findIndex(s=>s.id===attemptId)>list.findIndex(s=>s.id===active)){
+      const previous=attemptInfo(db,account,active);
+      account.attemptProfiles||={};const destination=account.attemptProfiles[attemptId];
+      account.attemptProfiles[active]={externalId:previous.externalId,analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
+      if(destination?.analytics)account.analytics=destination.analytics;else delete account.analytics;
+      account.identifierHistory=destination?.identifierHistory||[];delete account.attemptProfiles[attemptId];account.activeAttemptId=attemptId;
+      account.externalIds={...account.externalIds,evaluation:externalId,funded:stage.kind==='funded'?externalId:''};
       if(account.nameFromIdentifier)account.name=externalId;
     }else{
-      account.attemptProfiles||={};const profile=account.attemptProfiles[attemptId]||{externalId:'',analytics:null,identifierHistory:[]};
+      account.attemptProfiles||={};const fallback=attemptInfo(db,account,attemptId),profile=account.attemptProfiles[attemptId]||{externalId:fallback.externalId,analytics:null,identifierHistory:[]};
       if(profile.externalId===externalId)return;
       profile.identifierHistory||=[];if(profile.externalId)profile.identifierHistory.push({at,previous:profile.externalId});
       profile.externalId=externalId;account.attemptProfiles[attemptId]=profile;
     }
   }
-  function beginReset(db,accountId,newAttemptId,externalId,at=new Date().toISOString()){
+  function beginStage(db,accountId,newAttemptId,externalId,kind,at=new Date().toISOString()){
     const account=db.accounts.find(a=>a.id===accountId);if(!account)fail('Cuenta inexistente.');
-    const attempts=state(db,accountId).attempts,active=attempts.at(-1)?.id;
-    if(!active)fail('El reset necesita una evaluación anterior.');
+    const list=stages(db,accountId),active=activeStageId(db,account);
+    if(!active||list.at(-1)?.kind!=='evaluation')fail('La nueva fase necesita una evaluación anterior.');
     const nextId=String(externalId??'').trim();
     if(!nextId||nextId.length>150)fail('Escribe el nuevo identificador que te ha dado la firma.');
-    if(attempts.some(a=>attemptInfo(db,account,a.id).externalId.toLowerCase()===nextId.toLowerCase()))fail('El nuevo identificador debe ser distinto al de los intentos anteriores.');
+    if(list.some(s=>attemptInfo(db,account,s.id).externalId.toLowerCase()===nextId.toLowerCase()))fail('El nuevo identificador debe ser distinto al de las fases anteriores.');
+    const previous=attemptInfo(db,account,active);
     account.attemptProfiles||={};
-    account.attemptProfiles[active]={externalId:account.externalIds?.evaluation||account.externalIds?.funded||'',analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
+    account.attemptProfiles[active]={externalId:previous.externalId,analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
     delete account.analytics;account.identifierHistory=[];
-    account.externalIds={...account.externalIds,evaluation:nextId,funded:account.externalIds?.funded||''};
+    account.externalIds={...account.externalIds,evaluation:nextId,funded:kind==='funded'?nextId:''};
     account.activeAttemptId=newAttemptId;account.updatedAt=at;
     if(account.nameFromIdentifier)account.name=nextId;
   }
+  function beginReset(db,accountId,newAttemptId,externalId,at){return beginStage(db,accountId,newAttemptId,externalId,'evaluation',at);}
+  function beginApproval(db,accountId,newStageId,externalId,at){return beginStage(db,accountId,newStageId,externalId,'funded',at);}
   function attemptEvents(db,accountId){
     const groups=new Map(),assigned=new Map();let current=null;
     for(const event of eventsFor(db,accountId)){
@@ -86,17 +121,26 @@
     }
     return groups;
   }
+  function stageEvents(db,accountId){
+    const groups=new Map(),assigned=new Map();let current=null;
+    for(const event of eventsFor(db,accountId)){
+      if(['purchase','reset','approved'].includes(event.type))current=event.id;
+      const target=event.type==='refund'&&assigned.has(event.expenseId)?assigned.get(event.expenseId):current;
+      if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);assigned.set(event.id,target);
+    }
+    return groups;
+  }
   function legacySplitCandidate(db,account){
-    const attempts=state(db,account.id).attempts,analytics=account.analytics;
-    if(attempts.length!==2||!analytics?.rows?.length)return null;
-    const previous=account.attemptProfiles?.[attempts[0].id];
+    const list=stages(db,account.id),analytics=account.analytics;
+    if(list.length!==2||!analytics?.rows?.length)return null;
+    const previous=account.attemptProfiles?.[list[0].id];
     if(previous?.analytics?.rows?.length||previous?.analytics?.imports?.length)return null;
     let reported=[...new Set(analytics.rows.map(row=>String(row.external||'').trim()).filter(Boolean))];
     if(!reported.length){const active=analytics.imports?.find(f=>f.id===analytics.activeImportId)||analytics.imports?.at(-1);reported=[...new Set((Array.isArray(active?.external?.reported)?active.external.reported:[]).map(id=>String(id).trim()).filter(Boolean))];}
     if(reported.length!==1)return null;
-    const externalId=reported[0],current=account.externalIds?.evaluation||account.externalIds?.funded||'';
+    const externalId=reported[0],current=attemptInfo(db,account,list[1].id).externalId||account.externalIds?.evaluation||'';
     if(!current||externalId.toLowerCase()===current.toLowerCase()||previous?.externalId&&previous.externalId.toLowerCase()!==externalId.toLowerCase())return null;
-    return {attemptId:attempts[0].id,externalId,rows:analytics.rows.length};
+    return {attemptId:list[0].id,externalId,rows:analytics.rows.length};
   }
   function splitLegacyAnalytics(db,accountId){
     const account=db.accounts.find(a=>a.id===accountId),candidate=account&&legacySplitCandidate(db,account);
@@ -105,7 +149,10 @@
     const profile=account.attemptProfiles[candidate.attemptId]||{externalId:'',analytics:null,identifierHistory:[]};
     profile.externalId=candidate.externalId;profile.analytics=account.analytics;
     account.attemptProfiles[candidate.attemptId]=profile;
-    delete account.analytics;account.activeAttemptId=state(db,accountId).attempts.at(-1).id;
+    const destinationId=stages(db,accountId).at(-1).id,destination=account.attemptProfiles[destinationId];
+    if(destination?.analytics)account.analytics=destination.analytics;else delete account.analytics;
+    account.identifierHistory=destination?.identifierHistory||[];delete account.attemptProfiles[destinationId];
+    account.activeAttemptId=destinationId;
     account.updatedAt=new Date().toISOString();return candidate;
   }
   function state(db,accountId,end='2200-12-31'){
@@ -183,7 +230,7 @@
         if(total>original.money.minor)fail('Los reembolsos superan el gasto original.');
       }
     }
-    for(const a of db.accounts){const s=state(db,a.id);if(!s.attempts.length&&!a.deletedAt)fail('Cada cuenta necesita su compra inicial.');const current=s.attempts.at(-1)?.id,valid=new Set(s.attempts.map(x=>x.id));if(a.activeAttemptId&&a.activeAttemptId!==current)fail('El reset activo no coincide con el historial de intentos.');if(Object.keys(a.attemptProfiles||{}).some(k=>!valid.has(k)||k===current))fail('Un intento anterior ha quedado sin su reset; restáuralo antes de guardar.');}
+    for(const a of db.accounts){const s=state(db,a.id);if(!s.attempts.length&&!a.deletedAt)fail('Cada cuenta necesita su compra inicial.');const list=stages(db,a.id),current=activeStageId(db,a),valid=new Set(list.map(x=>x.id));if(a.activeAttemptId&&!valid.has(a.activeAttemptId))fail('La fase activa no coincide con el historial de la cuenta.');if(Object.keys(a.attemptProfiles||{}).some(k=>!valid.has(k)||k===current))fail('Una fase anterior ha quedado sin su evento; restáuralo antes de guardar.');}
     return db;
   }
   function amount(e){return e.money?.baseMinor||0;}
@@ -244,8 +291,8 @@
   }
   function csv(rows){return '\ufeff'+rows.map(row=>row.map(v=>'"'+(typeof v==='number'?String(v):String(v??'').replace(/^[\s]*[=+@\-\t\r]/,"'$&")).replaceAll('"','""')+'"').join(';')).join('\r\n');}
   function exportRows(db){
-    return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada','Intentos e identificadores','Identificador evaluación','Identificador fondeada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt,s.attempts.map((attempt,index)=>`${index+1}: ${attemptInfo(db,a,attempt.id).externalId||'sin asignar'}`).join(' | '),a.externalIds?.evaluation,a.externalIds?.funded];})],
+    return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada','Fases e identificadores','Identificador evaluación','Identificador fondeada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt,stages(db,a.id).map(stage=>`${stage.kind==='funded'?'Fondeada':'Evaluación'} ${stage.number}: ${attemptInfo(db,a,stage.id).externalId||'sin asignar'}`).join(' | '),a.externalIds?.evaluation,a.externalIds?.funded];})],
       events:[['ID','Cuenta ID','Empresa','Evento','Fecha','Importe original','Divisa','Cambio a '+db.baseCurrency,'Importe '+db.baseCurrency,'Solicitud ID','Gasto original ID','Comision ya descontada','Notas','Anulado','Eliminado'],...db.events.map(e=>[e.id,e.accountId,db.accounts.find(a=>a.id===e.accountId)?.company,TYPES[e.type],e.date,e.money?.minor==null?'':e.money.minor/100,e.money?.currency,e.money?.rate,e.money?.baseMinor==null?'':e.money.baseMinor/100,e.requestId,e.expenseId,e.feeDeductedMinor==null?'':e.feeDeductedMinor/100,e.notes,!!e.voidedAt,!!e.deletedAt])]};
   }
-  return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,attemptInfo,setAttemptIdentifier,beginReset,attemptEvents,legacySplitCandidate,splitLegacyAnalytics,metrics,summary,merge,csv,exportRows,order,clone};
+  return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,stages,activeStageId,attemptInfo,setAttemptIdentifier,beginReset,beginApproval,attemptEvents,stageEvents,legacySplitCandidate,splitLegacyAnalytics,metrics,summary,merge,csv,exportRows,order,clone};
 });

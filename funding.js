@@ -45,12 +45,12 @@
   function accountRows(metrics){
     const f=filters(),search=$('accountSearch').value.toLowerCase(),status=$('stateFilter').value;
     return db.accounts.filter(a=>(!a.deletedAt||$('showDeletedAccounts').checked)&&(!f.company||a.company===f.company)&&(!f.size||a.name===f.size)&&(`${a.company} ${a.name} ${a.id} ${a.externalIds?.evaluation||''} ${a.externalIds?.funded||''} ${Object.values(a.attemptProfiles||{}).map(p=>p.externalId).join(' ')}`).toLowerCase().includes(search)).map(a=>{
-      const s=M.state(db,a.id,f.end),result=M.summary(s.events);return {account:a,id:a.id,company:a.company,name:a.name,status:s.status,start:s.attempts[0]?.startDate||'',approved:s.approvedDate,net:result.net,attempts:s.attempts.length};
+      const s=M.state(db,a.id,f.end),result=M.summary(s.events);return {account:a,id:a.id,company:a.company,name:a.name,status:s.status,start:s.attempts[0]?.startDate||'',approved:s.approvedDate,net:result.net,stages:M.stages(db,a.id).length};
     }).filter(a=>a.status!=='not_started'&&(!status||a.status===status));
   }
   function renderAccounts(metrics){
     const rows=sorted(accountRows(metrics),'accounts');
-    $('accountsTable').innerHTML=rows.length?`<table><thead><tr>${head('Empresa','company','accounts')}${head('Cuenta','name','accounts')}${head('Inicio','start','accounts')}${head('Estado','status','accounts')}${head('Aprobacion','approved','accounts')}${head('Resultado acumulado','net','accounts',true)}<th></th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.account.deletedAt?'struck':''}"><td>${esc(r.company)}<small>${esc(r.id.slice(0,8))}</small></td><td><button class="text-button" data-action="detail" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(r.account.externalIds?.evaluation||r.account.externalIds?.funded||'')}${r.attempts>1?` · ${r.attempts} intentos`:''}</small></td><td>${date(r.start)}</td><td><span class="status-pill status-${r.status}">${STATES[r.status]}</span></td><td>${date(r.approved)}</td><td class="numeric ${r.net<0?'negative':'positive'}">${format(r.net)}</td><td class="row-actions">${action('analytics','Analytics','funding',`data-id="${esc(r.id)}"`)}${iconButton('detail','Ver ficha','outgoing',`data-id="${esc(r.id)}"`)}</td></tr>`).join('')}</tbody></table>`:empty('accounts');
+    $('accountsTable').innerHTML=rows.length?`<table><thead><tr>${head('Empresa','company','accounts')}${head('Cuenta','name','accounts')}${head('Inicio','start','accounts')}${head('Estado','status','accounts')}${head('Aprobacion','approved','accounts')}${head('Resultado acumulado','net','accounts',true)}<th></th></tr></thead><tbody>${rows.map(r=>`<tr class="${r.account.deletedAt?'struck':''}"><td>${esc(r.company)}<small>${esc(r.id.slice(0,8))}</small></td><td><button class="text-button" data-action="detail" data-id="${esc(r.id)}">${esc(r.name)}</button><small>${esc(M.attemptInfo(db,r.account,M.activeStageId(db,r.account)).externalId)}${r.stages>1?` · ${r.stages} fases`:''}</small></td><td>${date(r.start)}</td><td><span class="status-pill status-${r.status}">${STATES[r.status]}</span></td><td>${date(r.approved)}</td><td class="numeric ${r.net<0?'negative':'positive'}">${format(r.net)}</td><td class="row-actions">${action('analytics','Analytics','funding',`data-id="${esc(r.id)}"`)}${iconButton('detail','Ver ficha','outgoing',`data-id="${esc(r.id)}"`)}</td></tr>`).join('')}</tbody></table>`:empty('accounts');
   }
   function renderMovements(target,events,compact=false){
     if(!events.length){$(target).innerHTML=empty('events');return;}
@@ -117,21 +117,25 @@
     if(editor&&dirty&&!confirm('Hay un formulario sin guardar. Descartar ese formulario?'))return;
     editor=spec;dirty=false;$('formError').textContent='';$('saveEvent').innerHTML=icons('check')+(spec.kind==='attemptIdentifier'?'Guardar identificador':spec.kind==='account'||spec.kind==='editAccount'?'Guardar cuenta':'Guardar evento');const current=db.events.find(e=>e.id===spec.eventId),account=db.accounts.find(a=>a.id===(spec.accountId||current?.accountId));
     if(spec.kind==='attemptIdentifier'){
-      const attempt=M.state(db,account.id).attempts.find(a=>a.id===spec.attemptId),info=M.attemptInfo(db,account,spec.attemptId);
-      $('editorTitle').textContent=`Identificador · intento ${M.state(db,account.id).attempts.indexOf(attempt)+1}`;
-      $('formFields').innerHTML=input('externalEvaluation','Identificador de cuenta',info.externalId,'text','required maxlength="150"',true)+'<small class="full">Pertenece solo a este intento. Sus CSV y estadísticas se conservan separados.</small>';
+      const stage=M.stages(db,account.id).find(a=>a.id===spec.attemptId),info=M.attemptInfo(db,account,spec.attemptId);
+      $('editorTitle').textContent=`Identificador · ${stage.kind==='funded'?'fondeada':'evaluación'} ${stage.number}`;
+      $('formFields').innerHTML=input('externalEvaluation','Identificador de cuenta',info.externalId,'text','required maxlength="150"',true)+'<small class="full">Pertenece solo a esta fase. Sus CSV y estadísticas se conservan separados.</small>';
     }else if(spec.kind==='account'||spec.kind==='editAccount'){
       const c=spec.conditions||account?.conditions,price=spec.kind==='editAccount'?db.events.find(e=>e.accountId===account.id&&e.type==='purchase')?.money?.minor/100:c?.price;
-      $('editorTitle').textContent=spec.kind==='account'?'Nueva evaluación':'Editar evaluación';
-      $('formFields').innerHTML=input('externalEvaluation','Identificador de cuenta',account?.externalIds?.evaluation||account?.externalIds?.funded||'','text',(spec.kind==='account'?'required ':'')+'maxlength="150"')+input('company','Empresa',account?.company||c?.company||'','text','required maxlength="100" list="companies"')+'<datalist id="companies">'+[...new Set(activeAccounts().map(a=>a.company))].map(v=>option(v,v)).join('')+'</datalist>'+input('amount','Precio ('+(account?.currency||db.baseCurrency)+')',price??'','text','required inputmode="decimal"')+FundingAnalysisUI.accountFields(c?{conditions:c}:account)+'<small class="full">'+(spec.kind==='account'?'Compra de hoy · '+esc(db.baseCurrency):'Los cambios quedan guardados en el historial.')+'</small>';
+      $('editorTitle').textContent=spec.kind==='account'?'Nueva evaluación':'Editar cuenta';
+      $('formFields').innerHTML=input('externalEvaluation','Identificador de cuenta',account?M.attemptInfo(db,account,M.activeStageId(db,account)).externalId:'','text',(spec.kind==='account'?'required ':'')+'maxlength="150"')+input('company','Empresa',account?.company||c?.company||'','text','required maxlength="100" list="companies"')+'<datalist id="companies">'+[...new Set(activeAccounts().map(a=>a.company))].map(v=>option(v,v)).join('')+'</datalist>'+input('amount','Precio ('+(account?.currency||db.baseCurrency)+')',price??'','text','required inputmode="decimal"')+FundingAnalysisUI.accountFields(c?{conditions:c}:account)+'<small class="full">'+(spec.kind==='account'?'Compra de hoy · '+esc(db.baseCurrency):'Los cambios quedan guardados en el historial.')+'</small>';
     }else{
       const type=current?.type||spec.type;editor.type=type;$('editorTitle').textContent=current?'Editar: '+M.TYPES[type]:M.TYPES[type];
       const accountOptions=option('','Gasto general / negocio',account?.id)+activeAccounts().map(a=>option(a.id,a.company+' / '+a.name,account?.id)).join('');
       let html=(account||current?`<div class="full account-sub">${esc(account?account.company+' / '+account.name:'Negocio')}</div><input type="hidden" name="accountId" value="${esc(account?.id||'')}">`:select('accountId','Cuenta',accountOptions,true))+input('date','Fecha',current?.date||M.today(),'date','required',true);
       if(M.CASH.has(type))html+=moneyFields(current,account);
       if(type==='reset'){
-        const value=current&&M.state(db,account.id).attempts.some(a=>a.id===current.id)?M.attemptInfo(db,account,current.id).externalId:'';
+        const value=current&&M.stages(db,account.id).some(a=>a.id===current.id)?M.attemptInfo(db,account,current.id).externalId:'';
         html+=input('resetExternalId','Nuevo identificador de cuenta',value,'text','required maxlength="150"',true)+'<small class="full">El intento anterior conservará su informe. Este identificador tendrá un Analytics propio.</small>';
+      }
+      if(type==='approved'){
+        const value=current&&M.stages(db,account.id).some(a=>a.id===current.id)?M.attemptInfo(db,account,current.id).externalId:'';
+        html+=input('approvedExternalId','Identificador de la cuenta fondeada',value,'text','required maxlength="150"',true)+'<small class="full">La evaluación conserva su ID e informe. La cuenta fondeada tendrá su propio Analytics en el mismo bloque.</small>';
       }
       if(type==='received')html+=input('fee','Comision ya incluida en ese neto (opcional)',current?.feeDeductedMinor==null?'':current.feeDeductedMinor/100,'text','inputmode="decimal"',true)+'<small class="full">No se vuelve a restar. El split de la firma tampoco se descuenta del neto cobrado. Gastos pagados aparte se registran una sola vez como gasto.</small>';
       if(['received','payoutApproved','rejected','cancelled'].includes(type)){
@@ -161,7 +165,7 @@
         const index=next.accounts.findIndex(a=>a.id===editor.accountId),old=next.accounts[index],conditions=FundingAnalysisUI.readAccount($('accountConditions'),old.conditions),price=M.minor(value.amount),purchase=next.events.find(e=>e.accountId===old.id&&e.type==='purchase');
         Object.assign(conditions,{company:value.company.trim(),price:price/100});
         next.accounts[index]=revise(old,{company:value.company.trim(),conditions});
-        if(value.externalEvaluation.trim())M.setAttemptIdentifier(next,old.id,M.state(next,old.id).attempts.at(-1).id,value.externalEvaluation,at);
+        if(value.externalEvaluation.trim())M.setAttemptIdentifier(next,old.id,M.activeStageId(next,old),value.externalEvaluation,at);
         if(purchase&&purchase.money.minor!==price){const eventIndex=next.events.indexOf(purchase);next.events[eventIndex]=revise(purchase,{money:M.money(value.amount,purchase.money.currency,purchase.money.rate,next.baseCurrency)});}
       }else{
         if(!db.events.length&&value.baseCurrency)next.baseCurrency=value.baseCurrency;
@@ -182,25 +186,27 @@
         if(original)next.events[next.events.findIndex(e=>e.id===original.id)]=row;else{
           if(next.events.some(e=>M.LIVE(e)&&e.type===row.type&&e.accountId===row.accountId&&e.date===row.date&&JSON.stringify(e.money)===JSON.stringify(row.money))&&!confirm('Hay un evento similar en esta cuenta, fecha e importe. Registrar otro evento distinto?'))return;
           if(type==='reset')M.beginReset(next,accountId,row.id,value.resetExternalId,at);
+          if(type==='approved')M.beginApproval(next,accountId,row.id,value.approvedExternalId,at);
           next.events.push(row);
         }
         if(type==='reset'&&original)M.setAttemptIdentifier(next,accountId,row.id,value.resetExternalId,at);
+        if(type==='approved'&&original)M.setAttemptIdentifier(next,accountId,row.id,value.approvedExternalId,at);
       }
       await commit(next);dirty=false;$('editor').close();editor=null;
     }catch(error){$('formError').textContent=error.message+' No cierres si hay cambios pendientes; conserva o exporta la copia.';if(editor?.waiting)$('saveEvent').innerHTML=icons('retry')+'Reintentar guardado';}
     finally{busy=false;$('saveEvent').disabled=false;refreshIcons();}
   }
   function attemptCards(account,s){
-    if(s.attempts.length<2)return '';
-    const groups=M.attemptEvents(db,account.id);
-    return `<section class="attempt-section"><h3>Intentos de esta cuenta</h3><p class="account-sub">Cada reset conserva el identificador y las estadísticas del intento anterior. El resultado real total de arriba agrupa todos los intentos.</p><div class="attempt-grid">${s.attempts.map((attempt,index)=>{
-      const profile=M.attemptInfo(db,account,attempt.id),cash=M.summary(groups.get(attempt.id)||[]),active=index===s.attempts.length-1,label=active&&s.status==='funded'?'Fondeada':active&&s.status==='closed'?'Cerrada':attempt.status==='approved'?'Aprobada':attempt.status==='failed'?'Fallida':'En evaluación';
-      return `<article class="attempt-card ${active?'is-active':''}"><div class="attempt-card-top"><span>Intento ${index+1} · ${date(attempt.startDate)}</span><strong>${esc(label)}</strong></div><div class="attempt-id">${esc(profile.externalId||'Sin identificador')}</div><div class="attempt-card-stats"><span>Resultado real <b class="${cash.net<0?'negative':'positive'}">${format(cash.net)}</b></span><span>Operaciones CSV <b>${profile.analytics?.rows.length||0}</b></span></div><div class="attempt-card-actions">${action('analytics','Analytics','funding',`data-id="${esc(account.id)}" data-attempt="${esc(attempt.id)}"`)}${action('edit-attempt-id','Editar ID','edit',`data-id="${esc(account.id)}" data-attempt="${esc(attempt.id)}"`)}${profile.externalId?action('copy-external','Copiar ID','copy',`data-copy="${esc(profile.externalId)}"`):''}</div>${profile.identifierHistory?.length?`<details><summary>Identificadores anteriores</summary><ul>${profile.identifierHistory.map(h=>`<li>${esc(h.previous)} · ${esc(new Date(h.at).toLocaleString('es-ES'))}</li>`).join('')}</ul></details>`:''}</article>`;
+    const stages=M.stages(db,account.id);if(stages.length<2)return '';
+    const groups=M.stageEvents(db,account.id),activeId=M.activeStageId(db,account);
+    return `<section class="attempt-section"><h3>Fases de esta cuenta</h3><p class="account-sub">Cada evaluación, reset y fase fondeada conserva su identificador e informe. El resultado real total de arriba agrupa todas las fases.</p><div class="attempt-grid">${stages.map(stage=>{
+      const profile=M.attemptInfo(db,account,stage.id),cash=M.summary(groups.get(stage.id)||[]),active=stage.id===activeId,title=stage.kind==='funded'?`Fondeada ${stage.number}`:`Evaluación ${stage.number}${stage.source==='reset'?' · reset':''}`,label=stage.kind==='funded'?(s.status==='closed'?'Cerrada':'Activa'):stage.status==='approved'?'Aprobada':stage.status==='failed'?'Fallida':'En evaluación';
+      return `<article class="attempt-card ${active?'is-active':''}"><div class="attempt-card-top"><span>${esc(title)} · ${date(stage.startDate)}</span><strong>${esc(label)}</strong></div><div class="attempt-id">${esc(profile.externalId||'Sin identificador')}</div><div class="attempt-card-stats"><span>Resultado real <b class="${cash.net<0?'negative':'positive'}">${format(cash.net)}</b></span><span>Operaciones CSV <b>${profile.analytics?.rows.length||0}</b></span></div><div class="attempt-card-actions">${action('analytics','Analytics','funding',`data-id="${esc(account.id)}" data-attempt="${esc(stage.id)}"`)}${action('edit-attempt-id','Editar ID','edit',`data-id="${esc(account.id)}" data-attempt="${esc(stage.id)}"`)}${profile.externalId?action('copy-external','Copiar ID','copy',`data-copy="${esc(profile.externalId)}"`):''}</div>${profile.identifierHistory?.length?`<details><summary>Identificadores anteriores</summary><ul>${profile.identifierHistory.map(h=>`<li>${esc(h.previous)} · ${esc(new Date(h.at).toLocaleString('es-ES'))}</li>`).join('')}</ul></details>`:''}</article>`;
     }).join('')}</div></section>`;
   }
   function legacySplitMarkup(account){
     const candidate=M.legacySplitCandidate(db,account);
-    return candidate?`<div class="attempt-legacy-note"><div><strong>Hay un informe del intento anterior</strong><p>El CSV indica ${esc(candidate.externalId)}, distinto del identificador actual. Puedes conservar sus ${candidate.rows} operaciones en el intento 1 antes de importar el nuevo reporte.</p></div>${action('split-legacy-analytics','Separar informe anterior','archive',`data-id="${esc(account.id)}"`)}</div>`:'';
+    return candidate?`<div class="attempt-legacy-note"><div><strong>Hay un informe de la fase anterior</strong><p>El CSV indica ${esc(candidate.externalId)}, distinto del identificador actual. Puedes conservar sus ${candidate.rows} operaciones en la fase anterior antes de importar el nuevo reporte.</p></div>${action('split-legacy-analytics','Separar informe anterior','archive',`data-id="${esc(account.id)}"`)}</div>`:'';
   }
   function showDetail(accountId){
     detailId=accountId;const a=db.accounts.find(a=>a.id===accountId);if(!a)return;
