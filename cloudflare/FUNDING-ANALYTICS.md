@@ -8,7 +8,7 @@ Cada evaluación tiene un único identificador visible, asociado a la cuenta y n
 
 Al registrar un **Reset** se pide el nuevo identificador que entrega la firma. La ficha conserva los intentos como subcuentas del mismo grupo: identificador, Analytics, CSV originales y resultado real de cada intento. El intento anterior no se sobrescribe; el nuevo comienza sin operaciones. El total económico de la cuenta y las estadísticas globales siguen incluyendo todos sus intentos una sola vez. En la ficha se puede editar o copiar el ID de cada intento y abrir su Analytics; el selector dentro de Analytics permite cambiar de intento. Un CSV solo sustituye el informe activo del intento elegido y comprueba su identificador.
 
-Los libros creados antes de esta función mantienen su Analytics en el intento más reciente. Si ya tenían resets, los identificadores antiguos no registrados se pueden completar en la ficha; no se infieren ni se inventan. El JSON exportado conserva los subgrupos y los informes de cada uno.
+Los libros creados antes de esta función mantienen inicialmente su Analytics en el intento más reciente. Si el ID del CSV es distinto del ID actual y solo hay un reset, la ficha ofrece **Separar informe anterior**: tras pulsarlo, mueve el CSV completo y su historial al intento anterior sin duplicarlo. Si falta el ID o hay varios resets, los identificadores antiguos se pueden completar en la ficha y los informes se importan en el intento correcto; no se infieren destinos ambiguos. El JSON exportado conserva los subgrupos y los informes de cada uno.
 
 En la ficha de una cuenta, **Analytics** abre el calendario, las estadísticas y las operaciones. La rueda **Configuración e importaciones** contiene la zona horaria y el inicio de jornada, la importación CSV y el historial de archivos. En una cuenta sin datos se abre automáticamente para facilitar la primera importación.
 
@@ -36,9 +36,9 @@ Un CSV modifica exclusivamente Analytics. No crea cobros, retiradas, compras ni 
 
 ## Verificación y publicación
 
-- 64 pruebas locales superadas del libro, analizador avanzado e importaciones; una prueba optativa de un CSV privado quedó omitida porque el archivo no estaba disponible en este entorno.
+- 65 pruebas locales superadas del libro, analizador avanzado e importaciones; una prueba optativa de un CSV privado quedó omitida porque el archivo no estaba disponible en este entorno.
 - Cuatro pruebas directas de recursos y persistencia, más un recorrido privado con base sintética que cubre guardado central, recuperación, JSON, CSV y FondeoLab.
 - Recorridos de navegador local y modular para sustitución 28 → 35 → 1 → 35, archivo repetido, aviso de otra cuenta, DD con cursor, calendario, reset con nuevo identificador, CSV separado por intento, móvil y exportación/restauración.
 - Build privado con lista explícita de recursos; no incluye CSV personales, copias, Excel, secretos ni historial Git.
 
-Publicado en el Worker privado full-training-private, versión 938db62b-a450-4e57-8292-bd606f18e1cb. Se conservaron las conexiones y variables del Worker anterior. No se ejecutó ninguna migración ni escritura sobre datos reales durante las pruebas o el despliegue.
+Publicado en el Worker privado full-training-private, versión cd67af79-4419-4dcc-944d-0114bd439001. Se conservaron las conexiones y variables del Worker anterior. No se ejecutó ninguna migración ni escritura sobre datos reales durante las pruebas o el despliegue.

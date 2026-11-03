@@ -86,6 +86,28 @@
     }
     return groups;
   }
+  function legacySplitCandidate(db,account){
+    const attempts=state(db,account.id).attempts,analytics=account.analytics;
+    if(attempts.length!==2||!analytics?.rows?.length)return null;
+    const previous=account.attemptProfiles?.[attempts[0].id];
+    if(previous?.analytics?.rows?.length||previous?.analytics?.imports?.length)return null;
+    let reported=[...new Set(analytics.rows.map(row=>String(row.external||'').trim()).filter(Boolean))];
+    if(!reported.length){const active=analytics.imports?.find(f=>f.id===analytics.activeImportId)||analytics.imports?.at(-1);reported=[...new Set((Array.isArray(active?.external?.reported)?active.external.reported:[]).map(id=>String(id).trim()).filter(Boolean))];}
+    if(reported.length!==1)return null;
+    const externalId=reported[0],current=account.externalIds?.evaluation||account.externalIds?.funded||'';
+    if(!current||externalId.toLowerCase()===current.toLowerCase()||previous?.externalId&&previous.externalId.toLowerCase()!==externalId.toLowerCase())return null;
+    return {attemptId:attempts[0].id,externalId,rows:analytics.rows.length};
+  }
+  function splitLegacyAnalytics(db,accountId){
+    const account=db.accounts.find(a=>a.id===accountId),candidate=account&&legacySplitCandidate(db,account);
+    if(!candidate)fail('No hay un informe anterior que se pueda separar con seguridad.');
+    account.attemptProfiles||={};
+    const profile=account.attemptProfiles[candidate.attemptId]||{externalId:'',analytics:null,identifierHistory:[]};
+    profile.externalId=candidate.externalId;profile.analytics=account.analytics;
+    account.attemptProfiles[candidate.attemptId]=profile;
+    delete account.analytics;account.activeAttemptId=state(db,accountId).attempts.at(-1).id;
+    account.updatedAt=new Date().toISOString();return candidate;
+  }
   function state(db,accountId,end='2200-12-31'){
     const events=eventsFor(db,accountId,end),attempts=[];let current=null,status='not_started',approvedDate=null,closeDate=null;
     for(const e of events){
@@ -225,5 +247,5 @@
     return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada','Intentos e identificadores','Identificador evaluación','Identificador fondeada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt,s.attempts.map((attempt,index)=>`${index+1}: ${attemptInfo(db,a,attempt.id).externalId||'sin asignar'}`).join(' | '),a.externalIds?.evaluation,a.externalIds?.funded];})],
       events:[['ID','Cuenta ID','Empresa','Evento','Fecha','Importe original','Divisa','Cambio a '+db.baseCurrency,'Importe '+db.baseCurrency,'Solicitud ID','Gasto original ID','Comision ya descontada','Notas','Anulado','Eliminado'],...db.events.map(e=>[e.id,e.accountId,db.accounts.find(a=>a.id===e.accountId)?.company,TYPES[e.type],e.date,e.money?.minor==null?'':e.money.minor/100,e.money?.currency,e.money?.rate,e.money?.baseMinor==null?'':e.money.baseMinor/100,e.requestId,e.expenseId,e.feeDeductedMinor==null?'':e.feeDeductedMinor/100,e.notes,!!e.voidedAt,!!e.deletedAt])]};
   }
-  return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,attemptInfo,setAttemptIdentifier,beginReset,attemptEvents,metrics,summary,merge,csv,exportRows,order,clone};
+  return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,attemptInfo,setAttemptIdentifier,beginReset,attemptEvents,legacySplitCandidate,splitLegacyAnalytics,metrics,summary,merge,csv,exportRows,order,clone};
 });
