@@ -37,6 +37,55 @@
   function empty(baseCurrency='USD'){return {schemaVersion:1,baseCurrency,accounts:[],events:[]};}
   function order(a,b){return a.date.localeCompare(b.date)||(a.order||0)-(b.order||0)||a.id.localeCompare(b.id);}
   function eventsFor(db,accountId,end='2200-12-31'){return db.events.filter(e=>e.accountId===accountId&&LIVE(e)&&e.date<=end).sort(order);}
+  function attemptInfo(db,account,attemptId){
+    const attempts=state(db,account.id).attempts,active=attempts.at(-1)?.id;
+    if(!attempts.some(a=>a.id===attemptId))fail('El intento no existe en esta cuenta.');
+    if(attemptId===active)return {externalId:account.externalIds?.evaluation||account.externalIds?.funded||'',analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
+    return account.attemptProfiles?.[attemptId]||{externalId:'',analytics:null,identifierHistory:[]};
+  }
+  function setAttemptIdentifier(db,accountId,attemptId,value,at=new Date().toISOString()){
+    const account=db.accounts.find(a=>a.id===accountId),externalId=String(value??'').trim();
+    if(!account)fail('Cuenta inexistente.');
+    if(!externalId||externalId.length>150)fail('Escribe el identificador nuevo de la cuenta (máximo 150 caracteres).');
+    const attempts=state(db,accountId).attempts,active=attempts.at(-1)?.id;
+    if(!attempts.some(a=>a.id===attemptId))fail('El intento no existe en esta cuenta.');
+    if(attempts.some(a=>a.id!==attemptId&&attemptInfo(db,account,a.id).externalId.toLowerCase()===externalId.toLowerCase()))fail('Este identificador ya corresponde a otro intento de la cuenta.');
+    if(attemptId===active){
+      const previous=account.externalIds?.evaluation||account.externalIds?.funded||'';
+      if(previous===externalId)return;
+      account.identifierHistory||=[];if(previous)account.identifierHistory.push({at,previous});
+      account.externalIds={...account.externalIds,evaluation:externalId,funded:account.externalIds?.funded||''};
+      if(account.nameFromIdentifier)account.name=externalId;
+    }else{
+      account.attemptProfiles||={};const profile=account.attemptProfiles[attemptId]||{externalId:'',analytics:null,identifierHistory:[]};
+      if(profile.externalId===externalId)return;
+      profile.identifierHistory||=[];if(profile.externalId)profile.identifierHistory.push({at,previous:profile.externalId});
+      profile.externalId=externalId;account.attemptProfiles[attemptId]=profile;
+    }
+  }
+  function beginReset(db,accountId,newAttemptId,externalId,at=new Date().toISOString()){
+    const account=db.accounts.find(a=>a.id===accountId);if(!account)fail('Cuenta inexistente.');
+    const attempts=state(db,accountId).attempts,active=attempts.at(-1)?.id;
+    if(!active)fail('El reset necesita una evaluación anterior.');
+    const nextId=String(externalId??'').trim();
+    if(!nextId||nextId.length>150)fail('Escribe el nuevo identificador que te ha dado la firma.');
+    if(attempts.some(a=>attemptInfo(db,account,a.id).externalId.toLowerCase()===nextId.toLowerCase()))fail('El nuevo identificador debe ser distinto al de los intentos anteriores.');
+    account.attemptProfiles||={};
+    account.attemptProfiles[active]={externalId:account.externalIds?.evaluation||account.externalIds?.funded||'',analytics:account.analytics||null,identifierHistory:account.identifierHistory||[]};
+    delete account.analytics;account.identifierHistory=[];
+    account.externalIds={...account.externalIds,evaluation:nextId,funded:account.externalIds?.funded||''};
+    account.activeAttemptId=newAttemptId;account.updatedAt=at;
+    if(account.nameFromIdentifier)account.name=nextId;
+  }
+  function attemptEvents(db,accountId){
+    const groups=new Map(),assigned=new Map();let current=null;
+    for(const event of eventsFor(db,accountId)){
+      if(['purchase','reset'].includes(event.type))current=event.id;
+      const target=event.type==='refund'&&assigned.has(event.expenseId)?assigned.get(event.expenseId):current;
+      if(!groups.has(target))groups.set(target,[]);groups.get(target).push(event);assigned.set(event.id,target);
+    }
+    return groups;
+  }
   function state(db,accountId,end='2200-12-31'){
     const events=eventsFor(db,accountId,end),attempts=[];let current=null,status='not_started',approvedDate=null,closeDate=null;
     for(const e of events){
@@ -72,7 +121,10 @@
     for(const a of db.accounts){
       if(typeof a.id!=='string'||!a.id||ids.has(a.id)||typeof a.company!=='string'||!a.company.trim()||typeof a.name!=='string'||!a.name.trim())fail('Cuenta incompleta o ID duplicado.');
       if(a.externalIds&&(!['evaluation','funded'].every(k=>typeof a.externalIds[k]==='string'&&a.externalIds[k].length<=150)))fail('Identificador externo no válido.');
-      if(a.analytics){const t=a.analytics;if(t.version!==1||!Array.isArray(t.rows)||!Array.isArray(t.imports)||!t.settings||typeof t.settings.timeZone!=='string'||!Number.isInteger(t.settings.dayStart)||t.settings.dayStart<0||t.settings.dayStart>23)fail('Analytics incompatible.');
+      if(a.attemptProfiles&&(typeof a.attemptProfiles!=='object'||Array.isArray(a.attemptProfiles)))fail('Historial de intentos incompatible.');
+      for(const profile of Object.values(a.attemptProfiles||{}))if(!profile||typeof profile!=='object'||typeof profile.externalId!=='string'||profile.externalId.length>150||!Array.isArray(profile.identifierHistory||[]))fail('Identificador de intento no válido.');
+      if(a.identifierHistory&&!Array.isArray(a.identifierHistory))fail('Historial de identificadores no válido.');
+      for(const t of [a.analytics,...Object.values(a.attemptProfiles||{}).map(profile=>profile.analytics)].filter(Boolean)){if(t.version!==1||!Array.isArray(t.rows)||!Array.isArray(t.imports)||!t.settings||typeof t.settings.timeZone!=='string'||!Number.isInteger(t.settings.dayStart)||t.settings.dayStart<0||t.settings.dayStart>23)fail('Analytics incompatible.');
         try{if(t.settings.timeZone)new Intl.DateTimeFormat('en',{timeZone:t.settings.timeZone});}catch{fail('Zona de Analytics inválida.');}
         const rowIds=new Set(),imports=new Set();for(const f of t.imports){if(typeof f.id!=='string'||imports.has(f.id)||typeof f.hash!=='string'||typeof f.base64!=='string')fail('Historial CSV no válido.');imports.add(f.id);}if(t.activeImportId&&!imports.has(t.activeImportId))fail('Archivo activo de Analytics inexistente.');
         let total=0;for(const r of t.rows){if(typeof r.id!=='string'||!r.id||rowIds.has(r.id)||!imports.has(r.importId)||!Number.isSafeInteger(r.net)||!['gross','fees'].every(k=>r[k]==null||Number.isSafeInteger(r[k]))||r.gross!=null&&r.fees!=null&&r.gross-r.fees!==r.net||!Number.isFinite(r.closed)||r.opened!=null&&(!Number.isFinite(r.opened)||r.opened>r.closed)||!Number.isFinite(r.quantity)||r.quantity<=0||!['long','short'].includes(r.side)||typeof r.symbol!=='string'||!/^[A-Z]{3}$/.test(r.currency)||r.currency!==t.settings.currency)fail('Operación de Analytics no válida.');total+=Math.abs(r.net)+Math.abs(r.gross||0)+Math.abs(r.fees||0);if(!Number.isSafeInteger(total))fail('Analytics supera el rango monetario seguro.');rowIds.add(r.id);}
@@ -109,7 +161,7 @@
         if(total>original.money.minor)fail('Los reembolsos superan el gasto original.');
       }
     }
-    for(const a of db.accounts){const s=state(db,a.id);if(!s.attempts.length&&!a.deletedAt)fail('Cada cuenta necesita su compra inicial.');}
+    for(const a of db.accounts){const s=state(db,a.id);if(!s.attempts.length&&!a.deletedAt)fail('Cada cuenta necesita su compra inicial.');const current=s.attempts.at(-1)?.id,valid=new Set(s.attempts.map(x=>x.id));if(a.activeAttemptId&&a.activeAttemptId!==current)fail('El reset activo no coincide con el historial de intentos.');if(Object.keys(a.attemptProfiles||{}).some(k=>!valid.has(k)||k===current))fail('Un intento anterior ha quedado sin su reset; restáuralo antes de guardar.');}
     return db;
   }
   function amount(e){return e.money?.baseMinor||0;}
@@ -170,8 +222,8 @@
   }
   function csv(rows){return '\ufeff'+rows.map(row=>row.map(v=>'"'+(typeof v==='number'?String(v):String(v??'').replace(/^[\s]*[=+@\-\t\r]/,"'$&")).replaceAll('"','""')+'"').join(';')).join('\r\n');}
   function exportRows(db){
-    return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada','Identificador evaluación','Identificador fondeada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt,a.externalIds?.evaluation,a.externalIds?.funded];})],
+    return {accounts:[['ID','Empresa','Cuenta','Estado','Inicio','Aprobacion','Cierre','Resultado '+db.baseCurrency,'Notas','Eliminada','Intentos e identificadores','Identificador evaluación','Identificador fondeada'],...db.accounts.map(a=>{const s=state(db,a.id);return [a.id,a.company,a.name,s.status,s.attempts[0]?.startDate,s.approvedDate,s.closeDate,summary(s.events).net/100,a.notes,!!a.deletedAt,s.attempts.map((attempt,index)=>`${index+1}: ${attemptInfo(db,a,attempt.id).externalId||'sin asignar'}`).join(' | '),a.externalIds?.evaluation,a.externalIds?.funded];})],
       events:[['ID','Cuenta ID','Empresa','Evento','Fecha','Importe original','Divisa','Cambio a '+db.baseCurrency,'Importe '+db.baseCurrency,'Solicitud ID','Gasto original ID','Comision ya descontada','Notas','Anulado','Eliminado'],...db.events.map(e=>[e.id,e.accountId,db.accounts.find(a=>a.id===e.accountId)?.company,TYPES[e.type],e.date,e.money?.minor==null?'':e.money.minor/100,e.money?.currency,e.money?.rate,e.money?.baseMinor==null?'':e.money.baseMinor/100,e.requestId,e.expenseId,e.feeDeductedMinor==null?'':e.feeDeductedMinor/100,e.notes,!!e.voidedAt,!!e.deletedAt])]};
   }
-  return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,metrics,summary,merge,csv,exportRows,order,clone};
+  return {TYPES,COSTS,CASH,LIVE,day,today,minor,money,empty,validate,state,attemptInfo,setAttemptIdentifier,beginReset,attemptEvents,metrics,summary,merge,csv,exportRows,order,clone};
 });

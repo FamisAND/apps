@@ -1,10 +1,14 @@
 # Identificadores y Analytics por cuenta
 
-Actualizado el 2 de noviembre de 2026.
+Actualizado el 3 de noviembre de 2026.
 
 ## Uso
 
 Cada evaluación tiene un único identificador visible, asociado a la cuenta y no a la empresa. Se puede buscar, copiar y editar. Los identificadores anteriores, incluidos los de la fase fondeada, permanecen en el historial. La compra y edición de evaluaciones muestran siete campos.
+
+Al registrar un **Reset** se pide el nuevo identificador que entrega la firma. La ficha conserva los intentos como subcuentas del mismo grupo: identificador, Analytics, CSV originales y resultado real de cada intento. El intento anterior no se sobrescribe; el nuevo comienza sin operaciones. El total económico de la cuenta y las estadísticas globales siguen incluyendo todos sus intentos una sola vez. En la ficha se puede editar o copiar el ID de cada intento y abrir su Analytics; el selector dentro de Analytics permite cambiar de intento. Un CSV solo sustituye el informe activo del intento elegido y comprueba su identificador.
+
+Los libros creados antes de esta función mantienen su Analytics en el intento más reciente. Si ya tenían resets, los identificadores antiguos no registrados se pueden completar en la ficha; no se infieren ni se inventan. El JSON exportado conserva los subgrupos y los informes de cada uno.
 
 En la ficha de una cuenta, **Analytics** abre el calendario, las estadísticas y las operaciones. La rueda **Configuración e importaciones** contiene la zona horaria y el inicio de jornada, la importación CSV y el historial de archivos. En una cuenta sin datos se abre automáticamente para facilitar la primera importación.
 
@@ -12,7 +16,7 @@ Al cargar un CSV, se eligen zona horaria del archivo, formato de fecha, divisa y
 
 ## Sustitución de CSV
 
-**El CSV nuevo sustituye todas las operaciones activas de esa cuenta.** Un informe acumulado de 35 filas deja 35 operaciones activas, aunque antes hubiera uno de 28. También un informe parcial sustituye al anterior; la pantalla lo indica antes de guardar. Las filas legítimamente idénticas dentro del nuevo CSV se conservan. Volver a cargar el archivo activo exacto no añade operaciones ni crea otra importación.
+**El CSV nuevo sustituye todas las operaciones activas del intento elegido.** Un informe acumulado de 35 filas deja 35 operaciones activas en ese intento, aunque antes hubiera uno de 28. También un informe parcial sustituye al anterior; la pantalla lo indica antes de guardar. Las filas legítimamente idénticas dentro del nuevo CSV se conservan. Volver a cargar el archivo activo exacto no añade operaciones ni crea otra importación.
 
 Los archivos anteriores siguen en el historial, descargables con su SHA-256, opciones de lectura y datos de cobertura. Solo el archivo activo contribuye al calendario y a la cobertura de días vacíos. Una cuenta creada con la versión incremental anterior puede volver a importar su CSV más reciente para eliminar las duplicaciones actuales: la primera importación nueva establece el archivo activo.
 
@@ -32,9 +36,9 @@ Un CSV modifica exclusivamente Analytics. No crea cobros, retiradas, compras ni 
 
 ## Verificación y publicación
 
-- 63 pruebas del libro, analizador avanzado e importaciones, incluido el CSV local de 28 registros: 2.370,04 USD netos, 86,46 USD de comisiones y cinco jornadas.
+- 64 pruebas locales superadas del libro, analizador avanzado e importaciones; una prueba optativa de un CSV privado quedó omitida porque el archivo no estaba disponible en este entorno.
 - Cuatro pruebas directas de recursos y persistencia, más un recorrido privado con base sintética que cubre guardado central, recuperación, JSON, CSV y FondeoLab.
-- Recorridos de navegador local y modular para sustitución 28 → 35 → 1 → 35, archivo repetido, aviso de otra cuenta, DD con cursor, calendario, móvil y exportación/restauración.
+- Recorridos de navegador local y modular para sustitución 28 → 35 → 1 → 35, archivo repetido, aviso de otra cuenta, DD con cursor, calendario, reset con nuevo identificador, CSV separado por intento, móvil y exportación/restauración.
 - Build privado con lista explícita de recursos; no incluye CSV personales, copias, Excel, secretos ni historial Git.
 
-Publicado en el Worker privado full-training-private, versión a2402ac2-590d-4e3d-9383-5a139bacb27d. Se conservaron las conexiones y variables del Worker anterior. No se ejecutó ninguna migración ni escritura sobre datos reales durante las pruebas o el despliegue.
+Publicado en el Worker privado full-training-private, versión 938db62b-a450-4e57-8292-bd606f18e1cb. Se conservaron las conexiones y variables del Worker anterior. No se ejecutó ninguna migración ni escritura sobre datos reales durante las pruebas o el despliegue.
