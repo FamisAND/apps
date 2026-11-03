@@ -41,4 +41,4 @@ Un CSV modifica exclusivamente Analytics. No crea cobros, retiradas, compras ni 
 - Recorridos de navegador local y modular para sustitución 28 → 35 → 1 → 35, archivo repetido, aviso de otra cuenta, DD con cursor, calendario, reset y aprobación con nuevos identificadores, tres CSV separados, fase fondeada antigua, móvil y exportación/restauración.
 - Build privado con lista explícita de recursos; no incluye CSV personales, copias, Excel, secretos ni historial Git.
 
-Publicado en el Worker privado full-training-private, versión e4983f67-8b07-464d-9d3c-92c1fc9c4f71. Se conservaron las conexiones y variables del Worker anterior. No se ejecutó ninguna migración ni escritura sobre datos reales durante las pruebas o el despliegue.
+Publicado en el Worker privado full-training-private, versión 8164b078-99cc-4b85-8838-efe065e2a76d. Se conservaron las conexiones y variables del Worker anterior. No se ejecutó ninguna migración ni escritura sobre datos reales durante las pruebas o el despliegue.
