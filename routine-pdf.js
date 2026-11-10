@@ -24,7 +24,7 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
   function text(value,x,top,width,size=9,f=font,color=black){
     const lines=rows(value,width,size,f);lines.forEach((s,i)=>page.drawText(s,{x,y:top-i*(size+3),font:f,size,color}));return lines.length*(size+3);
   }
-  function brand(){text('FULL',40,H-45,60,16,bold,accent);text('TRAINING',85,H-45,160,16,bold);}
+  function brand(height=H){text('FULL',40,height-45,60,16,bold,accent);text('TRAINING',85,height-45,160,16,bold);}
   function next(heading){
     page=doc.addPage([W,H]);brand();
     text(title+' · Iteración '+(it?.numero||1),W-270,H-42,230,8,bold,ink);
@@ -63,78 +63,117 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
   }
   if(descY>245){
     descY-=28;text('02 / CÓMO LEER TU RUTINA',435,descY,360,9,bold,ink);descY-=23;
-    descY-=text('Cada columna corresponde a un microciclo. Consulta la prescripción y registra los kilos y las repeticiones de cada serie. Fecha: DD/MM.',435,descY,360,10)+24;
+    descY-=text('Cada sesión se presenta por separado. Consulta las repeticiones objetivo y el descanso; anota aparte los kilos y repeticiones que hiciste. Fecha: DD/MM/AAAA.',435,descY,360,10)+24;
     text('03 / AL TERMINAR',435,descY,360,9,bold,ink);descY-=23;
     text('Anota cómo te has sentido en los comentarios y guarda el PDF con tus resultados.',435,descY,360,10);
   }
-  for(const en of a.rutina?.entrenos||[]){
-    const total=en.numMicro||a.rutina.numMicro||6;
-    for(let first=1;first<=total;first+=7){
-      const micros=Array.from({length:Math.min(7,total-first+1)},(_,i)=>first+i),x0=110,cw=(W-M-x0)/micros.length;
-      const heading=en.nombre||'ENTRENAMIENTO '+(en.letra||en.id);
-      tableLayout={micros,x0,cw};next(heading);
-      text('Fecha\nDD/MM',M,y,75,7,bold);micros.forEach((mn,i)=>field(`fecha_${en.id}_${mn}`,FTRoutine.shortDate(it?.sesiones?.[mn]?.[en.id]?.fecha),x0+i*cw,y+8,cw-12,18));y-=28;
-      text('Comentario\ndel día',M,y,75,8,bold);micros.forEach((mn,i)=>field(`sesion_comentario_${en.id}_${mn}`,it?.sesiones?.[mn]?.[en.id]?.comentario,x0+i*cw,y+8,cw-12,30).setMaxLength(300));y-=42;
-      const guidance=micros.map(mn=>en.indicaciones?.[mn]||'');
-      const gh=Math.max(0,...guidance.map(v=>rows(v,cw-10,8).length*11));
-      if(gh){ensure(gh+15,heading);text('Indicación\ndel día',M,y,75,8,bold);guidance.forEach((v,i)=>text(v,x0+i*cw,y,cw-12,8));y-=gh+10;}
-      y-=8;
-      for(const base of [...(en.ejercicios||[])].sort((a,b)=>(a.orden||0)-(b.orden||0))){
-        const effective=micros.map(mn=>FTRoutine.effective(base,mn,it,en.id));
-        for(let i=0;i<micros.length;i++){
-          const ej=effective[i];
-          metadata.movements[`${en.id}/${micros[i]}/${base.id}`]={name:ej.nombre,library:ej.libraryId||null};
-        }
-        const circuit=base.tipo==='circuito',arr=circuit?'lineas':'series',components=base.circuitoLineas||[];
-        const counts=effective.map((e,i)=>Math.max(circuit?(base.source?(e.plan.recordSlots||0)*components.length:components.length):(e.plan.series||0),it?.sesiones?.[micros[i]]?.[en.id]?.ejs?.[base.id]?.[arr]?.length||0));
-        const count=Math.max(0,...counts);
-        const sharedSubtitle=effective.every(e=>e.subtitle===base.subtitle&&e.nombre===base.nombre)&&base.subtitle&&bold.widthOfTextAtSize(safe(base.nombre.toUpperCase()),10)+italic.widthOfTextAtSize(safe(base.subtitle),8)<W-2*M-20?base.subtitle:'';
-        const labels=effective.map(e=>[e.nombre!==base.nombre?e.nombre:'',tobPlanLabel(e.plan)+(e.plan.porcentaje?' · '+e.plan.porcentaje:'')].filter(Boolean).join('\n'));
-        const notes=effective.map(e=>[!sharedSubtitle?e.subtitle:'',e.plan.indicaciones,...['cargaObjetivo','rir','rpe','tempo'].filter(k=>e.plan[k]).map(k=>`${{cargaObjetivo:'Carga',rir:'RIR',rpe:'RPE',tempo:'Tempo'}[k]}: ${e.plan[k]}`)].filter(Boolean).join('\n'));
-        const planH=Math.max(18,...labels.map(v=>rows(v,cw-16,8,bold).length*11+6));
-        const restH=Math.max(16,...effective.map(e=>rows(e.plan.pausa||'Sin indicación',cw-12,8).length*11+5));
-        const noteH=Math.max(0,...notes.map(v=>rows(v,cw-12,8).length*11));
-        if(planH>160||noteH>240)throw Error('Una prescripción o nota es demasiado larga para el PDF. Revisa su extensión antes de exportar; el original se conserva.');
-        const rowLabel=r=>circuit?`${Math.floor(r/(components.length||1))+1} · ${components[r%(components.length||1)]||''}`:`${r+1}ª serie`;
-        const rowHeight=r=>Math.max(14,rows(rowLabel(r),75,7).length*10+2);
-        const tailH=restH+noteH+(noteH?8:0)+38,headerH=28+planH+17;
-        const allHeight=headerH+Array.from({length:count},(_,i)=>rowHeight(i)).reduce((s,n)=>s+n,0)+tailH;
-        const capacity=H-85-rows(heading,W-2*M,17,bold).length*20-28-20-42;
-        if(headerH+rowHeight(Math.max(0,count-1))+tailH>capacity)throw Error('Las notas de un ejercicio no caben junto a sus casillas. Revisa su extensión antes de exportar.');
-        ensure(allHeight<=capacity?allHeight:headerH+rowHeight(0),heading);
-        function blockHeader(){
-          page.drawRectangle({x:24,y:y-5,width:W-48,height:19,color:black});
-          const name=safe(base.nombre.toUpperCase()),size=Math.min(10,(W-2*M)/Math.max(1,bold.widthOfTextAtSize(name,1)));
-          text(name,M,y+1,W-2*M,size,bold,rgb(1,1,1));
-          if(sharedSubtitle)text(sharedSubtitle,M+bold.widthOfTextAtSize(name,size)+12,y+2,W-M-(M+bold.widthOfTextAtSize(name,size)+12),8,italic,rgb(.85,.85,.85));
-          y-=25;
-          effective.forEach((ej,i)=>{page.drawRectangle({x:x0+i*cw,y:y-planH+10,width:cw-5,height:planH,color:pale});text(labels[i],x0+i*cw+4,y,cw-16,8,bold,ink);});y-=planH+4;
-          text('Series',M,y,75,8,bold,gray);micros.forEach((mn,i)=>{text('Kg',x0+i*cw+4,y,cw/2-8,7);text('Reps',x0+i*cw+cw/2,y,cw/2-8,7);});y-=13;
-        }
-        let offset=0;
-        do{
-          blockHeader();
-          for(let r=offset;r<count;r++){
-            const rh=rowHeight(r),last=r===count-1;
-            if(y-rh-(last?tailH:0)<42)break;
-            text(rowLabel(r),M,y,75,7);
-            micros.forEach((mn,i)=>{
-              if(r>=counts[i])return;const record=it?.sesiones?.[mn]?.[en.id]?.ejs?.[base.id]?.[arr]?.[r];
-              for(const [j,k]of ['kg','reps'].entries())field(`ej_${base.id}_${mn}_${en.id}_${arr}_${r}_${k}`,record?.[k],x0+i*cw+j*cw/2,y+8,cw/2-8,12,k);
-            });y-=rh;offset=r+1;
-          }
-          if(offset<count){next(heading);continue;}
-          text('Descanso',M,y,75,8,bold,ink);effective.forEach((ej,i)=>text(ej.plan.pausa||'Sin indicación',x0+i*cw,y,cw-12,8));y-=restH;
-          if(noteH){text('Entrenador',M,y,75,8,bold);notes.forEach((v,i)=>text(v,x0+i*cw,y,cw-12,8));y-=noteH+8;}
-          text('Comentarios',M,y,75,7,bold);micros.forEach((mn,i)=>field(`comentario_${base.id}_${mn}_${en.id}`,it?.sesiones?.[mn]?.[en.id]?.ejs?.[base.id]?.comentario,x0+i*cw,y+8,cw-12,24));y-=38;
-          page.drawLine({start:{x:M,y:y+4},end:{x:W-M,y:y+4},color:line,thickness:.5});
-          break;
-        }while(offset<count);
+  // A session is one microcycle and one training day. Pair compact exercise
+  // cards on A4 portrait; continuation pages are only used when content grows.
+  const SW=595,SH=842,SM=32,SG=12,cardW=(SW-2*SM-SG)/2;
+  const sessionDate=value=>{const date=FTRoutine.fullDate(value);return date?date.split('-').reverse().join('/'):'';};
+  function sessionPage(en,mn,total,continued=false){
+    page=doc.addPage([SW,SH]);brand(SH);
+    text(title+' · Iteración '+(it?.numero||1),SW-245,SH-39,210,8,bold,ink);
+    const heading=en.nombre||'ENTRENAMIENTO '+(en.letra||en.id);
+    text(heading,SM,SH-78,SW-2*SM,17,bold);
+    text(`MICROCICLO ${String(mn).padStart(2,'0')} / ${String(total).padStart(2,'0')}${continued?' · CONTINUACIÓN':''}`,SM,SH-103,SW-2*SM,9,bold,ink);
+    page.drawLine({start:{x:SM,y:SH-116},end:{x:SW-SM,y:SH-116},color:accent,thickness:1});
+    if(continued){text('Continúa el registro de la misma sesión.',SM,SH-139,SW-2*SM,9,font,gray);return SH-159;}
+    const ses=it?.sesiones?.[mn]?.[en.id];
+    text('FECHA',SM,SH-141,55,8,bold,gray);
+    field(`fecha_${en.id}_${mn}`,sessionDate(ses?.fecha),SM+52,SH-126,119,22);
+    text('DD/MM/AAAA',SM+178,SH-141,95,8,font,gray);
+    text('COMENTARIO DEL DÍA',SM,SH-171,160,8,bold,gray);
+    field(`sesion_comentario_${en.id}_${mn}`,ses?.comentario,SM+160,SH-156,SW-2*SM-160,35).setMaxLength(300);
+    const guidance=en.indicaciones?.[mn]||'';
+    if(guidance){text('INDICACIÓN',SM,SH-209,95,8,bold,ink);const gh=text(guidance,SM+95,SH-209,SW-2*SM-95,8,font,gray);return SH-225-Math.max(0,gh-11);}
+    return SH-207;
+  }
+  function sessionCard(base,en,mn){
+    const ej=FTRoutine.effective(base,mn,it,en.id),plan=ej.plan||{},circuit=ej.tipo==='circuito',parts=ej.circuitoLineas||base.circuitoLineas||[];
+    const arr=circuit?'lineas':'series',record=it?.sesiones?.[mn]?.[en.id]?.ejs?.[base.id],planned=circuit?(base.source?(plan.recordSlots||0)*parts.length:parts.length):(plan.series||0);
+    const count=Math.max(planned,record?.[arr]?.length||0);
+    const targets=Array.isArray(plan.repsTarget)?plan.repsTarget.map(String):String(plan.repsTarget||'').split('/').map(s=>s.trim()).filter(Boolean);
+    const displayTargets=targets.map(value=>value.replace(/\s*@\s*\d+(?:[.,]\d+)?\s*%.*/,'').trim());
+    const patchedPercent=Object.hasOwn(record?.prescripcion?.plan||{},'porcentaje');
+    const exactSourceLabel=!!plan.label&&!patchedPercent&&(plan.capacityUnspecified||!targets.length||!!plan.porcentaje||/\b(?:o|u)\b|\?/.test(plan.seriesLiteral||''));
+    const planText=exactSourceLabel||!Number.isFinite(Number(plan.series))
+      ?(plan.label||'No programado')
+      :`${plan.series||0} ${circuit?'rondas':'series'}${displayTargets.length?' · Reps objetivo: '+displayTargets.join(' / '):''}`;
+    const info=[`Descanso: ${plan.pausa||'No indicado'}`,plan.porcentaje&&!planText.includes('%')?`% de carga: ${plan.porcentaje}`:'',plan.cargaObjetivo?`Carga objetivo: ${plan.cargaObjetivo}`:'',plan.rir?`RIR: ${plan.rir}`:'',plan.rpe?`RPE: ${plan.rpe}`:'',plan.tempo?`Tempo: ${plan.tempo}`:''].filter(Boolean);
+    const subtitle=String(ej.subtitle||'').split('\n').map(s=>s.trim()).filter(s=>s&&!/^Alterno con$/i.test(s)).join('\n');
+    const note=plan.indicaciones&&plan.indicaciones!==en.indicaciones?.[mn]?plan.indicaciones:'';
+    const nameLines=rows(ej.nombre.toUpperCase(),cardW-20,9,bold),nameH=Math.max(1,nameLines.length)*12+12;
+    const subH=subtitle?rows(subtitle,cardW-18,8,italic).length*11:0;
+    const planH=Math.max(1,rows(planText,cardW-18,8,bold).length)*11;
+    const infoH=info.reduce((sum,value)=>sum+Math.max(1,rows(value,cardW-18,7).length)*10,0);
+    const noteH=note?rows(note,cardW-18,7).length*10+4:0;
+    const rowLabel=r=>circuit?`${Math.floor(r/(parts.length||1))+1} · ${parts[r%(parts.length||1)]||'Ejercicio'}`:`${r+1}ª serie`;
+    const targetAt=r=>displayTargets.length===1?displayTargets[0]:(displayTargets[circuit?Math.floor(r/(parts.length||1)):r]||'');
+    const rowHeight=r=>Math.max(18,rows(rowLabel(r),102,7).length*9+2,rows(targetAt(r),31,7).length*9+2);
+    const heights=Array.from({length:count},(_,r)=>rowHeight(r));
+    const h=nameH+7+subH+planH+infoH+4+14+heights.reduce((sum,v)=>sum+v,0)+noteH+38+7;
+    metadata.movements[`${en.id}/${mn}/${base.id}`]={name:ej.nombre,library:ej.libraryId||null};
+    return {base,en,mn,ej,plan,circuit,parts,arr,record,count,targets,targetAt,planText,info,subtitle,note,nameH,subH,planH,infoH,noteH,rowLabel,heights,h};
+  }
+  function drawSessionCard(card,x,top){
+    const {base,en,mn,ej,arr,record,count,targetAt,planText,info,subtitle,note,nameH,subH,planH,infoH,noteH,rowLabel,heights,h,circuit}=card;
+    page.drawRectangle({x,y:top-h,width:cardW,height:h,borderWidth:.6,borderColor:line,color:rgb(1,1,1)});
+    page.drawRectangle({x,y:top-nameH,width:cardW,height:nameH,color:black});
+    text(ej.nombre.toUpperCase(),x+9,top-13,cardW-18,9,bold,rgb(1,1,1));
+    let cy=top-nameH-7;
+    if(subtitle){text(subtitle,x+9,cy,cardW-18,8,italic,gray);cy-=subH;}
+    text(planText,x+9,cy,cardW-18,8,bold,ink);cy-=planH;
+    for(const item of info){text(item,x+9,cy,cardW-18,7,font,gray);cy-=Math.max(1,rows(item,cardW-18,7).length)*10;}
+    cy-=4;
+    page.drawLine({start:{x:x+8,y:cy+5},end:{x:x+cardW-8,y:cy+5},color:line,thickness:.5});
+    text(circuit?'RONDA / EJERCICIO':'SERIE',x+9,cy,104,6,bold,gray);
+    text('OBJ.',x+114,cy,32,6,bold,gray);
+    text('KG',x+153,cy,42,6,bold,gray);
+    text('REPS',x+205,cy,42,6,bold,gray);
+    cy-=14;
+    for(let r=0;r<count;r++){
+      const rh=heights[r],label=rowLabel(r);
+      if(r%2===1)page.drawRectangle({x:x+7,y:cy-rh+3,width:cardW-14,height:rh,color:rgb(.98,.98,.97)});
+      text(label,x+9,cy,102,7,font,black);
+      text(targetAt(r),x+114,cy,31,7,bold,ink);
+      for(const [key,fx,fw] of [['kg',x+150,45],['reps',x+202,45]]){
+        field(`ej_${base.id}_${mn}_${en.id}_${arr}_${r}_${key}`,record?.[arr]?.[r]?.[key],fx,cy+7,fw,16,key);
       }
-      const cardio=micros.map(mn=>en.cardioByMicro?.[mn]?.label||'Sin indicación'),ch=Math.max(16,...cardio.map(v=>rows(v,cw-12,8).length*11));
-      ensure(ch+92,heading);text('Aeróbico',M,y,75,8,bold);cardio.forEach((v,i)=>text(v,x0+i*cw,y,cw-12,8));y-=ch+8;
-      for(const key of ['tipo','tiempo','intensidad']){text(key,M,y,75,8);micros.forEach((mn,i)=>field(`aer_${en.id}_${mn}_${key}`,it?.sesiones?.[mn]?.[en.id]?.aerobica?.[key],x0+i*cw,y+8,cw-12,18));y-=25;}
+      cy-=rh;
     }
+    if(note){text(note,x+9,cy-2,cardW-18,7,font,gray);cy-=noteH;}
+    text('COMENTARIO DEL EJERCICIO',x+9,cy-5,cardW-18,6,bold,gray);
+    field(`comentario_${base.id}_${mn}_${en.id}`,record?.comentario,x+9,cy-10,cardW-18,26);
+  }
+  function sessionCardio(en,mn,top){
+    const label=en.cardioByMicro?.[mn]?.label||'Sin indicación',labelLines=rows(label,SW-2*SM-122,8).length;
+    const h=Math.max(75,labelLines*11+59);
+    if(top-h<42)return {h,drawn:false};
+    page.drawRectangle({x:SM,y:top-h,width:SW-2*SM,height:h,borderWidth:.6,borderColor:line,color:pale});
+    text('AERÓBICO',SM+10,top-16,100,9,bold,ink);
+    text(label,SM+112,top-16,SW-2*SM-122,8,font,black);
+    const fy=top-Math.max(33,labelLines*11+13);
+    const labels=[['tipo','TIPO'],['tiempo','TIEMPO'],['intensidad','INTENSIDAD']];
+    labels.forEach(([key,caption],i)=>{
+      const fx=SM+10+i*174;text(caption,fx,fy,164,7,bold,gray);
+      field(`aer_${en.id}_${mn}_${key}`,it?.sesiones?.[mn]?.[en.id]?.aerobica?.[key],fx,fy-4,160,20);
+    });
+    return {h,drawn:true};
+  }
+  const allSessions=Math.max(0,...(a.rutina?.entrenos||[]).map(en=>en.numMicro||a.rutina.numMicro||6));
+  for(let mn=1;mn<=allSessions;mn++)for(const en of a.rutina?.entrenos||[]){
+    const total=en.numMicro||a.rutina.numMicro||6;if(mn>total)continue;
+    const cards=[...(en.ejercicios||[])].sort((a,b)=>(a.orden||0)-(b.orden||0)).map(base=>sessionCard(base,en,mn));
+    let sy=sessionPage(en,mn,total);
+    for(let i=0;i<cards.length;i+=2){
+      const left=cards[i],right=cards[i+1],rowH=Math.max(left.h,right?.h||0);
+      if(sy-rowH<95)sy=sessionPage(en,mn,total,true);
+      if(sy-rowH<42)throw Error(`El ejercicio de ${en.nombre} no cabe en una página. Acorta sus notas antes de exportar.`);
+      drawSessionCard(left,SM,sy);if(right)drawSessionCard(right,SM+cardW+SG,sy);
+      sy-=rowH+12;
+    }
+    if(!sessionCardio(en,mn,sy).drawn){sy=sessionPage(en,mn,total,true);if(!sessionCardio(en,mn,sy).drawn)throw Error(`La indicación aeróbica de ${en.nombre} no cabe en una página.`);}
   }
   const embedded=new Map();
   async function image(src){
@@ -165,7 +204,7 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
     }
   }
   doc.setSubject('FTROUTINE:'+JSON.stringify(metadata));doc.setTitle(title);doc.setAuthor('Full Training');
-  doc.getPages().forEach((p,i)=>{p.drawText('FULL TRAINING · ENTRENAMIENTO PERSONAL',{x:M,y:18,size:7,font,color:gray});p.drawText(`${i+1} / ${doc.getPageCount()}`,{x:W-75,y:18,size:7,font,color:gray});});
+  doc.getPages().forEach((p,i)=>{p.drawText('FULL TRAINING · ENTRENAMIENTO PERSONAL',{x:M,y:18,size:7,font,color:gray});p.drawText(`${i+1} / ${doc.getPageCount()}`,{x:p.getWidth()-75,y:18,size:7,font,color:gray});});
   form.updateFieldAppearances(font);const bytes=await doc.save();if(returnBytes)return bytes;
   const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
   if(preview){if(!window.open(url,'_blank'))tobToast('Permite la vista previa en otra pestaña','red');}

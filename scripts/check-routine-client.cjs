@@ -75,6 +75,9 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     await fs.writeFile(path.join(out,'routine-synthetic.pdf'),Buffer.from(bytes));
     const blank=await page.evaluate(async()=>{const original=JSON.parse(window.baseline),cli=original.clientes[0],a=cli.asignaciones[0];return Array.from(await tobBuildVisualRoutinePdf(cli,a,original.plantillas[0],a.iteraciones[0],false,true));});
     await fs.writeFile(path.join(out,'routine-layout-preview.pdf'),Buffer.from(blank));
+    const blankPdf=await require('pdf-lib').PDFDocument.load(Uint8Array.from(blank));
+    const portrait=blankPdf.getPages().filter(p=>p.getWidth()===595&&p.getHeight()===842);
+    assert.equal(portrait.length,12,'Reacondicionamiento must fit each of six A and six B sessions on one portrait sheet');
     await page.evaluate(async()=>{
       const bytes=await tobBuildVisualRoutinePdf(tobDB.clientes[0],tobAsig(),tobDB.plantillas[0],tobIt(),false,true),pdf=await PDFLib.PDFDocument.load(bytes);
       pdf.getForm().getTextField('fecha_A_1').setText('30/12');pdf.getForm().getTextField('ej_ej_A_0_1_A_series_0_kg').setText('20');
@@ -110,7 +113,11 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         const before=JSON.stringify(pl),bytes=await tobBuildVisualRoutinePdf({id:'qa',nombre:'QA'},a,pl,it,false,true),pdf=await PDFLib.PDFDocument.load(bytes);
         if(JSON.stringify(pl)!==before)throw Error('Template PDF mutated source');
         const fields=pdf.getForm().getFields().map(f=>f.getName());if(new Set(fields).size!==fields.length)throw Error('Duplicate field names');
-        const last=pl.entrenos[0].numMicro||pl.numMicro;if(!fields.includes(`fecha_${pl.entrenos[0].id}_${last}`))throw Error('Last micro missing');
+        for(const en of pl.entrenos)for(let mn=1;mn<=(en.numMicro||pl.numMicro);mn++){
+          for(const name of [`fecha_${en.id}_${mn}`,`sesion_comentario_${en.id}_${mn}`,...['tipo','tiempo','intensidad'].map(key=>`aer_${en.id}_${mn}_${key}`),...en.ejercicios.map(ej=>`comentario_${ej.id}_${mn}_${en.id}`)]){
+            if(!fields.includes(name))throw Error(`Session field missing: ${sex} ${category} ${name}`);
+          }
+        }
         reports.push({sex,category,pages:pdf.getPageCount(),fields:fields.length});
       }
       return reports;
