@@ -80,7 +80,9 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
       const gh=Math.max(0,...guidance.map(v=>rows(v,cw-10,8).length*11));
       if(gh){ensure(gh+15,heading);text('Indicación\ndel día',M,y,75,8,bold);guidance.forEach((v,i)=>text(v,x0+i*cw,y,cw-12,8));y-=gh+10;}
       y-=5;
-      for(const base of [...(en.ejercicios||[])].sort((a,b)=>(a.orden||0)-(b.orden||0))){
+      const cardio=micros.map(mn=>en.cardioByMicro?.[mn]?.label||'Sin indicación'),ch=Math.max(16,...cardio.map(v=>rows(v,cw-12,8).length*11));
+      const exercises=[...(en.ejercicios||[])].sort((a,b)=>(a.orden||0)-(b.orden||0));
+      for(const [exerciseIndex,base] of exercises.entries()){
         const effective=micros.map(mn=>FTRoutine.effective(base,mn,it,en.id));
         for(let i=0;i<micros.length;i++){
           const ej=effective[i];
@@ -95,7 +97,7 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
           const label=tobPlanLabel(e.plan),percent=e.plan.porcentaje||'';
           return [e.nombre!==base.nombre?e.nombre:'',label+(percent&&!label.includes(percent)?' · '+percent:'')].filter(Boolean).join('\n');
         });
-        const notes=effective.map(e=>[!sharedSubtitle?e.subtitle:'',e.plan.indicaciones,...['cargaObjetivo','rir','rpe','tempo'].filter(k=>e.plan[k]).map(k=>`${{cargaObjetivo:'Carga',rir:'RIR',rpe:'RPE',tempo:'Tempo'}[k]}: ${e.plan[k]}`)].filter(Boolean).join('\n'));
+        const notes=effective.map((e,i)=>[!sharedSubtitle?e.subtitle:'',e.plan.indicaciones!==en.indicaciones?.[micros[i]]?e.plan.indicaciones:'',...['cargaObjetivo','rir','rpe','tempo'].filter(k=>e.plan[k]).map(k=>`${{cargaObjetivo:'Carga',rir:'RIR',rpe:'RPE',tempo:'Tempo'}[k]}: ${e.plan[k]}`)].filter(Boolean).join('\n'));
         const planH=Math.max(16,...labels.map(v=>rows(v,cw-16,8,bold).length*11+2));
         const restH=Math.max(13,...effective.map(e=>rows(e.plan.pausa||'Sin indicación',cw-12,8).length*11+2));
         const noteH=Math.max(0,...notes.map(v=>rows(v,cw-12,8).length*11));
@@ -106,7 +108,9 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
         const allHeight=headerH+Array.from({length:count},(_,i)=>rowHeight(i)).reduce((s,n)=>s+n,0)+tailH;
         const capacity=H-75-rows(heading,W-2*M,17,bold).length*20-22-16-42;
         if(headerH+rowHeight(Math.max(0,count-1))+tailH>capacity)throw Error('Las notas de un ejercicio no caben junto a sus casillas. Revisa su extensión antes de exportar.');
-        ensure(allHeight<=capacity?allHeight:headerH+rowHeight(0),heading);
+        const actualHeight=allHeight-2; // headerH includes two points of spare space.
+        const keepCardio=exerciseIndex>0&&exerciseIndex===exercises.length-1&&allHeight+ch+68<=capacity&&y-actualHeight>=42&&y-actualHeight-ch-68<42;
+        ensure(allHeight<=capacity?allHeight+(keepCardio?ch+68:0):headerH+rowHeight(0),heading);
         function blockHeader(){
           page.drawRectangle({x:24,y:y-5,width:W-48,height:17,color:black});
           const name=safe(base.nombre.toUpperCase()),size=Math.min(10,(W-2*M)/Math.max(1,bold.widthOfTextAtSize(name,1)));
@@ -136,7 +140,6 @@ async function tobBuildVisualRoutinePdf(cli,a,pl,it,preview,returnBytes=false){
           break;
         }while(offset<count);
       }
-      const cardio=micros.map(mn=>en.cardioByMicro?.[mn]?.label||'Sin indicación'),ch=Math.max(16,...cardio.map(v=>rows(v,cw-12,8).length*11));
       ensure(ch+68,heading);text('Aeróbico',M,y,95,8,bold);cardio.forEach((v,i)=>text(v,x0+i*cw,y,cw-12,8));y-=ch+5;
       for(const key of ['tipo','tiempo','intensidad']){text(key,M,y,95,8);micros.forEach((mn,i)=>field(`aer_${en.id}_${mn}_${key}`,it?.sesiones?.[mn]?.[en.id]?.aerobica?.[key],x0+i*cw,y+8,cw-12,18));y-=21;}
     }

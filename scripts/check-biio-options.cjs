@@ -47,7 +47,7 @@ run(`
  localStorage.setItem(TOB_KEY,JSON.stringify({plantillas:[pl],clientes:[{id:'c',nombre:'Prueba',asignaciones:[a],mediciones:[{peso:73}]}]}));
 
 `);
-await run('tobLoad()');run('globalThis.after=tobDB.clientes[0].asignaciones[0]');
+await run('tobLoad({allowMigration:true})');run('globalThis.after=tobDB.clientes[0].asignaciones[0]');
 assert.equal(run('JSON.stringify(before.iteraciones)'),run('JSON.stringify(after.iteraciones)'));
 assert.equal(run('after._planMigrationBackup.rutina._planV'),5);
 assert.ok(run('after._migrationUnmapped.length')>0);
@@ -56,6 +56,11 @@ run(`globalThis.legacy={iteraciones:[{id:'i',sesiones:{1:{A:{ejs:{e:{series:[{kg
 assert.equal(run('legacy._numericBackup.length'),2);
 assert.equal(run('legacy.iteraciones[0].sesiones[1].A.ejs.e.series[1].kg'),30.5);
 assert.ok(run(`legacy.iteraciones[0].sesiones[1].A.ejs.e.comentario.includes('Original')`));
+storage.delete(run('TOB_KEY'));
+run('tobDB={clientes:[],plantillas:[]}');
+await run('tobLoad()');
+assert.equal(run('tobDB.plantillas.length'),16);
+assert.equal(JSON.parse(storage.get(run('TOB_KEY'))).plantillas.length,16);
 // Syntax audit of every top-level JS and every inline HTML script.
 let scripts=0;
 for(const f of fs.readdirSync(root)){

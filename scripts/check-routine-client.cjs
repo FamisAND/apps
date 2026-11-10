@@ -107,6 +107,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
       if(record.prescripcion||record.lineas[11].kg!==12)throw Error('Reset removed historical circuit results');
     });
     const templateChecks=await page.evaluate(async()=>{
+      const realGuides=tobRoutineGuides;tobRoutineGuides=()=>[];
       const reports=[];
       for(const [sex,categories]of Object.entries(TOB_BIIO_SOURCE))for(const [category,data]of Object.entries(categories)){
         const pl=JSON.parse(JSON.stringify(data));pl.nombre=category;pl.categoria=category;pl.sexo=sex;
@@ -114,19 +115,42 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
         const a={id:'qa',fechaInicio:'2026-10-01',rutina:pl,iteraciones:[]},it={id:'qa-it',numero:1,fechaInicio:'2026-10-01',sesiones:{}};
         const before=JSON.stringify(pl),bytes=await tobBuildVisualRoutinePdf({id:'qa',nombre:'QA'},a,pl,it,false,true),pdf=await PDFLib.PDFDocument.load(bytes);
         if(JSON.stringify(pl)!==before)throw Error('Template PDF mutated source');
-        const fields=pdf.getForm().getFields().map(f=>f.getName());if(new Set(fields).size!==fields.length)throw Error('Duplicate field names');
+        const fieldObjects=pdf.getForm().getFields(),fields=fieldObjects.map(f=>f.getName()),fieldMap=new Map(fieldObjects.map(f=>[f.getName(),f]));
+        if(fieldMap.size!==fields.length)throw Error('Duplicate field names');
+        if(!pdf.getPages().every(p=>p.getWidth()===842&&p.getHeight()===595))throw Error('Template PDF changed A4 landscape layout');
+        const pageByRef=new Map(pdf.getPages().map((p,i)=>[p.ref.toString(),i+1]));
+        const pageOf=name=>pageByRef.get(fieldMap.get(name).acroField.getWidgets()[0].P().toString());
         for(const en of pl.entrenos)for(let mn=1;mn<=(en.numMicro||pl.numMicro);mn++){
           for(const name of [`fecha_${en.id}_${mn}`,`sesion_comentario_${en.id}_${mn}`,...['tipo','tiempo','intensidad'].map(key=>`aer_${en.id}_${mn}_${key}`),...en.ejercicios.map(ej=>`comentario_${ej.id}_${mn}_${en.id}`)]){
-            if(!fields.includes(name))throw Error(`Session field missing: ${sex} ${category} ${name}`);
+            if(!fieldMap.has(name))throw Error(`Session field missing: ${sex} ${category} ${name}`);
+          }
+          for(const ej of en.ejercicios){
+            const p=FTRoutine.effective(ej,mn,it,en.id).plan,arr=ej.tipo==='circuito'?'lineas':'series';
+            const count=arr==='lineas'?(ej.source?(p.recordSlots||0)*(ej.circuitoLineas||[]).length:(ej.circuitoLineas||[]).length):(p.series||0);
+            for(let row=0;row<count;row++)for(const key of ['kg','reps']){
+              const name=`ej_${ej.id}_${mn}_${en.id}_${arr}_${row}_${key}`;
+              if(!fieldMap.has(name))throw Error(`Result field missing: ${sex} ${category} ${name}`);
+            }
+          }
+        }
+        for(const en of pl.entrenos){
+          const dayFields=fields.filter(name=>name.startsWith(`fecha_${en.id}_`)||name.startsWith(`sesion_comentario_${en.id}_`)||name.startsWith(`aer_${en.id}_`)||en.ejercicios.some(ej=>name.startsWith(`ej_${ej.id}_`)||name.startsWith(`comentario_${ej.id}_`)));
+          const days=new Set(dayFields.map(pageOf));
+          if(days.size>4)throw Error(`Workout ${sex} ${category} ${en.id} spans ${days.size} sheets`);
+          const exercisePages=new Set(en.ejercicios.flatMap(ej=>fields.filter(name=>name.startsWith(`ej_${ej.id}_`)||name.startsWith(`comentario_${ej.id}_`)).map(pageOf)));
+          if([...days].some(p=>!exercisePages.has(p)))throw Error(`Workout ${sex} ${category} ${en.id} has a sheet without an exercise`);
+          for(const ej of en.ejercicios){
+            const pages=new Set(fields.filter(name=>name.startsWith(`ej_${ej.id}_`)||name.startsWith(`comentario_${ej.id}_`)).map(pageOf));
+            if(pages.size!==1)throw Error(`Exercise split across sheets: ${sex} ${category} ${ej.nombre}`);
           }
         }
         reports.push({sex,category,pages:pdf.getPageCount(),fields:fields.length});
       }
-      return reports;
+      tobRoutineGuides=realGuides;return reports;
     });assert.equal(templateChecks.length,16);await fs.writeFile(path.join(out,'template-pdf-checks.json'),JSON.stringify(templateChecks,null,2));
     await page.setViewportSize({width:1280,height:950});await page.evaluate(()=>{tobCurrentItId='iteration-test';tobRenderEntreno();});await page.locator('#tobEntContent').screenshot({path:path.join(out,'routine-matrix.png')});
     await page.locator('#tobRoutineAppendix img').evaluateAll(async imgs=>{for(const img of imgs)img.loading='eager';await Promise.all(imgs.map(img=>img.decode()));if(imgs.some(img=>!img.naturalWidth))throw Error('Appendix image did not decode');});
     await page.locator('#tobRoutineAppendix').screenshot({path:path.join(out,'routine-appendix.png')});
-    assert.deepEqual(errors,[]);console.log('Original editable matrix restored; appendix last; UI input saving, scoped overrides, history, PDF import and all 16 source exports passed');
+    assert.deepEqual(errors,[]);console.log('Original editable matrix restored; appendix last; UI input saving, scoped overrides, history, PDF import and all 16 source exports/layout checks passed');
   }finally{await browser.close();}
 })().catch(error=>{console.error(error.stack);process.exitCode=1;});

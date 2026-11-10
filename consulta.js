@@ -642,6 +642,12 @@ async function tobLoad(opts){
   // Displaying existing records must never depend on backup quota.
   tobRenderClientes();tobRenderPlantillas();
   tobStoredRaw=raw||null;
+  // A fresh installation still needs the official BIIO templates. This does
+  // not migrate or rewrite any existing client or template records.
+  if(!raw && !tobDB.plantillas.length){
+    tobDB.plantillas=tobBuildSeedPlantillas();
+    if(tobSave(true))tobRenderPlantillas();
+  }
   // Routine conversions are opt-in; merely opening a client never rewrites data.
   if(!opts || opts.allowMigration!==true)return;
   if(raw){
