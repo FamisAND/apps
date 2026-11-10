@@ -76,8 +76,10 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
     const blank=await page.evaluate(async()=>{const original=JSON.parse(window.baseline),cli=original.clientes[0],a=cli.asignaciones[0];return Array.from(await tobBuildVisualRoutinePdf(cli,a,original.plantillas[0],a.iteraciones[0],false,true));});
     await fs.writeFile(path.join(out,'routine-layout-preview.pdf'),Buffer.from(blank));
     const blankPdf=await require('pdf-lib').PDFDocument.load(Uint8Array.from(blank));
-    const portrait=blankPdf.getPages().filter(p=>p.getWidth()===595&&p.getHeight()===842);
-    assert.equal(portrait.length,12,'Reacondicionamiento must fit each of six A and six B sessions on one portrait sheet');
+    assert.ok(blankPdf.getPages().every(p=>p.getWidth()===842&&p.getHeight()===595),'Keep the original A4 landscape design');
+    const dayPages=day=>new Set(blankPdf.getForm().getFields().filter(f=>new RegExp(`_${day}(?:_|$)`).test(f.getName())).map(f=>String(f.acroField.getWidgets()[0].P())));
+    assert.equal(dayPages('A').size,2,'Training A should use two sheets with the original six microcycle columns');
+    assert.equal(dayPages('B').size,2,'Training B should use two sheets with the original six microcycle columns');
     await page.evaluate(async()=>{
       const bytes=await tobBuildVisualRoutinePdf(tobDB.clientes[0],tobAsig(),tobDB.plantillas[0],tobIt(),false,true),pdf=await PDFLib.PDFDocument.load(bytes);
       pdf.getForm().getTextField('fecha_A_1').setText('30/12');pdf.getForm().getTextField('ej_ej_A_0_1_A_series_0_kg').setText('20');
