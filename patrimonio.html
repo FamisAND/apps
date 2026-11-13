@@ -559,6 +559,24 @@ function uid(){return Math.random().toString(36).slice(2,9);}
 function load(){try{profiles=JSON.parse(localStorage.getItem(SK)||"[]");}catch{profiles=[];}}
 function save(){localStorage.setItem(SK,JSON.stringify(profiles));const b=document.getElementById("saveBadge");b.textContent=window.FTRecords?'Pendiente de confirmar':"✓";if(window.FTRecords)FTRecords.waitForDrafts('patrimonio').catch(()=>{b.textContent='NO confirmado';});setTimeout(()=>b.textContent="",1800);}
 function prof(){return profiles.find(p=>p.id===curId);}
+// Suma la cuota una sola vez al beneficio mensual almacenado, desde septiembre de 2024.
+function addLoanToMonthlyBenefit(entry){
+  const year=Number(entry?.year),month=Number(entry?.month);
+  if(entry?._loan95151Sep2024||!Number.isInteger(year)||!Number.isInteger(month)||month<0||month>11||year*12+month<2024*12+8)return false;
+  const benefit=parseMoneyValue(entry.emp_ben_mes);
+  if(!Number.isFinite(benefit))return false;
+  entry.emp_ben_mes=((Math.round(benefit*100)+95151)/100).toFixed(2);
+  entry._loan95151Sep2024=true;
+  return true;
+}
+function adjustStoredMonthlyBenefits(p){
+  if(window.FTRecords){try{FTRecords.assertWrite('patrimonio');}catch{return;}}
+  let changed=false;
+  (p.entries||[]).forEach(entry=>{if(addLoanToMonthlyBenefit(entry))changed=true;});
+  if(!changed)return;
+  save();
+  if(window.FTRecords)FTRecords.save('patrimonio').catch(()=>{document.getElementById("saveBadge").textContent="NO confirmado";});
+}
 
 function defaultSections(){
   return [
@@ -677,8 +695,10 @@ function parseMoneyValue(v){
   return parseFloat(normalized);
 }
 function calcEmpParts(entry,p){
-  const beneficio=calcBen12Parts(entry,p);
-  const ben=beneficio?beneficio.ajustado:NaN;
+  let ben=parseMoneyValue(entry.emp_ben12??entry.emp_fact);
+  if(entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""){
+    ben=calcBen12Rolling(entry,p);
+  }
   const cajaRaw=parseMoneyValue(entry.emp_caja);
   const hasBen=!isNaN(ben);
   const hasCaja=!isNaN(cajaRaw);
@@ -690,8 +710,6 @@ function calcEmpParts(entry,p){
   const valorBeneficio=ben12*per;
   return{
     ben12,
-    ben12Original:beneficio?beneficio.original:0,
-    ajustePrestamo:beneficio?beneficio.ajuste:0,
     cajaTotal,
     per,
     part,
@@ -708,63 +726,60 @@ function calcEmp(entry,p){
 function empPer(p){const v=parseFloat(p?.empresaSection?.per);return !isNaN(v)&&v>0?v:5;}
 function empPart(p){const v=parseFloat(p?.empresaSection?.participacion);return (!isNaN(v)&&v>=0?v:49)/100;}
 
-// La cuota es un ajuste de valoración: no altera el beneficio guardado, los gastos ni la caja.
-const EMP_PRESTAMO_INICIO=2024*12+8; // septiembre de 2024; month usa base cero.
-const EMP_PRESTAMO_CUOTA_CENT=95151;
-function empMonthIndex(entry){
-  const year=Number(entry?.year),month=Number(entry?.month);
-  return Number.isInteger(year)&&Number.isInteger(month)&&month>=0&&month<=11?year*12+month:null;
-}
-function empPrestamoFinIndex(p){
-  const value=p?.empresaSection?.prestamoFinMes;
-  if(typeof value!=="string"||!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))return null;
-  const [year,month]=value.split("-").map(Number);
-  return year*12+month-1;
-}
-function empPrestamoAplica(entry,p){
-  const index=empMonthIndex(entry),fin=empPrestamoFinIndex(p);
-  return index!==null&&index>=EMP_PRESTAMO_INICIO&&(fin===null||index<=fin)
-    &&entry.emp_prestamo_descontado!==false
-    &&entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""
-    &&Number.isFinite(parseMoneyValue(entry.emp_ben_mes));
-}
-function calcBen12Parts(entry,p){
-  const monthly=parseMoneyValue(entry.emp_ben_mes);
-  if(Number.isFinite(monthly)){
-    const target=empMonthIndex(entry);
-    const previous=new Map();
-    if(target!==null)(p.entries||[]).forEach(e=>{
-      const index=empMonthIndex(e);
-      if(index!==null&&index>=target-11&&index<target)previous.set(index,e);
-    });
-    const rows=[entry,...[...previous.entries()].sort((a,b)=>b[0]-a[0]).map(([,e])=>e)];
-    let originalCent=0,ajusteCent=0,legacy=null;
-    const meses=[];
-    for(const e of rows){
-      const value=parseMoneyValue(e.emp_ben_mes);
-      if(Number.isFinite(value)){
-        const amountCent=Math.round(value*100);
-        const loanCent=empPrestamoAplica(e,p)?EMP_PRESTAMO_CUOTA_CENT:0;
-        originalCent+=amountCent;
-        ajusteCent+=loanCent;
-        meses.push({year:Number(e.year),month:Number(e.month),original:amountCent/100,ajuste:loanCent/100});
-      }else{
-        const manual=parseMoneyValue(e.emp_ben12??e.emp_fact);
-        if(Number.isFinite(manual)){
-          // Un total manual antiguo no revela cuántas mensualidades contenía.
-          originalCent+=Math.round(manual*100);
-          legacy=e;
-          break;
-        }
-      }
+// Calcula beneficio últimos 12 meses sumando el mes actual + los 11 meses anteriores
+function calcBen12RollingLegacy(entry,p){
+  const ents=p.entries||[];
+  const idx=ents.findIndex(e=>e.key===entry.key);
+  if(idx<0)return parseMoneyValue(entry.emp_ben_mes)||0;
+  let sum=0;let count=0;
+  // Recorrer los últimos 12 meses (incluido el actual)
+  for(let i=idx;i>=Math.max(0,idx-11);i--){
+    const e=ents[i];
+    const v=parseMoneyValue(e.emp_ben_mes);
+    if(!isNaN(v)){sum+=v;count++;}
+    else if(e.emp_ben12!=null&&e.emp_ben12!==""){
+      // Fallback: si un mes antiguo no tiene emp_ben_mes pero sí emp_ben12,
+      // usar emp_ben12 como total y no sumar más meses anteriores
+      return parseMoneyValue(e.emp_ben12)||0;
     }
-    return{original:originalCent/100,ajuste:ajusteCent/100,
-      ajustado:(originalCent+ajusteCent)/100,meses,legacy};
   }
-  const manual=parseMoneyValue(entry.emp_ben12??entry.emp_fact);
-  if(!Number.isFinite(manual))return null;
-  return{original:manual,ajuste:0,ajustado:manual,meses:[],legacy:entry};
+  return sum;
 }
+
+function calcBen12Rolling(entry,p){
+  const ents=p.entries||[];
+  const yy=parseInt(entry.year);
+  const mm=parseInt(entry.month);
+  if(isNaN(yy)||isNaN(mm))return parseMoneyValue(entry.emp_ben_mes)||0;
+  const before=ents
+    .filter(e=>{
+      const ey=parseInt(e.year),em=parseInt(e.month);
+      if(isNaN(ey)||isNaN(em))return false;
+      return (ey<yy)||(ey===yy&&em<mm);
+    })
+    .sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month)
+    .slice(-11);
+  let sum=parseMoneyValue(entry.emp_ben_mes)||0;
+  for(let i=before.length-1;i>=0;i--){
+    const e=before[i];
+    const v=parseMoneyValue(e.emp_ben_mes);
+    if(!isNaN(v))sum+=v;
+    else if(e.emp_ben12!=null&&e.emp_ben12!==""){
+      sum+=parseMoneyValue(e.emp_ben12)||0;
+      break;
+    }
+  }
+  return sum;
+}
+
+// Obtener el beneficio 12m calculado para mostrar en el formulario
+function getBen12Display(entry,p){
+  if(entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""){
+    return calcBen12Rolling(entry,p);
+  }
+  return parseMoneyValue(entry.emp_ben12??entry.emp_fact)||0;
+}
+
 // ── Calcular rentabilidad de un activo individual (sin aportaciones) ──
 function calcReturnAsset(current,prev,p){
   if(!current||!prev||!current.assets||!prev.assets)return null;
@@ -805,7 +820,6 @@ function calcReturnPatrimonio(current,prev,p){
   return{pct:return_pct,amount:return_amount};
 }
 function fmt(v){if(v==null||v===""||isNaN(v))return "—";return new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR",minimumFractionDigits:0,maximumFractionDigits:0}).format(v);}
-function fmtEmp(v){if(v==null||v===""||isNaN(v))return "—";return new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR",minimumFractionDigits:2,maximumFractionDigits:2}).format(v);}
 // Escapa texto del usuario (nombres de perfil/categoría/activo/objetivo) antes de inyectarlo con innerHTML o en atributos.
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function fPct(v){return v==null?"—":(v>0?"+":"")+v.toFixed(2)+"%";}
@@ -865,6 +879,7 @@ function selectProfile(id){const p=profiles.find(x=>x.id===id);if(!p)return;if(p
 function enterApp(id){
   curId=id;const p=prof();
   if(!p.objectives)p.objectives=[];
+  adjustStoredMonthlyBenefits(p);
   document.getElementById("hdrProfile").textContent=p.emoji+" "+p.name;
   showScreen("appScreen");showTab("dashboard");
 }
@@ -1143,7 +1158,7 @@ function renderDashboard(){
   }
   if(p.empresaSection.enabled&&last){
     const parts=calcEmpParts(last,p);
-    if(parts)addS(`${p.empresaSection.title}`,parts.total,"#f472b6",false,null,true,`Beneficio 12m original ${fmtEmp(parts.ben12Original)} + cuotas descontadas ${fmtEmp(parts.ajustePrestamo)} = ajustado ${fmtEmp(parts.ben12)}. × PER ${parts.per} + caja neta ${fmt(parts.cajaTotal)}; mi ${(parts.part*100).toFixed(0)}% = ${fmt(parts.total)}`);
+    if(parts)addS(`${p.empresaSection.title}`,parts.total,"#f472b6",false,null,true,`Ben12m×PER: ${fmt(parts.valorBeneficio)} + caja neta ${fmt(parts.cajaTotal)}; mi ${(parts.part*100).toFixed(0)}% = ${fmt(parts.total)}`);
   }
   if(last&&last.deuda>0)addS("💳 Deuda",last.deuda,"#f87171",false,null,false,"restada del patrimonio");
 
@@ -3449,7 +3464,7 @@ function copyPreviousMonthValues(){
   toast("Valores copiados de "+MO[prev.month]+" "+prev.year,"green");
 }
 function clearMonthlyValues(){
-  document.querySelectorAll('#formFields input[id^="fi_"], #formFields input[id^="fc_"]').forEach(el=>{if(el.type!=="checkbox")el.value='';});
+  document.querySelectorAll('#formFields input[id^="fi_"], #formFields input[id^="fc_"]').forEach(el=>{el.value='';});
   const note=document.getElementById("fi_note");if(note)note.value="";
   updateFP();
   toast("Formulario limpio","green");
@@ -3540,11 +3555,25 @@ function renderFormFields(prefill){
     const per=empPer(p);
     const part=empPart(p)*100;
     // Calcular beneficio 12m rolling para pre-mostrar
+    const ents=p.entries||[];
     const month=parseInt(document.getElementById("fMonth").value);
     const year=parseInt(document.getElementById("fYear").value);
-    const monthIndex=empMonthIndex({year,month});
-    const loanEnd=empPrestamoFinIndex(p);
-    const loanMonth=monthIndex!==null&&monthIndex>=EMP_PRESTAMO_INICIO&&(loanEnd===null||monthIndex<=loanEnd);
+    const tmpKey=`${year}-${month}`;
+    // Buscar los últimos 11 meses de beneficio para mostrar desglose
+    let prev11=[];
+    if(ents.length){
+      const sorted=[...ents].sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month);
+      // Encontrar los 11 meses anteriores al mes actual del formulario
+      const before=sorted.filter(e=>(e.year<year)||(e.year===year&&e.month<month));
+      prev11=before.slice(-11);
+    }
+    const prev11sum=prev11.reduce((s,e)=>{
+      const v=parseMoneyValue(e.emp_ben_mes);
+      if(!isNaN(v))return s+v;
+      // Si un mes no tiene emp_ben_mes, no se puede sumar parcial
+      return s;
+    },0);
+    const prev11hasMes=prev11.some(e=>e.emp_ben_mes!=null&&e.emp_ben_mes!=="");
     
     const wrap=document.createElement("div");wrap.className="form-sec";
     wrap.innerHTML=`<div class="form-sec-hdr">${p.empresaSection.title} · ${part}% · PER ${per}</div>
@@ -3556,7 +3585,6 @@ function renderFormFields(prefill){
           <div style="font-size:.65rem;color:#334155;margin-top:3px">Introduce caja menos deuda de la empresa completa. Tu % se aplica automáticamente.</div>
         </div>
       </div>
-      ${loanMonth?`<label style="display:flex;align-items:center;gap:8px;margin-top:9px;font-size:.71rem;color:#94a3b8;cursor:pointer"><input type="checkbox" id="fi_emp_prestamo_descontado" ${prefill?.emp_prestamo_descontado===false?'':'checked'} onchange="updateFP()" style="accent-color:#f472b6">La cuota del préstamo (951,51 €) ya está descontada en el beneficio de este mes</label>`:''}
       <div id="ben12Detail" style="margin-top:8px;padding:7px 11px;background:#080d1a;border:1px solid #111827;border-radius:8px;font-size:.72rem;color:#475569;display:none"></div>
       <div class="formula-box hidden" id="formulaBox"></div>
       <div style="margin-top:8px;padding:6px 10px;background:#080d1a;border:1px dashed #1e2d4a;border-radius:8px;cursor:pointer;" onclick="document.getElementById('legacyBen12Wrap').classList.toggle('hidden')">
@@ -3565,7 +3593,7 @@ function renderFormFields(prefill){
       <div id="legacyBen12Wrap" class="hidden" style="margin-top:6px">
         <div class="fld-lbl" style="color:#f472b6;opacity:.6">Beneficios últimos 12m (manual override)</div>
         <input class="inp" type="number" id="fi_emp_ben12" placeholder="Dejar vacío para usar cálculo automático" oninput="updateFP()" value="${prefill?.emp_ben12??prefill?.emp_fact??''}" style="opacity:.6">
-        <div style="font-size:.65rem;color:#334155;margin-top:2px">Se usa si no hay beneficio mensual. Los totales manuales no reciben cuotas automáticas porque no indican cuántos meses incluyen.</div>
+        <div style="font-size:.65rem;color:#334155;margin-top:2px">Si introduces un valor aquí, se usará en lugar del cálculo automático.</div>
       </div>`;
     container.appendChild(wrap);
     setTimeout(updateFP,50);
@@ -3616,28 +3644,69 @@ function updateFP(){
   const cEl=document.getElementById("fi_emp_caja");
   const box=document.getElementById("formulaBox");if(!box)return;
   const detailEl=document.getElementById("ben12Detail");
+
+  const bMes=parseMoneyValue(bMesEl?.value)||0;
+  const bManual=bEl?.value?.trim()?parseMoneyValue(bEl.value):null;
+  const c=parseMoneyValue(cEl?.value)||0;
+  const per=empPer(p),part=empPart(p);
+
+  // Calcular beneficio 12m
+  let ben12=0;
+  const ents=p.entries||[];
   const month=parseInt(document.getElementById("fMonth").value);
   const year=parseInt(document.getElementById("fYear").value);
-  const draft={year,month,key:`${year}-${month}`,emp_caja:cEl?.value??""};
-  if(bMesEl?.value?.trim())draft.emp_ben_mes=bMesEl.value;
-  if(bEl?.value?.trim())draft.emp_ben12=bEl.value;
-  const cb=document.getElementById("fi_emp_prestamo_descontado");
-  if(cb)draft.emp_prestamo_descontado=cb.checked;
-  const beneficio=calcBen12Parts(draft,p);
-  const parts=calcEmpParts(draft,p);
-  if(detailEl){
-    detailEl.style.display=beneficio?"block":"none";
-    if(beneficio)detailEl.innerHTML=`<strong style="color:#94a3b8">Beneficio 12m original: ${fmtEmp(beneficio.original)}</strong>
-      <div style="margin-top:3px">Cuotas descontadas añadidas: ${fmtEmp(beneficio.ajuste)} (${beneficio.meses.filter(m=>m.ajuste>0).length} meses)</div>
-      <div style="margin-top:3px;color:#f472b6">Beneficio 12m ajustado: ${fmtEmp(beneficio.ajustado)}</div>
-      ${beneficio.legacy?'<div style="margin-top:3px;color:#fb923c">El total manual incluido no recibe ajustes sin desglose mensual.</div>':''}`;
+
+  if(bManual!=null&&bManual>0){
+    // Modo manual: usar directamente
+    ben12=bManual;
+    if(detailEl){detailEl.style.display="block";detailEl.innerHTML=`<span style="color:#fb923c">⚠ Modo manual: usando ${fmt(bManual)} como beneficio 12m total.</span>`;}
+  } else {
+    // Modo automático: sumar este mes + 11 anteriores
+    // Idéntica lógica que calcBen12Rolling: si un mes antiguo no tiene emp_ben_mes pero sí emp_ben12 (legacy), usarlo como total
+    const sorted=[...ents].sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month);
+    const before=sorted.filter(e=>(e.year<year)||(e.year===year&&e.month<month));
+    const prev11=before.slice(-11);
+
+    let prev11sum=0;
+    const details=[];
+    let usedLegacy=null; // si encontramos un mes legacy con emp_ben12, lo guardamos
+    // Recorremos del más reciente al más antiguo
+    for(let i=prev11.length-1;i>=0;i--){
+      const e=prev11[i];
+      const v=parseMoneyValue(e.emp_ben_mes);
+      if(!isNaN(v)){
+        prev11sum+=v;
+        details.unshift(`${MO[e.month]} ${e.year}: ${fmt(v)}`);
+      } else if(e.emp_ben12!=null&&e.emp_ben12!==""){
+        // Fallback legacy: usar emp_ben12 como total acumulado (sumamos lo que ya tenemos del mes y rompemos)
+        const legacyVal=parseMoneyValue(e.emp_ben12)||0;
+        usedLegacy={mes:`${MO[e.month]} ${e.year}`, valor:legacyVal};
+        prev11sum+=legacyVal; // incluir el legacy como base
+        break; // dejar de sumar hacia atrás (el legacy ya incluye los anteriores)
+      }
+    }
+    ben12=prev11sum+bMes;
+
+    if(detailEl){
+      if(details.length||bMes||usedLegacy){
+        detailEl.style.display="block";
+        const mesActual=bMes?`<span style="color:#f472b6">${MO[month]} ${year}: ${fmt(bMes)} (este mes)</span>`:"";
+        const prevText=details.length?details.join(" · "):(usedLegacy?"":"Sin datos previos");
+        const legacyText=usedLegacy?`<div style="color:#fb923c;margin-top:2px">⚠ Usando legacy de ${usedLegacy.mes}: ${fmt(usedLegacy.valor)} (incluye los meses anteriores a ese)</div>`:"";
+        detailEl.innerHTML=`<div style="margin-bottom:4px"><strong style="color:#94a3b8">Beneficio 12m automático: ${fmt(ben12)}</strong></div>
+          ${mesActual?`<div>${mesActual}</div>`:""}
+          ${details.length?`<div style="color:#334155;margin-top:2px">Meses anteriores con datos mes-a-mes (${details.length}/11): ${prevText}</div>`:""}
+          ${legacyText}`;
+      } else {
+        detailEl.style.display="none";
+      }
+    }
   }
-  const ben12=parts?.ben12||0;
-  const c=parts?.cajaTotal||0;
-  const per=empPer(p),part=empPart(p);
-  const r=parts?.total||0;
+
+  const valorBeneficio=ben12*per;
+  const r=(valorBeneficio+c)*part;
   box.classList.remove("hidden");
-  box.innerHTML=`Valoración mi parte: <strong>${fmt(r)}</strong> <span class="formula-muted">= (Ben12m ajustado ${fmt(ben12)} × PER ${per} + caja neta ${fmt(c)}) × ${(part*100).toFixed(0)}%</span>`;
+  box.innerHTML=`Valoración mi parte: <strong>${fmt(r)}</strong> <span class="formula-muted">= (Ben12m ${fmt(ben12)} × PER ${per} + caja neta ${fmt(c)}) × ${(part*100).toFixed(0)}%</span>`;
 }
 
 function openEdit(key){
@@ -3671,12 +3740,9 @@ function submitForm(){
     const ebMes=document.getElementById("fi_emp_ben_mes");
     const eb=document.getElementById("fi_emp_ben12"),ec=document.getElementById("fi_emp_caja");
     if(ebMes&&ebMes.value)entry.emp_ben_mes=ebMes.value;
-    const loanCb=document.getElementById("fi_emp_prestamo_descontado");
-    if(loanCb)entry.emp_prestamo_descontado=loanCb.checked;
-    else if(editKey){
-      const previous=p.entries.find(e=>e.key===editKey);
-      if(previous&&Object.prototype.hasOwnProperty.call(previous,"emp_prestamo_descontado"))entry.emp_prestamo_descontado=previous.emp_prestamo_descontado;
-    }
+    const previous=editKey?p.entries.find(e=>e.key===editKey):null;
+    if(previous?._loan95151Sep2024)entry._loan95151Sep2024=true;
+    else addLoanToMonthlyBenefit(entry);
     // Solo guardar emp_ben12 si el usuario lo introdujo manualmente (override)
     if(eb&&eb.value&&eb.value.trim())entry.emp_ben12=eb.value;
     if(ec)entry.emp_caja=ec.value;
@@ -3929,7 +3995,7 @@ function renderAjustes(){
     </div>
     <div class="grid2" style="margin-bottom:12px">
       <div><div class="fld-lbl">Múltiplo PER valoración empresa</div><input class="inp" type="number" id="aj_emp_per" value="${tmpEmp.per||5}" placeholder="5"></div>
-      <div><div class="fld-lbl">Último mes con cuota de préstamo descontada (opcional)</div><input class="inp" type="month" min="2024-09" id="aj_emp_prestamo_fin" value="${tmpEmp.prestamoFinMes||''}"><div style="font-size:.65rem;color:#475569;margin-top:3px">Vacío mientras el préstamo siga activo. Ajuste desde septiembre de 2024: 951,51 € por mes registrado.</div></div>
+      <div></div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
       <label class="tgl"><input type="checkbox" id="aj_emp_en" ${tmpEmp.enabled?"checked":""} style="display:none"><div class="tgl-track"></div><div class="tgl-thumb"></div></label>
@@ -4086,16 +4152,11 @@ function patAutoArchiveApply(){
 
 function saveAjustes(){
   const p=prof();
-  const finPrestamo=document.getElementById("aj_emp_prestamo_fin").value;
-  if(finPrestamo&&(!/^\d{4}-(0[1-9]|1[0-2])$/.test(finPrestamo)||finPrestamo<"2024-09")){
-    toast("⚠ Último mes del préstamo inválido","red");return;
-  }
   p.name=document.getElementById("aj_name").value||p.name;
   p.sections=tmpSections;
   p.empresaSection.enabled=document.getElementById("aj_emp_en").checked;
   p.empresaSection.participacion=parseFloat(document.getElementById("aj_emp_pct").value)||49;
   p.empresaSection.per=parseFloat(document.getElementById("aj_emp_per").value)||5;
-  p.empresaSection.prestamoFinMes=finPrestamo||"";
   document.getElementById("hdrProfile").textContent=p.emoji+" "+p.name;
   save();toast("✓ Ajustes guardados","green");showTab("dashboard");
 }
