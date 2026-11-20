@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-const moduleNames={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Tracker de Fondeo'};
+const moduleNames={training:'Full Training',training_online:'Consulta',options:'Opciones',patrimonio:'Patrimonio',facturas:'Facturas',funding:'Fondeo (datos conservados)'};
 const status=document.getElementById('status'),details=new Map();
 let sessionResult={sessions:[],policy:{idleMinutes:30,maxHours:8},windowDays:30,truncated:false};
 function element(tag,text){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;}
