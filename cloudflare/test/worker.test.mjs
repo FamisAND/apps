@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {createWorker} from '../src/worker.mjs';
-import {filterData,validateSection,canAccess} from '../src/policy.mjs';
+import {filterData,validateSection,canAccess,FILE_MODULE,DATA_KEYS,SECTION_MODULE} from '../src/policy.mjs';
 import {verifyIdentity} from '../src/access.mjs';
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../migrations/0001_auth.sql',import.meta.url),'utf8'));
@@ -99,13 +99,18 @@ test('writes disabled by default; unauthorized section is denied first',async()=
 test('filtered data never returns hidden modules or private settings',()=>{const user={active:true,role:'user',permissions:['training_online']};const original={training_online:{tob_online_v2:{clientes:[{id:'keep'}]}},patrimonio:{secret:5},__security:{secret:'PIN'},__ia_config:{keys:{secret:'KEY'}}};const out=filterData(original,user);assert.deepEqual(out.training_online,original.training_online);assert.equal(out.patrimonio,undefined);assert.equal(out.__security,undefined);assert.equal(out.__ia_config,undefined);assert.equal(canAccess(user,'admin'),false);assert.equal(original.patrimonio.secret,5);});
 test('invalid storage keys and private sections cannot be written',()=>{assert.throws(()=>validateSection('training_online',{__gh_sync_token:'attack'}));assert.throws(()=>validateSection('__security',{}));validateSection('training_online',{tob_online_v2:{clientes:[{id:'unchanged'}]}});});
 
-test('tracker routes and assets require explicit funding permission without changing existing users',async()=>{const f=fixture();try{
+test('retired tracker assets are unavailable while its separate records remain protected',async()=>{const f=fixture();try{
   const admin=await f.login();const created=await f.request('/api/admin/users',{method:'POST',cookie:admin,body:{email:'funding@example.test',name:'Funding user',permissions:['funding']}});assert.equal(created.status,201);
   const session=await f.login('funding@example.test');f.env.RECORDS_ENABLED='true';
-  for(const route of ['/funding.html','/funding.js','/funding-model.js','/funding.css','/funding-chart.umd.js'])assert.equal((await f.request(route,{email:'funding@example.test',cookie:session})).status,200);
+  for(const route of ['/funding.html','/funding.js','/funding-model.js','/funding.css','/funding-chart.umd.js','/funding-analysis.js','/funding-trades.js']){
+    assert.equal(FILE_MODULE[route.slice(1)],undefined);
+    assert.equal((await f.request(route,{email:'funding@example.test',cookie:session})).status,404);
+  }
+  assert.equal(SECTION_MODULE.funding,'funding');
+  assert.deepEqual(DATA_KEYS.funding,['funding_tracker_v1']);
   assert.equal((await f.request('/consulta.html',{email:'funding@example.test',cookie:session})).status,403);
   const other=await f.request('/api/admin/users',{method:'POST',cookie:admin,body:{email:'other@example.test',name:'Other',permissions:['options']}});assert.equal(other.status,201);const otherSession=await f.login('other@example.test');
-  for(const route of ['/funding.html','/funding.js','/api/records/funding','/api/records/funding/commit'])assert.equal((await f.request(route,{email:'other@example.test',cookie:otherSession})).status,403);
+  for(const route of ['/api/records/funding','/api/records/funding/commit'])assert.equal((await f.request(route,{email:'other@example.test',cookie:otherSession})).status,403);
   assert.deepEqual(JSON.parse(f.db.prepare('SELECT permissions FROM users WHERE email=?').get('other@example.test').permissions),['options']);
 }finally{f.db.close();}});
 test('JWT verification fails closed with missing configuration or token',async()=>{await assert.rejects(()=>verifyIdentity(new Request('https://fixture.test'),{}));await assert.rejects(()=>verifyIdentity(new Request('https://fixture.test'),{TEAM_DOMAIN:'https://test.cloudflareaccess.com',POLICY_AUD:'test'}));});

@@ -75,7 +75,7 @@ try{
   await window.FTSession.ready;
   bridge=new RecordBridge({session:()=>window.FTSession,onProgress:loadProgress});bridge.media=new RecordMedia(bridge);bridge.settings=new PrivateSettingsClient(bridge);window.FTRecords=bridge;
   bridge.exportDownload=async()=>download(await bridge.exportCopies(window.ghEditorSnapshot?.()||null));
-  await bridge.openAll({includeCatalog:file==='consulta.html',includeFunding:file==='funding.html'});
+  await bridge.openAll({includeCatalog:file==='consulta.html'});
   if(file==='consulta.html'&&bridge.allowed('training_online')){loadMessage('Comprobando configuracion de Consulta...');await bridge.settings.load();}
   bridge.installStorage(localStorage,Storage.prototype);
   window.addEventListener('beforeunload',event=>{if(bridge.pending()){event.preventDefault();event.returnValue='Hay cambios pendientes de confirmar';}});
