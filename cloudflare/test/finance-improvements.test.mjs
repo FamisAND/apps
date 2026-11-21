@@ -186,6 +186,33 @@ test('un traspaso a una cartera nueva no crea una caída ficticia en el total de
   assert.equal(ctx.portfolioTotalAt(after,{}),100);
 });
 
+test('Patrimonio muestra el cambio anual observado aunque cambie la cartera activa',()=>{
+  const entries=[
+    {year:2024,month:11,assets:{anterior:100}},
+    {year:2025,month:0,assets:{nueva:150}},
+    {year:2025,month:11,assets:{nueva:200}}
+  ];
+  const p={entries,empresaSection:{enabled:false}};
+  const selector={value:'__total',innerHTML:''},table={innerHTML:''};
+  const ctx=context(between(pat,'function renderAssetYearComparison','function resetForm'),{
+    prof:()=>p,completeEntries:()=>entries,showArchivedHistory:()=>false,
+    dashboardAssetsOf:()=>[{id:'nueva',name:'Nueva',color:'#60a5fa'}],isPortfolioAsset:()=>true,
+    assetLabel:a=>a.name,esc:v=>v,document:{getElementById:id=>({assetYearSelector:selector,assetYearTable:table})[id]},
+    parseMoneyValue:money,calcPat:e=>Object.values(e.assets).reduce((sum,v)=>sum+v,0),
+    fmt:v=>`${v} €`,fPct:v=>`${v}%`,Date:class extends Date{constructor(...args){super(...(args.length?args:['2026-11-22T00:00:00Z']));}}
+  });
+  ctx.renderAssetYearComparison();
+  assert.match(table.innerHTML,/2025/);
+  assert.match(table.innerHTML,/100 €/);
+  assert.match(table.innerHTML,/100%/);
+});
+
+test('se recupera el análisis de gastos sin reintroducir aportaciones ni textos de provisional',()=>{
+  for(const id of ['dashGastosKpis','dashGastosRange','cGastosLines','cGastosCats'])assert.match(pat,new RegExp(`id="${id}"`));
+  assert.match(between(pat,'function renderCharts(p)','function renderInteranual'),/renderDashGastosCharts\(\)/);
+  assert.doesNotMatch(pat,/Aportaciones \/ Retiros \(opcional\)|Alcance distinto \/ pendiente|Valoración mi parte\$\{parts\?\.provisional/);
+});
+
 test('el mes abierto y el mes sin carteras personales no simulan un cierre patrimonial',()=>{
   const DateAtNovember=class extends Date{constructor(...args){super(...(args.length?args:['2026-11-20T00:00:00Z']));}};
   const ctx=context(between(pat,'function isEntryComplete','function showScreen'),{
