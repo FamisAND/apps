@@ -239,6 +239,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
 
 /* ════════ MOBILE (≤640px) ════════ */
 @media (max-width: 640px) {
+  #dashCharts { grid-template-columns: minmax(0,1fr) !important; }
   /* CRÍTICO: Liberar el scroll del body y romper el layout flex desktop */
   html, body {
     overflow: visible !important;

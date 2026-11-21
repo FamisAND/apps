@@ -148,10 +148,10 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
           <section class="portfolio-chart-section">
             <div class="portfolio-chart-section-head">
               <div>
-              <div class="portfolio-chart-title">Rentabilidad mensual</div>
-              <div class="gastos-help">Rentabilidad descontando las aportaciones del mes.</div>
+              <div class="portfolio-chart-title">Variación mensual del valor</div>
+              <div class="gastos-help">Incluye aportaciones, retiradas y cambios de mercado.</div>
               </div>
-              <div class="portfolio-chart-period">Flujo neutralizado</div>
+              <div class="portfolio-chart-period">Variación patrimonial</div>
             </div>
             <div class="portfolio-chart-canvas"><canvas id="cRetornoBloques"></canvas></div>
           </section>
@@ -201,57 +201,6 @@ DashboardAuth.gate({ section: 'patrimonio', title: 'Patrimonio' });
           <div id="dashGastosSummary"></div>
         </div>
 
-        <!-- Gastos: resumen y análisis -->
-        <div class="card" style="margin-bottom:18px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div>
-              <div class="sec-title" style="margin:0">📊 Gastos de un vistazo</div>
-              <div class="gastos-help">Qué estás gastando, cómo cambia y dónde se concentra.</div>
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-              <select id="dashGastosRange" onchange="onGastosRangeChange()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
-                <option value="custom">Custom</option>
-                <option value="all" selected>Todo</option>
-              </select>
-              <div id="dashGastosCustomRange" style="display:none;align-items:center;gap:6px">
-                <input type="month" id="dashGastosFrom" onchange="renderDashGastosCharts()"
-                  style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.7rem;padding:4px 6px;border-radius:6px;outline:none;cursor:pointer">
-                <span style="color:#475569;font-size:.7rem">→</span>
-                <input type="month" id="dashGastosTo" onchange="renderDashGastosCharts()"
-                  style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.7rem;padding:4px 6px;border-radius:6px;outline:none;cursor:pointer">
-              </div>
-              <button class="btn-ghost" style="font-size:.7rem;padding:5px 9px" onclick="showTab('gastos')">Gestionar gastos</button>
-            </div>
-          </div>
-          <div id="dashGastosKpis"></div>
-        </div>
-
-        <div class="gastos-charts-grid">
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-              <div>
-                <div class="sec-title" style="margin:0">Evolución mensual</div>
-                <div class="gastos-help">Cada barra es un mes; la línea sigue la tendencia con una media móvil.</div>
-              </div>
-              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                <select id="dashGastosLinesCat" onchange="renderDashGastosCharts()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
-                  <option value="__total" selected>Total mensual</option>
-                </select>
-                <select id="dashGastosMovingAvg" onchange="renderDashGastosCharts()" title="Periodo de la media móvil" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Inter',sans-serif;font-size:.72rem;padding:4px 8px;border-radius:6px;outline:none;cursor:pointer">
-                  <option value="3">Media móvil 3m</option>
-                  <option value="6" selected>Media móvil 6m</option>
-                  <option value="12">Media móvil 12m</option>
-                </select>
-              </div>
-            </div>
-            <div style="position:relative;height:280px"><canvas id="cGastosLines"></canvas></div>
-          </div>
-          <div class="card">
-            <div class="sec-title" style="margin:0">En qué se va el dinero</div>
-            <div class="gastos-help">Media mensual por categoría dentro del periodo elegido.</div>
-            <div style="position:relative;height:280px"><canvas id="cGastosCats"></canvas></div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -559,23 +508,32 @@ function uid(){return Math.random().toString(36).slice(2,9);}
 function load(){try{profiles=JSON.parse(localStorage.getItem(SK)||"[]");}catch{profiles=[];}}
 function save(){localStorage.setItem(SK,JSON.stringify(profiles));const b=document.getElementById("saveBadge");b.textContent=window.FTRecords?'Pendiente de confirmar':"✓";if(window.FTRecords)FTRecords.waitForDrafts('patrimonio').catch(()=>{b.textContent='NO confirmado';});setTimeout(()=>b.textContent="",1800);}
 function prof(){return profiles.find(p=>p.id===curId);}
-// Suma la cuota una sola vez al beneficio mensual almacenado, desde septiembre de 2024.
-function addLoanToMonthlyBenefit(entry){
-  const year=Number(entry?.year),month=Number(entry?.month);
-  if(entry?._loan95151Sep2024||!Number.isInteger(year)||!Number.isInteger(month)||month<0||month>11||year*12+month<2024*12+8)return false;
-  const benefit=parseMoneyValue(entry.emp_ben_mes);
-  if(!Number.isFinite(benefit))return false;
-  entry.emp_ben_mes=((Math.round(benefit*100)+95151)/100).toFixed(2);
-  entry._loan95151Sep2024=true;
-  return true;
+// El ajuste fijo anterior se revierte únicamente al leer. Los datos y su marca
+// histórica permanecen intactos, por lo que la corrección es reversible e idempotente.
+function originalCompanyBenefit(entry){
+  const v=parseMoneyValue(entry?.emp_ben_mes);
+  return Number.isFinite(v)?v-(entry?._loan95151Sep2024?951.51:0):NaN;
 }
-function adjustStoredMonthlyBenefits(p){
-  if(window.FTRecords){try{FTRecords.assertWrite('patrimonio');}catch{return;}}
-  let changed=false;
-  (p.entries||[]).forEach(entry=>{if(addLoanToMonthlyBenefit(entry))changed=true;});
-  if(!changed)return;
-  save();
-  if(window.FTRecords)FTRecords.save('patrimonio').catch(()=>{document.getElementById("saveBadge").textContent="NO confirmado";});
+function exactEuro(v){return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:2}).format(v);}
+function companyMonthKey(entry){return `${entry.year}-${String(Number(entry.month)+1).padStart(2,'0')}`;}
+function trainingCompanySnapshot(key){
+  if(!window.FTRecords||!FTRecords.allowed('training'))return null;
+  let source=FTRecords.values.get('training')?.ft_v4;
+  if(typeof source==='string'){try{source=JSON.parse(source);}catch{return null;}}
+  const md=source?.months?.[key];if(!md)return null;
+  const current=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+  const gastos=md.gastos||[];
+  const transfer=new Set(['dividendos','traspaso_interno','inversion_aporte','inversion_retiro']);
+  const cat=g=>g.cat==='traspaso_interno'?g.cat:/^prestec\b/i.test(String(g.desc||'').trim())&&['financiero','otros','otro'].includes(g.cat)?'prestamo':g.cat;
+  const operating=g=>!transfer.has(cat(g));
+  const closed=key<current&&gastos.some(g=>operating(g)&&cat(g)!=='prestamo');
+  const turnover=(md.entries||[]).reduce((s,e)=>s+(Number(e.price)||0),0);
+  const after=turnover-gastos.filter(operating).reduce((s,g)=>s+(Number(g.amount)||0),0);
+  const loan=gastos.filter(g=>cat(g)==='prestamo').reduce((s,g)=>s+(Number(g.amount)||0),0);
+  const m=md.meta||{};
+  const amounts=['caja','inversiones','deuda'].map(k=>parseMoneyValue(m[k]));
+  const net=amounts.every(Number.isFinite)?amounts[0]+amounts[1]-amounts[2]:null;
+  return {key,closed,before:after+loan,after,loan,net,caja:amounts[0],inversiones:amounts[1],deuda:amounts[2]};
 }
 
 function defaultSections(){
@@ -653,6 +611,14 @@ function isBankAsset(p,a){
   return isBankSection(assetSectionOf(p,a))||txt.includes("cuenta bancaria")||txt==="cash"||txt.includes("liquidez")||txt.includes("ahorro");
 }
 function isPortfolioAsset(p,a){return !isIncomeAsset(p,a)&&!isBankAsset(p,a);}
+function portfolioTotalAt(entry,p){
+  let total=0,hasValue=false;
+  entryActiveAssets(entry,p).filter(a=>isPortfolioAsset(p,a)).forEach(a=>{
+    const value=parseMoneyValue((entry.assets||{})[a.id]);
+    if(Number.isFinite(value)){total+=value;hasValue=true;}
+  });
+  return hasValue?total:null;
+}
 function ingValue(entry,p){let t=0;profileAssets(p).filter(a=>isIncomeAsset(p,a)).forEach(a=>{const v=parseMoneyValue((entry.assets||{})[a.id]);if(!isNaN(v))t+=v;});return t;}
 
 // ── Patrimonio (excluye ingresos, resta deuda, incluye empresa) ──
@@ -665,6 +631,11 @@ function calcPat(entry,p){
   if(p.empresaSection.enabled){const e=calcEmp(entry,p);if(e!=null)t+=e;}
   const deuda=parseMoneyValue(entry.deuda);if(!isNaN(deuda)&&deuda>0)t-=deuda;
   return t;
+}
+function samePatScope(a,b,p){
+  if(!a||!b)return false;
+  const ids=e=>entryActiveAssets(e,p).filter(x=>!isIncomeAsset(p,x)).map(x=>x.id).sort().join('|');
+  return ids(a)===ids(b);
 }
 function parseMoneyValue(v){
   if(v==null||v==="")return NaN;
@@ -695,19 +666,21 @@ function parseMoneyValue(v){
   return parseFloat(normalized);
 }
 function calcEmpParts(entry,p){
-  let ben=parseMoneyValue(entry.emp_ben12??entry.emp_fact);
-  if(entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""){
-    ben=calcBen12Rolling(entry,p);
-  }
-  const cajaRaw=parseMoneyValue(entry.emp_caja);
-  const hasBen=!isNaN(ben);
-  const hasCaja=!isNaN(cajaRaw);
+  const rolling=calcBen12Info(entry,p);
+  const snapshot=trainingCompanySnapshot(companyMonthKey(entry));
+  const manualNet=parseMoneyValue(entry.emp_caja);
+  const cajaRaw=snapshot?.closed&&snapshot.net!=null?snapshot.net:manualNet;
+  const legacy=parseMoneyValue(entry.emp_ben12??entry.emp_fact);
+  const ben=rolling.count?rolling.sum:legacy;
+  const hasBen=Number.isFinite(ben),hasCaja=Number.isFinite(cajaRaw);
   if(!hasBen&&!hasCaja)return null;
   const per=empPer(p);
   const part=empPart(p);
   const ben12=hasBen?ben:0;
   const cajaTotal=hasCaja?cajaRaw:0;
   const valorBeneficio=ben12*per;
+  const discrepancies=[...rolling.discrepancies];
+  if(snapshot?.closed&&snapshot.net!=null&&Number.isFinite(manualNet)&&Math.abs(snapshot.net-manualNet)>1)discrepancies.push(`${companyMonthKey(entry)} posición: ${exactEuro(manualNet)} manual / ${exactEuro(snapshot.net)} Full Training`);
   return{
     ben12,
     cajaTotal,
@@ -716,68 +689,49 @@ function calcEmpParts(entry,p){
     valorBeneficio,
     valorBeneficioMiParte:valorBeneficio*part,
     cajaMiParte:cajaTotal*part,
-    total:(valorBeneficio+cajaTotal)*part
+    total:(valorBeneficio+cajaTotal)*part,
+    provisional:rolling.count!==12||rolling.provisional||!hasCaja||discrepancies.length>0,
+    months:rolling.count,
+    manualFallback:rolling.manualFallback,
+    discrepancies
   };
 }
 function calcEmp(entry,p){
   const parts=calcEmpParts(entry,p);
   return parts?parts.total:null;
 }
-function empPer(p){const v=parseFloat(p?.empresaSection?.per);return !isNaN(v)&&v>0?v:5;}
+function empPer(p){const v=parseFloat(p?.empresaSection?.per);return !isNaN(v)&&v>0?v:4;}
 function empPart(p){const v=parseFloat(p?.empresaSection?.participacion);return (!isNaN(v)&&v>=0?v:49)/100;}
 
-// Calcula beneficio últimos 12 meses sumando el mes actual + los 11 meses anteriores
-function calcBen12RollingLegacy(entry,p){
-  const ents=p.entries||[];
-  const idx=ents.findIndex(e=>e.key===entry.key);
-  if(idx<0)return parseMoneyValue(entry.emp_ben_mes)||0;
-  let sum=0;let count=0;
-  // Recorrer los últimos 12 meses (incluido el actual)
-  for(let i=idx;i>=Math.max(0,idx-11);i--){
-    const e=ents[i];
-    const v=parseMoneyValue(e.emp_ben_mes);
-    if(!isNaN(v)){sum+=v;count++;}
-    else if(e.emp_ben12!=null&&e.emp_ben12!==""){
-      // Fallback: si un mes antiguo no tiene emp_ben_mes pero sí emp_ben12,
-      // usar emp_ben12 como total y no sumar más meses anteriores
-      return parseMoneyValue(e.emp_ben12)||0;
-    }
+function calcBen12Info(entry,p){
+  const byMonth=new Map((p.entries||[]).map(e=>[companyMonthKey(e),e]));
+  byMonth.set(companyMonthKey(entry),entry);
+  const current=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+  let sum=0,count=0,provisional=false,manualFallback=false;
+  const discrepancies=[];
+  for(let i=0;i<12;i++){
+    const d=new Date(Number(entry.year),Number(entry.month)-i,1);
+    const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if(key>=current){provisional=true;continue;}
+    const stored=byMonth.get(key),manual=originalCompanyBenefit(stored),ft=trainingCompanySnapshot(key);
+    if(ft?.closed){
+      sum+=ft.before;count++;
+      // El valor manual previo al ajuste fijo era después del pago bancario.
+      if(Number.isFinite(manual)&&Math.abs(manual-ft.after)>1){
+        provisional=true;discrepancies.push(`${key} resultado: ${exactEuro(manual)} manual / ${exactEuro(ft.after)} Full Training`);
+      }
+    }else if(Number.isFinite(manual)){
+      sum+=manual;count++;provisional=true;manualFallback=true;
+    }else provisional=true;
   }
-  return sum;
+  return {sum,count,provisional,manualFallback,discrepancies};
 }
-
-function calcBen12Rolling(entry,p){
-  const ents=p.entries||[];
-  const yy=parseInt(entry.year);
-  const mm=parseInt(entry.month);
-  if(isNaN(yy)||isNaN(mm))return parseMoneyValue(entry.emp_ben_mes)||0;
-  const before=ents
-    .filter(e=>{
-      const ey=parseInt(e.year),em=parseInt(e.month);
-      if(isNaN(ey)||isNaN(em))return false;
-      return (ey<yy)||(ey===yy&&em<mm);
-    })
-    .sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month)
-    .slice(-11);
-  let sum=parseMoneyValue(entry.emp_ben_mes)||0;
-  for(let i=before.length-1;i>=0;i--){
-    const e=before[i];
-    const v=parseMoneyValue(e.emp_ben_mes);
-    if(!isNaN(v))sum+=v;
-    else if(e.emp_ben12!=null&&e.emp_ben12!==""){
-      sum+=parseMoneyValue(e.emp_ben12)||0;
-      break;
-    }
-  }
-  return sum;
-}
+function calcBen12Rolling(entry,p){return calcBen12Info(entry,p).sum;}
 
 // Obtener el beneficio 12m calculado para mostrar en el formulario
 function getBen12Display(entry,p){
-  if(entry.emp_ben_mes!=null&&entry.emp_ben_mes!==""){
-    return calcBen12Rolling(entry,p);
-  }
-  return parseMoneyValue(entry.emp_ben12??entry.emp_fact)||0;
+  const rolling=calcBen12Info(entry,p);
+  return rolling.count?rolling.sum:parseMoneyValue(entry.emp_ben12??entry.emp_fact)||0;
 }
 
 // ── Calcular rentabilidad de un activo individual (sin aportaciones) ──
@@ -827,20 +781,22 @@ function fNum(v,dec=1){if(v==null||isNaN(v))return "—";return v.toFixed(dec);}
 
 // ── Income average (last N months) ──
 function avgIngresos(p,n=6){
-  const ents=completeEntries(p);const recent=ents.slice(-n);if(!recent.length)return 0;
+  const today=new Date(),cutoff=today.getFullYear()*12+today.getMonth();
+  const ents=completeEntries(p).filter(e=>e.year*12+e.month<cutoff);const recent=ents.slice(-n);if(!recent.length)return 0;
   return recent.reduce((s,e)=>s+ingValue(e,p),0)/recent.length;
 }
 
 // ── Check if an entry is "complete" (has at least 1 investment/bank NAV > 0) ──
 function isEntryComplete(entry,p){
   const active=entryActiveAssets(entry,p);
-  // Check if any non-income asset has a value > 0
-  const hasAsset=active.some(a=>{
-    if(isIncomeAsset(p,a))return false;
+  const personalAssets=active.filter(a=>!isIncomeAsset(p,a));
+  // Si se siguen carteras o cuentas personales, Empresa sola no completa el mes.
+  const hasAsset=personalAssets.some(a=>{
     const v=parseMoneyValue((entry.assets||{})[a.id]);
     return !isNaN(v)&&v>0;
   });
   if(hasAsset)return true;
+  if(personalAssets.length)return false;
   if(p.empresaSection?.enabled){
     const emp=calcEmp(entry,p);
     if(emp!=null&&emp>0)return true;
@@ -851,9 +807,10 @@ function isEntryComplete(entry,p){
 
 // ── Get entries filtered to only complete ones (for dashboard/charts) ──
 function completeEntries(p){
+  const now=new Date(),max=now.getFullYear()*12+now.getMonth();
   return [...(p.entries||[])]
     .sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month)
-    .filter(e=>isEntryComplete(e,p));
+    .filter(e=>e.year*12+e.month<max&&isEntryComplete(e,p));
 }
 
 // ══════════════════════════════
@@ -879,7 +836,7 @@ function selectProfile(id){const p=profiles.find(x=>x.id===id);if(!p)return;if(p
 function enterApp(id){
   curId=id;const p=prof();
   if(!p.objectives)p.objectives=[];
-  adjustStoredMonthlyBenefits(p);
+  // Los ajustes históricos se conservan; no se vuelven a aplicar al abrir.
   document.getElementById("hdrProfile").textContent=p.emoji+" "+p.name;
   showScreen("appScreen");showTab("dashboard");
 }
@@ -1121,9 +1078,11 @@ function renderDashboard(){
   const allEnts=p.entries||[];
   const last=ents[ents.length-1],prev=ents[ents.length-2];
   const curP=last?calcPat(last,p):null,prvP=prev?calcPat(prev,p):null;
-  const delta=curP!=null&&prvP!=null?curP-prvP:null,dPct=delta!=null&&prvP?delta/prvP*100:null;
+  const delta=curP!=null&&prvP!=null&&samePatScope(last,prev,p)?curP-prvP:null,dPct=delta!=null&&prvP>0?delta/prvP*100:null;
   
-  // Check if there's a pending (incomplete) entry
+  // El mes abierto queda visible para completarlo, pero no entra en cierres ni gráficas.
+  const now=new Date();
+  const openEntry=allEnts.find(e=>e.year===now.getFullYear()&&e.month===now.getMonth());
   const pendingEntry=allEnts.length>0&&!isEntryComplete(allEnts[allEnts.length-1],p)?allEnts[allEnts.length-1]:null;
 
   // Notifications removed from the dashboard at the user's request.
@@ -1137,6 +1096,7 @@ function renderDashboard(){
     pe.innerHTML=`<span class="pending-entry-icon">📝</span><span><strong>${MO[pendingEntry.month]} ${pendingEntry.year}</strong> en curso · faltan NAVs · <a href="#" onclick="event.preventDefault();openEdit('${pendingEntry.key}')">Completar</a></span>`;
     pendingSlot.appendChild(pe);
   }
+  else if(openEntry&&pendingSlot){pendingSlot.innerHTML=`<span class="pending-entry-pill">${MO[openEntry.month]} ${openEntry.year} · mes abierto; el dashboard muestra el último cierre</span>`;}
   
   const addS=(lbl,val,col,big,badge,bUp,sub)=>{
     const d=document.createElement("div");d.className="stat-card";
@@ -1145,7 +1105,7 @@ function renderDashboard(){
       +(sub?`<div class="stat-sub">${sub}</div>`:"");
     g.appendChild(d);
   };
-  addS("Patrimonio Total",curP,"#60a5fa",true,dPct!=null?fPct(dPct)+" este mes":null,dPct!=null?dPct>=0:true,last?`📅 ${MO[last.month]} ${last.year}`:null);
+  addS("Patrimonio Total",curP,"#60a5fa",true,dPct!=null?`${fmt(delta)} · ${fPct(dPct)} este mes`:null,dPct!=null?dPct>=0:true,last?`📅 ${MO[last.month]} ${last.year}${prev&&!samePatScope(last,prev,p)?' · alcance distinto':''}`:null);
   if(last){
     dashboardAssetsOf(p,last,showArchivedHistory(p)).forEach(a=>{
       if(isIncomeAsset(p,a))return;
@@ -1158,7 +1118,7 @@ function renderDashboard(){
   }
   if(p.empresaSection.enabled&&last){
     const parts=calcEmpParts(last,p);
-    if(parts)addS(`${p.empresaSection.title}`,parts.total,"#f472b6",false,null,true,`Ben12m×PER: ${fmt(parts.valorBeneficio)} + caja neta ${fmt(parts.cajaTotal)}; mi ${(parts.part*100).toFixed(0)}% = ${fmt(parts.total)}`);
+    if(parts)addS(`${p.empresaSection.title}${parts.provisional?' · provisional':''}`,parts.total,"#f472b6",false,null,true,`${parts.manualFallback?'Resultado 12m mixto, revisar':'Resultado 12m antes de financiación'} (${parts.months}/12) × ${parts.per}: ${fmt(parts.valorBeneficio)} + posición neta ${fmt(parts.cajaTotal)}; mi ${(parts.part*100).toFixed(0)}% = ${fmt(parts.total)}${parts.discrepancies.length?' · Diferencias: '+parts.discrepancies.join(' · '):''}`);
   }
   if(last&&last.deuda>0)addS("💳 Deuda",last.deuda,"#f87171",false,null,false,"restada del patrimonio");
 
@@ -1333,16 +1293,7 @@ function renderCharts(p){
     tension:.3,
     spanGaps:false
   }));
-  const totalInvestmentValues=ents.map(e=>{
-    const activeIds=new Set(entryActiveAssets(e,p).map(a=>a.id));
-    let total=0,hasValue=false;
-    investmentAssets.forEach(a=>{
-      if(!activeIds.has(a.id)) return;
-      const value=parseMoneyValue((e.assets||{})[a.id]);
-      if(Number.isFinite(value)){total+=value;hasValue=true;}
-    });
-    return hasValue?total:null;
-  });
+  const totalInvestmentValues=ents.map(e=>portfolioTotalAt(e,p));
   const totalEvolutionDataset={
     label:"Total carteras",
     data:totalInvestmentValues,
@@ -1386,7 +1337,7 @@ function renderCharts(p){
     }
   });
 
-  // ── Rentabilidad mensual por cartera ──
+  // ── Variación observada del valor de las carteras ──
   dChart("retornoBloques");
   const retornoDS=Object.values(assetMap).map(a=>({
     label:assetLabel(a),
@@ -1396,8 +1347,7 @@ function renderCharts(p){
       const curr=parseMoneyValue((e.assets||{})[a.id])||0;
       const prev=parseMoneyValue((ents[i-1].assets||{})[a.id])||0;
       if(prev<=0)return null;
-      const contrib=parseMoneyValue((e.contributions||{})[a.id])||0;
-      const retorno=((curr-prev-contrib)/prev)*100;
+      const retorno=((curr-prev)/prev)*100;
       return parseFloat(retorno.toFixed(2));
     }),
     borderColor:a.color,
@@ -1405,36 +1355,20 @@ function renderCharts(p){
     borderWidth:1.5,
     pointRadius:2,
     tension:.3,
-    spanGaps:true
+    spanGaps:false
   }));
   
-  // Calcular rentabilidad total PONDERADA (por capital de cada cartera)
+  // La suma incluye carteras abiertas y archivadas en cada cierre. Un traspaso
+  // entre carteras no se convierte así en una caída artificial del total.
   const retornoTotal=ents.map((e,i)=>{
     if(i===0)return null;
-    const assets=Object.values(assetMap);
-    let totalCapital=0;
-    let totalRetornoValor=0;
-    
-    assets.forEach(a=>{
-      const curr=parseMoneyValue((e.assets||{})[a.id])||0;
-      const prev=parseMoneyValue((ents[i-1].assets||{})[a.id])||0;
-      if(prev>0){
-        const contrib=parseMoneyValue((e.contributions||{})[a.id])||0;
-        const retorno_pct=((curr-prev-contrib)/prev)*100;
-        const retorno_valor=(curr-prev-contrib);
-        
-        totalCapital+=prev;
-        totalRetornoValor+=retorno_valor;
-      }
-    });
-    
-    // Rentabilidad ponderada = Retorno total / Capital total
-    return totalCapital>0?parseFloat(((totalRetornoValor/totalCapital)*100).toFixed(2)):null;
+    const curr=totalInvestmentValues[i],prev=totalInvestmentValues[i-1];
+    return curr!=null&&prev>0?parseFloat(((curr-prev)/prev*100).toFixed(2)):null;
   });
   
-  // Agregar línea de rentabilidad total como primera dataset
+  // Agregar línea de variación total como primera dataset
   const totalReturnDataset={
-    label:"Rentabilidad total",
+     label:"Variación total",
     data:retornoTotal,
     borderColor:"#60a5fa",
     backgroundColor:"rgba(96,165,250,.06)",
@@ -1490,7 +1424,7 @@ function renderCharts(p){
       <div class="portfolio-chart-stat">
         <div class="portfolio-chart-stat-label">Último mes</div>
         <div class="portfolio-chart-stat-value" style="color:${primaryReturnNow==null?'#64748b':primaryReturnNow>=0?'#4ade80':'#f87171'}">${fPct(primaryReturnNow)}</div>
-        <div class="portfolio-chart-stat-note">Rentabilidad neta</div>
+         <div class="portfolio-chart-stat-note">Variación del valor</div>
       </div>
       ${thirdMetric}`;
   }
@@ -1536,7 +1470,7 @@ function renderCharts(p){
 
   // ── Variación mensual ──
   dChart("var");
-  const vd=ents.map((e,i)=>{if(!i)return null;const c=calcPat(e,p),pv=calcPat(ents[i-1],p);return pv?+((c-pv)/pv*100).toFixed(2):null;});
+  const vd=ents.map((e,i)=>{if(!i||!samePatScope(e,ents[i-1],p))return null;const c=calcPat(e,p),pv=calcPat(ents[i-1],p);return pv>0?+((c-pv)/pv*100).toFixed(2):null;});
   charts["var"]=new Chart(document.getElementById("cVar"),{type:"bar",data:{labels:lbl,datasets:[{label:"Variación %",data:vd,backgroundColor:vd.map(v=>v==null?"transparent":v>=0?"rgba(59,130,246,.75)":"rgba(248,113,113,.75)"),borderRadius:4}]},options:{...opts,plugins:{legend:{display:false},tooltip:{...TT,callbacks:{label:c=>fPct(c.parsed.y)}},zoom:ZCFG},scales:sc("%")}});
 
   // ── Ingresos desglosados por tipo + media adaptada al periodo ──
@@ -1592,7 +1526,6 @@ function renderCharts(p){
 
   // ── Resumen de gastos ──
   renderDashGastos(p);
-  renderDashGastosCharts();
 }
 
 function renderInteranual(p){
@@ -2797,12 +2730,8 @@ function renderDashGastos(p){
   const [yL, mL] = last.split('-');
   const labelLast = `${MO[parseInt(mL)-1]} ${yL}`;
 
-  // Top 3 categorías
-  const cats = p.gastos.categorias;
-  const catMap = {}; cats.forEach(c=>{catMap[c.id]=c;});
-  catMap['sin_cat'] = {name:'Sin categorizar', color:'#64748b'};
-  const topCats = Object.entries(lastData.porCat).sort((a,b)=>b[1]-a[1]).slice(0,4);
-  const topAccounts = Object.values(lastData.porCuenta||{}).sort((a,b)=>b.miParte-a.miParte).slice(0,3);
+  const topCat=Object.entries(lastData.porCat).sort((a,b)=>b[1]-a[1])[0];
+  const catName=topCat?(p.gastos.categorias.find(c=>c.id===topCat[0])?.name||'Sin categorizar'):null;
 
   let diffHtml = '';
   if(diff != null){
@@ -2813,39 +2742,13 @@ function renderDashGastos(p){
   }
 
   el.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:baseline;margin-bottom:12px">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:baseline">
       <div>
         <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">${labelLast} · Mi parte</div>
         <div style="font-size:1.6rem;font-weight:700;color:#f87171">-${fmt(lastData.miParte)}</div>
       </div>
-      <div>
-        <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Total movido</div>
-        <div style="font-size:1.1rem;font-weight:600;color:#94a3b8">-${fmt(lastData.total)}</div>
-      </div>
-      ${lastData.totalTransfer>0?`<div>
-        <div style="font-size:.66rem;color:#475569;text-transform:uppercase;letter-spacing:1px">Transferencias internas</div>
-        <div style="font-size:1rem;font-weight:600;color:#64748b">${fmt(lastData.totalTransfer)}</div>
-      </div>`:''}
-      <div style="flex:1;text-align:right">${diffHtml}</div>
+      <div style="flex:1;min-width:160px;font-size:.7rem;color:#64748b">${diffHtml}${catName?`<div>Principal categoría: ${esc(catName)} · ${fmt(topCat[1])}</div>`:''}${lastData.totalTransfer>0?`<div>Traspasos internos excluidos: ${fmt(lastData.totalTransfer)}</div>`:''}</div>
     </div>
-    <div>
-      ${topCats.map(([cid,total])=>{
-        const c = catMap[cid] || catMap['sin_cat'];
-        const pct = lastData.miParte>0 ? total/lastData.miParte*100 : 0;
-        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <div style="width:90px;font-size:.72rem;color:${c.color}">${esc(c.name)}</div>
-          <div style="flex:1;height:8px;background:#0a0e14;border-radius:4px;overflow:hidden">
-            <div style="height:100%;width:${pct}%;background:${c.color}88"></div>
-          </div>
-          <div style="width:80px;text-align:right;font-size:.72rem;color:#94a3b8">${fmt(total)}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    ${topAccounts.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;border-top:1px solid #0f1d2e;padding-top:10px">
-      ${topAccounts.map(a=>`<div style="font-size:.68rem;color:#94a3b8;background:#0a0e14;border:1px solid #1e2d3d;border-radius:8px;padding:6px 8px">
-        <span style="color:#e2e8f0">${esc(a.label)}</span> · <span style="color:#f87171">${fmt(a.miParte)}</span>
-      </div>`).join('')}
-    </div>`:''}
   `;
 }
 
@@ -3224,11 +3127,9 @@ function renderHistorial(){
     const incomplete=!isEntryComplete(e,p);
     const pat=calcPat(e,p),prev=realIdx>0?ents[realIdx-1]:null,prevPat=prev?calcPat(prev,p):null;
     
-    // Variación bruta (con aportaciones)
-    const vBrutaPct=prevPat!=null&&prevPat?((pat-prevPat)/prevPat*100):null;
-    
-    // Rentabilidad real (sin aportaciones)
-    const retorno=prev?calcReturnPatrimonio(e,prev,p):null;
+    const comparable=prev&&isEntryComplete(prev,p)&&isEntryComplete(e,p)&&samePatScope(e,prev,p);
+    const vBruta=comparable?pat-prevPat:null;
+    const vBrutaPct=vBruta!=null&&prevPat>0?vBruta/prevPat*100:null;
     
     const active=entryActiveAssets(e,p);
     const tr=document.createElement("tr");
@@ -3244,21 +3145,15 @@ function renderHistorial(){
     // Deuda
     if(hasDeuda){const td=document.createElement("td");td.className="mono";td.style.color=e.deuda>0?"#f87171":"#1e2d4a";td.textContent=e.deuda>0?fmt(e.deuda):"—";tr.appendChild(td);}
     const tdPat=document.createElement("td");tdPat.className="mono";tdPat.style.cssText="color:#60a5fa;font-weight:700";tdPat.textContent=fmt(pat);tr.appendChild(tdPat);
-    // Variación - Mostrar rentabilidad real si hay aportaciones, sino variación bruta
+    // Variación patrimonial observada, sin inferir rentabilidad de inversiones.
     const tdVar=document.createElement("td");
-    if(retorno!=null){
-      const sp=document.createElement("span");
-      sp.className=`badge ${retorno.pct>=0?"badge-up":"badge-down"}`;
-      sp.textContent=fPct(retorno.pct);
-      sp.title=`Rentabilidad real: ${fmt(retorno.amount)}`;
-      tdVar.appendChild(sp);
-    } else if(vBrutaPct!=null){
+    if(vBrutaPct!=null){
       const sp=document.createElement("span");
       sp.className=`badge ${vBrutaPct>=0?"badge-up":"badge-down"}`;
-      sp.textContent=fPct(vBrutaPct);
+      sp.textContent=`${fmt(vBruta)} · ${fPct(vBrutaPct)}`;
       tdVar.appendChild(sp);
     } else {
-      tdVar.textContent="—";
+      tdVar.textContent=prev&&!comparable?"Alcance distinto / pendiente":"—";
     }
     tr.appendChild(tdVar);
     // Nota
@@ -3283,9 +3178,10 @@ function renderAnnual(){
   const ents=completeEntries(p);const content=document.getElementById("annualContent");
   if(!content)return; // tarjeta "anual" retirada de la UI: evita null-deref al ver Historial / borrar mes
   if(ents.length<6){content.innerHTML=`<div style="color:#334155;font-size:.82rem;padding:8px 0">Aparecerá cuando tengas más datos (mínimo 6 meses).</div>`;return;}
-  const years=[...new Set(ents.map(e=>e.year))].sort();
+  const today=new Date();
+  const years=[...new Set(ents.filter(e=>e.year<today.getFullYear()||(e.year===today.getFullYear()&&e.month<=today.getMonth())).map(e=>e.year))].sort();
   const rows=years.map(yr=>{
-    const yearEnts=ents.filter(e=>e.year===yr);
+    const yearEnts=ents.filter(e=>e.year===yr&&(yr<today.getFullYear()||e.month<=today.getMonth()));
     const endPat=calcPat(yearEnts[yearEnts.length-1],p);
     const startEntry=yearEnts[0];
     const startPat=startEntry?calcPat(startEntry,p):null;
@@ -3328,7 +3224,7 @@ function renderAssetYearComparison(){
   if(!selector)return;
   
   const currentValue=selector.value;
-  const totalLabel = `🏠 Patrimonio Total${p.includeEmpresa && p.empresaSection.enabled ? ' (con empresa)' : ''}`;
+  const totalLabel = `🏠 Patrimonio Total${p.empresaSection.enabled ? ' (con empresa)' : ''}`;
   selector.innerHTML=`<option value="__total">${totalLabel}</option>`+
     `<option value="" disabled>──────────</option>`+
     allAssets.map(a=>`<option value="${a.id}">${esc(assetLabel(a))}</option>`).join("");
@@ -3353,56 +3249,31 @@ function renderAssetYearComparison(){
     : allAssets.find(a=>a.id===selectedId);
   if(!asset){table.innerHTML="";return;}
   
-  const years=[...new Set(ents.map(e=>e.year))].sort();
+  const today=new Date();
+  const years=[...new Set(ents.filter(e=>e.year<today.getFullYear()||(e.year===today.getFullYear()&&e.month<=today.getMonth())).map(e=>e.year))].sort();
   const rows=years.map(yr=>{
-    const yearEnts=ents.filter(e=>e.year===yr);
+    const yearEnts=ents.filter(e=>e.year===yr&&(yr<today.getFullYear()||e.month<=today.getMonth()));
     if(!yearEnts.length)return null;
     
     const lastEntry=yearEnts[yearEnts.length-1];
-    const firstEntry=yearEnts[0];
+    const priorDecember=ents.find(e=>e.year===yr-1&&e.month===11);
+    const firstEntry=priorDecember||yearEnts[0];
+    const partial=!priorDecember||lastEntry.month!==11||yr===today.getFullYear();
     
-    let lastVal, firstVal, totalDeposits;
+    let lastVal, firstVal;
     
     if(isTotal){
-      // Sumar valores de todas las carteras + empresa (si includeEmpresa)
-      const sumAssets = (entry) => {
-        let s = 0;
-        allAssets.forEach(a => { s += parseMoneyValue((entry.assets||{})[a.id])||0; });
-        if(p.includeEmpresa && p.empresaSection.enabled){
-          const e = calcEmp(entry, p);
-          if(e!=null) s += e;
-        }
-        return s;
-      };
-      const sumDeposits = (entry) => {
-        let s = 0;
-        allAssets.forEach(a => { s += parseMoneyValue((entry.contributions||{})[a.id])||0; });
-        return s; // empresa no tiene depósitos
-      };
-      lastVal = sumAssets(lastEntry);
-      firstVal = firstEntry ? sumAssets(firstEntry) : 0;
-      totalDeposits = yearEnts.reduce((s,e) => s + sumDeposits(e), 0);
+      lastVal=calcPat(lastEntry,p);
+      firstVal=calcPat(firstEntry,p);
     } else {
       lastVal = parseMoneyValue((lastEntry.assets||{})[asset.id])||0;
       firstVal = firstEntry ? parseMoneyValue((firstEntry.assets||{})[asset.id])||0 : 0;
-      totalDeposits = yearEnts.reduce((s,e)=>{
-        const contrib=parseMoneyValue((e.contributions||{})[asset.id])||0;
-        return s+contrib;
-      },0);
     }
     
-    // Variación bruta (con depósitos)
-    const varBruta=lastVal-firstVal-totalDeposits;
-    const varBrutaPct=firstVal>0?(varBruta/firstVal)*100:null;
-    
-    // Variación real (sin depósitos)
-    let varRealPct=null;
-    if(firstVal>0){
-      const retorno=lastVal-firstVal-totalDeposits;
-      varRealPct=((retorno/firstVal)*100);
-    }
-    
-    return{yr,firstVal,lastVal,totalDeposits,varBruta,varBrutaPct,varRealPct};
+    const comparable=isTotal?samePatScope(lastEntry,firstEntry,p):entryActiveAssets(lastEntry,p).some(a=>a.id===asset.id)&&entryActiveAssets(firstEntry,p).some(a=>a.id===asset.id);
+    const varBruta=comparable?lastVal-firstVal:null;
+    const varBrutaPct=varBruta!=null&&firstVal>0?varBruta/firstVal*100:null;
+    return{yr,firstVal,lastVal,varBruta,varBrutaPct,partial,baseline:firstEntry.month};
   }).filter(x=>x);
   
   if(isTotal){
@@ -3410,30 +3281,28 @@ function renderAssetYearComparison(){
     table.innerHTML=`<div class="tbl-wrap"><table>
       <thead><tr><th>Año</th><th>Valor inicio</th><th>Valor cierre</th><th>Crecimiento €</th><th>Crecimiento %</th></tr></thead>
       <tbody>${rows.map(r=>{
-        const crec = r.lastVal - r.firstVal;
-        const crecPct = r.firstVal>0 ? (crec/r.firstVal)*100 : null;
+        const crec=r.varBruta;
+        const crecPct=r.varBrutaPct;
         return `<tr>
-          <td style="font-weight:700;color:${asset.color}">${r.yr}</td>
+          <td style="font-weight:700;color:${asset.color}">${r.yr}${r.partial?' · parcial':''}</td>
           <td class="mono">${fmt(r.firstVal)}</td>
           <td class="mono" style="color:${asset.color};font-weight:600">${fmt(r.lastVal)}</td>
-          <td class="mono" style="color:${crec>=0?"#4ade80":"#f87171"}">${fmt(crec)}</td>
+          <td class="mono" style="color:${crec!=null&&crec>=0?"#4ade80":"#f87171"}">${crec!=null?fmt(crec):'—'}</td>
           <td>${crecPct!=null?`<span class="badge ${crecPct>=0?"badge-up":"badge-down"}">${fPct(crecPct)}</span>`:"—"}</td>
         </tr>`;
       }).join("")}</tbody>
     </table></div>
-    <div style="font-size:.66rem;color:#475569;padding:8px 4px;font-style:italic">Inicio = primer cierre válido del año. Crecimiento bruto: incluye aportaciones, retiradas y rentabilidad. Para rentabilidad real selecciona una cartera individual.</div>`;
+    <div style="font-size:.66rem;color:#475569;padding:8px 4px;font-style:italic">Inicio = diciembre anterior; si falta, primer cierre del año (parcial). Variación patrimonial observada, con aportaciones y retiradas.</div>`;
   } else {
-    // Modo cartera individual: tabla completa con depósitos y rentabilidad
+    // Variación del valor de la cartera; no estima rentabilidad sin flujos completos.
     table.innerHTML=`<div class="tbl-wrap"><table>
-      <thead><tr><th>Año</th><th>Valor inicio</th><th>Valor cierre</th><th>Depósitos</th><th>Variación €</th><th>Variación %</th><th>Rentabilidad %</th></tr></thead>
+      <thead><tr><th>Año</th><th>Valor inicio</th><th>Valor cierre</th><th>Variación €</th><th>Variación %</th></tr></thead>
       <tbody>${rows.map(r=>`<tr>
-        <td style="font-weight:700;color:${asset.color}">${r.yr}</td>
+        <td style="font-weight:700;color:${asset.color}">${r.yr}${r.partial?' · parcial':''}</td>
         <td class="mono">${fmt(r.firstVal)}</td>
         <td class="mono" style="color:${asset.color};font-weight:600">${fmt(r.lastVal)}</td>
-        <td class="mono" style="color:#facc15">${fmt(r.totalDeposits)}</td>
-        <td class="mono" style="color:${r.varBruta>=0?"#4ade80":"#f87171"}">${fmt(r.varBruta)}</td>
+        <td class="mono" style="color:${r.varBruta!=null&&r.varBruta>=0?"#4ade80":"#f87171"}">${r.varBruta!=null?fmt(r.varBruta):'—'}</td>
         <td>${r.varBrutaPct!=null?`<span class="badge ${r.varBrutaPct>=0?"badge-up":"badge-down"}">${fPct(r.varBrutaPct)}</span>`:"—"}</td>
-        <td>${r.varRealPct!=null?`<span class="badge ${r.varRealPct>=0?"badge-up":"badge-down"}" title="Sin depósitos">${fPct(r.varRealPct)}</span>`:"—"}</td>
       </tr>`).join("")}</tbody>
     </table></div>`;
   }
@@ -3554,6 +3423,7 @@ function renderFormFields(prefill){
   if(p.empresaSection.enabled){
     const per=empPer(p);
     const part=empPart(p)*100;
+    const formSnapshot=trainingCompanySnapshot(`${document.getElementById('fYear').value}-${String(Number(document.getElementById('fMonth').value)+1).padStart(2,'0')}`);
     // Calcular beneficio 12m rolling para pre-mostrar
     const ents=p.entries||[];
     const month=parseInt(document.getElementById("fMonth").value);
@@ -3568,7 +3438,7 @@ function renderFormFields(prefill){
       prev11=before.slice(-11);
     }
     const prev11sum=prev11.reduce((s,e)=>{
-      const v=parseMoneyValue(e.emp_ben_mes);
+        const v=originalCompanyBenefit(e);
       if(!isNaN(v))return s+v;
       // Si un mes no tiene emp_ben_mes, no se puede sumar parcial
       return s;
@@ -3578,11 +3448,11 @@ function renderFormFields(prefill){
     const wrap=document.createElement("div");wrap.className="form-sec";
     wrap.innerHTML=`<div class="form-sec-hdr">${p.empresaSection.title} · ${part}% · PER ${per}</div>
       <div class="grid2">
-        <div><div class="fld-lbl" style="color:#f472b6">Beneficio empresa ESTE mes (€)</div><input class="inp" type="number" id="fi_emp_ben_mes" placeholder="0" oninput="updateFP()" value="${prefill?.emp_ben_mes??''}">
-          <div style="font-size:.65rem;color:#334155;margin-top:3px">Solo el beneficio de este mes. Se suman automáticamente los 11 anteriores.</div>
+        <div><div class="fld-lbl" style="color:#f472b6">Resultado antes de financiación ESTE mes (€)</div><input class="inp" type="number" id="fi_emp_ben_mes" placeholder="${formSnapshot?.closed?formSnapshot.before.toFixed(2):'0'}" oninput="updateFP()" value="${Number.isFinite(originalCompanyBenefit(prefill))?originalCompanyBenefit(prefill):''}">
+          <div style="font-size:.65rem;color:#334155;margin-top:3px">${formSnapshot?.closed?'Full Training disponible; el dato manual se conserva para revisar diferencias.':'Dato manual si Full Training no tiene cierre.'}</div>
         </div>
-        <div><div class="fld-lbl" style="color:#e879f9">Caja neta total empresa (€)</div><input class="inp" type="number" id="fi_emp_caja" placeholder="Caja - deuda" oninput="updateFP()" value="${prefill?.emp_caja??prevEntryForForm?.emp_caja??''}">
-          <div style="font-size:.65rem;color:#334155;margin-top:3px">Introduce caja menos deuda de la empresa completa. Tu % se aplica automáticamente.</div>
+        <div><div class="fld-lbl" style="color:#e879f9">Posición financiera neta empresa (€)</div><input class="inp" type="number" id="fi_emp_caja" placeholder="${formSnapshot?.closed&&formSnapshot.net!=null?formSnapshot.net.toFixed(2):'Caja + inversiones − deuda'}" oninput="updateFP()" value="${prefill?.emp_caja??''}">
+          <div style="font-size:.65rem;color:#334155;margin-top:3px">Caja + inversiones − deuda. Se lee de Full Training si está disponible.</div>
         </div>
       </div>
       <div id="ben12Detail" style="margin-top:8px;padding:7px 11px;background:#080d1a;border:1px solid #111827;border-radius:8px;font-size:.72rem;color:#475569;display:none"></div>
@@ -3593,7 +3463,7 @@ function renderFormFields(prefill){
       <div id="legacyBen12Wrap" class="hidden" style="margin-top:6px">
         <div class="fld-lbl" style="color:#f472b6;opacity:.6">Beneficios últimos 12m (manual override)</div>
         <input class="inp" type="number" id="fi_emp_ben12" placeholder="Dejar vacío para usar cálculo automático" oninput="updateFP()" value="${prefill?.emp_ben12??prefill?.emp_fact??''}" style="opacity:.6">
-        <div style="font-size:.65rem;color:#334155;margin-top:2px">Si introduces un valor aquí, se usará en lugar del cálculo automático.</div>
+        <div style="font-size:.65rem;color:#334155;margin-top:2px">Solo para datos anteriores sin doce cierres mensuales; no se mezcla con ellos.</div>
       </div>`;
     container.appendChild(wrap);
     setTimeout(updateFP,50);
@@ -3612,24 +3482,6 @@ function renderFormFields(prefill){
     </div>`;
   container.appendChild(deudaWrap);
 
-  // APORTACIONES - Discreto
-  const aportWrap=document.createElement("div");aportWrap.className="form-sec";
-  aportWrap.innerHTML=`<div class="form-sec-hdr" style="border-bottom:1px dashed #334155;opacity:.6;">💰 Aportaciones / Retiros (opcional)</div>`;
-  const aportGrid=document.createElement("div");aportGrid.className="grid2";
-  p.sections.forEach(sec=>{
-    const visibleAssets=sec.assets.filter(a=>!a.archived||archivedWithDataIds.has(a.id));
-    visibleAssets.forEach(a=>{
-      const oldVal=prefill?(prefill.contributions||{})[a.id]||"":"";
-      const cell=document.createElement("div");
-      cell.innerHTML=`<div class="fld-lbl" style="color:${a.color};font-size:.7rem;opacity:.7">${esc(a.name)}</div>
-        <input class="inp" type="number" id="fc_${a.id}" placeholder="0" value="${oldVal}" style="opacity:.7">
-        <div style="font-size:.65rem;color:#334155;margin-top:2px;">(+ aportación / - retiro)</div>`;
-      aportGrid.appendChild(cell);
-    });
-  });
-  aportWrap.appendChild(aportGrid);
-  container.appendChild(aportWrap);
-
   const noteWrap=document.createElement("div");noteWrap.className="form-sec";
   noteWrap.innerHTML=`<div class="form-sec-hdr">📝 Nota del mes</div>
     <textarea class="inp" id="fi_note" placeholder="Ej: Vendí posición en X, ingresé dinero extra, mercado volátil…">${prefill?.note||""}</textarea>`;
@@ -3644,69 +3496,18 @@ function updateFP(){
   const cEl=document.getElementById("fi_emp_caja");
   const box=document.getElementById("formulaBox");if(!box)return;
   const detailEl=document.getElementById("ben12Detail");
-
-  const bMes=parseMoneyValue(bMesEl?.value)||0;
-  const bManual=bEl?.value?.trim()?parseMoneyValue(bEl.value):null;
-  const c=parseMoneyValue(cEl?.value)||0;
-  const per=empPer(p),part=empPart(p);
-
-  // Calcular beneficio 12m
-  let ben12=0;
-  const ents=p.entries||[];
   const month=parseInt(document.getElementById("fMonth").value);
   const year=parseInt(document.getElementById("fYear").value);
-
-  if(bManual!=null&&bManual>0){
-    // Modo manual: usar directamente
-    ben12=bManual;
-    if(detailEl){detailEl.style.display="block";detailEl.innerHTML=`<span style="color:#fb923c">⚠ Modo manual: usando ${fmt(bManual)} como beneficio 12m total.</span>`;}
-  } else {
-    // Modo automático: sumar este mes + 11 anteriores
-    // Idéntica lógica que calcBen12Rolling: si un mes antiguo no tiene emp_ben_mes pero sí emp_ben12 (legacy), usarlo como total
-    const sorted=[...ents].sort((a,b)=>a.year!==b.year?a.year-b.year:a.month-b.month);
-    const before=sorted.filter(e=>(e.year<year)||(e.year===year&&e.month<month));
-    const prev11=before.slice(-11);
-
-    let prev11sum=0;
-    const details=[];
-    let usedLegacy=null; // si encontramos un mes legacy con emp_ben12, lo guardamos
-    // Recorremos del más reciente al más antiguo
-    for(let i=prev11.length-1;i>=0;i--){
-      const e=prev11[i];
-      const v=parseMoneyValue(e.emp_ben_mes);
-      if(!isNaN(v)){
-        prev11sum+=v;
-        details.unshift(`${MO[e.month]} ${e.year}: ${fmt(v)}`);
-      } else if(e.emp_ben12!=null&&e.emp_ben12!==""){
-        // Fallback legacy: usar emp_ben12 como total acumulado (sumamos lo que ya tenemos del mes y rompemos)
-        const legacyVal=parseMoneyValue(e.emp_ben12)||0;
-        usedLegacy={mes:`${MO[e.month]} ${e.year}`, valor:legacyVal};
-        prev11sum+=legacyVal; // incluir el legacy como base
-        break; // dejar de sumar hacia atrás (el legacy ya incluye los anteriores)
-      }
-    }
-    ben12=prev11sum+bMes;
-
-    if(detailEl){
-      if(details.length||bMes||usedLegacy){
-        detailEl.style.display="block";
-        const mesActual=bMes?`<span style="color:#f472b6">${MO[month]} ${year}: ${fmt(bMes)} (este mes)</span>`:"";
-        const prevText=details.length?details.join(" · "):(usedLegacy?"":"Sin datos previos");
-        const legacyText=usedLegacy?`<div style="color:#fb923c;margin-top:2px">⚠ Usando legacy de ${usedLegacy.mes}: ${fmt(usedLegacy.valor)} (incluye los meses anteriores a ese)</div>`:"";
-        detailEl.innerHTML=`<div style="margin-bottom:4px"><strong style="color:#94a3b8">Beneficio 12m automático: ${fmt(ben12)}</strong></div>
-          ${mesActual?`<div>${mesActual}</div>`:""}
-          ${details.length?`<div style="color:#334155;margin-top:2px">Meses anteriores con datos mes-a-mes (${details.length}/11): ${prevText}</div>`:""}
-          ${legacyText}`;
-      } else {
-        detailEl.style.display="none";
-      }
-    }
+  const entry={key:`${year}-${month}`,year,month,emp_ben_mes:bMesEl?.value||'',emp_ben12:bEl?.value||'',emp_caja:cEl?.value||''};
+  const parts=calcEmpParts(entry,p);
+  const ben12=parts?.ben12||0,c=parts?.cajaTotal||0,per=empPer(p),part=empPart(p);
+  if(detailEl){
+    detailEl.style.display='block';
+    detailEl.textContent=`${parts?.months||0}/12 meses calendario con datos · ${parts?.provisional?'Valoración provisional':'Cierres completos'}${parts?.discrepancies?.length?' · '+parts.discrepancies.join(' · '):''}`;
   }
-
-  const valorBeneficio=ben12*per;
-  const r=(valorBeneficio+c)*part;
+  const r=(ben12*per+c)*part;
   box.classList.remove("hidden");
-  box.innerHTML=`Valoración mi parte: <strong>${fmt(r)}</strong> <span class="formula-muted">= (Ben12m ${fmt(ben12)} × PER ${per} + caja neta ${fmt(c)}) × ${(part*100).toFixed(0)}%</span>`;
+  box.innerHTML=`Valoración mi parte${parts?.provisional?' provisional':''}: <strong>${fmt(r)}</strong> <span class="formula-muted">= (Resultado 12m antes de financiación ${fmt(ben12)} × PER ${per} + posición neta ${fmt(c)}) × ${(part*100).toFixed(0)}%</span>`;
 }
 
 function openEdit(key){
@@ -3732,31 +3533,36 @@ function submitForm(){
   }
   const allowedIds=new Set(editKey?profileAssets(p).map(a=>a.id):activeAssetsOf(p).map(a=>a.id));
   const activeIds=Object.keys(activeState).filter(id=>activeState[id]&&allowedIds.has(id));
-  const entry={key,month,year,assets:{},_activeAssets:activeIds};
+  const previous=p.entries.find(e=>e.key===(editKey||key));
+  const entry=previous?structuredClone(previous):{assets:{}};
+  entry.key=key;entry.month=month;entry.year=year;
+  entry.assets={...(entry.assets||{})};
+  entry._activeAssets=[...new Set([...activeIds,...(previous?._activeAssets||[]).filter(id=>!document.getElementById('fi_'+id))])];
   profileAssets(p).forEach(a=>{
     const el=document.getElementById("fi_"+a.id);if(el)entry.assets[a.id]=el.value;
   });
   if(p.empresaSection.enabled){
     const ebMes=document.getElementById("fi_emp_ben_mes");
     const eb=document.getElementById("fi_emp_ben12"),ec=document.getElementById("fi_emp_caja");
-    if(ebMes&&ebMes.value)entry.emp_ben_mes=ebMes.value;
-    const previous=editKey?p.entries.find(e=>e.key===editKey):null;
-    if(previous?._loan95151Sep2024)entry._loan95151Sep2024=true;
-    else addLoanToMonthlyBenefit(entry);
+    if(ebMes){
+      const incoming=ebMes.value.trim();
+      const original=originalCompanyBenefit(previous);
+      if(previous?._loan95151Sep2024&&Number.isFinite(original)&&incoming!==''&&Math.abs(Number(incoming)-original)<0.005){
+        entry.emp_ben_mes=previous.emp_ben_mes;
+      }else{
+        if(previous?._loan95151Sep2024){
+          entry._loanAdjustmentHistory={stored:previous.emp_ben_mes,marker:true,original};
+          delete entry._loan95151Sep2024;
+        }
+        if(incoming)entry.emp_ben_mes=incoming;else delete entry.emp_ben_mes;
+      }
+    }
     // Solo guardar emp_ben12 si el usuario lo introdujo manualmente (override)
-    if(eb&&eb.value&&eb.value.trim())entry.emp_ben12=eb.value;
-    if(ec)entry.emp_caja=ec.value;
+    if(eb){if(eb.value.trim())entry.emp_ben12=eb.value;else delete entry.emp_ben12;}
+    if(ec){if(ec.value.trim())entry.emp_caja=ec.value;else delete entry.emp_caja;}
   }
   const noteEl=document.getElementById("fi_note");if(noteEl)entry.note=noteEl.value.trim();
-  const deudaEl=document.getElementById("fi_deuda");if(deudaEl&&deudaEl.value)entry.deuda=parseMoneyValue(deudaEl.value)||0;
-  
-  // Guardar aportaciones
-  const contributions={};
-  profileAssets(p).forEach(a=>{
-    const el=document.getElementById("fc_"+a.id);
-    if(el&&el.value){contributions[a.id]=parseMoneyValue(el.value)||0;}
-  });
-  if(Object.keys(contributions).length>0)entry.contributions=contributions;
+  const deudaEl=document.getElementById("fi_deuda");if(deudaEl)entry.deuda=deudaEl.value?parseMoneyValue(deudaEl.value)||0:0;
   
   if(editKey){p.entries=p.entries.map(e=>e.key===editKey?entry:e);editKey=null;}
   else{const idx=p.entries.findIndex(e=>e.key===key);if(idx>=0){if(!confirm(`Ya existe ${MO[month]} ${year}. ¿Sobreescribir?`))return;p.entries[idx]=entry;}else p.entries.push(entry);}
@@ -3797,12 +3603,14 @@ function renderObjectives(){
   const p=prof();if(!p)return;
   if(!p.objectives)p.objectives=[];
   const list=document.getElementById("objectivesList");
-  const ents=completeEntries(p);const last=ents[ents.length-1];
+  const today=new Date();
+  const ents=completeEntries(p).filter(e=>e.year*12+e.month<today.getFullYear()*12+today.getMonth());const last=ents[ents.length-1];
   if(!p.objectives.length){
     list.innerHTML=`<div class="card" style="text-align:center;padding:28px;color:#334155;margin-bottom:16px"><div style="font-size:2rem;margin-bottom:8px">🎯</div><div>No hay objetivos aún. ¡Añade el primero!</div></div>`;
     renderProjections();return;
   }
-  const rate=parseFloat(document.getElementById("proj_rate")?.value)||7;
+  const inputRate=parseFloat(document.getElementById("proj_rate")?.value);
+  const rate=Number.isFinite(inputRate)?inputRate:7;
   const curPat=last?calcPat(last,p):0;
   const monthRate=Math.pow(1+rate/100,1/12)-1;
   const extra=parseFloat(document.getElementById("proj_extra")?.value)||0;
@@ -3814,10 +3622,10 @@ function renderObjectives(){
     const remaining=Math.max(0,obj.target-cur);
     const dlStr=obj.deadline?new Date(obj.deadline+"-01").toLocaleDateString("es-ES",{month:"long",year:"numeric"}):"";
     let etaStr="";
-    if(pct<100&&curPat>0&&rate>0&&obj.type==="patrimonio"){
+    if(pct<100&&curPat>0&&(rate>0||extra>0)&&obj.type==="patrimonio"){
       let p2=curPat,months=0;
       while(p2<obj.target&&months<600){p2=p2*(1+monthRate)+extra;months++;}
-      if(months<600){const d=new Date();d.setMonth(d.getMonth()+months);etaStr=`ETA: ${d.toLocaleDateString("es-ES",{month:"short",year:"numeric"})}`;}
+      if(months<600){const d=new Date(last.year,last.month+months,1);etaStr=`ETA hipotética: ${d.toLocaleDateString("es-ES",{month:"short",year:"numeric"})}`;}
     }
     const card=document.createElement("div");card.className="obj-card";card.style.marginBottom="10px";
     card.innerHTML=`<div class="obj-header">
@@ -3900,22 +3708,23 @@ function deleteObjective(id){if(!confirm("¿Eliminar este objetivo?"))return;con
 
 function renderProjections(){
   const p=prof();if(!p)return;
-  const ents=completeEntries(p);const last=ents[ents.length-1];
+  const today=new Date();
+  const ents=completeEntries(p).filter(e=>e.year*12+e.month<today.getFullYear()*12+today.getMonth());const last=ents[ents.length-1];
   const kpisEl=document.getElementById("projKpis");const tableEl=document.getElementById("projTable");
   if(!kpisEl)return;
   if(!last){
     kpisEl.innerHTML=`<div style="color:#334155;font-size:.82rem;grid-column:1/-1">Añade datos antes de ver proyecciones.</div>`;
     if(tableEl)tableEl.innerHTML="";return;
   }
-  const rate=parseFloat(document.getElementById("proj_rate")?.value)||7;
+  const inputRate=parseFloat(document.getElementById("proj_rate")?.value);
+  const rate=Number.isFinite(inputRate)?inputRate:7;
   const extra=parseFloat(document.getElementById("proj_extra")?.value)||0;
   const horizon=parseInt(document.getElementById("proj_horizon")?.value)||10;
   const curPat=calcPat(last,p);
   const monthRate=Math.pow(1+rate/100,1/12)-1;
-  const nowY=new Date().getFullYear();
   const yearData=[];
   let pat=curPat;
-  for(let y=1;y<=horizon;y++){for(let m=0;m<12;m++){pat=pat*(1+monthRate)+extra;}yearData.push({year:nowY+y,pat});}
+  for(let y=1;y<=horizon;y++){for(let m=0;m<12;m++){pat=pat*(1+monthRate)+extra;}const date=new Date(last.year,last.month+y*12,1);yearData.push({years:y,year:date.getFullYear(),month:date.getMonth(),pat});}
 
   const patObjs=(p.objectives||[]).filter(o=>o.type==="patrimonio");
   const etaMap={};
@@ -3925,21 +3734,20 @@ function renderProjections(){
     etaMap[obj.id]=months<600?months:null;
   });
 
-  const vals=[yearData.find(d=>d.year===nowY+5),yearData.find(d=>d.year===nowY+10),yearData.find(d=>d.year===nowY+20)];
-  let kHtml=`<div class="stat-card"><div class="stat-lbl">Patrimonio actual</div><div class="stat-val" style="color:#60a5fa">${fmt(curPat)}</div><div class="stat-sub">${rate}%/año · +${fmt(extra)}/mes</div></div>`;
+  let kHtml=`<div class="stat-card"><div class="stat-lbl">Base real · ${MO[last.month]} ${last.year}</div><div class="stat-val" style="color:#60a5fa">${fmt(curPat)}</div><div class="stat-sub">Hipótesis: ${rate}%/año · +${fmt(extra)}/mes</div></div>`;
   [[5,"#34d399"],[10,"#a78bfa"],[20,"#f472b6"]].forEach(([n,col])=>{
-    if(horizon>=n){const d=yearData.find(x=>x.year===nowY+n);if(d)kHtml+=`<div class="stat-card"><div class="stat-lbl">En ${n} años (${nowY+n})</div><div class="stat-val" style="color:${col}">${fmt(d.pat)}</div><div class="stat-sub">×${(d.pat/curPat).toFixed(1)}</div></div>`;}
+    if(horizon>=n){const d=yearData.find(x=>x.years===n);if(d)kHtml+=`<div class="stat-card"><div class="stat-lbl">En ${n} años (${MO[d.month]} ${d.year})</div><div class="stat-val" style="color:${col}">${fmt(d.pat)}</div><div class="stat-sub">Escenario hipotético</div></div>`;}
   });
   patObjs.forEach(obj=>{
     const m=etaMap[obj.id];
-    if(m!=null){const d=new Date();d.setMonth(d.getMonth()+m);
+    if(m!=null){const d=new Date(last.year,last.month+m,1);
       kHtml+=`<div class="stat-card"><div class="stat-lbl">🎯 ${obj.name}</div><div class="stat-val" style="color:#fb923c;font-size:.88rem">${d.toLocaleDateString("es-ES",{month:"short",year:"numeric"})}</div><div class="stat-sub">${m} meses</div></div>`;}
     else kHtml+=`<div class="stat-card"><div class="stat-lbl">🎯 ${obj.name}</div><div class="stat-val" style="color:#f87171;font-size:.82rem">Fuera del horizonte</div></div>`;
   });
   kpisEl.innerHTML=kHtml;
 
   dChart("proyeccion");
-  const chartLabels=[`${MO[last.month]} ${last.year}`,...yearData.map(d=>String(d.year))];
+  const chartLabels=[`${MO[last.month]} ${last.year}`,...yearData.map(d=>`${MO[d.month]} ${d.year}`)];
   const chartData=[curPat,...yearData.map(d=>d.pat)];
   const objDatasets=patObjs.map((obj,i)=>({
     label:`🎯 ${obj.name} (${fmt(obj.target)})`,
@@ -3967,15 +3775,15 @@ function renderProjections(){
         return`<td style="font-size:.72rem;color:${d.pat>=obj.target?"#4ade80":"#334155"}">${d.pat>=obj.target?"✓":"—"}</td>`;
       }).join("");
       return`<tr>
-        <td style="font-weight:600;color:#94a3b8">${d.year}</td>
+        <td style="font-weight:600;color:#94a3b8">${MO[d.month]} ${d.year}</td>
         <td class="mono" style="color:#60a5fa;font-weight:700">${fmt(d.pat)}</td>
-        <td><span class="badge badge-up">+${fPct(gainPct)}</span></td>
+        <td><span class="badge ${gainPct>=0?'badge-up':'badge-down'}">${fPct(gainPct)}</span></td>
         ${extra>0?`<td class="mono" style="color:#facc15">${fmt(aport)}</td><td class="mono" style="color:#34d399">${fmt(rev)}</td>`:""}
         ${objCols}
       </tr>`;
     }).join("");
     const objHeaders=patObjs.map(o=>`<th style="color:#fb923c">🎯 ${o.name}</th>`).join("");
-    tableEl.innerHTML=`<table><thead><tr><th>Año</th><th>Patrimonio</th><th>Rentabilidad</th>${extra>0?"<th>Aportado</th><th>Revalorización</th>":""}${objHeaders}</tr></thead><tbody>${rows}</tbody></table>`;
+    tableEl.innerHTML=`<table><thead><tr><th>Cierre proyectado</th><th>Patrimonio hipotético</th><th>Variación hipotética</th>${extra>0?"<th>Aportado</th><th>Revalorización</th>":""}${objHeaders}</tr></thead><tbody>${rows}</tbody></table>`;
   }
 }
 
@@ -3994,7 +3802,7 @@ function renderAjustes(){
       <div><div class="fld-lbl">Participación empresa (%)</div><input class="inp" type="number" id="aj_emp_pct" value="${tmpEmp.participacion||49}"></div>
     </div>
     <div class="grid2" style="margin-bottom:12px">
-      <div><div class="fld-lbl">Múltiplo PER valoración empresa</div><input class="inp" type="number" id="aj_emp_per" value="${tmpEmp.per||5}" placeholder="5"></div>
+      <div><div class="fld-lbl">Múltiplo PER valoración empresa</div><input class="inp" type="number" id="aj_emp_per" value="${tmpEmp.per||4}" placeholder="4"></div>
       <div></div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
@@ -4156,7 +3964,7 @@ function saveAjustes(){
   p.sections=tmpSections;
   p.empresaSection.enabled=document.getElementById("aj_emp_en").checked;
   p.empresaSection.participacion=parseFloat(document.getElementById("aj_emp_pct").value)||49;
-  p.empresaSection.per=parseFloat(document.getElementById("aj_emp_per").value)||5;
+  p.empresaSection.per=parseFloat(document.getElementById("aj_emp_per").value)||4;
   document.getElementById("hdrProfile").textContent=p.emoji+" "+p.name;
   save();toast("✓ Ajustes guardados","green");showTab("dashboard");
 }
