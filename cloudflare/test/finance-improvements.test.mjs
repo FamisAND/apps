@@ -37,19 +37,57 @@ test('dividendos y transferencias no afectan al resultado, y PRESTEC solo al res
   assert.equal(ctx.effectiveGastoCat({desc:'PRESTEC',cat:'traspaso_interno'}),'traspaso_interno');
 });
 
-test('la inversión no inventa rendimiento si faltan movimientos y respeta el capital inicial',()=>{
+test('la gráfica de inversiones usa solo depósitos guardados y NAV original, sin leer gastos',()=>{
   const months={
     '2026-01':{gastos:[{cat:'inversion_aporte',amount:1000}],meta:{inversiones:4000}},
     '2026-02':{gastos:[{cat:'inversion_aporte',amount:500},{cat:'inversion_retiro',amount:200}],meta:{inversiones:4500}}
   };
-  const ctx=context(between(ft,'const FT_TRANSFER_CATS','const SEED_CLIENTS')+between(ft,'function investmentStatsAt','let _dashCharts'),{db:{months}});
-  let stats=ctx.investmentStatsAt('2026-02');
-  assert.equal(stats.aportes,1500);assert.equal(stats.retiradas,200);
-  assert.equal(stats.net,null);assert.equal(stats.complete,false);
-  ctx.db.investmentBasis={month:'2026-02',amount:3000,complete:true};
-  stats=ctx.investmentStatsAt('2026-02');
-  assert.equal(stats.net,3300);assert.equal(stats.market,4500);
-  assert.equal(ctx.investmentStatsAt('2026-01').net,null);
+  const ctx=context(between(ft,'function validInvestmentDate','let _dashCharts'),{db:{months}});
+  assert.equal(ctx.investmentStatsAt('2026-01').deposited,null);
+  assert.equal(ctx.investmentStatsAt('2026-01').market,4000);
+  ctx.db.investmentMovements=[
+    {id:'a',date:'2026-01-20',amount:50000,type:'deposit'},
+    {id:'b',date:'2026-02-15',amount:1000,type:'withdrawal'}
+  ];
+  assert.equal(ctx.investmentStatsAt('2025-12').deposited,null);
+  assert.equal(ctx.investmentStatsAt('2026-01').deposited,50000);
+  assert.equal(ctx.investmentStatsAt('2026-02').deposited,49000);
+  assert.equal(ctx.investmentStatsAt('2026-02').market,4500);
+  assert.equal(months['2026-02'].gastos.length,2);
+});
+
+test('el panel permite alta, edición y borrado sin alterar NAV, gastos ni capital previo',()=>{
+  const months={'2026-01':{gastos:[{id:'g1',amount:950,cat:'financiero'}],meta:{inversiones:82500}}};
+  const db={months,investmentBasis:{month:'2026-01',amount:70000,complete:true}};
+  const original=structuredClone(db);
+  const nodes=Object.fromEntries(['investmentMoveDate','investmentMoveAmount','investmentMoveType','investmentMoveError','investmentMoveSave','investmentMoveCancel','investmentMovesPanel'].map(id=>[id,{value:'',textContent:'',classList:{add(){},remove(){}},open:false}]));
+  let saves=0;
+  const ctx=context(between(ft,'function validInvestmentDate','let _dashCharts')+between(ft,'let editInvestmentMoveId=null','function openGastoModal'),{
+    db,document:{getElementById:id=>nodes[id]},curKey:()=> '2026-01',uid:()=> 'mov1',save:()=>{saves++;},
+    renderInvestmentMovements:()=>{},toast:()=>{},confirm:()=>true,fmt:v=>String(v)
+  });
+  ctx.renderInvestmentMovements=()=>{};
+  nodes.investmentMoveDate.value='2026-01-20';nodes.investmentMoveAmount.value='50000';nodes.investmentMoveType.value='deposit';
+  ctx.saveInvestmentMovement();
+  assert.equal(saves,1);assert.equal(db.investmentMovements.length,1);
+  nodes.investmentMoveDate.value='2026-01-20';nodes.investmentMoveAmount.value='50000';nodes.investmentMoveType.value='deposit';
+  ctx.saveInvestmentMovement();assert.equal(saves,1);assert.match(nodes.investmentMoveError.textContent,/ya está registrado/);
+  nodes.investmentMoveDate.value='2026-02-30';nodes.investmentMoveAmount.value='1';
+  ctx.saveInvestmentMovement();assert.equal(saves,1);assert.equal(db.investmentMovements.length,1);
+  ctx.editInvestmentMovement('mov1');nodes.investmentMoveAmount.value='51000';ctx.saveInvestmentMovement();
+  assert.equal(saves,2);assert.equal(db.investmentMovements[0].amount,51000);
+  assert.equal(ctx.investmentStatsAt('2026-01').deposited,51000);
+  ctx.deleteInvestmentMovement('mov1');assert.equal(saves,3);assert.equal(db.investmentMovements.length,0);
+  ctx.save=()=>{throw new Error('No se pudo guardar');};
+  nodes.investmentMoveDate.value='2026-01-20';nodes.investmentMoveAmount.value='51000';
+  ctx.saveInvestmentMovement();assert.equal(db.investmentMovements.length,0);
+  assert.deepEqual(db.months,original.months);assert.deepEqual(db.investmentBasis,original.investmentBasis);
+});
+
+test('la tarjeta de beneficio conserva la presentación anterior y no ofrece selector de financiación',()=>{
+  assert.match(ft,/<div class="card"><div class="card-title">Beneficio mensual<\/div><div style="height:180px;"><canvas id="cBen"><\/canvas><\/div><\/div>/);
+  assert.doesNotMatch(ft,/dashFinanceMode|setDashFinanceMode|Criterio del beneficio/);
+  assert.match(ft,/Inversiones · NAV y capital depositado/);
 });
 
 test('CSV de abonos permite retiradas internas sin convertirlas en facturación',()=>{

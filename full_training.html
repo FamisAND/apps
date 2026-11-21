@@ -252,7 +252,7 @@ const trainingAccessReady=DashboardAuth.gate({ section: 'training', title: 'Full
           <div style="display:flex;flex-direction:column;gap:12px;">
             <div class="card"><div class="card-title">Deuda</div><input class="inp" type="number" id="gasDeuda" placeholder="0" oninput="saveGastoMeta('deuda',this.value)"><div style="font-size:.66rem;color:var(--muted);margin-top:5px;">Hipoteca, préstamos…</div></div>
             <div class="card"><div class="card-title">Caja</div><input class="inp" type="number" id="gasCaja" placeholder="0" oninput="saveGastoMeta('caja',this.value)"><div style="font-size:.66rem;color:var(--muted);margin-top:5px;">Efectivo disponible</div></div>
-            <div class="card"><div class="card-title">Inversiones</div><input class="inp" type="number" id="gasInv" placeholder="0" oninput="saveGastoMeta('inversiones',this.value)"><div style="font-size:.66rem;color:var(--muted);margin-top:5px;">Valor de mercado al cierre</div><details style="margin-top:8px;font-size:.68rem;color:var(--muted)"><summary style="cursor:pointer">Capital anterior al histórico</summary><div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><input class="inp" type="month" id="invBasisMonth" title="Primer mes con histórico completo" style="min-width:120px;flex:1" onchange="saveInvestmentBasis()"><input class="inp" type="number" id="invBasisAmount" placeholder="Aportado antes (€)" style="min-width:120px;flex:1" onchange="saveInvestmentBasis()"></div><label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="invBasisComplete" onchange="saveInvestmentBasis()">He clasificado todos los movimientos desde ese mes</label></details></div>
+            <div class="card"><div class="card-title">Inversiones</div><input class="inp" type="number" id="gasInv" placeholder="0" oninput="saveGastoMeta('inversiones',this.value)"><div style="font-size:.66rem;color:var(--muted);margin-top:5px;">Valor de mercado al cierre</div><details class="inv-flow-panel" id="investmentMovesPanel"><summary>Depósitos y retiradas</summary><div class="inv-flow-form"><label>Fecha<input class="inp" type="date" id="investmentMoveDate"></label><label>Importe (€)<input class="inp" type="number" id="investmentMoveAmount" min="0.01" step="0.01" placeholder="0,00"></label><label>Tipo<select class="inp" id="investmentMoveType"><option value="deposit">Depósito</option><option value="withdrawal">Retirada</option></select></label><div class="inv-flow-actions"><button class="btn btn-sm" type="button" id="investmentMoveSave" onclick="saveInvestmentMovement()">Guardar</button><button class="btn btn-sm btn-ghost hidden" type="button" id="investmentMoveCancel" onclick="resetInvestmentMovementForm()">Cancelar</button></div></div><div id="investmentMoveError" class="inv-flow-error" role="alert"></div><div id="investmentMovesList"></div></details></div>
           </div>
         </div>
       </div>
@@ -1837,20 +1837,23 @@ function changeMonth(dir,sec){
 // ══════════════════════════
 let dashRangeMonths=12; // YTD=0, 6=6, 12=12, ALL=-1
 let dashViewMode='monthly';
-let dashFinanceMode='before';
-function setDashFinanceMode(mode){dashFinanceMode=mode==='after'?'after':'before';renderDashboard();}
+function validInvestmentDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))return false;
+  const date=new Date(value+'T12:00:00Z');
+  return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value;
+}
+function storedInvestmentMovements(){
+  return (Array.isArray(db.investmentMovements)?db.investmentMovements:[]).filter(m=>
+    m&&typeof m.id==='string'&&m.id&&validInvestmentDate(m.date)&&
+    (m.type==='deposit'||m.type==='withdrawal')&&Number.isFinite(Number(m.amount))&&Number(m.amount)>0
+  );
+}
 function investmentStatsAt(key){
-  const basis=db.investmentBasis||{};
-  let aportes=0,retiradas=0,postAportes=0,postRetiradas=0;
-  Object.keys(db.months).filter(k=>k<=key).forEach(k=>(db.months[k].gastos||[]).forEach(g=>{
-    const cat=effectiveGastoCat(g),v=Math.abs(Number(g.amount)||0);
-    if(cat==='inversion_aporte'){aportes+=v;if(k>=basis.month)postAportes+=v;}
-    if(cat==='inversion_retiro'){retiradas+=v;if(k>=basis.month)postRetiradas+=v;}
-  }));
-  const complete=!!basis.complete&&/^\d{4}-\d{2}$/.test(basis.month||'')&&basis.month<=key&&basis.amount!==''&&basis.amount!=null&&Number.isFinite(Number(basis.amount));
-  const net=complete?Number(basis.amount)+postAportes-postRetiradas:null;
-  const market=Number(db.months[key]?.meta?.inversiones);
-  return {aportes,retiradas,registeredNet:aportes-retiradas,net,market:Number.isFinite(market)?market:null,complete};
+  const movements=storedInvestmentMovements().filter(m=>m.date.slice(0,7)<=key);
+  const deposited=movements.length?movements.reduce((sum,m)=>sum+(m.type==='deposit'?1:-1)*Math.round(Number(m.amount)*100),0)/100:null;
+  const raw=db.months[key]?.meta?.inversiones;
+  const market=raw==null||raw===''?null:Number(raw);
+  return {deposited,market:Number.isFinite(market)?market:null};
 }
 let _dashCharts={};
 
@@ -2070,7 +2073,7 @@ function renderDashboard(){
     const md=db.months[k];
     if(!isMonthClosed(md))return; // mes abierto → ignorar completamente
     (md.entries||[]).forEach(e=>{ytdFact+=parseFloat(e.price)||0;if(e.paid==='pagado')ytdCobrado+=parseFloat(e.price)||0;});
-    (md.gastos||[]).forEach(g=>{if(isOperatingExpense(g,dashFinanceMode))ytdGas+=parseFloat(g.amount)||0;});
+    (md.gastos||[]).forEach(g=>{if(isOperatingExpense(g,'after'))ytdGas+=parseFloat(g.amount)||0;});
     // NOTE: md.packs (masajes) intentionally excluded from all financial calcs
     // NOTE: Dividendos (cat==='dividendos') excluded from gasto calculations
   });
@@ -2084,21 +2087,20 @@ function renderDashboard(){
     const md=db.months[k];
     if(!isMonthClosed(md))return;
     (md.entries||[]).forEach(e=>{prevYtdFact+=parseFloat(e.price)||0;if(e.paid==='pagado')prevYtdCobrado+=parseFloat(e.price)||0;});
-    (md.gastos||[]).forEach(g=>{if(isOperatingExpense(g,dashFinanceMode))prevYtdGas+=parseFloat(g.amount)||0;});
+    (md.gastos||[]).forEach(g=>{if(isOperatingExpense(g,'after'))prevYtdGas+=parseFloat(g.amount)||0;});
   });
 
   // Construir KPIs solo si hay datos
   let kpisHTML='';
-  const financeLabel=dashFinanceMode==='before'?'antes de financiación':'después de financiación';
   
   // KPIs ano actual
   if(ytdFact>0 || ytdGas>0){
-    kpisHTML+=`<div class="kpi"><div class="kpi-lbl">Facturación YTD ${thisYear}</div><div class="kpi-val yl">${fmt(ytdFact)}</div><div class="kpi-sub">cobrado ${fmt(ytdCobrado)}</div></div><div class="kpi"><div class="kpi-lbl">Gasto YTD ${thisYear}</div><div class="kpi-val rd">${fmt(ytdGas)}</div></div><div class="kpi"><div class="kpi-lbl">Beneficio YTD ${thisYear}</div><div class="kpi-val" style="color:${ytdFact-ytdGas>=0?'var(--green)':'var(--red)'}\">${fmt(ytdFact-ytdGas)}</div><div class="kpi-sub">${financeLabel} · cobrado − gastos: ${fmt(ytdCobrado-ytdGas)}</div></div>`;
+    kpisHTML+=`<div class="kpi"><div class="kpi-lbl">Facturación YTD ${thisYear}</div><div class="kpi-val yl">${fmt(ytdFact)}</div><div class="kpi-sub">cobrado ${fmt(ytdCobrado)}</div></div><div class="kpi"><div class="kpi-lbl">Gasto YTD ${thisYear}</div><div class="kpi-val rd">${fmt(ytdGas)}</div></div><div class="kpi"><div class="kpi-lbl">Beneficio YTD ${thisYear}</div><div class="kpi-val" style="color:${ytdFact-ytdGas>=0?'var(--green)':'var(--red)'}\">${fmt(ytdFact-ytdGas)}</div><div class="kpi-sub">cobrado - gastos: ${fmt(ytdCobrado-ytdGas)}</div></div>`;
   }
   
   // KPIs ano anterior
   if(prevYtdFact>0 || prevYtdGas>0){
-    kpisHTML+=`<div class="kpi"><div class="kpi-lbl">Facturación ${prevYear}</div><div class="kpi-val yl">${fmt(prevYtdFact)}</div><div class="kpi-sub">cobrado ${fmt(prevYtdCobrado)}</div></div><div class="kpi"><div class="kpi-lbl">Gasto ${prevYear}</div><div class="kpi-val rd">${fmt(prevYtdGas)}</div></div><div class="kpi"><div class="kpi-lbl">Beneficio ${prevYear}</div><div class="kpi-val" style="color:${prevYtdFact-prevYtdGas>=0?'var(--green)':'var(--red)'}\">${fmt(prevYtdFact-prevYtdGas)}</div><div class="kpi-sub">${financeLabel} · cobrado − gastos: ${fmt(prevYtdCobrado-prevYtdGas)}</div></div>`;
+    kpisHTML+=`<div class="kpi"><div class="kpi-lbl">Facturación ${prevYear}</div><div class="kpi-val yl">${fmt(prevYtdFact)}</div><div class="kpi-sub">cobrado ${fmt(prevYtdCobrado)}</div></div><div class="kpi"><div class="kpi-lbl">Gasto ${prevYear}</div><div class="kpi-val rd">${fmt(prevYtdGas)}</div></div><div class="kpi"><div class="kpi-lbl">Beneficio ${prevYear}</div><div class="kpi-val" style="color:${prevYtdFact-prevYtdGas>=0?'var(--green)':'var(--red)'}\">${fmt(prevYtdFact-prevYtdGas)}</div><div class="kpi-sub">cobrado - gastos: ${fmt(prevYtdCobrado-prevYtdGas)}</div></div>`;
   }
   
   // KPIs siempre mostrar
@@ -2153,7 +2155,7 @@ function renderDashboard(){
     });
     
     gasData=years.map(year=>{
-      return yearMap[year].reduce((sum,k)=>(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,dashFinanceMode)).reduce((s,g)=>s+(parseFloat(g.amount)||0),sum),0);
+      return yearMap[year].reduce((sum,k)=>(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,'after')).reduce((s,g)=>s+(parseFloat(g.amount)||0),sum),0);
     });
     
     benData=factData.map((f,i)=>f-gasData[i]);
@@ -2167,7 +2169,7 @@ function renderDashboard(){
     // Vista mensual
     labels=last12.map(k=>{const[y,m]=k.split('-');return MES[parseInt(m)-1].slice(0,3)+' '+y.slice(2);});
     factData=last12.map(k=>(db.months[k].entries||[]).reduce((s,e)=>s+(parseFloat(e.price)||0),0));
-    gasData=last12.map(k=>(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,dashFinanceMode)).reduce((s,g)=>s+(parseFloat(g.amount)||0),0));
+    gasData=last12.map(k=>(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,'after')).reduce((s,g)=>s+(parseFloat(g.amount)||0),0));
     benData=factData.map((f,i)=>f-gasData[i]);
     marginData=benData.map((b,i)=>factData[i]>0?((factData[i]-gasData[i])/factData[i])*100:0);
     ticketData=last12.map(k=>calcTicketForMonth(k));
@@ -2201,14 +2203,9 @@ function renderDashboard(){
   const closeKeys=chartGroups.map(keys=>keys[keys.length-1]);
   const deudaData=closeKeys.map(k=>parseFloat(db.months[k]?.meta?.deuda)||0);
   const cajaData=closeKeys.map(k=>(parseFloat(db.months[k]?.meta?.caja)||0)+(parseFloat(db.months[k]?.meta?.inversiones)||0));
-  const loanData=chartGroups.map(keys=>keys.reduce((s,k)=>s+confirmedLoanTotal(db.months[k]),0));
-  const otherBenefit=benData.map((v,i)=>v+(dashFinanceMode==='after'?loanData[i]:-loanData[i]));
   const investments=closeKeys.map(k=>investmentStatsAt(k));
-  const investedData=investments.map(s=>s.complete?s.net:null);
+  const investedData=investments.map(s=>s.deposited);
   const marketData=investments.map(s=>s.market);
-  const invLast=investments[investments.length-1];
-  const invResult=invLast.complete&&invLast.market!=null?invLast.market-invLast.net:null;
-  const invPct=invResult!=null&&invLast.net>0?invResult/invLast.net*100:null;
 
   // Service breakdown by month (stacked bar data)
   const allCats=[...new Set(mks.flatMap(k=>(db.months[k].entries||[]).map(e=>(db.services.find(s=>s.id===e.serviceId)?.category||'otro'))))];
@@ -2218,17 +2215,17 @@ function renderDashboard(){
   });
 
   // Gas breakdown by month (excluding dividendos)
-  const allGasCats=[...new Set(mks.flatMap(k=>(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,dashFinanceMode)).map(g=>effectiveGastoCat(g)||'otro')))];
+  const allGasCats=[...new Set(mks.flatMap(k=>(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,'after')).map(g=>effectiveGastoCat(g)||'otro')))];
   const gasByMonth={};
   allGasCats.forEach(cat=>{
-    gasByMonth[cat]=chartGroups.map(keys=>keys.reduce((total,k)=>total+(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,dashFinanceMode)&&(effectiveGastoCat(g)||'otro')===cat).reduce((s,g)=>s+(parseFloat(g.amount)||0),0),0));
+    gasByMonth[cat]=chartGroups.map(keys=>keys.reduce((total,k)=>total+(db.months[k].gastos||[]).filter(g=>isOperatingExpense(g,'after')&&(effectiveGastoCat(g)||'otro')===cat).reduce((s,g)=>s+(parseFloat(g.amount)||0),0),0));
   });
 
   const CHART_DEFAULTS={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false},zoom:ZCFG},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#777',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#777',font:{size:10},callback:v=>'€'+v.toLocaleString('es-ES')}}}};
 
   document.getElementById('dashCharts').innerHTML=`
     <div class="card"><div class="card-title">Facturación <span style="color:var(--yellow)">▬</span> vs Gastos <span style="color:var(--red)">▬</span></div><div style="height:180px;"><canvas id="cFG"></canvas></div></div>
-    <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap"><span>Beneficio ${dashViewMode==='annual'?'anual':'mensual'}</span><select aria-label="Criterio del beneficio" onchange="setDashFinanceMode(this.value)" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:2px 4px;font-size:.67rem"><option value="before" ${dashFinanceMode==='before'?'selected':''}>Antes financiación</option><option value="after" ${dashFinanceMode==='after'?'selected':''}>Después financiación</option></select></div><div style="height:162px;"><canvas id="cBen"></canvas></div><div style="font-size:.64rem;color:var(--muted)">${dashFinanceMode==='before'?'Después':'Antes'} de financiación, período visible: ${fmt(otherBenefit.reduce((s,v)=>s+v,0))}. Solo pagos bancarios identificados.</div></div>
+    <div class="card"><div class="card-title">Beneficio mensual</div><div style="height:180px;"><canvas id="cBen"></canvas></div></div>
     <div class="card"><div class="card-title">Margen mes a mes (%)</div><div style="height:180px;"><canvas id="cMargin"></canvas></div></div>
     <div class="card"><div class="card-title">Ticket medio mensual</div><div style="height:180px;"><canvas id="cTicket"></canvas></div></div>
     <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;"><span>Ocupación Gym</span><button class="btn btn-sm btn-ghost" onclick="openGymConfig()" style="font-size:0.7rem;padding:2px 6px;" title="Configurar horas abiertas, días y salas simultáneas">⚙️</button></div><div style="height:180px;"><canvas id="cGymOcup"></canvas></div></div>
@@ -2238,7 +2235,7 @@ function renderDashboard(){
     <div class="card" style="grid-column:1/-1"><div class="card-title">Facturación por tipo de servicio (mes a mes)</div><div style="height:200px;"><canvas id="cSvc"></canvas></div></div>
     <div class="card" style="grid-column:1/-1"><div class="card-title">Desglose de gastos por categoría (mes a mes)</div><div style="height:200px;"><canvas id="cGas"></canvas></div></div>
     <div class="card"><div class="card-title">Deuda <span style="color:var(--red)">▬</span> y Caja + Inversiones <span style="color:var(--green)">▬</span></div><div style="height:160px;"><canvas id="cDeuda"></canvas></div></div>
-    <div class="card"><div class="card-title">Inversiones · aportado y valor</div><div style="height:160px;"><canvas id="cInvestments"></canvas></div><div style="font-size:.64rem;color:var(--muted);line-height:1.4">Aportado registrado ${fmt(invLast.aportes)} · retirado ${fmt(invLast.retiradas)} · neto registrado ${fmt(invLast.registeredNet)} · capital neto ${invLast.complete?fmt(invLast.net):'pendiente'} · valor ${fmt(invLast.market)} · resultado ${invResult!=null?fmt(invResult):'pendiente'}${invPct!=null?' · '+invPct.toFixed(1)+'% simple':''}${!invLast.complete?' · historial por completar':''}</div></div>
+    <div class="card"><div class="card-title">Inversiones · NAV y capital depositado</div><div style="height:160px;"><canvas id="cInvestments"></canvas></div></div>
   `;
 
   // Chart 1: Fact vs Gas line
@@ -2276,8 +2273,8 @@ function renderDashboard(){
     {label:'Caja+Inv',data:cajaData,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.06)',tension:.3,fill:true,pointRadius:3}
   ]},options:{...CHART_DEFAULTS,plugins:{...CHART_DEFAULTS.plugins,legend:{display:true,labels:{color:'#888',boxWidth:10,font:{size:10}}}}}});
   _dashCharts.investments=new Chart(document.getElementById('cInvestments'),{type:'line',data:{labels,datasets:[
-    {label:'Capital neto aportado',data:investedData,borderColor:'#60a5fa',backgroundColor:'transparent',tension:.3,pointRadius:3,spanGaps:false},
-    {label:'Valor de mercado',data:marketData,borderColor:'#34d399',backgroundColor:'transparent',tension:.3,pointRadius:3}
+    {label:'Capital depositado',data:investedData,borderColor:'#60a5fa',backgroundColor:'transparent',tension:.3,pointRadius:3,spanGaps:false},
+    {label:'NAV / Valor de mercado',data:marketData,borderColor:'#34d399',backgroundColor:'transparent',tension:.3,pointRadius:3,spanGaps:false}
   ]},options:{...CHART_DEFAULTS,plugins:{...CHART_DEFAULTS.plugins,legend:{display:true,labels:{color:'#888',boxWidth:10,font:{size:10}}}}}});
   const marginLimits=getChartLimits(marginData);
   _dashCharts.margin=new Chart(document.getElementById('cMargin'),{type:'bar',data:{labels,datasets:[
@@ -3187,10 +3184,7 @@ function renderGastos(){
   document.getElementById('gasDeuda').value=meta.deuda||'';
   document.getElementById('gasCaja').value=meta.caja||'';
   document.getElementById('gasInv').value=meta.inversiones||'';
-  const basis=db.investmentBasis||{};
-  document.getElementById('invBasisMonth').value=basis.month||'';
-  document.getElementById('invBasisAmount').value=basis.amount??'';
-  document.getElementById('invBasisComplete').checked=!!basis.complete;
+  renderInvestmentMovements();
   const el=document.getElementById('gastosList');
   const emp=document.getElementById('gastosEmpty');
   if(!gastos.length){el.innerHTML='';emp.classList.remove('hidden');return;}
@@ -3213,9 +3207,80 @@ function saveGastoMeta(field,val){
   db.months[key].meta[field]=parseFloat(val)||0;
   save();
 }
-function saveInvestmentBasis(){
-  db.investmentBasis={month:document.getElementById('invBasisMonth').value,amount:document.getElementById('invBasisAmount').value,complete:document.getElementById('invBasisComplete').checked};
-  save();renderDashboard();
+let editInvestmentMoveId=null;
+function resetInvestmentMovementForm(){
+  editInvestmentMoveId=null;
+  const today=new Date();
+  const localToday=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
+  const selectedMonth=curKey('gastos');
+  document.getElementById('investmentMoveDate').value=localToday.slice(0,7)===selectedMonth?localToday:selectedMonth+'-01';
+  document.getElementById('investmentMoveAmount').value='';
+  document.getElementById('investmentMoveType').value='deposit';
+  document.getElementById('investmentMoveError').textContent='';
+  document.getElementById('investmentMoveSave').textContent='Guardar';
+  document.getElementById('investmentMoveCancel').classList.add('hidden');
+}
+function renderInvestmentMovements(){
+  const list=document.getElementById('investmentMovesList');
+  if(!list)return;
+  if(!document.getElementById('investmentMoveDate').value&&!editInvestmentMoveId)resetInvestmentMovementForm();
+  const movements=storedInvestmentMovements().slice().sort((a,b)=>b.date.localeCompare(a.date));
+  list.replaceChildren();
+  if(!movements.length){list.textContent='Sin movimientos registrados';return;}
+  for(const movement of movements){
+    const row=document.createElement('div');row.className='inv-flow-row';
+    const label=document.createElement('span');
+    label.textContent=`${movement.date} · ${movement.type==='deposit'?'Depósito':'Retirada'} · ${fmt(Number(movement.amount))}`;
+    const actions=document.createElement('span');actions.className='inv-flow-row-actions';
+    const edit=document.createElement('button');edit.type='button';edit.className='btn btn-sm btn-ghost';edit.textContent='Editar';
+    edit.addEventListener('click',()=>editInvestmentMovement(movement.id));
+    const remove=document.createElement('button');remove.type='button';remove.className='btn btn-sm btn-ghost';remove.textContent='Eliminar';
+    remove.addEventListener('click',()=>deleteInvestmentMovement(movement.id));
+    actions.append(edit,remove);row.append(label,actions);list.append(row);
+  }
+}
+function editInvestmentMovement(id){
+  const movement=storedInvestmentMovements().find(m=>m.id===id);
+  if(!movement)return;
+  editInvestmentMoveId=id;
+  document.getElementById('investmentMovesPanel').open=true;
+  document.getElementById('investmentMoveDate').value=movement.date;
+  document.getElementById('investmentMoveAmount').value=movement.amount;
+  document.getElementById('investmentMoveType').value=movement.type;
+  document.getElementById('investmentMoveError').textContent='';
+  document.getElementById('investmentMoveSave').textContent='Actualizar';
+  document.getElementById('investmentMoveCancel').classList.remove('hidden');
+}
+function saveInvestmentMovement(){
+  const date=document.getElementById('investmentMoveDate').value;
+  const rawAmount=document.getElementById('investmentMoveAmount').value.trim();
+  const type=document.getElementById('investmentMoveType').value;
+  const error=document.getElementById('investmentMoveError');
+  if(!validInvestmentDate(date)){error.textContent='Introduce una fecha válida.';return;}
+  if(!/^\d+(?:[.,]\d{1,2})?$/.test(rawAmount)||Number(rawAmount.replace(',','.'))<=0){error.textContent='Introduce un importe positivo con hasta dos decimales.';return;}
+  if(type!=='deposit'&&type!=='withdrawal'){error.textContent='Selecciona depósito o retirada.';return;}
+  const amount=Number(rawAmount.replace(',','.'));
+  if(storedInvestmentMovements().some(m=>m.id!==editInvestmentMoveId&&m.date===date&&m.type===type&&Number(m.amount)===amount)){
+    error.textContent='Este movimiento ya está registrado.';return;
+  }
+  const previous=db.investmentMovements;
+  const next=Array.isArray(previous)?previous.slice():[];
+  if(editInvestmentMoveId){
+    const index=next.findIndex(m=>m?.id===editInvestmentMoveId);
+    if(index<0){error.textContent='No se encuentra el movimiento para editar.';return;}
+    next[index]={...next[index],date,amount,type};
+  }else next.push({id:uid(),date,amount,type});
+  db.investmentMovements=next;
+  try{save();}catch(e){if(previous===undefined)delete db.investmentMovements;else db.investmentMovements=previous;error.textContent='No se ha guardado el movimiento.';return;}
+  resetInvestmentMovementForm();renderInvestmentMovements();toast('✓ Movimiento guardado');
+}
+function deleteInvestmentMovement(id){
+  if(!storedInvestmentMovements().some(m=>m.id===id)||!confirm('¿Eliminar este movimiento de inversión?'))return;
+  const previous=db.investmentMovements;
+  db.investmentMovements=previous.filter(m=>m?.id!==id);
+  try{save();}catch(e){db.investmentMovements=previous;document.getElementById('investmentMoveError').textContent='No se ha eliminado el movimiento.';return;}
+  if(editInvestmentMoveId===id)resetInvestmentMovementForm();
+  renderInvestmentMovements();toast('✓ Movimiento eliminado');
 }
 function openGastoModal(editId=null){
   editGastoId=editId;
