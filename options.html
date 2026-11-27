@@ -5,13 +5,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Calculadora y tracker de operaciones de opciones — Tastytrade.">
-<title>Options Calculator</title>
+<title>Opciones Pro · Trading Analytics</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 <meta name="theme-color" content="#060a0f">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
-<link rel="stylesheet" href="options.css?v=20260711-strat-fix">
 <link rel="stylesheet" href="design-system.css">
+<link rel="stylesheet" href="options.css?v=20261126-redesign">
 <style>
 .strat-picker{padding:10px 20px 6px;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px;max-height:132px;overflow-y:auto;border-bottom:1px solid #101b28}
 .strat-pick-card{background:#0a1018;border:1px solid #1e2d3d;border-radius:6px;padding:7px 8px;cursor:pointer;min-height:72px;box-sizing:border-box;transition:border-color .16s,background .16s,box-shadow .16s}
@@ -109,15 +109,15 @@
           <input type="number" id="sm_bp" placeholder="52" step="0.1" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none;width:100%"/>
         </div>
         <div class="cfg-field">
-          <label>Delta SPY</label>
+          <label>Delta β-SPY</label>
           <input type="number" id="sm_delta" placeholder="42" step="1" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none;width:100%"/>
         </div>
         <div class="cfg-field">
-          <label>Theta</label>
+          <label>Theta ($/día)</label>
           <input type="number" id="sm_theta" placeholder="-15" step="1" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none;width:100%"/>
         </div>
         <div class="cfg-field">
-          <label>Vega</label>
+          <label>Vega (con signo)</label>
           <input type="number" id="sm_vega" placeholder="-16" step="1" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none;width:100%"/>
         </div>
         <div class="cfg-field">
@@ -126,9 +126,12 @@
         </div>
         <button onclick="addMetricEntry()" class="cfg-save" style="padding:6px 12px;white-space:nowrap">+ Añadir</button>
       </div>
-      <div style="font-size:8px;color:#3a5468;font-family:'Courier New',monospace;margin-bottom:10px">
-        Añade una entrada por día o semana. La media mensual se calcula automáticamente.
-      </div>
+      <details class="metric-optional"><summary>Datos para ratios de riesgo (opcionales)</summary><div class="metric-optional-grid">
+        <label>NAV en esta lectura ($)<input type="number" id="sm_nav" min="0" step="0.01" placeholder="Si coincide con un NAV guardado, no hace falta"></label>
+        <label>SPY en esta lectura ($)<input type="number" id="sm_spy" min="0" step="0.01" placeholder="Precio SPY de ese día"></label>
+        <label>BP utilizado real ($)<input type="number" id="sm_bpUsed" min="0" step="0.01" placeholder="Valor reportado por el broker"></label>
+      </div></details>
+      <div class="metric-entry-hint">Las ratios históricas usan valores de la misma lectura. Gamma sigue guardándose.</div>
       <div style="border-top:1px solid #1e2d3d;padding-top:10px">
         <div id="snapMetricsList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
       </div>
@@ -157,19 +160,44 @@
 </div>
 
 
+<div class="nav">
+  <span class="nav-brand">▥ Opciones Pro</span>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-tab="dash" onclick="showTab('dash',this)">Dashboard</button>
+    <button class="nav-tab" data-tab="activas" onclick="showTab('activas',this)">Operaciones abiertas</button>
+    <button class="nav-tab" data-tab="hist" onclick="showTab('hist',this)">Historial</button>
+    <button class="nav-tab" data-tab="strat" onclick="showTab('strat',this)">Estrategias</button>
+    <button class="nav-tab" data-tab="risk" onclick="showTab('risk',this)">Riesgo de cuenta</button>
+    <button class="nav-tab" data-tab="calendar" onclick="showTab('calendar',this)">Calendario</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+    <span class="topbar-date" id="topDate"></span>
+    <span id="autoSaveTs" style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;transition:color .3s"></span>
+    <button id="ghSyncBadge" type="button" title="Clica para resincronizar con GitHub" style="background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;opacity:.85;">⟳ sync</button>
+    <button id="saveBtnMain" onclick="saveJSON()" title="Guardar (primera vez abre diálogo, después sobreescribe el mismo archivo)" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#3fb68b';this.style.color='#3fb68b'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">💾 Guardar</button>
+    <button onclick="openGlobalCfg()" title="Configuración global" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#9a6fff';this.style.color='#9a6fff'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">⚙ Config</button>
+    <label title="Cargar copia de seguridad" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center" onmouseover="this.style.borderColor='#f0a500';this.style.color='#f0a500'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">
+      ↑ JSON<input type="file" accept=".json" onchange="loadJSON(event)" style="display:none">
+    </label>
+
+  </div>
+</div>
+
 <!-- CALENDAR MODAL -->
-<div id="calOverlay" style="display:none;position:fixed;inset:0;background:#000000cc;z-index:9000;overflow-y:auto;padding:20px" onclick="if(event.target===this)closeCalModal()">
-  <div style="max-width:960px;margin:0 auto;background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;overflow:hidden">
+<div id="tab-calendar" class="tab-page" style="display:none">
+  <div class="page-heading"><div><h1>Calendario</h1><p>Resultados realizados y vencimientos de posiciones abiertas</p></div></div>
+  <div class="cal-mode-tabs"><button class="cal-mode active" data-mode="results" onclick="setCalendarMode('results')">Resultados</button><button class="cal-mode" data-mode="expirations" onclick="setCalendarMode('expirations')">Vencimientos</button></div>
+  <div class="cal-layout"><div class="cal-shell">
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1e2d3d">
       <div style="display:flex;align-items:center;gap:12px">
         <button onclick="calNav(-1)" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:14px;padding:3px 10px;border-radius:3px;cursor:pointer">‹</button>
         <span id="calMonthLabel" style="font-family:'Courier New',monospace;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c9d1d9;min-width:140px;text-align:center"></span>
+        <input type="month" id="calMonthPicker" aria-label="Elegir mes y año" onchange="calPickMonth(this.value)"/>
         <button onclick="calNav(+1)" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:14px;padding:3px 10px;border-radius:3px;cursor:pointer">›</button>
       </div>
       <div style="display:flex;align-items:center;gap:20px">
         <div id="calMonthStats" style="display:flex;gap:16px"></div>
-        <button onclick="closeCalModal()" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:10px;padding:4px 10px;border-radius:3px;cursor:pointer">✕</button>
       </div>
     </div>
     <!-- Day headers -->
@@ -184,27 +212,7 @@
     </div>
     <!-- Calendar grid -->
     <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr)"></div>
-  </div>
-</div>
-
-<div class="nav">
-  <span class="nav-brand">Options Tool</span>
-  <div class="nav-tabs">
-    <button class="nav-tab active" onclick="showTab('dash',this)">Dashboard</button>
-    <button class="nav-tab" onclick="showTab('hist',this)">Historial</button>
-    <button class="nav-tab" onclick="showTab('activas',this)">Op Abiertas</button>
-    <button class="nav-tab" onclick="showTab('strat',this)">Estrategias</button>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
-    <span class="topbar-date" id="topDate"></span>
-    <span id="autoSaveTs" style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a;transition:color .3s"></span>
-    <button id="saveBtnMain" onclick="saveJSON()" title="Guardar (primera vez abre diálogo, después sobreescribe el mismo archivo)" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#3fb68b';this.style.color='#3fb68b'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">💾 Guardar</button>
-    <button onclick="openGlobalCfg()" title="Configuración global" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#9a6fff';this.style.color='#9a6fff'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">⚙ Config</button>
-    <label title="Cargar copia de seguridad" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:3px;cursor:pointer;display:inline-flex;align-items:center" onmouseover="this.style.borderColor='#f0a500';this.style.color='#f0a500'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">
-      ↑ JSON<input type="file" accept=".json" onchange="loadJSON(event)" style="display:none">
-    </label>
-
-  </div>
+  </div><aside id="calDayDetail" class="cal-day-detail"><h2>Selecciona un día</h2><p>El detalle de las operaciones aparecerá aquí.</p></aside></div>
 </div>
 
 <!-- GLOBAL CONFIG MODAL -->
@@ -293,7 +301,7 @@
 <div id="tab-strat" class="tab-page" style="display:none">
   <!-- Header -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 12px;border-bottom:1px solid #1e2d3d">
-    <span style="font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9a6fff">Mapa de operativas</span>
+     <span class="d-title">Estrategias</span>
     <div style="display:flex;align-items:center;gap:10px">
       <select id="stratDashSelect" onchange="renderStratDash()"
         style="background:#0a0e14;border:1px solid #1e2d3d;color:#9a6fff;font-family:'Courier New',monospace;font-size:10px;padding:5px 10px;border-radius:3px;outline:none;font-weight:700">
@@ -317,9 +325,11 @@
     </div>
   </div>
 
+  <nav class="strat-section-nav"><a href="#strat-summary">Resumen</a><a href="#strat-comparison">Comparativa</a><a href="#strat-advanced">Análisis avanzado</a></nav>
   <div id="stratPicker" class="strat-picker"></div>
 
   <!-- KPIs -->
+  <h2 class="strat-section-title" id="strat-summary">Resumen de rendimiento</h2>
   <div class="d-kpi-grid" id="stratKpis" style="padding:12px 20px 0;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))"></div>
 
   <!-- Charts — same layout as main dashboard minus scatter -->
@@ -344,6 +354,7 @@
       </div>
     </div>
     <!-- Comparison table -->
+    <h2 class="strat-section-title" id="strat-comparison">Comparativa de estrategias</h2>
     <div class="d-card" style="margin-top:12px;overflow-x:auto">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div class="d-card-title" style="margin:0">Comparativa de estrategias</div>
@@ -355,6 +366,7 @@
       </tr></thead><tbody id="stratCmpBody"></tbody></table>
     </div>
 
+    <h2 class="strat-section-title" id="strat-advanced">Análisis avanzado</h2>
     <!-- Row 2 -->
     <div class="d-grid-3" style="margin-top:12px">
       <div class="d-card"><div class="d-card-title">Win rate + ops/mes</div><div class="d-chart-wrap"><canvas id="sWin" height="180"></canvas></div></div>
@@ -408,9 +420,10 @@
 
   <!-- Summary bar -->
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid #1e2d3d">
-    <span style="font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#4a9eff">Op Abiertas</span>
+    <span class="d-title">Operaciones abiertas</span>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="actSummary" style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a"></span>
+      <div class="act-group-controls"><button id="actGroupAsset" class="active" onclick="setActGroup('asset')">Por activo</button><button id="actGroupStrat" onclick="setActGroup('strat')">Por estrategia</button></div>
       <select id="actSortBy" onchange="renderActivas()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:4px 7px;border-radius:3px;outline:none">
         <option value="dte">↑ DTE</option>
         <option value="pnl">P&L est.</option>
@@ -418,16 +431,16 @@
         <option value="apertura">Apertura</option>
       </select>
       <button id="actViewToggle" onclick="toggleActivasCompact()" title="Alternar vista compacta/detalle" style="background:#4a9eff11;border:1px solid #4a9eff44;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer">Vista rapida</button>
-    <button onclick="openRoadmapCfg()" title="Hoja de ruta de gestión por DTE y profit" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:10px;font-weight:800;padding:4px 8px;border-radius:999px;cursor:pointer" onmouseover="this.style.borderColor='#4a9eff';this.style.color='#4a9eff'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">?</button>
-    <button onclick="openTtPriceUpdate()" title="Actualizar priceCurrent desde positions.csv de Tastytrade" style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer" onmouseover="this.style.borderColor='#22c55e';this.style.color='#22c55e'" onmouseout="this.style.borderColor='#1e2d3d';this.style.color='#5a7a9a'">↻ Tastytrade</button>
     <button onclick="openActModal(null)"   style="background:transparent;border:1px solid #4a9eff;color:#4a9eff;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:3px;cursor:pointer">+ Nueva posición</button>
     </div>
   </div>
 
   <div id="actRiskPanel" class="act-spx-panel" style="display:none"></div>
 
-  <!-- Cards grid -->
-  <div id="activasGrid" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px"></div>
+  <div class="act-layout" id="actLayout">
+    <div id="activasGrid" style="padding:16px 20px;display:flex;flex-direction:column;gap:12px"></div>
+    <aside id="actDetailPanel" class="act-detail-panel"><div class="act-detail-empty">Selecciona una posición para ver su estructura, gestión y acciones.</div></aside>
+  </div>
 
   <!-- Empty state -->
   <div id="activasEmpty" style="display:none;padding:60px 20px;text-align:center;color:#2a4a6a;font-family:'Courier New',monospace;font-size:10px">
@@ -716,7 +729,9 @@
 <!-- HISTORIAL TAB -->
 <div id="tab-hist" class="tab-page" style="display:none">
   <!-- stats bar -->
-  <div class="h-stats" id="hStats"></div>
+  <div class="page-heading"><div><h1>Historial</h1><p>Operaciones cerradas, resultados y ciclos completos</p></div></div>
+  <div class="h-stats" id="hFilteredStats"></div>
+  <details class="h-secondary-stats"><summary>Más estadísticas del historial</summary><div class="h-stats" id="hStats"></div></details>
 
   <!-- toolbar -->
   <div class="h-toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -801,6 +816,7 @@
     </table>
     <div class="h-empty" id="hEmpty">Sin operativas. Pulsa <strong>+ Nueva operativa</strong> para empezar.</div>
   </div>
+  <aside id="histDetailPanel" class="hist-detail-panel" style="display:none"></aside>
 </div>
 
 <!-- DASHBOARD TAB -->
@@ -837,6 +853,9 @@
 
   <!-- KPIs -->
   <div class="d-kpi-grid" id="dKpis"></div>
+
+  <div class="d-card nav-chart-card"><div class="d-card-title">Evolución de patrimonio · NAV registrado</div><div class="d-chart-wrap"><canvas id="cNav" height="180"></canvas></div></div>
+  <div class="d-card" id="dashWatchCard"><div class="d-card-title">Operaciones a vigilar</div><div id="dashWatchList" class="dash-watch-list"></div></div>
 
   <!-- Row 1: P&L mensual | ROI cuenta acumulado -->
   <div class="d-grid-2" style="align-items:stretch">
@@ -945,15 +964,13 @@
 
 
 
-  <!-- Row 6: Semáforos de métricas de cuenta -->
-  <div class="d-card" style="margin-top:12px" id="dMetricsSemaphore">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div class="d-card-title" style="margin:0">Métricas de cuenta</div>
-      <span id="dMetricsDate" style="font-family:'Courier New',monospace;font-size:8px;color:#2a4a6a"></span>
-    </div>
-    <div id="dSemaphoreGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
-  </div>
+</div>
 
+<div id="tab-risk" class="tab-page" style="display:none">
+  <div class="page-heading"><div><h1>Riesgo de cuenta</h1><p>Sensibilidades y uso de capital de las lecturas registradas</p></div><div class="risk-heading-actions"><span id="dMetricsDate"></span><button onclick="openSnapModal()">+ Lectura</button></div></div>
+  <div class="risk-headline" id="riskHeadline"></div>
+  <div class="d-card" id="dMetricsSemaphore"><div id="dSemaphoreGrid" class="risk-card-grid"></div></div>
+  <div class="risk-footnote">Las ratios se calculan por lectura válida. Los datos ausentes se muestran sin estimaciones.</div>
 </div>
 
 <!-- ENTRY MODAL -->
@@ -964,7 +981,6 @@
 <!-- ── GITHUB SYNC + AUTH GATE ─────────────────────────────────── -->
 <a href="index.html" id="ghHomeBtn" style="position:fixed;top:8px;left:8px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 11px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;text-decoration:none;opacity:.85;">← inicio</a>
 <button id="ghChangePinBtn" onclick="DashboardAuth.changePin('options','Opciones')" style="position:fixed;top:8px;left:88px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 11px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:9999;cursor:pointer;opacity:.85;">🔑 PIN</button>
-<button id="ghSyncBadge" type="button" title="Clica para resincronizar con GitHub" style="position:fixed;bottom:10px;right:10px;background:#0a1120;border:1px solid #1e3a5f;color:#94a3b8;padding:5px 10px;border-radius:6px;font-family:'DM Mono',monospace;font-size:11px;z-index:100001;opacity:.85;">⟳ sync</button>
 <script src="utils.js"></script>
 <script src="github-sync.js"></script>
 <script src="dashboard-auth.js"></script>
@@ -1920,11 +1936,16 @@ function showTab(name, btn){
   document.querySelectorAll('.tab-page').forEach(p=>p.style.display='none');
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).style.display='block';
-  if(btn) btn.classList.add('active');
+  (btn||document.querySelector(`.nav-tab[data-tab="${name}"]`))?.classList.add('active');
   if(name==='hist'){ renderStats(); renderHist(); }
   if(name==='dash'){ setTimeout(renderDash,100); }
   if(name==='activas'){ renderActivas(); }
   if(name==='strat'){ populateStratSelect(); renderStratOtroConfig(); renderStratDash(); }
+  if(name==='risk'){ renderSemaphores(); }
+  if(name==='calendar'){
+    if(!_calYear){const now=localISODate();_calYear=Number(now.slice(0,4));_calMonth=Number(now.slice(5,7));}
+    renderCalModal();
+  }
 }
 
 // ── HISTORIAL DATA ───────────────────────────────────────────
@@ -2378,13 +2399,20 @@ function renderHist(){
     if(filtStrat && e.strat!==filtStrat) return false;
     if(filtResult==='win' && !(e.totalNeto>0)) return false;
     if(filtResult==='loss' && !(e.totalNeto<0)) return false;
-    if(search && !((e.activo||'').toLowerCase().includes(search)||(e.idOp||'').toLowerCase().includes(search)||(e.nota||'').toLowerCase().includes(search))) return false;
+    if(search && !((e.activo||'').toLowerCase().includes(search)||String(e.idOp||'').toLowerCase().includes(search)||(e.nota||'').toLowerCase().includes(search))) return false;
     // Filtro fechas: aplicar al campo elegido (cierre por defecto, o apertura)
     const dateForFilter = (_hPeriodField === 'apertura' ? e.apertura : e.cierre) || '';
     if(pDateFrom && dateForFilter < pDateFrom) return false;
     if(pDateTo   && dateForFilter > pDateTo)   return false;
     return true;
   });
+
+  const filteredPnl=data.reduce((sum,e)=>sum+(Number.isFinite(e.totalNeto)?e.totalNeto:0),0)*100;
+  const filteredIds=new Map();
+  data.forEach(e=>{const id=String(e.idOp||e.id)+'|'+String(e.activo||'');filteredIds.set(id,(filteredIds.get(id)||0)+(e.totalNeto||0))});
+  const filteredWin=filteredIds.size?[...filteredIds.values()].filter(v=>v>0).length/filteredIds.size*100:null;
+  const filtered=document.getElementById('hFilteredStats');
+  if(filtered)filtered.innerHTML=`<div class="h-stat"><div class="h-stat-lbl">Operaciones filtradas</div><div class="h-stat-val blue">${data.length}</div><div class="h-stat-sub">${filteredIds.size} IDs completos o parciales</div></div><div class="h-stat"><div class="h-stat-lbl">P/L neto filtrado</div><div class="h-stat-val ${filteredPnl>=0?'green':'red'}">${filteredPnl.toLocaleString('es-ES',{style:'currency',currency:'USD'})}</div><div class="h-stat-sub">cierres incluidos en el filtro</div></div><div class="h-stat"><div class="h-stat-lbl">Win rate · ID filtrado</div><div class="h-stat-val ${filteredWin>=50?'green':'red'}">${filteredWin===null?'—':filteredWin.toFixed(1)+'%'}</div><div class="h-stat-sub">Si el filtro corta un ciclo, solo cuenta sus registros visibles</div></div>`;
 
   data.sort((a,b)=>{
     let va=a[hSortKey], vb=b[hSortKey];
@@ -2565,7 +2593,8 @@ function renderHist(){
           <td>${fmtCash(e.totalNeto)}</td>
           <td>${fmtRoi(e.profitOp)}</td>
           <td class="h-note" title="${esc(e.nota||'')}">${e.nota?'· '+esc(e.nota):'—'}</td>
-          <td><button class="h-act-btn" onclick="event.stopPropagation();openEntryModal(${e.id})">✎</button>
+          <td><button class="h-act-btn" onclick="event.stopPropagation();showHistoryDetail(${e.id})" title="Ver detalle">☷</button>
+              <button class="h-act-btn" onclick="event.stopPropagation();openEntryModal(${e.id})">✎</button>
               <button class="h-act-btn del" onclick="event.stopPropagation();deleteEntry(${e.id})">✕</button></td>
         </tr>`;
       });
@@ -2608,11 +2637,37 @@ function renderHist(){
       <td>${fmtRoi(e.profitOp)}</td>
       <td class="h-note" title="${esc(e.nota||'')}">${e.nota?'· '+esc(e.nota):'—'}</td>
       <td>
+        <button class="h-act-btn" onclick="showHistoryDetail(${e.id})" title="Ver detalle">☷</button>
         <button class="h-act-btn" onclick="openEntryModal(${e.id})">✎</button>
         <button class="h-act-btn del" onclick="deleteEntry(${e.id})">✕</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+function showHistoryDetail(id, tab='summary'){
+  const raw=HIST.find(h=>h.id===id), panel=document.getElementById('histDetailPanel');
+  if(!raw||!panel)return;
+  const e=computeEntry(raw), peers=HIST.filter(h=>String(h.idOp)===String(raw.idOp)&&h.activo===raw.activo)
+    .map(computeEntry).sort((a,b)=>(a.cierre||a.apertura||'').localeCompare(b.cierre||b.apertura||''));
+  const money=v=>v===null||v===undefined?'—':Number(v).toLocaleString('es-ES',{style:'currency',currency:'USD'});
+  const fields=[['Apertura',e.apertura],['Vencimiento',e.exp],['Cierre',e.cierre],['DTE inicial',e.dteIni!=null?e.dteIni+'d':'—'],['Tiempo en posición',e.tiempoOp!=null?e.tiempoOp+'d':'—'],['Crédito',e.pCredito!=null?money(e.pCredito*100):'—'],['Débito cierre',e.pCierre!=null?money(e.pCierre*100):'—'],['Comisiones',money(e.comi)],['Máximo riesgo',money(e.maxRisk)],['TP',e.tp!=null?e.tp.toFixed(1)+'%':'—']];
+  const tabs=[['summary','Resumen'],['legs','Patas'],['rolls','Ajustes / Rolls']];
+  if(peers.filter(p=>p.cierre).length>=2)tabs.push(['evolution','Evolución']);
+  let body='';
+  if(tab==='summary')body=`<div class="hist-detail-kpis"><div><span>P/L neto</span><strong class="${e.totalNeto>=0?'positive':'negative'}">${money((e.totalNeto||0)*100)}</strong></div><div><span>ID de ciclo</span><strong>${esc(String(e.idOp||'—'))}</strong></div></div><div class="hist-detail-fields">${fields.map(([k,v])=>`<div><span>${k}</span><b>${esc(String(v??'—'))}</b></div>`).join('')}</div>${e.nota?`<div class="hist-note"><b>Nota</b><p>${esc(e.nota)}</p></div>`:''}`;
+  if(tab==='legs'){
+    const legs=Array.isArray(raw.legs)&&raw.legs.length?raw.legs:Array.isArray(raw.closedLegs)?raw.closedLegs:[];
+    body=legs.length?legs.map((l,i)=>`<div class="hist-detail-line"><b>Pata ${i+1} · ${esc(String(l.kind||l.tipo||'—'))}</b><span>Strike ${esc(String(l.strike??'—'))} · Prima ${esc(String(l.prima??'—'))} · ${esc(String(l.contracts??raw.contracts??'—'))} contratos</span></div>`).join(''):'<p>Esta operación no tiene desglose de patas guardado.</p>';
+  }
+  if(tab==='rolls')body=peers.map(p=>`<div class="hist-detail-line"><b>${esc(p.cierre||p.apertura||'—')} · ${esc(p.strat||'—')}</b><span>${money((p.totalNeto||0)*100)} · ${esc(p.nota||'Sin nota de ajuste')}</span></div>`).join('')||'<p>Sin otros registros de ciclo.</p>';
+  if(tab==='evolution')body='<canvas id="histEvoCanvas" height="190"></canvas><p>Acumulado de cierres registrados para este ID.</p>';
+  panel.style.display='block';
+  panel.innerHTML=`<header><div><small>${esc(e.activo||'—')} · ${esc(e.strat||'—')}</small><h2>Detalle de operación</h2></div><button onclick="document.getElementById('histDetailPanel').style.display='none'" aria-label="Cerrar">✕</button></header><nav>${tabs.map(([key,label])=>`<button class="${tab===key?'active':''}" onclick="showHistoryDetail(${id},'${key}')">${label}</button>`).join('')}</nav><div class="hist-detail-body">${body}</div><footer><button onclick="openEntryModal(${id})">Editar operación</button></footer>`;
+  if(tab==='evolution'&&typeof Chart!=='undefined'){
+    const dated=peers.filter(p=>p.cierre);let acc=0;
+    new Chart(document.getElementById('histEvoCanvas'),{type:'line',data:{labels:dated.map(p=>p.cierre),datasets:[{data:dated.map(p=>acc+=(p.totalNeto||0)*100),borderColor:'#51a9ff',pointRadius:4,tension:0}]},options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#9eb4ce'}},y:{ticks:{color:'#9eb4ce'}}}}});
+  }
 }
 
 // ── ENTRY MODAL ──────────────────────────────────────────────
@@ -3265,14 +3320,20 @@ function openSnapModal(){
 let _calYear = 0, _calMonth = 0;
 
 function openCalModal(){
-  // Default to most recent month with data
+  // Keep the historical chart shortcut; the calendar now has its own page.
   const data = HIST.map(computeEntry).filter(e=>e.cierre);
-  if(!data.length) return;
   const months = [...new Set(data.map(e=>(e.cierre||'').slice(0,7)))].sort();
   const last = months[months.length-1] || localISODate().slice(0,7);
   _calYear  = parseInt(last.slice(0,4));
   _calMonth = parseInt(last.slice(5,7));
-  document.getElementById('calOverlay').style.display = 'block';
+  showTab('calendar');
+}
+
+let _calMode = 'results';
+function setCalendarMode(mode){
+  _calMode = mode === 'expirations' ? 'expirations' : 'results';
+  document.querySelectorAll('.cal-mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===_calMode));
+  document.getElementById('calDayDetail').innerHTML = '<h2>Selecciona un día</h2><p>El detalle de las operaciones aparecerá aquí.</p>';
   renderCalModal();
 }
 
@@ -3293,7 +3354,7 @@ function calDayHover(event, dateStr){
     const sign = pnl>=0?'+':'';
     const col = pnl>=0?'#3fb68b':'#f04545';
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #1e2d3d">
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">${e.activo||'—'} <span style="color:${_stratColor(e.strat||'NP')}">${e.strat||'—'}</span> ID:${e.idOp||'—'}</span>
+      <span style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">${esc(e.activo||'—')} <span style="color:${_stratColor(e.strat||'NP')}">${esc(e.strat||'—')}</span> ID:${esc(String(e.idOp||'—'))}</span>
       <span style="font-family:'Courier New',monospace;font-size:10px;font-weight:700;color:${col}">${sign}$${Math.abs(pnl).toFixed(0)}</span>
     </div>`;
   }).join('');
@@ -3326,45 +3387,24 @@ function calDayHover(event, dateStr){
   popup.addEventListener('mouseleave', calDayLeave);
 }
 function calDayClick(dateStr){
-  const data = HIST.map(computeEntry).filter(e=>e.cierre===dateStr);
-  if(!data.length) return;
-  const lines = data.map(e=>{
-    const pnl = (e.totalNeto||0)*100;
-    const sign = pnl>=0?'+':'';
-    const col = pnl>=0?'#3fb68b':'#f04545';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #1e2d3d">
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">${e.activo||'—'} <span style="color:${_stratColor(e.strat||'NP')}">${e.strat||'—'}</span> ID:${e.idOp||'—'}</span>
-      <span style="font-family:'Courier New',monospace;font-size:10px;font-weight:700;color:${col}">${sign}$${Math.abs(pnl).toFixed(0)}</span>
-    </div>`;
-  }).join('');
-  const totalPnl = data.reduce((s,e)=>s+(e.totalNeto||0),0)*100;
-  const totalCol = totalPnl>=0?'#3fb68b':'#f04545';
-  // Show as tooltip/overlay over the calendar
-  let popup = document.getElementById('calDayPopup');
-  if(!popup){
-    popup = document.createElement('div');
-    popup.id = 'calDayPopup';
-    popup.style.cssText = 'position:fixed;z-index:9999;background:#0d1117;border:1px solid #1e2d3d;border-radius:6px;min-width:280px;max-width:360px;box-shadow:0 8px 24px #000a;overflow:hidden';
-    document.body.appendChild(popup);
+  if(_calMode==='expirations'){
+    const positions=ACTIVAS.filter(a=>(a.exp||'').slice(0,10)===dateStr);
+    document.getElementById('calDayDetail').innerHTML=`<h2>${dateStr}</h2><p>${positions.length} vencimiento${positions.length===1?'':'s'}</p>${positions.map(a=>`<div class="cal-detail-row"><b>${esc(a.activo||'—')} · ${esc(a.strat||'—')}</b><span>ID ${esc(String(a.idOp||'—'))} · ${a.exp?optionDTE(a.exp,optionsValuationDate)+' DTE':'—'}</span></div>`).join('')}`;
+    return;
   }
-  popup.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#1a2b3c;border-bottom:1px solid #1e2d3d">
-      <span style="font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#c9d1d9">${dateStr}</span>
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-family:'Courier New',monospace;font-size:10px;font-weight:700;color:${totalCol}">${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(0)}</span>
-        <button onclick="document.getElementById('calDayPopup').style.display='none'" style="background:none;border:none;color:#5a7a9a;cursor:pointer;font-size:12px">✕</button>
-      </div>
-    </div>
-    ${lines}`;
-  // Position near center of screen
-  popup.style.display = 'block';
-  popup.style.top = '50%';
-  popup.style.left = '50%';
-  popup.style.transform = 'translate(-50%,-50%)';
+  const data = HIST.map(computeEntry).filter(e=>e.cierre===dateStr);
+  if(!data.length){ document.getElementById('calDayDetail').innerHTML=`<h2>${dateStr}</h2><p>Sin cierres registrados.</p>`; return; }
+  const totalPnl = data.reduce((s,e)=>s+(e.totalNeto||0),0)*100;
+  document.getElementById('calDayDetail').innerHTML=`<h2>${dateStr}</h2><div class="cal-detail-total ${totalPnl>=0?'positive':'negative'}">${totalPnl>=0?'+':''}${totalPnl.toLocaleString('es-ES',{style:'currency',currency:'USD'})}</div><p>${data.length} operativa${data.length===1?'':'s'} cerrada${data.length===1?'':'s'}</p>${data.map(e=>`<button class="cal-detail-row" onclick="calHistorySearch('${encodeURIComponent(String(e.idOp||''))}')"><b>${esc(e.activo||'—')} · ${esc(e.strat||'—')}</b><span>ID ${esc(String(e.idOp||'—'))} · ${((e.totalNeto||0)*100).toLocaleString('es-ES',{style:'currency',currency:'USD'})}</span></button>`).join('')}`;
+}
+function calHistorySearch(encoded){
+  showTab('hist');
+  document.getElementById('hSearch').value=decodeURIComponent(encoded);
+  renderHist();
 }
 
 function closeCalModal(){
-  document.getElementById('calOverlay').style.display = 'none';
+  showTab('dash');
   const popup = document.getElementById('calDayPopup');
   if(popup) popup.style.display = 'none';
 }
@@ -3373,6 +3413,12 @@ function calNav(delta){
   _calMonth += delta;
   if(_calMonth > 12){ _calMonth=1; _calYear++; }
   if(_calMonth < 1) { _calMonth=12; _calYear--; }
+  renderCalModal();
+}
+function calPickMonth(value){
+  if(!/^\d{4}-\d{2}$/.test(value))return;
+  _calYear=Number(value.slice(0,4));
+  _calMonth=Number(value.slice(5,7));
   renderCalModal();
 }
 
@@ -3385,14 +3431,18 @@ function renderCalModal(){
   const MONTHS_ES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const lbl = document.getElementById('calMonthLabel');
   if(lbl) lbl.textContent = `${MONTHS_ES[m]} ${y}`;
+  const picker=document.getElementById('calMonthPicker');
+  if(picker)picker.value=`${y}-${monthStr}`;
 
-  // Get all closed trades for this month grouped by close date
-  const data = HIST.map(computeEntry).filter(e=>e.cierre&&e.cierre.startsWith(prefix));
+  // Both modes use the original records. Expirations never contribute to realized P/L.
+  const data = _calMode==='results'
+    ? HIST.map(computeEntry).filter(e=>e.cierre&&e.cierre.startsWith(prefix))
+    : ACTIVAS.filter(a=>a.exp&&a.exp.startsWith(prefix));
   const byDay = {};
   data.forEach(e=>{
-    const d = e.cierre.slice(0,10);
+    const d = (_calMode==='results'?e.cierre:e.exp).slice(0,10);
     if(!byDay[d]) byDay[d]={pnl:0,trades:0};
-    byDay[d].pnl   += (e.totalNeto||0)*100;
+    if(_calMode==='results') byDay[d].pnl += (e.totalNeto||0)*100;
     byDay[d].trades++;
   });
 
@@ -3404,7 +3454,7 @@ function renderCalModal(){
   const statsEl = document.getElementById('calMonthStats');
   if(statsEl){
     const pc = monthPnl>=0?'#3fb68b':'#f04545';
-    statsEl.innerHTML = `
+    statsEl.innerHTML = _calMode==='expirations' ? `<div>Vencimientos: <b>${monthTrades}</b></div>` : `
       <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">P&L mes: <span style="color:${pc};font-weight:700">${monthPnl>=0?'+':''}$${Math.abs(monthPnl).toFixed(0)}</span></div>
       <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">Trades: <span style="color:#c9d1d9">${monthTrades}</span></div>
       <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">Días positivos: <span style="color:#3fb68b">${winDays}/${totalDays}</span></div>`;
@@ -3444,12 +3494,12 @@ function renderCalModal(){
     if(dayData){
       const pnlC = dayData.pnl>=0 ? '#3fb68b' : '#f04545';
       const sign = dayData.pnl>=0 ? '+' : '';
-      inner = `
+      inner = _calMode==='expirations' ? `<div class="cal-exp-count">${dayData.trades} vencimiento${dayData.trades===1?'':'s'}</div>` : `
         <div style="font-family:'Courier New',monospace;font-size:11px;font-weight:700;color:${pnlC};margin-top:4px">${sign}$${Math.abs(dayData.pnl).toFixed(0)}</div>
         <div style="font-family:'Courier New',monospace;font-size:8px;color:#3a5468;margin-top:2px">Trades: ${dayData.trades}</div>`;
     }
 
-    return `<div style="min-height:80px;border:1px solid ${borderC};background:${bgC};padding:6px 8px;position:relative;cursor:default;user-select:none" onmouseenter="${dayData?`calDayHover(event,'${dateStr}')`:'void 0'}" onmouseleave="calDayLeave()">
+    return `<div class="cal-day" style="border-color:${borderC};background:${_calMode==='expirations'&&dayData?'#10203a':bgC}" onclick="calDayClick('${dateStr}')" onmouseenter="${_calMode==='results'&&dayData?`calDayHover(event,'${dateStr}')`:'void 0'}" onmouseleave="calDayLeave()">
       <div style="font-family:'Courier New',monospace;font-size:9px;color:${isToday?'#4a9eff':'#2a4a6a'};font-weight:${isToday?'700':'400'};pointer-events:none">${d}</div>
       <div style="pointer-events:none">${inner}</div>
     </div>`;
@@ -3489,6 +3539,9 @@ function editMetricEntry(month, ts){
   set('sm_theta', entry.theta);
   set('sm_vega',  entry.vega);
   set('sm_gamma', entry.gamma);
+  set('sm_nav', entry.nav);
+  set('sm_spy', entry.spy);
+  set('sm_bpUsed', entry.bpUsed);
   snapSetTab('metrics');
   document.getElementById('sm_date')?.focus();
 }
@@ -3969,6 +4022,8 @@ function renderDash(){
   const { data:allData, byMonth, months, avg } = d;
   renderKpis(d);
   renderSnapList();
+  renderNavChart();
+  renderDashWatchlist();
   if(!months.length) return;
 
   const labels = months;
@@ -4303,6 +4358,31 @@ function renderDash(){
   _renderEt('cEt', allData);
 }
 
+function renderNavChart(){
+  const canvas=document.getElementById('cNav');
+  if(!canvas||typeof Chart==='undefined')return;
+  const period=document.getElementById('dPeriod')?.value||'all';
+  const from=document.getElementById('dDateFrom')?.value||'';
+  const to=document.getElementById('dDateTo')?.value||'';
+  const samples=SNAPS.flatMap(s=>s.navEntries?.length
+    ? s.navEntries.filter(e=>Number.isFinite(Number(e.val))&&Number(e.val)>0).map(e=>({date:e.ts,nav:Number(e.val)}))
+    : Number.isFinite(Number(s.val))&&Number(s.val)>0?[{date:s.date,nav:Number(s.val)}]:[])
+    .filter(e=>period==='all'||period==='custom'&&(!from||e.date>=from.slice(0,7))&&(!to||e.date<=to)||e.date.startsWith(period))
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  if(canvas._navChart)canvas._navChart.destroy();
+  canvas._navChart=new Chart(canvas,{type:'line',data:{labels:samples.map(e=>e.date),datasets:[{label:'NAV registrado',data:samples.map(e=>e.nav),borderColor:'#51b8ff',backgroundColor:'#51b8ff14',borderWidth:2.5,pointRadius:4,pointHoverRadius:6,fill:true,tension:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString('es-ES',{style:'currency',currency:'USD'})}}},scales:{x:{ticks:{color:'#91a8c5',maxRotation:45,autoSkip:true},grid:{color:'#213653'}},y:{ticks:{color:'#91a8c5',callback:v=>Number(v).toLocaleString('es-ES',{style:'currency',currency:'USD',maximumFractionDigits:0})},grid:{color:'#213653'}}}}});
+  const parent=canvas.closest('.d-card');
+  parent?.querySelector('.nav-empty')?.remove();
+  if(!samples.length)parent?.insertAdjacentHTML('beforeend','<p class="nav-empty">Sin NAV registrado para el período seleccionado.</p>');
+}
+function renderDashWatchlist(){
+  const box=document.getElementById('dashWatchList');if(!box)return;
+  const today=optionsValuationDate;
+  const due=ACTIVAS.map((a,i)=>({a,i,dte:a.exp?optionDTE(a.exp,today):null}))
+    .filter(x=>x.dte!==null&&x.dte<=21).sort((a,b)=>a.dte-b.dte).slice(0,8);
+  box.innerHTML=due.length?due.map(({a,i,dte})=>`<button class="dash-watch-item" onclick="ACT_EXPANDED_IDX=${i};showTab('activas')"><span>${esc(a.activo||'—')} · ${esc(a.strat||'—')} · ID ${esc(String(a.idOp||'—'))}</span><b>${dte} DTE</b><span>Ver posición →</span></button>`).join(''):'<p>Sin posiciones abiertas con vencimiento en los próximos 21 días.</p>';
+}
+
 // ── Eficiencia Temporal: ET por mes vs media móvil ───────────────────
 // Para cada mes muestra ET medio (barras) + media móvil 3m (línea).
 // ET (Eficiencia Temporal) = % prima capturada − % tiempo consumido.
@@ -4378,6 +4458,14 @@ function computeCapitalByMonth(allEntries){
 let ACTIVAS = [];
 let ACT_COMPACT_VIEW = (localStorage.getItem('ot_act_compact') || '1') !== '0';
 let ACT_EXPANDED_IDX = null;
+let ACT_DETAIL_RENDER = false;
+let ACT_GROUP_BY = 'asset';
+function setActGroup(group){
+  ACT_GROUP_BY=group==='strat'?'strat':'asset';
+  document.getElementById('actGroupAsset')?.classList.toggle('active',ACT_GROUP_BY==='asset');
+  document.getElementById('actGroupStrat')?.classList.toggle('active',ACT_GROUP_BY==='strat');
+  renderActivas();
+}
 
 function toggleActivasCompact(){
   ACT_COMPACT_VIEW = !ACT_COMPACT_VIEW;
@@ -4390,7 +4478,7 @@ function actCardClick(ev, idx){
   const tag = (ev.target && ev.target.tagName || '').toLowerCase();
   if(['button','input','select','textarea','a'].includes(tag) || ev.target.closest?.('button,input,select,textarea,a')) return;
   if(!ACT_COMPACT_VIEW) return;
-  ACT_EXPANDED_IDX = ACT_EXPANDED_IDX === idx ? null : idx;
+  ACT_EXPANDED_IDX = idx;
   renderActivas();
 }
 
@@ -4754,7 +4842,7 @@ function renderSpxAccountPanel(today){
           ${kpi('PCS / contratos', rows.length + ' / ' + contracts, missingPrices ? missingPrices + ' sin precio actual' : 'precios completos', missingPrices ? '#f0a500' : '#c9d1d9')}
           ${kpi('Riesgo base', _fmtUsd0(risk), riskPct != null ? fmtPlainPct(riskPct) + ' NAV · techo 50%' : navInfo.label, riskPct != null && riskPct >= 50 ? '#f0a500' : '#c9d1d9')}
           ${kpi('Reserva hasta techo', headroom != null ? _fmtUsd0(headroom) : '--', 'techo orientativo: 50% NAV', headroom === 0 ? '#f0a500' : '#5a7a9a')}
-          ${kpi('P&L abierto', fmtSignedUsd(pnl), 'P&L/riesgo ' + fmtPct(pnlRiskPct), pnl >= 0 ? '#3fb68b' : '#f04545')}
+          ${kpi('P&L abierto' + (missingPrices?' · parcial':''), missingPrices===rows.length?'—':fmtSignedUsd(pnl), missingPrices?missingPrices+' sin precio · resultado incompleto':'P&L/riesgo ' + fmtPct(pnlRiskPct), missingPrices?'#f0a500':pnl >= 0 ? '#3fb68b' : '#f04545')}
           ${kpi('TP medio', avgTp != null ? avgTp.toFixed(1) + '%' : '--', creditRiskPct != null ? 'prima/riesgo ' + creditRiskPct.toFixed(1) + '%' : 'falta precio/riesgo', avgTp != null && avgTp >= 50 ? '#3fb68b' : avgTp != null && avgTp < 0 ? '#f04545' : '#c9d1d9')}
           ${kpi('DTE medio', avgDte != null ? avgDte.toFixed(0) + 'd' : '--', navInfo.label || '', avgDte != null && avgDte <= 21 ? '#f0a500' : '#c9d1d9')}
         </div>
@@ -4966,6 +5054,7 @@ function renderActivas(){
 
   if(!ACTIVAS.length){
     grid.innerHTML='';
+    document.getElementById('actDetailPanel').innerHTML='<div class="act-detail-empty">No hay posiciones abiertas.</div>';
     if(empty) empty.style.display='block';
     if(sumEl) sumEl.textContent='';
     return;
@@ -5051,19 +5140,33 @@ function renderActivas(){
   if(sumEl){
     const conPrecio = ACTIVAS.filter(a=>a.priceCurrent!=null).length;
     const pnlColor = totalUnreal >= 0 ? '#3fb68b' : '#f04545';
-    sumEl.innerHTML = `${ACTIVAS.length} pos · ${conPrecio}/${ACTIVAS.length} con precio · <span style="color:${pnlColor}">P&L abierto ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}</span>`;
+    sumEl.innerHTML = `${ACTIVAS.length} posiciones · ${conPrecio}/${ACTIVAS.length} con precio · <span style="color:${pnlColor}">P&L abierto ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}</span>${conPrecio<ACTIVAS.length?' <span class="act-partial">Parcial · faltan precios</span>':''}`;
   }
+  if(ACT_EXPANDED_IDX===null||!ACTIVAS[ACT_EXPANDED_IDX])ACT_EXPANDED_IDX=sorted[0].i;
   grid.classList.toggle('act-grid-compact', ACT_COMPACT_VIEW);
-  grid.innerHTML = sorted.map(({a,i})=>buildActCard(a,i,today)).join('');
+  const groups=new Map();
+  sorted.forEach(item=>{const key=ACT_GROUP_BY==='strat'?item.a.strat||'Sin estrategia':item.a.activo||'Sin activo';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)});
+  grid.innerHTML = [...groups].map(([key,items])=>`<div class="act-group-heading">${esc(key)} <span>${items.length}</span></div>${items.map(({a,i})=>buildActCard(a,i,today)).join('')}`).join('');
+  const detail=document.getElementById('actDetailPanel');
+  if(detail){
+    detail.style.display=ACT_COMPACT_VIEW?'':'none';
+    if(ACT_COMPACT_VIEW){
+      ACT_DETAIL_RENDER=true;
+      detail.innerHTML=buildActCard(ACTIVAS[ACT_EXPANDED_IDX],ACT_EXPANDED_IDX,today);
+      ACT_DETAIL_RENDER=false;
+    }
+  }
 
   // Attach price input listeners — use closure to capture correct original index
   sorted.forEach(({i:origIdx})=>{
-    const inp = document.getElementById(`act_price_${origIdx}`);
+    [`act_price_${origIdx}`,`act_price_detail_${origIdx}`].forEach(id=>{
+    const inp = document.getElementById(id);
     if(!inp) return;
     inp.addEventListener('change', e=>{
       ACTIVAS[origIdx].priceCurrent = e.target.value===''?null:parseFloat(e.target.value); // $/contrato (user enters e.g. 1 for $1/ctr)
       activasSave();
       renderActivas();
+    });
     });
   });
 }
@@ -5133,7 +5236,8 @@ function buildActCard(a, idx, today){
   const tpTarget = (CFG.tpTargets||{})[strat] || 50;
   const tpAlertOn = tpPct!=null && tpPct >= tpTarget;
   if(tpAlertOn) cardClass += ' act-tp-alert';
-  if(ACT_COMPACT_VIEW && ACT_EXPANDED_IDX !== idx) cardClass += ' act-compact';
+  if(ACT_COMPACT_VIEW && !ACT_DETAIL_RENDER) cardClass += ' act-compact';
+  if(ACT_COMPACT_VIEW && !ACT_DETAIL_RENDER && ACT_EXPANDED_IDX===idx) cardClass += ' selected';
 
   // Temporal efficiency (ET)
   // ── prima capturada ── Para spreads usamos el crédito NETO (pc-pd).
@@ -5233,7 +5337,7 @@ function buildActCard(a, idx, today){
   const premiumCash = premiumUnit!=null ? premiumUnit * 100 * (a.contracts||1) : null;
 
   return `
-  <div class="${cardClass}" id="act_card_${idx}" onclick="actCardClick(event, ${idx})">
+  <div class="${cardClass}" id="act_card_${ACT_DETAIL_RENDER?'detail_':''}${idx}" onclick="actCardClick(event, ${idx})">
     <div class="act-card-header">
       <div style="display:flex;align-items:center;gap:8px">
         <span class="act-badge act-badge-${stratGroup}">${stratLabel}</span>
@@ -5253,6 +5357,7 @@ function buildActCard(a, idx, today){
         <span>P&L abierto</span>
         <b style="color:${heroPnlCol}">${heroPnlStr}</b>
         <small>${heroTpStr}</small>
+        ${pCur==null?'<em class="act-partial">Sin precio actual · P/L no disponible</em>':''}
       </div>
       <div class="act-hero-cell">
         <span>${strat==='ACC'?'Capital':'Prima entrada'}</span>
@@ -5277,7 +5382,7 @@ function buildActCard(a, idx, today){
       <div class="act-kv"><span class="act-k">Tipo</span><span class="act-v" style="color:#5a7a9a">acciones</span></div>
       <div class="act-kv">
         <span class="act-k">Precio actual</span>
-        <input class="act-price-input" id="act_price_${idx}" type="number" step="0.01" placeholder="0.00"
+         <input class="act-price-input" id="act_price_${ACT_DETAIL_RENDER?'detail_':''}${idx}" type="number" step="0.01" placeholder="0.00"
           value="${pCur!=null?pCur:''}" title="Precio actual del mercado de la acción">
       </div>
       <div class="act-kv"><span class="act-k">P&L ($)</span><span class="${accPnlClass}">${accPnlStr}</span></div>
@@ -5301,7 +5406,7 @@ function buildActCard(a, idx, today){
       <div class="act-kv"><span class="act-k">IVR</span><span class="act-v">${a.ivr!=null?a.ivr+'%':'—'}</span></div>
       <div class="act-kv">
         <span class="act-k">Precio actual</span>
-        <input class="act-price-input" id="act_price_${idx}" type="number" step="0.01" placeholder="0.00"
+         <input class="act-price-input" id="act_price_${ACT_DETAIL_RENDER?'detail_':''}${idx}" type="number" step="0.01" placeholder="0.00"
           value="${pCur!=null?pCur:''}" title="Introduce el precio actual de la opción">
       </div>
       <div class="act-kv"><span class="act-k">P&L estim. bruto</span><span class="${pnlClass}">${pnlStr}</span></div>
@@ -8717,6 +8822,9 @@ function renderStratDash(){
       <div class="d-kpi-sub">profit factor</div>
     </div>
     <div class="d-kpi"><div class="d-kpi-lbl">Fiabilidad</div><div class="d-kpi-val" style="color:${wr>=70?'#3fb68b':wr>=50?'#f0a500':'#f04545'}">${wr.toFixed(1)}%</div><div class="d-kpi-sub">${wins.length}W · ${losses.length}L</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Operaciones</div><div class="d-kpi-val">${data.length}</div><div class="d-kpi-sub">en el período</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">TP medio</div><div class="d-kpi-val">${data.some(e=>e.tp!=null)?avgTp.toFixed(1)+'%':'—'}</div><div class="d-kpi-sub">prima capturada</div></div>
+    <div class="d-kpi"><div class="d-kpi-lbl">Días medios</div><div class="d-kpi-val">${data.some(e=>e.tiempoOp!=null)?avgDays.toFixed(0)+'d':'—'}</div><div class="d-kpi-sub">en posición</div></div>
     <div class="d-kpi" title="ROI sobre capital comprometido:&#10;  Σ P&L $ / Σ (MaxRisk × contratos)&#10;&#10;Capital total expuesto: $${totalCapital.toLocaleString('es-ES',{maximumFractionDigits:0})}&#10;&#10;Normaliza estrategias con perfiles de&#10;capital muy distintos (un PCS arriesga el&#10;width × 100, un NP el strike × 100)." style="cursor:help">
       <div class="d-kpi-lbl">Uso de capital <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
       <div class="d-kpi-val" style="color:${roiCapital!=null?(roiCapital>=0?'#3fb68b':'#f04545'):'#5a7a9a'}">${roiCapital!=null?(roiCapital>=0?'+':'')+roiCapital.toFixed(2)+'%':'—'}</div>
@@ -9830,6 +9938,9 @@ function addMetricEntry(){
   const theta = parseFloat(document.getElementById('sm_theta')?.value);
   const vega  = parseFloat(document.getElementById('sm_vega')?.value);
   const gamma = parseFloat(document.getElementById('sm_gamma')?.value);
+  const navRead = parseFloat(document.getElementById('sm_nav')?.value);
+  const spy = parseFloat(document.getElementById('sm_spy')?.value);
+  const bpUsed = parseFloat(document.getElementById('sm_bpUsed')?.value);
   if(!date){ toast('Introduce la fecha', 'red'); return; }
 
   const month = date.slice(0,7);
@@ -9837,24 +9948,30 @@ function addMetricEntry(){
   let snap = SNAPS.find(s=>s.date===month);
   if(!snap){ snap={date:month,val:null,dep:0,ret:0,metrics:[]}; SNAPS.push(snap); }
   if(!snap.metrics) snap.metrics=[];
+  // Keep any future or imported fields on an edited reading.
+  const previous=snap.metrics.find(m=>m.ts===date)||{};
   // Remove existing entry for same date
   snap.metrics = snap.metrics.filter(m=>m.ts!==date);
-  snap.metrics.push({ts:date,
+  snap.metrics.push({...previous,ts:date,
     bp:isNaN(bp)?null:bp,
     delta:isNaN(delta)?null:delta,
     theta:isNaN(theta)?null:theta,
     vega:isNaN(vega)?null:vega,
-    gamma:isNaN(gamma)?null:gamma
+    gamma:isNaN(gamma)?null:gamma,
+    nav:Number.isFinite(navRead)&&navRead>0?navRead:null,
+    spy:Number.isFinite(spy)&&spy>0?spy:null,
+    bpUsed:Number.isFinite(bpUsed)&&bpUsed>0?bpUsed:null
   });
   snap.metrics.sort((a,b)=>a.ts.localeCompare(b.ts));
   SNAPS.sort((a,b)=>a.date.localeCompare(b.date));
   snapSave();
   // Clear inputs
-  ['sm_bp','sm_delta','sm_theta','sm_vega','sm_gamma'].forEach(id=>{
+  ['sm_bp','sm_delta','sm_theta','sm_vega','sm_gamma','sm_nav','sm_spy','sm_bpUsed'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   renderSnapMetricsList();
   renderDash();
+  renderSemaphores();
 }
 
 function renderSnapMetricsList(){
@@ -9914,432 +10031,65 @@ const _origOpenSnapModal = typeof openSnapModal === 'function' ? openSnapModal :
 // ══════════════════════════════════════════════════════════════
 // SEMÁFOROS DE MÉTRICAS
 // ══════════════════════════════════════════════════════════════
+// The following risk implementation replaces the old monthly-average calculations.
+// Monthly charts average ratios computed from individual, contemporaneous readings.
+function riskNum(v){ return v===null||v===undefined||v===''?null:(Number.isFinite(Number(v))?Number(v):null); }
+function riskReadings(){
+  return SNAPS.flatMap(s=>(s.metrics||[]).map(m=>{
+    const sameDay=(s.navEntries||[]).find(n=>n.ts===m.ts);
+    const nav=riskNum(m.nav)>0?riskNum(m.nav):riskNum(sameDay?.val)>0?riskNum(sameDay.val):s.date===m.ts&&riskNum(s.val)>0?riskNum(s.val):null;
+    return {...m,ts:m.ts||s.date,nav};
+  })).sort((a,b)=>a.ts.localeCompare(b.ts));
+}
+function riskRatios(m){
+  const t=riskNum(m.theta),d=riskNum(m.delta),v=riskNum(m.vega),n=riskNum(m.nav),s=riskNum(m.spy),u=riskNum(m.bpUsed),b=riskNum(m.bp);
+  return {theta_nav:t!==null&&n>0?t/n*100:null,delta_10k:d!==null&&n>0?d/(n/10000):null,delta_theta:d!==null&&t>0&&s>0?Math.abs(d)*s*.01/t:null,theta_bp:t!==null&&u>0?t/u*100:null,bp_usage:b,vega_theta:v!==null&&t>0?Math.abs(v)/t:null};
+}
+const RISK_DEFS=[
+  {key:'theta_nav',name:'Theta / NAV',sub:'El motor del tiempo',unit:'%',places:3,limits:'Negativo: −0,03% y −0,10% · Positivo: 0,03%, 0,10%, 0,20%',formula:'Theta / NAV de la misma fecha × 100. El signo negativo indica arrastre temporal.',zone:v=>v<-.10?['Arrastre intenso','bad']:v<-.03?['Arrastre temporal','bad']:v<.03?['Neutral','neutral']:v<.10?['Motor moderado','good']:v<.20?['Motor intenso','warn']:['Motor elevado','bad']},
+  {key:'delta_10k',name:'Delta β-SPY / $10k',sub:'La brújula del mercado',unit:' Δ/$10k',places:1,limits:'Magnitud 5 · 15 · 30',formula:'Delta beta ponderada SPY / (NAV / 10.000), conservando el signo. $1 de SPY y 1% de SPY son movimientos diferentes.',zone:v=>Math.abs(v)<5?['Baja','good']:Math.abs(v)<15?['Moderada','neutral']:Math.abs(v)<30?['Elevada','warn']:['Muy elevada','bad']},
+  {key:'delta_theta',name:'Delta / Theta',sub:'Dirección contra tiempo',unit:' días',places:2,limits:'1 · 3 · 7 días',formula:'|Delta β-SPY| × (SPY de esa lectura × 0,01) / Theta positivo. Días de Theta para compensar aproximadamente un movimiento adverso del 1% de SPY.',zone:v=>v<1?['Baja','good']:v<3?['Moderada','neutral']:v<7?['Elevada','warn']:['Muy elevada','bad']},
+  {key:'theta_bp',name:'Theta / BP usado',sub:'El rendimiento del margen',unit:'%',places:3,limits:'0,05% · 0,15% · 0,30%',formula:'Theta / BP utilizado real en dólares × 100. No se deducen dólares de BP Usage porque su denominador puede diferir del NAV.',zone:v=>v<0?['Arrastre temporal','bad']:v<.05?['Bajo','neutral']:v<.15?['Moderado','good']:v<.30?['Alto','good']:['Muy alto','warn']},
+  {key:'bp_usage',name:'BP Usage',sub:'El oxígeno de la cuenta',unit:'%',places:1,limits:'30% · 50% · 65% · 80%',formula:'Porcentaje registrado tal como lo reporta Tastytrade. No es una probabilidad de margin call.',zone:v=>v<30?['Bajo','neutral']:v<50?['Moderado','good']:v<65?['Elevado','warn']:v<80?['Alto','bad']:['Muy alto','bad']},
+  {key:'vega_theta',name:'|Vega| / Theta',sub:'La sensibilidad al pánico',unit:' días',places:2,limits:'1 · 2 · 5 días',formula:'|Vega firmado| / Theta positivo. Es sensibilidad a la IV, no al VIX spot.',zone:v=>v<1?['Baja','good']:v<2?['Moderada','neutral']:v<5?['Elevada','warn']:['Muy elevada','bad']}
+];
+function riskSeries(readings,key){
+  const byMonth=new Map();
+  readings.forEach(m=>{const v=riskRatios(m)[key];if(v===null)return;const month=m.ts.slice(0,7);if(!byMonth.has(month))byMonth.set(month,[]);byMonth.get(month).push(v)});
+  return [...byMonth].sort((a,b)=>a[0].localeCompare(b[0])).map(([month,vs])=>({month,value:vs.reduce((a,b)=>a+b,0)/vs.length,n:vs.length}));
+}
+function riskMini(series){
+  if(series.length<2)return '<span class="risk-no-chart">Sin tendencia</span>';
+  const values=series.map(v=>v.value),min=Math.min(...values),span=Math.max(...values)-min||1;
+  const points=values.map((v,i)=>`${Math.round(i*140/(values.length-1))},${Math.round(44-(v-min)*36/span)}`).join(' ');
+  return `<svg class="risk-mini" viewBox="0 0 140 52"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+}
 function renderSemaphores(){
-  const grid = document.getElementById('dSemaphoreGrid');
-  if(!grid) return;
-
-  const allSnaps = SNAPS.filter(s=>s.val).sort((a,b)=>a.date>b.date?1:-1);
-  if(!allSnaps.length){
-    grid.innerHTML = '<div style="font-family:\'Courier New\',monospace;font-size:8px;color:#2a4a6a;grid-column:1/-1;text-align:center;padding:20px">Sin snapshots. Añade uno desde + Snapshot.</div>';
-    return;
-  }
-
-  const lastSnap = allSnaps[allSnaps.length-1];
-  const nav = lastSnap.val;
-  const avg = key => {
-    if(!lastSnap.metrics||!lastSnap.metrics.length) return null;
-    const vals = lastSnap.metrics.map(e=>e[key]).filter(v=>v!=null);
-    return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
-  };
-
-  const bp    = avg('bp');
-  const delta = avg('delta');
-  const theta = avg('theta');
-  const vega  = avg('vega');
-  const gamma = avg('gamma');
-
-  const dateEl = document.getElementById('dMetricsDate');
-  if(dateEl) dateEl.textContent = 'Último snapshot: ' + lastSnap.date + (lastSnap.metrics&&lastSnap.metrics.length?' · '+lastSnap.metrics.length+' lecturas':'  · Sin métricas');
-
-  // Derived ratios
-  const thetaNavPct = (theta!=null&&nav) ? Math.abs(theta)/nav*100 : null;
-  // Delta: express as deltas per $10k of nav
-  const deltaPer10k = (delta!=null&&nav) ? Math.abs(delta)/(nav/10000) : null;
-  const deltaThetaR = (delta!=null&&theta!=null&&theta!==0) ? Math.abs(delta/theta) : null;
-  const vegaThetaR  = (vega!=null&&theta!=null&&theta!==0) ? Math.abs(vega/theta) : null;
-  const gammaThetaR = (gamma!=null&&theta!=null&&theta!==0) ? Math.abs(gamma/theta) : null;
-  const thetaBpR    = (theta!=null&&bp!=null&&bp!==0&&nav) ? Math.abs(theta)/(nav*bp/100)*100 : null;
-  const shadowDelta = (delta!=null&&gamma!=null) ? Math.abs(delta)+Math.abs(gamma) : null;
-  const shadowPer10k = (shadowDelta!=null&&nav) ? shadowDelta/(nav/10000) : null;
-
-  // History arrays for sparklines (one value per month from SNAPS)
-  const histMonths = allSnaps.map(s=>s.date);
-  const histAvg = (snaps, key) => snaps.map(s=>{
-    if(!s.metrics||!s.metrics.length) return null;
-    const vals=s.metrics.map(e=>e[key]).filter(v=>v!=null);
-    return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
-  });
-  const histTheta   = histAvg(allSnaps,'theta');
-  const histDelta   = histAvg(allSnaps,'delta');
-  const histVega    = histAvg(allSnaps,'vega');
-  const histGamma   = histAvg(allSnaps,'gamma');
-  const histBp      = histAvg(allSnaps,'bp');
-  const histNav     = allSnaps.map(s=>s.val);
-
-  const histThetaNav  = histTheta.map((t,i)=> (t!=null&&histNav[i]) ? Math.abs(t)/histNav[i]*100 : null);
-  const histDelta10k  = histDelta.map((d,i)=> (d!=null&&histNav[i]) ? Math.abs(d)/(histNav[i]/10000) : null);
-  const histDeltaTheta= histDelta.map((d,i)=> (d!=null&&histTheta[i]&&histTheta[i]!==0) ? Math.abs(d/histTheta[i]) : null);
-  const histVegaTheta = histVega.map((v,i)=>  (v!=null&&histTheta[i]&&histTheta[i]!==0) ? Math.abs(v/histTheta[i]) : null);
-  const histGammaTheta= histGamma.map((g,i)=> (g!=null&&histTheta[i]&&histTheta[i]!==0) ? Math.abs(g/histTheta[i]) : null);
-  const histThetaBp   = histTheta.map((t,i)=> (t!=null&&histBp[i]&&histBp[i]!==0&&histNav[i]) ? Math.abs(t)/(histNav[i]*histBp[i]/100)*100 : null);
-  const histShadow10k = histDelta.map((d,i)=> (d!=null&&histGamma[i]!=null&&histNav[i]) ? (Math.abs(d)+Math.abs(histGamma[i]))/(histNav[i]/10000) : null);
-
-  const sems = [
-    {
-      key:'theta_nav', label:'Theta / Net Liq', value:thetaNavPct, hist:histThetaNav,
-      raw: theta!=null?'Θ='+theta.toFixed(0)+' $/día | NAV=$'+(nav/1000).toFixed(0)+'k':'',
-      fmt: v=>v.toFixed(3)+'%',
-      zones:[{max:0.15,col:'#4a9eff',txt:'Infrautilizado'},{max:0.35,col:'#3fb68b',txt:'Óptimo'},{max:0.50,col:'#f0a500',txt:'Agresivo'},{max:Infinity,col:'#f04545',txt:'Sobreapalancado'}],
-      tooltip:`THETA / NET LIQ — Motor de Ingresos
-
-¿Qué mide?
-El Theta es el dinero que tu cartera gana cada día por el mero paso del tiempo (la "renta" de ser vendedor de opciones). Este ratio lo divide entre el tamaño total de tu cuenta (Net Liq) para saber qué porcentaje de tu patrimonio generas diariamente en prima.
-
-¿Cómo leerlo?
-Un 0.20% sobre $43k = $86/día de Theta. Si el mercado no se mueve, cobras eso.
-
-Umbrales:
-• < 0.15% → Infrautilizado: tienes capital sin trabajar, puedes abrir más posiciones
-• 0.15–0.35% → Óptimo: buena densidad de income sin exceso de riesgo
-• 0.35–0.50% → Agresivo: rentable pero con poco margen ante imprevistos
-• > 0.50% → Peligroso: un solo movimiento brusco puede borrar semanas de Theta`,
-    },
-    {
-      key:'delta_10k', label:'Delta β-SPY / $10k', value:deltaPer10k, hist:histDelta10k,
-      raw: delta!=null?'Δ='+delta.toFixed(1)+' total | '+((nav/1000).toFixed(0))+'k NAV':'',
-      fmt: v=>v.toFixed(1)+' Δ/$10k',
-      zones:[{max:3,col:'#3fb68b',txt:'Neutral'},{max:5,col:'#3fb68b',txt:'Neutral'},{max:7,col:'#f0a500',txt:'Moderado'},{max:Infinity,col:'#f04545',txt:'Direccional'}],
-      tooltip:`DELTA β-SPY POR CADA $10K — Riesgo Direccional
-
-¿Qué mide?
-El Delta beta-weighted contra SPY indica cuánto ganas o pierdes (en dólares) si el mercado sube o baja un 1%. Este ratio lo normaliza por $10k de cuenta para hacerlo comparable independientemente del tamaño de la cuenta.
-
-Dato que introduces: el Delta total de la cuenta que te da TastyTrade directamente (ya beta-weighted).
-
-¿Cómo leerlo?
-Δ=18 en cuenta de $43k → 18/4.31 = 4.2 Δ por $10k. Si SPY sube 1%, ganas ~$180. Si baja 1%, pierdes ~$180.
-
-Umbrales (por cada $10k de Net Liq):
-• 0–5 → Neutral: exposición controlada, típico de cartera balanceada
-• 5–7 → Moderado: algo de sesgo direccional, monitorizar
-• > 7 → Direccional: la cuenta se comporta más como una apuesta al mercado que como income`,
-    },
-    {
-      key:'delta_theta', label:'Delta / Theta', value:deltaThetaR, hist:histDeltaTheta,
-      raw: (delta!=null&&theta!=null)?'Δ='+delta.toFixed(1)+' / Θ='+theta.toFixed(0):'',
-      fmt: v=>v.toFixed(2),
-      zones:[{max:0.20,col:'#3fb68b',txt:'Income puro'},{max:0.50,col:'#f0a500',txt:'Aceptable'},{max:Infinity,col:'#f04545',txt:'Direccional'}],
-      tooltip:`DELTA / THETA — Calidad del Income
-
-¿Qué mide?
-Divide tu exposición direccional (Delta) entre tu cobro diario de prima (Theta). Responde a la pregunta: ¿mi beneficio depende del paso del tiempo o de acertar la dirección?
-
-¿Cómo leerlo?
-Si Delta=18 y Theta=75: ratio=0.24. Por cada $1 de Theta que cobras al día, tienes 0.24$ de exposición direccional. Cuanto más bajo, más "puro" es el income.
-
-Umbrales:
-• 0–0.20 → Excelente: el beneficio viene del tiempo, no de adivinar el mercado
-• 0.20–0.50 → Aceptable: algo de sesgo pero el Theta sigue dominando
-• > 0.50 → Direccional: el portfolio se comporta como una apuesta al alza/baja, el Theta no compensa el riesgo asumido`,
-    },
-    {
-      key:'vega_theta', label:'|Vega| / Theta', value:vegaThetaR, hist:histVegaTheta,
-      raw: (vega!=null&&theta!=null)?'V='+vega.toFixed(0)+' / Θ='+theta.toFixed(0):'',
-      fmt: v=>v.toFixed(2),
-      zones:[{max:1.0,col:'#3fb68b',txt:'Muy robusto'},{max:2.0,col:'#3fb68b',txt:'Robusto'},{max:5.0,col:'#f0a500',txt:'Vulnerable'},{max:Infinity,col:'#f04545',txt:'Peligroso'}],
-      tooltip:`|VEGA| / THETA — Resiliencia al Pánico de Mercado
-
-¿Qué mide?
-Vega mide cuánto cambia el valor de tu cartera si la volatilidad implícita (IV) sube 1 punto. Como vendedor de opciones, tu Vega es negativo (te perjudica que suba la IV). Este ratio indica cuántos días de Theta cobrado puedes perder en un pico de volatilidad.
-
-¿Cómo leerlo?
-Vega=-120, Theta=75: ratio=1.60. Si la IV sube 1 punto, pierdes 1.6 días de Theta. Si la IV sube 5 puntos (un susto normal), pierdes 8 días de trabajo.
-
-Nota: introduces el Vega con signo negativo tal como lo da TastyTrade; el ratio usa el valor absoluto.
-
-Umbrales:
-• < 1.0 → Muy robusto: un pico de IV de 5 puntos equivale a menos de 5 días de Theta
-• 1.0–2.0 → Robusto: exposición manejable a la volatilidad
-• 2.0–5.0 → Vulnerable: un spike de IV puede borrar semanas de beneficios
-• > 5.0 → Peligroso: un VIX event puede arrasar la cuenta en horas`,
-    },
-    {
-      key:'gamma_theta', label:'|Gamma| / Theta', value:gammaThetaR, hist:histGammaTheta,
-      raw: (gamma!=null&&theta!=null)?'Γ='+gamma.toFixed(0)+' / Θ='+theta.toFixed(0):'',
-      fmt: v=>v.toFixed(2),
-      zones:[{max:0.50,col:'#3fb68b',txt:'Estable'},{max:1.0,col:'#f0a500',txt:'Vigilar'},{max:Infinity,col:'#f04545',txt:'Inestable'}],
-      tooltip:`|GAMMA| / THETA — Control de Aceleración
-
-¿Qué mide?
-Gamma indica la velocidad a la que cambia tu Delta cuando el mercado se mueve (la "aceleración"). Un Gamma alto significa que tus deltas se disparan con movimientos rápidos. Este ratio lo compara con tu Theta para saber si la aceleración del precio puede superar tu capacidad de cobro de prima.
-
-¿Cómo leerlo?
-Gamma=8, Theta=75: ratio=0.11. Por cada $1 de Theta diario, tienes 0.11 de aceleración delta. Muy controlado. Si el ratio fuera 1.0, un movimiento brusco del mercado generaría tanto riesgo delta nuevo como Theta cobras en todo el día.
-
-Relevante especialmente si tienes 0DTE o posiciones muy cerca del vencimiento.
-
-Umbrales:
-• < 0.50 → Estable: la aceleración es lenta, tienes tiempo para reaccionar
-• 0.50–1.0 → Vigilar: los deltas pueden moverse rápido, cuidado en días volátiles
-• > 1.0 → Inestable: la aceleración supera al Theta, riesgo de pérdidas bruscas`,
-    },
-    {
-      key:'theta_bp', label:'Theta / BP Usado', value:thetaBpR, hist:histThetaBp,
-      raw: (theta!=null&&bp!=null&&nav)?'Θ='+theta.toFixed(0)+' / BP$='+(nav*bp/100).toFixed(0):'',
-      fmt: v=>v.toFixed(3)+'%',
-      zones:[{max:0.5,col:'#4a9eff',txt:'Ineficiente'},{max:1.0,col:'#3fb68b',txt:'Eficiente'},{max:Infinity,col:'#22d3a0',txt:'Muy eficiente'}],
-      tooltip:`THETA / BP USADO — Eficiencia del Margen
-
-¿Qué mide?
-Compara el Theta diario que generas con el capital que el broker te tiene bloqueado como margen (Buying Power usado). Mide cuánto rinde cada dólar de margen comprometido.
-
-¿Cómo leerlo?
-Theta=75, BP usado=52% de $43k = $22.4k. Ratio = 75/22400*100 = 0.335%. Por cada $100 de margen bloqueado, generas $0.335 al día.
-
-BP Usado: el % de margen bloqueado que TastyTrade reporta directamente en la plataforma.
-
-Umbrales:
-• < 0.5% → Ineficiente: estás bloqueando mucho capital para el income que genera
-• 0.5–1.0% → Eficiente: buena relación entre margen y prima cobrada
-• > 1.0% → Muy eficiente: posiciones pequeñas en relación al margen, o strikes muy cercanos`,
-    },
-    {
-      key:'bp_usage', label:'BP Usage %', value:bp, hist:histBp,
-      raw: (bp!=null&&nav)?'BP$='+(nav*bp/100).toFixed(0)+' bloqueado | NAV=$'+(nav/1000).toFixed(0)+'k':'',
-      fmt: v=>v.toFixed(1)+'%',
-      zones:[{max:30,col:'#4a9eff',txt:'Bajo'},{max:50,col:'#3fb68b',txt:'Óptimo'},{max:65,col:'#f0a500',txt:'Elevado'},{max:80,col:'#f04545',txt:'Alto'},{max:Infinity,col:'#ff0000',txt:'Crítico — reducir'}],
-      tooltip:`BP USAGE % — Capital Bloqueado como Margen
-
-¿Qué mide?
-El porcentaje de tu cuenta que el broker (TastyTrade) tiene bloqueado como garantía de tus posiciones abiertas. Es el capital que no puedes usar para nada más mientras las posiciones están vivas.
-
-¿Cómo leerlo?
-Si tu cuenta tiene $43k y el BP Usage es 52%, tienes $22.4k bloqueados como margen. Solo $20.6k están libres para abrir nuevas posiciones o cubrir asignaciones.
-
-¿Por qué importa?
-Un BP Usage alto limita tu capacidad de reacción. Si el mercado se mueve en tu contra y necesitas cubrir una posición o abrir un hedge, no tendrás capital disponible. Además, TastyTrade puede hacer una margin call si superas el límite.
-
-Umbrales:
-• < 30% → Bajo: demasiado capital libre, infrautilizando la cuenta
-• 30–50% → Óptimo: buen equilibrio entre actividad y colchón de seguridad
-• 50–65% → Elevado: monitorizar, poco margen para imprevistos
-• 65–80% → Alto: reducir posiciones o cerrar las menos eficientes
-• > 80% → Crítico: riesgo de margin call, acción inmediata necesaria`,
-    },
-    {
-      key:'shadow_delta', label:'Shadow Delta / $10k', value:shadowPer10k, hist:histShadow10k,
-      raw: (shadowDelta!=null)?'|Δ|+|Γ|='+shadowDelta.toFixed(1)+' | '+(deltaPer10k!=null?deltaPer10k.toFixed(1)+' Δ/$10k actual':''):'',
-      fmt: v=>v.toFixed(1)+' /$10k',
-      zones:[{max:5,col:'#3fb68b',txt:'Controlado'},{max:7,col:'#f0a500',txt:'Próximo al límite'},{max:Infinity,col:'#f04545',txt:'Ajustar posiciones'}],
-      tooltip:`SHADOW DELTA / $10k — Exposición Proyectada ante Movimiento Brusco
-
-¿Qué mide?
-Shadow Delta = |Delta| + |Gamma|. Es tu exposición direccional real si el mercado se mueve un 1% en tu contra ahora mismo. El Gamma representa los deltas adicionales que acumularías con ese movimiento.
-
-¿Por qué importa?
-Tu Delta actual puede ser 18, pero si tu Gamma es 8, ante una caída del 1% tu Delta efectiva se convierte en ~26. El Shadow Delta anticipa ese escenario antes de que ocurra.
-
-¿Cómo leerlo?
-Se normaliza por $10k igual que el Delta para compararlo con los mismos umbrales. Si Shadow Delta/10k supera significativamente tu Delta/10k actual, significa que las posiciones son inestables y podrían descontrolarse.
-
-Umbrales (por $10k de Net Liq):
-• 0–5 → Controlado: incluso ante un movimiento del 1%, la exposición sigue siendo manejable
-• 5–7 → Próximo al límite: planificar ajustes preventivos
-• > 7 → Ajustar: la aceleración de deltas ante un movimiento puede superar el riesgo asumido`,
-    },
-  ];
-
-  // Build a mini sparkline SVG for the history
-  function _sparkline(histData, zones, width=80, height=28){
-    const vals = histData.filter(v=>v!=null);
-    if(vals.length < 2) return '';
-    const mn = Math.min(...vals)*0.9, mx = Math.max(...vals)*1.1;
-    const range = mx-mn || 1;
-    const pts = histData.map((v,i)=>{
-      if(v==null) return null;
-      const xi = (i/(histData.length-1||1))*width;
-      const yi = height - ((v-mn)/range)*height;
-      return [xi.toFixed(1), yi.toFixed(1)];
-    }).filter(Boolean);
-    if(pts.length < 2) return '';
-    const path = pts.map((p,i)=>(i===0?'M':'L')+p[0]+' '+p[1]).join(' ');
-    const last = pts[pts.length-1];
-    const lastVal = vals[vals.length-1];
-    // color of last point
-    let dotCol = '#5a7a9a';
-    if(zones){
-      for(const z of zones){ if(lastVal<=z.max){ dotCol=z.col; break; } }
-    }
-    return `<svg width="${width}" height="${height}" style="overflow:visible;display:block"><path d="${path}" fill="none" stroke="#2a4a6a" stroke-width="1.5" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="${dotCol}"/></svg>`;
-  }
-
-  grid.innerHTML = sems.map(s => {
-    const v = s.value;
-    // Find color zone
-    let col='#5a7a9a', zoneTxt='Sin datos', zoneBg='#0d1117';
-    if(v!=null && s.zones){
-      for(const z of s.zones){
-        if(v<=z.max){ col=z.col; zoneTxt=z.txt; break; }
-      }
-      // Zone background: very subtle tint
-      zoneBg = col+'0d';
-    }
-    const valStr = v!=null ? s.fmt(v) : '—';
-    const spark   = s.hist ? _sparkline(s.hist, s.zones) : '';
-    const rawLine = s.raw ? `<div style="font-family:'Courier New',monospace;font-size:7px;color:#2a4a6a;margin-top:2px;line-height:1.4">${s.raw}</div>` : '';
-
-    // Tooltip: replace \n with actual newlines for title attr (use | as separator shown on hover)
-    const tipShort = s.tooltip.split('\n')[0]; // first line as label
-
-    return `<div onclick="semaphoreClick('${s.key}')" onmouseenter="semTipShow(event,this)" onmouseleave="semTipHide()" data-tip="${s.tooltip.replace(/`/g,'\\`').replace(/"/g,'&quot;')}" style="background:${zoneBg};border:1px solid ${col}33;border-left:3px solid ${col};border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:3px;cursor:pointer;transition:border-color .2s">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-family:'Courier New',monospace;font-size:7px;text-transform:uppercase;letter-spacing:.5px;color:#5a7a9a">${s.label}</span>
-        <span style="font-size:9px;color:#3a5468">ⓘ</span>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span style="font-family:'Courier New',monospace;font-size:${v!=null?'16':'14'}px;font-weight:700;color:${col}">${valStr}</span>
-        ${spark}
-      </div>
-      <div style="font-family:'Courier New',monospace;font-size:8px;font-weight:700;color:${col}">${zoneTxt}</div>
-      ${rawLine}
-    </div>`;
+  const grid=document.getElementById('dSemaphoreGrid');if(!grid)return;
+  const readings=riskReadings(),last=readings.at(-1),vals=last?riskRatios(last):{};
+  const navSnap=[...SNAPS].filter(s=>riskNum(s.val)>0).sort((a,b)=>a.date.localeCompare(b.date)).at(-1);
+  const h=document.getElementById('riskHeadline');
+  if(h)h.innerHTML=[['NAV',navSnap?riskNum(navSnap.val).toLocaleString('es-ES',{style:'currency',currency:'USD'}):'—',navSnap?.date||'Sin snapshot'],['Theta',riskNum(last?.theta)??'—','$/día'],['Delta β-SPY',riskNum(last?.delta)??'—',last?.ts||'—'],['Vega',riskNum(last?.vega)??'—',last?.ts||'—'],['BP Usage',riskNum(last?.bp)!==null?riskNum(last.bp)+'%':'—','reportado']].map(([title,value,sub])=>`<div><span>${title}</span><b>${value}</b><small>${sub}</small></div>`).join('');
+  document.getElementById('dMetricsDate').textContent=last?'Última lectura: '+last.ts:'Sin lecturas';
+  grid.innerHTML=RISK_DEFS.map(def=>{
+    const v=vals[def.key]??null,series=riskSeries(readings,def.key),theta=riskNum(last?.theta);
+    let [state,tone]=v===null?['Sin datos','neutral']:def.zone(v);
+    if(v===null&&theta!==null&&theta<=0&&['delta_theta','vega_theta'].includes(def.key))state='Sin motor temporal positivo';
+    const shown=v===null?'—':(v>0&&def.key!=='bp_usage'?'+':'')+v.toLocaleString('es-ES',{minimumFractionDigits:def.places,maximumFractionDigits:def.places})+def.unit;
+    const hint=v===null&&def.key==='delta_theta'&&theta>0?'Falta SPY de la lectura':v===null&&def.key==='theta_bp'?'Falta BP utilizado real':v===null&&['theta_nav','delta_10k'].includes(def.key)?'Falta NAV de la misma fecha':'';
+    const source=def.key==='delta_theta'&&riskNum(last?.spy)>0?' · SPY '+last.spy:def.key==='theta_bp'&&riskNum(last?.bpUsed)>0?' · BP $'+last.bpUsed:def.key==='vega_theta'&&riskNum(last?.vega)!==null?' · Vega '+last.vega:['theta_nav','delta_10k'].includes(def.key)&&riskNum(last?.nav)>0?' · NAV $'+last.nav:'';
+    return `<article class="risk-card risk-${tone}"><div class="risk-card-top"><div><h2>${def.name}</h2><p>${def.sub}</p></div>${riskMini(series)}</div><strong>${shown}</strong><div class="risk-status">${state}</div>${hint?`<p class="risk-hint">${hint}</p>`:''}<div class="risk-card-meta">${last?.ts||'—'} · ${series.length} meses${source}</div><details><summary>Fórmula y límites</summary><p>${def.formula}</p><p><b>Umbrales:</b> ${def.limits}</p><button type="button" onclick="semaphoreClick('${def.key}')">Ver evolución</button></details></article>`;
   }).join('');
 }
-
-let _semTipTimer = null;
-function semTipHide(){
-  _semTipTimer = setTimeout(()=>{
-    const t = document.getElementById('semTooltip');
-    if(t) t.style.display = 'none';
-  }, 80);
-}
-function semTipShow(event, card){
-  clearTimeout(_semTipTimer);
-  const tip = card.getAttribute('data-tip') || '';
-  if(!tip) return;
-  let el = document.getElementById('semTooltip');
-  if(!el){
-    el = document.createElement('div');
-    el.id = 'semTooltip';
-    el.style.cssText = 'position:fixed;z-index:9800;background:#070b10;border:1px solid #1e2d3d;border-radius:6px;padding:14px 16px;max-width:360px;box-shadow:0 8px 32px #000c;pointer-events:none;display:none';
-    document.body.appendChild(el);
-  }
-  // Format the tooltip text with styled sections
-  const lines = tip.split('\n');
-  let html = '';
-  lines.forEach((line, i) => {
-    if(i===0){
-      // Title line
-      html += `<div style="font-family:'Courier New',monospace;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#4a9eff;margin-bottom:8px;border-bottom:1px solid #1e2d3d;padding-bottom:6px">${line}</div>`;
-    } else if(line.startsWith('• ')){
-      // Bullet point
-      const rest = line.slice(2);
-      const arrowIdx = rest.indexOf('→');
-      if(arrowIdx > 0){
-        const range = rest.slice(0, arrowIdx).trim();
-        const desc  = rest.slice(arrowIdx+1).trim();
-        html += `<div style="display:flex;gap:6px;margin-bottom:3px"><span style="font-family:'Courier New',monospace;font-size:8px;color:#f0a500;flex-shrink:0">•</span><span style="font-family:'Courier New',monospace;font-size:8px"><span style="color:#c9d1d9">${range}</span><span style="color:#5a7a9a"> → </span><span style="color:#9a6fff">${desc}</span></span></div>`;
-      } else {
-        html += `<div style="font-family:'Courier New',monospace;font-size:8px;color:#c9d1d9;margin-bottom:3px">• ${rest}</div>`;
-      }
-    } else if(line.trim() === ''){
-      html += '<div style="height:6px"></div>';
-    } else if(line.endsWith(':') || line.match(/^[A-Z¿]/)){
-      // Section header
-      html += `<div style="font-family:'Courier New',monospace;font-size:8px;font-weight:700;color:#3fb68b;margin-top:6px;margin-bottom:3px">${line}</div>`;
-    } else {
-      html += `<div style="font-family:'Courier New',monospace;font-size:8px;color:#8a9ab0;margin-bottom:3px;line-height:1.5">${line}</div>`;
-    }
-  });
-  el.innerHTML = html;
-  el.style.display = 'block';
-  // Position: prefer right of card, flip left if near edge
-  const rect = card.getBoundingClientRect();
-  const tw = 360, th = el.offsetHeight || 200;
-  let left = rect.right + 10;
-  let top  = rect.top;
-  if(left + tw > window.innerWidth - 10) left = rect.left - tw - 10;
-  if(top  + th > window.innerHeight - 10) top = window.innerHeight - th - 10;
-  el.style.left = Math.max(10, left) + 'px';
-  el.style.top  = Math.max(10, top)  + 'px';
-}
 function semaphoreClick(key){
-  // Open a modal with the full historical chart for this metric
-  const allSnaps = SNAPS.filter(s=>s.val).sort((a,b)=>a.date>b.date?1:-1);
-  const labels   = allSnaps.map(s=>s.date);
-  const nav      = s=>s.val;
-
-  const dataMap = {
-    theta_nav:    { label:'Theta / Net Liq (%)', color:'#3fb68b', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.theta!=null&&s.val)?Math.abs(a.theta)/s.val*100:null; }, zones:[{max:0.15,c:'#4a9eff'},{max:0.35,c:'#3fb68b'},{max:0.50,c:'#f0a500'},{max:Infinity,c:'#f04545'}] },
-    delta_10k:    { label:'Delta β-SPY / $10k',   color:'#4a9eff', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.delta!=null&&s.val)?Math.abs(a.delta)/(s.val/10000):null; }, zones:[{max:5,c:'#3fb68b'},{max:7,c:'#f0a500'},{max:Infinity,c:'#f04545'}] },
-    delta_theta:  { label:'Delta / Theta',         color:'#f0a500', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.delta!=null&&a.theta)?Math.abs(a.delta/a.theta):null; }, zones:[{max:0.20,c:'#3fb68b'},{max:0.50,c:'#f0a500'},{max:Infinity,c:'#f04545'}] },
-    vega_theta:   { label:'|Vega| / Theta',        color:'#c084fc', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.vega!=null&&a.theta)?Math.abs(a.vega/a.theta):null; }, zones:[{max:2.0,c:'#3fb68b'},{max:5.0,c:'#f0a500'},{max:Infinity,c:'#f04545'}] },
-    gamma_theta:  { label:'|Gamma| / Theta',       color:'#ff6b9d', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.gamma!=null&&a.theta)?Math.abs(a.gamma/a.theta):null; }, zones:[{max:0.50,c:'#3fb68b'},{max:1.0,c:'#f0a500'},{max:Infinity,c:'#f04545'}] },
-    theta_bp:     { label:'Theta / BP Usado (%)',  color:'#22d3a0', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.theta!=null&&a.bp&&s.val)?Math.abs(a.theta)/(s.val*a.bp/100)*100:null; }, zones:[{max:0.5,c:'#4a9eff'},{max:1.0,c:'#3fb68b'},{max:Infinity,c:'#22d3a0'}] },
-    shadow_delta: { label:'Shadow Delta / $10k',   color:'#f04545', fn:(s)=>{ const a=_snapMonthMetrics(s.date); return (a&&a.delta!=null&&a.gamma!=null&&s.val)?(Math.abs(a.delta)+Math.abs(a.gamma))/(s.val/10000):null; }, zones:[{max:5,c:'#3fb68b'},{max:7,c:'#f0a500'},{max:Infinity,c:'#f04545'}] },
-  };
-  const dm = dataMap[key];
-  if(!dm||!labels.length) return;
-
-  const vals = allSnaps.map(dm.fn);
-
-  // Show modal with Chart.js chart
-  let overlay = document.getElementById('semModalOverlay');
-  if(!overlay){
-    overlay = document.createElement('div');
-    overlay.id = 'semModalOverlay';
-    overlay.style.cssText = 'display:none;position:fixed;inset:0;background:#000000cc;z-index:9500;display:flex;align-items:center;justify-content:center';
-    overlay.onclick = e=>{ if(e.target===overlay) overlay.style.display='none'; };
-    overlay.innerHTML = '<div style="background:#0d1117;border:1px solid #1e2d3d;border-radius:8px;padding:20px;width:640px;max-width:95vw"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span id="semModalTitle" style="font-family:\'Courier New\',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#c9d1d9"></span><button onclick="document.getElementById(\'semModalOverlay\').style.display=\'none\'" style="background:none;border:none;color:#5a7a9a;cursor:pointer;font-size:14px">✕</button></div><canvas id="semModalCanvas" height="220"></canvas></div>';
-    document.body.appendChild(overlay);
-  }
-  overlay.style.display = 'flex';
-  document.getElementById('semModalTitle').textContent = dm.label + ' — Evolución mensual';
-
-  const canvas = document.getElementById('semModalCanvas');
-  // Destroy previous chart if any
-  if(canvas._chartInst) canvas._chartInst.destroy();
-
-  // Build zone annotation backgrounds for datasets
-  const maxVal = Math.max(...vals.filter(v=>v!=null))*1.2 || 1;
-  canvas._chartInst = new Chart(canvas, {
-    type:'line',
-    data:{
-      labels,
-      datasets:[{
-        label: dm.label,
-        data: vals,
-        borderColor: dm.color,
-        borderWidth: 2,
-        pointRadius: 4,
-        pointBackgroundColor: vals.map(v=>{
-          if(v==null) return '#0d1117';
-          for(const z of dm.zones){ if(v<=z.max) return z.c; }
-          return dm.color;
-        }),
-        pointBorderColor: '#0d1117',
-        pointBorderWidth: 1,
-        fill: false,
-        tension: 0.3,
-        spanGaps: true,
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          callbacks:{
-            label: ctx => ' '+dm.label+': '+(ctx.raw!=null?ctx.raw.toFixed(3):'—'),
-          },
-          backgroundColor:'#0d1117',borderColor:'#1e2d3d',borderWidth:1,
-          titleColor:'#5a7a9a',bodyColor:'#c9d1d9',
-          titleFont:{family:'Courier New',size:9},
-          bodyFont:{family:'Courier New',size:10},
-        },
-        zoom: ZCFG
-      },
-      scales:{
-        x:{ ticks:{color:'#5a7a9a',font:{size:8,family:'Courier New'}}, grid:{color:'#1e2d3d'} },
-        y:{ ticks:{color:'#5a7a9a',font:{size:8,family:'Courier New'}}, grid:{color:'#1e2d3d'} }
-      }
-    }
-  });
+  const def=RISK_DEFS.find(d=>d.key===key);if(!def)return;
+  const series=riskSeries(riskReadings(),key);
+  let overlay=document.getElementById('semModalOverlay');
+  if(!overlay){overlay=document.createElement('div');overlay.id='semModalOverlay';overlay.className='risk-chart-overlay';overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};document.body.appendChild(overlay)}
+  overlay.innerHTML=`<div class="risk-chart-dialog"><header><h2>${def.name} · evolución mensual</h2><button onclick="document.getElementById('semModalOverlay').remove()">✕</button></header>${series.length?'<canvas id="semModalCanvas" height="240"></canvas>':'<p>Sin datos suficientes.</p>'}<p>Media mensual de ratios por observación válida · ${series.reduce((n,s)=>n+s.n,0)} lecturas.</p></div>`;
+  if(series.length&&typeof Chart!=='undefined')new Chart(document.getElementById('semModalCanvas'),{type:'line',data:{labels:series.map(s=>s.month),datasets:[{data:series.map(s=>s.value),borderColor:'#4a9eff',backgroundColor:'#4a9eff22',fill:true,tension:.2,pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString('es-ES',{maximumFractionDigits:3})+def.unit}},zoom:typeof ZCFG!=='undefined'?ZCFG:undefined},scales:{x:{ticks:{color:'#8fa4bd'},grid:{color:'#20324c'}},y:{ticks:{color:'#8fa4bd'},grid:{color:'#20324c'}}}}});
 }
 
-
-
-// ══════════════════════════════════════════════════════════════
 // INIT — runs at page load
 // ══════════════════════════════════════════════════════════════
 
