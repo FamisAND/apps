@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 <link rel="stylesheet" href="design-system.css">
-<link rel="stylesheet" href="options.css?v=20261126-redesign">
+<link rel="stylesheet" href="options.css?v=20261128-polish">
 <style>
 .strat-picker{padding:10px 20px 6px;display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px;max-height:132px;overflow-y:auto;border-bottom:1px solid #101b28}
 .strat-pick-card{background:#0a1018;border:1px solid #1e2d3d;border-radius:6px;padding:7px 8px;cursor:pointer;min-height:72px;box-sizing:border-box;transition:border-color .16s,background .16s,box-shadow .16s}
@@ -124,13 +124,13 @@
           <label>Gamma</label>
           <input type="number" id="sm_gamma" placeholder="-10" step="1" style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:10px;padding:5px 6px;border-radius:3px;outline:none;width:100%"/>
         </div>
-        <button onclick="addMetricEntry()" class="cfg-save" style="padding:6px 12px;white-space:nowrap">+ Añadir</button>
       </div>
-      <details class="metric-optional"><summary>Datos para ratios de riesgo (opcionales)</summary><div class="metric-optional-grid">
+      <details class="metric-optional"><summary>SPY y BP utilizado para calcular las ratios (opcional)</summary><div class="metric-optional-grid">
         <label>NAV en esta lectura ($)<input type="number" id="sm_nav" min="0" step="0.01" placeholder="Si coincide con un NAV guardado, no hace falta"></label>
         <label>SPY en esta lectura ($)<input type="number" id="sm_spy" min="0" step="0.01" placeholder="Precio SPY de ese día"></label>
         <label>BP utilizado real ($)<input type="number" id="sm_bpUsed" min="0" step="0.01" placeholder="Valor reportado por el broker"></label>
       </div></details>
+      <div class="metric-add-row"><button onclick="addMetricEntry()" class="cfg-save">Guardar lectura</button></div>
       <div class="metric-entry-hint">Las ratios históricas usan valores de la misma lectura. Gamma sigue guardándose.</div>
       <div style="border-top:1px solid #1e2d3d;padding-top:10px">
         <div id="snapMetricsList" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
@@ -185,8 +185,7 @@
 
 <!-- CALENDAR MODAL -->
 <div id="tab-calendar" class="tab-page" style="display:none">
-  <div class="page-heading"><div><h1>Calendario</h1><p>Resultados realizados y vencimientos de posiciones abiertas</p></div></div>
-  <div class="cal-mode-tabs"><button class="cal-mode active" data-mode="results" onclick="setCalendarMode('results')">Resultados</button><button class="cal-mode" data-mode="expirations" onclick="setCalendarMode('expirations')">Vencimientos</button></div>
+  <div class="page-heading"><div><h1>Calendario</h1><p>Resultados realizados por fecha de cierre</p></div></div>
   <div class="cal-layout"><div class="cal-shell">
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1e2d3d">
@@ -300,9 +299,9 @@
 <!-- ESTRATEGIAS TAB -->
 <div id="tab-strat" class="tab-page" style="display:none">
   <!-- Header -->
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 12px;border-bottom:1px solid #1e2d3d">
+  <div class="strat-header" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 12px;border-bottom:1px solid #1e2d3d">
      <span class="d-title">Estrategias</span>
-    <div style="display:flex;align-items:center;gap:10px">
+    <div class="strat-filters" style="display:flex;align-items:center;gap:10px">
       <select id="stratDashSelect" onchange="renderStratDash()"
         style="background:#0a0e14;border:1px solid #1e2d3d;color:#9a6fff;font-family:'Courier New',monospace;font-size:10px;padding:5px 10px;border-radius:3px;outline:none;font-weight:700">
         <option value="">— Selecciona estrategia —</option>
@@ -422,7 +421,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid #1e2d3d">
     <span class="d-title">Operaciones abiertas</span>
     <div style="display:flex;align-items:center;gap:12px">
-      <span id="actSummary" style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a"></span>
+      <div id="actSummary" aria-label="Resumen de posiciones abiertas"></div>
       <div class="act-group-controls"><button id="actGroupAsset" class="active" onclick="setActGroup('asset')">Por activo</button><button id="actGroupStrat" onclick="setActGroup('strat')">Por estrategia</button></div>
       <select id="actSortBy" onchange="renderActivas()" style="background:#0a0e14;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;padding:4px 7px;border-radius:3px;outline:none">
         <option value="dte">↑ DTE</option>
@@ -823,7 +822,7 @@
 <div id="tab-dash" class="tab-page">
   <div class="d-header">
     <span class="d-title">Dashboard</span>
-    <div style="display:flex;align-items:center;gap:8px">
+    <div class="dash-toolbar" role="group" aria-label="Filtros del dashboard">
       <select class="d-period" id="dPeriod" onchange="onDPeriodChange()">
         <option value="custom">Custom</option>
         <option value="all" selected>Todo el historial</option>
@@ -838,14 +837,8 @@
         <input type="date" id="dDateTo" onchange="renderDash()"
           style="background:#0a0e14;border:1px solid #1e2d3d;color:#c9d1d9;font-family:'Courier New',monospace;font-size:9px;padding:4px 6px;border-radius:3px;outline:none;cursor:pointer">
       </div>
-      <button id="dGroupBtn" onclick="toggleDashGroup()"
-        style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer;transition:all .2s"
-        onmouseover="this.style.borderColor='#4a9eff';this.style.color='#4a9eff'"
-        onmouseout="updateGroupBtn()">Por operativa</button>
-      <button id="dUnrealBtn" onclick="toggleUnrealized()"
-        style="background:transparent;border:1px solid #1e2d3d;color:#5a7a9a;font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;border-radius:3px;cursor:pointer;transition:all .2s"
-        onmouseover="this.style.borderColor='#f0a500';this.style.color='#f0a500'"
-        onmouseout="updateUnrealBtn()">+ No realizados</button>
+      <button id="dGroupBtn" onclick="toggleDashGroup()">Por operativa</button>
+      <button id="dUnrealBtn" onclick="toggleUnrealized()">+ No realizados</button>
 
 
     </div>
@@ -855,6 +848,7 @@
   <div class="d-kpi-grid" id="dKpis"></div>
 
   <div class="d-card nav-chart-card"><div class="d-card-title">Evolución de patrimonio · NAV registrado</div><div class="d-chart-wrap"><canvas id="cNav" height="180"></canvas></div></div>
+  <section class="dash-quality" aria-label="Calidad y rendimiento de la operativa"><h2>Calidad de la operativa</h2><div id="dQuality" class="dash-quality-grid"></div></section>
   <div class="d-card" id="dashWatchCard"><div class="d-card-title">Operaciones a vigilar</div><div id="dashWatchList" class="dash-watch-list"></div></div>
 
   <!-- Row 1: P&L mensual | ROI cuenta acumulado -->
@@ -1943,7 +1937,7 @@ function showTab(name, btn){
   if(name==='strat'){ populateStratSelect(); renderStratOtroConfig(); renderStratDash(); }
   if(name==='risk'){ renderSemaphores(); }
   if(name==='calendar'){
-    if(!_calYear){const now=localISODate();_calYear=Number(now.slice(0,4));_calMonth=Number(now.slice(5,7));}
+    if(!_calYear){const latest=HIST.map(e=>e.cierre).filter(Boolean).sort().at(-1)||localISODate();_calYear=Number(latest.slice(0,4));_calMonth=Number(latest.slice(5,7));}
     renderCalModal();
   }
 }
@@ -3329,14 +3323,6 @@ function openCalModal(){
   showTab('calendar');
 }
 
-let _calMode = 'results';
-function setCalendarMode(mode){
-  _calMode = mode === 'expirations' ? 'expirations' : 'results';
-  document.querySelectorAll('.cal-mode').forEach(b=>b.classList.toggle('active',b.dataset.mode===_calMode));
-  document.getElementById('calDayDetail').innerHTML = '<h2>Selecciona un día</h2><p>El detalle de las operaciones aparecerá aquí.</p>';
-  renderCalModal();
-}
-
 let _calHoverTimer = null;
 function calDayLeave(){
   _calHoverTimer = setTimeout(()=>{
@@ -3351,7 +3337,7 @@ function calDayHover(event, dateStr){
   if(!data.length) return;
   const lines = data.map(e=>{
     const pnl = (e.totalNeto||0)*100;
-    const sign = pnl>=0?'+':'';
+    const sign = pnl>=0?'+':'−';
     const col = pnl>=0?'#3fb68b':'#f04545';
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #1e2d3d">
       <span style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">${esc(e.activo||'—')} <span style="color:${_stratColor(e.strat||'NP')}">${esc(e.strat||'—')}</span> ID:${esc(String(e.idOp||'—'))}</span>
@@ -3370,7 +3356,7 @@ function calDayHover(event, dateStr){
   popup.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#1a2b3c;border-bottom:1px solid #1e2d3d">
       <span style="font-family:'Courier New',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#c9d1d9">${dateStr}</span>
-      <span style="font-family:'Courier New',monospace;font-size:10px;font-weight:700;color:${totalCol}">${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(0)}</span>
+      <span style="font-family:'Courier New',monospace;font-size:10px;font-weight:700;color:${totalCol}">${totalPnl>=0?'+':'−'}$${Math.abs(totalPnl).toFixed(0)}</span>
     </div>
     ${lines}`;
   // Position near cursor
@@ -3387,11 +3373,6 @@ function calDayHover(event, dateStr){
   popup.addEventListener('mouseleave', calDayLeave);
 }
 function calDayClick(dateStr){
-  if(_calMode==='expirations'){
-    const positions=ACTIVAS.filter(a=>(a.exp||'').slice(0,10)===dateStr);
-    document.getElementById('calDayDetail').innerHTML=`<h2>${dateStr}</h2><p>${positions.length} vencimiento${positions.length===1?'':'s'}</p>${positions.map(a=>`<div class="cal-detail-row"><b>${esc(a.activo||'—')} · ${esc(a.strat||'—')}</b><span>ID ${esc(String(a.idOp||'—'))} · ${a.exp?optionDTE(a.exp,optionsValuationDate)+' DTE':'—'}</span></div>`).join('')}`;
-    return;
-  }
   const data = HIST.map(computeEntry).filter(e=>e.cierre===dateStr);
   if(!data.length){ document.getElementById('calDayDetail').innerHTML=`<h2>${dateStr}</h2><p>Sin cierres registrados.</p>`; return; }
   const totalPnl = data.reduce((s,e)=>s+(e.totalNeto||0),0)*100;
@@ -3434,15 +3415,12 @@ function renderCalModal(){
   const picker=document.getElementById('calMonthPicker');
   if(picker)picker.value=`${y}-${monthStr}`;
 
-  // Both modes use the original records. Expirations never contribute to realized P/L.
-  const data = _calMode==='results'
-    ? HIST.map(computeEntry).filter(e=>e.cierre&&e.cierre.startsWith(prefix))
-    : ACTIVAS.filter(a=>a.exp&&a.exp.startsWith(prefix));
+  const data = HIST.map(computeEntry).filter(e=>e.cierre&&e.cierre.startsWith(prefix));
   const byDay = {};
   data.forEach(e=>{
-    const d = (_calMode==='results'?e.cierre:e.exp).slice(0,10);
+    const d = e.cierre.slice(0,10);
     if(!byDay[d]) byDay[d]={pnl:0,trades:0};
-    if(_calMode==='results') byDay[d].pnl += (e.totalNeto||0)*100;
+    byDay[d].pnl += (e.totalNeto||0)*100;
     byDay[d].trades++;
   });
 
@@ -3454,8 +3432,8 @@ function renderCalModal(){
   const statsEl = document.getElementById('calMonthStats');
   if(statsEl){
     const pc = monthPnl>=0?'#3fb68b':'#f04545';
-    statsEl.innerHTML = _calMode==='expirations' ? `<div>Vencimientos: <b>${monthTrades}</b></div>` : `
-      <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">P&L mes: <span style="color:${pc};font-weight:700">${monthPnl>=0?'+':''}$${Math.abs(monthPnl).toFixed(0)}</span></div>
+    statsEl.innerHTML = `
+       <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">P&L mes: <span style="color:${pc};font-weight:700">${monthPnl>=0?'+':'−'}$${Math.abs(monthPnl).toFixed(0)}</span></div>
       <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">Trades: <span style="color:#c9d1d9">${monthTrades}</span></div>
       <div style="font-family:'Courier New',monospace;font-size:9px;color:#5a7a9a">Días positivos: <span style="color:#3fb68b">${winDays}/${totalDays}</span></div>`;
   }
@@ -3493,16 +3471,16 @@ function renderCalModal(){
     let inner = '';
     if(dayData){
       const pnlC = dayData.pnl>=0 ? '#3fb68b' : '#f04545';
-      const sign = dayData.pnl>=0 ? '+' : '';
-      inner = _calMode==='expirations' ? `<div class="cal-exp-count">${dayData.trades} vencimiento${dayData.trades===1?'':'s'}</div>` : `
+      const sign = dayData.pnl>=0 ? '+' : '−';
+      inner = `
         <div style="font-family:'Courier New',monospace;font-size:11px;font-weight:700;color:${pnlC};margin-top:4px">${sign}$${Math.abs(dayData.pnl).toFixed(0)}</div>
         <div style="font-family:'Courier New',monospace;font-size:8px;color:#3a5468;margin-top:2px">Trades: ${dayData.trades}</div>`;
     }
 
-    return `<div class="cal-day" style="border-color:${borderC};background:${_calMode==='expirations'&&dayData?'#10203a':bgC}" onclick="calDayClick('${dateStr}')" onmouseenter="${_calMode==='results'&&dayData?`calDayHover(event,'${dateStr}')`:'void 0'}" onmouseleave="calDayLeave()">
+    return `<button type="button" class="cal-day" aria-label="${dateStr}${dayData?' · '+dayData.trades+' operaciones':''}" style="border-color:${borderC};background:${bgC}" onclick="calDayClick('${dateStr}')" onmouseenter="${dayData?`calDayHover(event,'${dateStr}')`:'void 0'}" onmouseleave="calDayLeave()">
       <div style="font-family:'Courier New',monospace;font-size:9px;color:${isToday?'#4a9eff':'#2a4a6a'};font-weight:${isToday?'700':'400'};pointer-events:none">${d}</div>
       <div style="pointer-events:none">${inner}</div>
-    </div>`;
+    </button>`;
   }).join('');
 }
 
@@ -3991,29 +3969,21 @@ function renderKpis(d){
     '  WR '+(stats.row.wr*100).toFixed(0)+'% × $'+stats.row.avgWin.toFixed(0)+' / LR '+((1-stats.row.wr)*100).toFixed(0)+'% × $'+stats.row.avgLoss.toFixed(0),
   ].join('\n') : '';
 
-  document.getElementById('dKpis').innerHTML = `
-    <div class="d-kpi"><div class="d-kpi-lbl">P&amp;L total</div><div class="d-kpi-val ${totalPnl>=0?'dg':'dr'}">${totalPnl>=0?'+':''}\$${Math.abs(totalPnl).toLocaleString('es-ES',{maximumFractionDigits:0})}</div><div class="d-kpi-sub">${totalIds} IDs &middot; ${data.length} ops</div></div>
-    <div class="d-kpi" title="${wrTooltip.replace(/"/g,'&quot;')}" style="cursor:help">
-      <div class="d-kpi-lbl">Win rate · ID <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
-      <div class="d-kpi-val ${winRateId>=70?'dg':winRateId>=50?'da':'dr'}">${winRateId.toFixed(1)}%</div>
-      <div class="d-kpi-sub">${winsId}W &middot; ${lossesId}L &middot; ${totalIds} IDs</div>
-    </div>
-    <div class="d-kpi"><div class="d-kpi-lbl">TP medio</div><div class="d-kpi-val db">${avgTp!=null?avgTp.toFixed(1)+'%':'—'}</div><div class="d-kpi-sub">prima capturada</div></div>
-    <div class="d-kpi" title="${pfTooltip.replace(/"/g,'&quot;')}" style="cursor:help">
-      <div class="d-kpi-lbl">Profit Factor · ID <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
-      <div class="d-kpi-val ${pf>=1.5?'dg':pf>=1?'da':'dr'}">${pf!=null?pf.toFixed(2):'—'}</div>
-      <div class="d-kpi-sub">por trade idea</div>
-    </div>
-    <div class="d-kpi" title="${emTooltip.replace(/"/g,'&quot;')}" style="cursor:help">
-      <div class="d-kpi-lbl">Esp. Matemática · ID <span style="color:#4a9eff;font-size:7px">ⓘ</span></div>
-      <div class="d-kpi-val ${em>=0?'dg':'dr'}">${em!=null?(em>=0?'+$':'-$')+Math.abs(em).toFixed(0):'—'}</div>
-      <div class="d-kpi-sub">por trade idea</div>
-    </div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Días medio</div><div class="d-kpi-val">${avgDte!=null?avgDte.toFixed(0)+'d':'—'}</div><div class="d-kpi-sub">en posición</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Racha max W/L</div><div class="d-kpi-val"><span style="color:#3fb68b">${maxW}W</span><span style="color:#2a4a6a"> / </span><span style="color:#f04545">${maxL}L</span></div><div class="d-kpi-sub">consecutivas</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Rent. mensual media</div><div class="d-kpi-val ${monthlyAnn!=null&&monthlyAnn>=0?'dg':'dr'}">${monthlyAnn!=null?fmt(monthlyAnn,'%'):'—'}</div><div class="d-kpi-sub">ROI medio mensual</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Retorno YTD</div><div class="d-kpi-val ${ytdRoi!=null?(ytdRoi>=0?'dg':'dr'):'db'}">${ytdRoi!=null?fmt(ytdRoi,'%'):'Sin snaps'}</div><div class="d-kpi-sub">${currYear} · ajustado dep/ret</div></div>
-    <div class="d-kpi"><div class="d-kpi-lbl">Total cuenta</div><div class="d-kpi-val ${totalAcct!=null?'dg':'db'}">${totalAcct!=null?'$'+totalAcct.toLocaleString('es-ES',{maximumFractionDigits:0}):'Sin snaps'}</div><div class="d-kpi-sub">último snapshot</div></div>`;
+  const metric=(label,value,sub,tone='',tooltip='')=>`<div class="d-kpi"${tooltip?` title="${tooltip.replace(/"/g,'&quot;')}" tabindex="0"`:''}><div class="d-kpi-lbl">${label}${tooltip?' <span aria-hidden="true">ⓘ</span>':''}</div><div class="d-kpi-val ${tone}">${value}</div><div class="d-kpi-sub">${sub}</div></div>`;
+  document.getElementById('dKpis').innerHTML = [
+    metric('Total cuenta',totalAcct!=null?'$'+totalAcct.toLocaleString('es-ES',{maximumFractionDigits:0}):'Sin snaps','último snapshot','db'),
+    metric('P&amp;L total',(totalPnl>=0?'+':'−')+'$'+Math.abs(totalPnl).toLocaleString('es-ES',{maximumFractionDigits:0}),`${totalIds} IDs · ${data.length} ops`,totalPnl>=0?'dg':'dr'),
+    metric('Retorno YTD',ytdRoi!=null?fmt(ytdRoi,'%'):'Sin snaps',`${currYear} · ajustado dep/ret`,ytdRoi!=null?(ytdRoi>=0?'dg':'dr'):'db'),
+    metric('Rent. mensual media',monthlyAnn!=null?fmt(monthlyAnn,'%'):'—','ROI medio mensual',monthlyAnn!=null?(monthlyAnn>=0?'dg':'dr'):'')
+  ].join('');
+  document.getElementById('dQuality').innerHTML = [
+    metric('Win rate · ID',winRateId.toFixed(1)+'%',`${winsId}W · ${lossesId}L · ${totalIds} IDs`,winRateId>=70?'dg':winRateId>=50?'da':'dr',wrTooltip),
+    metric('Profit Factor · ID',pf!=null?pf.toFixed(2):'—','por trade idea',pf>=1.5?'dg':pf>=1?'da':'dr',pfTooltip),
+    metric('Esp. Matemática · ID',em!=null?(em>=0?'+$':'−$')+Math.abs(em).toFixed(0):'—','por trade idea',em>=0?'dg':'dr',emTooltip),
+    metric('TP medio',avgTp!=null?avgTp.toFixed(1)+'%':'—','prima capturada','db'),
+    metric('Días medio',avgDte!=null?avgDte.toFixed(0)+'d':'—','en posición'),
+    metric('Racha max W/L',`<span class="dg">${maxW}W</span> / <span class="dr">${maxL}L</span>`,'consecutivas')
+  ].join('');
 }
 
 // ── CHARTS ────────────────────────────────────────────────────
@@ -4833,7 +4803,7 @@ function renderSpxAccountPanel(today){
       <div class="spx-board-head">
         <div>
           <div class="spx-board-title">Estado cuenta SPX PCS</div>
-          <div class="spx-board-sub">Lectura rapida de spreads SPX abiertos segun riesgo base, TP del ciclo, Fresh Risk y hoja operativa v1.7.</div>
+          <div class="spx-board-sub">Riesgo, checkpoints y posiciones que requieren atención.</div>
         </div>
         <span class="spx-board-pill" style="color:${decision.color};border-color:${decision.color};background:${decision.bg}">${esc(decision.label)}</span>
       </div>
@@ -5140,13 +5110,13 @@ function renderActivas(){
   if(sumEl){
     const conPrecio = ACTIVAS.filter(a=>a.priceCurrent!=null).length;
     const pnlColor = totalUnreal >= 0 ? '#3fb68b' : '#f04545';
-    sumEl.innerHTML = `${ACTIVAS.length} posiciones · ${conPrecio}/${ACTIVAS.length} con precio · <span style="color:${pnlColor}">P&L abierto ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}</span>${conPrecio<ACTIVAS.length?' <span class="act-partial">Parcial · faltan precios</span>':''}`;
+    sumEl.innerHTML = `<span class="act-summary-item">${ACTIVAS.length} posiciones</span><span class="act-summary-item">${conPrecio}/${ACTIVAS.length} con precio</span><span class="act-summary-item" style="color:${pnlColor}">P&L abierto ${totalUnreal>=0?'+':''}$${totalUnreal.toFixed(0)}</span>${conPrecio<ACTIVAS.length?' <span class="act-partial">Parcial · faltan precios</span>':''}`;
   }
   if(ACT_EXPANDED_IDX===null||!ACTIVAS[ACT_EXPANDED_IDX])ACT_EXPANDED_IDX=sorted[0].i;
   grid.classList.toggle('act-grid-compact', ACT_COMPACT_VIEW);
   const groups=new Map();
   sorted.forEach(item=>{const key=ACT_GROUP_BY==='strat'?item.a.strat||'Sin estrategia':item.a.activo||'Sin activo';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)});
-  grid.innerHTML = [...groups].map(([key,items])=>`<div class="act-group-heading">${esc(key)} <span>${items.length}</span></div>${items.map(({a,i})=>buildActCard(a,i,today)).join('')}`).join('');
+  grid.innerHTML = [...groups].map(([key,items])=>`<section class="act-group"><h2 class="act-group-heading">${esc(key)} <span>${items.length}</span></h2><div class="act-group-items">${items.map(({a,i})=>buildActCard(a,i,today)).join('')}</div></section>`).join('');
   const detail=document.getElementById('actDetailPanel');
   if(detail){
     detail.style.display=ACT_COMPACT_VIEW?'':'none';
@@ -5336,6 +5306,15 @@ function buildActCard(a, idx, today){
   const premiumUnit = a.pCredito!=null ? Math.abs(premiumStoredToPoints(a.pCredito, a.contracts||1)) : null;
   const premiumCash = premiumUnit!=null ? premiumUnit * 100 * (a.contracts||1) : null;
 
+  if(ACT_COMPACT_VIEW && !ACT_DETAIL_RENDER){
+    const alert=heroPnlVal==null?'Sin precio actual · P/L no disponible':manageItems.find(m=>m.tone==='bad'||m.tone==='warn')?.label||'';
+    return `<div class="${cardClass}" id="act_card_${idx}" role="button" tabindex="0" aria-label="Ver ${esc(a.activo||'posición')} ${esc(stratLabel)} ID ${esc(String(a.idOp||'—'))}" onclick="actCardClick(event,${idx})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();actCardClick(event,${idx})}">
+      <div class="act-compact-head"><span class="act-ticker">${esc(a.activo||'—')}</span><span class="act-compact-strategy">${esc(stratLabel)}</span><span class="act-id">#${esc(String(a.idOp||'—'))}</span><span class="act-dte-pill" style="${dtePillStyle}">${dteText}</span></div>
+      <div class="act-compact-metrics"><div><span>P&L abierto</span><strong style="color:${heroPnlCol}">${heroPnlStr}</strong></div><div><span>${strat==='ACC'?'Capital':'Prima inicial'}</span><strong>${strat==='ACC'?_fmtUsd0(a.maxRisk||0):premiumUnit!=null?premiumUnit.toFixed(2):'—'}</strong></div><div><span>Estado</span><strong class="act-compact-state">${esc(manageItems[0]?.label||'Mantener')}</strong></div></div>
+      ${alert?`<div class="act-compact-alert ${heroPnlVal==null?'missing':''}">${esc(alert)}</div>`:''}
+    </div>`;
+  }
+
   return `
   <div class="${cardClass}" id="act_card_${ACT_DETAIL_RENDER?'detail_':''}${idx}" onclick="actCardClick(event, ${idx})">
     <div class="act-card-header">
@@ -5352,7 +5331,7 @@ function buildActCard(a, idx, today){
       </div>
     </div>
 
-    <div class="act-hero">
+    <section class="act-detail-section"><h3>Resumen de posición</h3><div class="act-hero">
       <div class="act-hero-cell act-hero-main">
         <span>P&L abierto</span>
         <b style="color:${heroPnlCol}">${heroPnlStr}</b>
@@ -5370,8 +5349,9 @@ function buildActCard(a, idx, today){
         <small>${timeElapsed!=null?timeElapsed.toFixed(0)+'% consumido':(a.exp||'—')}</small>
       </div>
       <div class="act-hero-actions">${manageHtml}</div>
-    </div>
+    </div></section>
 
+    <section class="act-detail-section"><h3>Datos de la operación</h3>
     <!-- Main KV grid — ACC vs opciones -->
     ${strat==='ACC' ? `
     <div class="act-grid">
@@ -5391,6 +5371,8 @@ function buildActCard(a, idx, today){
     ` : `
     <div class="act-grid">
       <div class="act-kv"><span class="act-k">Apertura</span><span class="act-v">${a.apertura||'—'}</span></div>
+      <div class="act-kv"><span class="act-k">Vencimiento</span><span class="act-v">${a.exp||'—'}</span></div>
+      ${a.strike?`<div class="act-kv"><span class="act-k">Strike</span><span class="act-v">${esc(String(a.strike))}</span></div>`:''}
       ${a.underlying!=null?`<div class="act-kv"><span class="act-k">Subyacente</span><span class="act-v">${a.underlying.toFixed(2)}</span></div>`:''}
       ${(a.underlying!=null&&a.strike&&parseFloat(a.strike)>0)?(() => {
         const strikeNum = parseFloat(a.strike.toString().split('-')[0]);
@@ -5414,6 +5396,9 @@ function buildActCard(a, idx, today){
       ${(()=>{ const _risk = a.maxRisk||0; const _open = (_risk>0 && pnlEst!=null) ? (pnlEst/_risk*100) : null; const _id = (_risk>0 && _combinedPnl!=null && closedLegs.length) ? (_combinedPnl/_risk*100) : null; const _pc = _open!=null?(_open>=15?'green':_open>=0?'amber':'red'):''; const _idTxt = _id!=null ? `<small style="display:block;color:${_id>=0?'#3fb68b':'#f04545'};font-size:8px;margin-top:2px">ID ${_id>=0?'+':''}${_id.toFixed(1)}%</small>` : ''; return `<div class="act-kv"><span class="act-k" title="P&L abierto e ID completo divididos por el Max Risk total de la operación">P&L/Risk</span><span class="act-v ${_pc}">${_open!=null?(_open>=0?'+':'')+_open.toFixed(1)+'%':'—'}${_idTxt}</span></div>`; })()}
     </div>
 
+    </section>
+    <section class="act-detail-section"><h3>Gestión y seguimiento</h3>
+    ${pcsCycle?`<div class="act-cycle-summary">Ciclo: ${pcsCycle.checkpoint==null?'sin fechas':pcsCycle.checkpoint?'CP'+pcsCycle.checkpoint:'Fresh'} · TP ${pcsCycle.profit==null?'sin precio':pcsCycle.profit.toFixed(1)+'%'} · ET ${pcsCycle.et==null?'—':pcsCycle.et.toFixed(0)}</div>`:''}
     <!-- Temporal efficiency — rediseñado para tomar decisiones rápido -->
     <div class="act-et-block">
       <div class="act-et-header">
@@ -5448,6 +5433,9 @@ function buildActCard(a, idx, today){
 
     ${(a.nota && (!ACT_COMPACT_VIEW || ACT_EXPANDED_IDX === idx)) ? `<div class="act-note" style="font-family:'Courier New',monospace;font-size:8px;color:#5a7a9a;margin-top:4px;padding:5px 8px;background:#0a0e14;border-radius:3px;border:1px solid #1e2d3d">${esc(a.nota)}</div>` : ''}
 
+    ${closedHTML}
+    </section>
+    <section class="act-detail-section act-detail-actions"><h3>Acciones</h3>
     <!-- Action buttons -->
     <div class="act-btns">
       <button class="act-btn act-btn-edit" onclick="openActModal(${idx})">✎ Editar</button>
@@ -5457,7 +5445,7 @@ function buildActCard(a, idx, today){
       <button class="act-btn act-btn-del" onclick="deleteActPosition(${idx})" style="margin-left:auto">✕</button>
     </div>
 
-    ${closedHTML}
+    </section>
   </div>`;
 }
 
@@ -10058,36 +10046,51 @@ function riskSeries(readings,key){
   readings.forEach(m=>{const v=riskRatios(m)[key];if(v===null)return;const month=m.ts.slice(0,7);if(!byMonth.has(month))byMonth.set(month,[]);byMonth.get(month).push(v)});
   return [...byMonth].sort((a,b)=>a[0].localeCompare(b[0])).map(([month,vs])=>({month,value:vs.reduce((a,b)=>a+b,0)/vs.length,n:vs.length}));
 }
-function riskMini(series){
-  if(series.length<2)return '<span class="risk-no-chart">Sin tendencia</span>';
+function riskMonths(readings){
+  if(!readings.length)return [];
+  const first=readings[0].ts.slice(0,7),last=readings.at(-1).ts.slice(0,7),months=[];
+  const d=new Date(first+'-01T00:00:00Z');
+  while(d.toISOString().slice(0,7)<=last&&months.length<600){months.push(d.toISOString().slice(0,7));d.setUTCMonth(d.getUTCMonth()+1)}
+  return months;
+}
+function riskMini(series,months){
+  if(!series.length)return '<span class="risk-no-chart">Sin lecturas válidas</span>';
   const values=series.map(v=>v.value),min=Math.min(...values),span=Math.max(...values)-min||1;
-  const points=values.map((v,i)=>`${Math.round(i*140/(values.length-1))},${Math.round(44-(v-min)*36/span)}`).join(' ');
-  return `<svg class="risk-mini" viewBox="0 0 140 52"><polyline points="${points}" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+  const index=new Map(months.map((m,i)=>[m,i]));
+  const point=s=>({x:Math.round((index.get(s.month)||0)*140/Math.max(1,months.length-1)),y:Math.round(44-(s.value-min)*36/span)});
+  const dots=series.map(s=>{const p=point(s);return `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="currentColor"><title>${s.month}: ${s.value.toFixed(3)}</title></circle>`}).join('');
+  const lines=series.slice(1).map((s,i)=>{const prev=series[i];if(index.get(s.month)-index.get(prev.month)!==1)return '';const a=point(prev),b=point(s);return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="currentColor" stroke-width="2"/>`}).join('');
+  return `<svg class="risk-mini" viewBox="0 0 140 52" role="img" aria-label="${series.length} meses con datos">${lines}${dots}</svg>`;
 }
 function renderSemaphores(){
   const grid=document.getElementById('dSemaphoreGrid');if(!grid)return;
   const readings=riskReadings(),last=readings.at(-1),vals=last?riskRatios(last):{};
   const navSnap=[...SNAPS].filter(s=>riskNum(s.val)>0).sort((a,b)=>a.date.localeCompare(b.date)).at(-1);
+  const navDate=(navSnap?.navEntries||[]).filter(n=>riskNum(n.val)>0).sort((a,b)=>a.ts.localeCompare(b.ts)).at(-1)?.ts||navSnap?.date||'Sin snapshot';
   const h=document.getElementById('riskHeadline');
-  if(h)h.innerHTML=[['NAV',navSnap?riskNum(navSnap.val).toLocaleString('es-ES',{style:'currency',currency:'USD'}):'—',navSnap?.date||'Sin snapshot'],['Theta',riskNum(last?.theta)??'—','$/día'],['Delta β-SPY',riskNum(last?.delta)??'—',last?.ts||'—'],['Vega',riskNum(last?.vega)??'—',last?.ts||'—'],['BP Usage',riskNum(last?.bp)!==null?riskNum(last.bp)+'%':'—','reportado']].map(([title,value,sub])=>`<div><span>${title}</span><b>${value}</b><small>${sub}</small></div>`).join('');
+  if(h)h.innerHTML=[['NAV',navSnap?riskNum(navSnap.val).toLocaleString('es-ES',{style:'currency',currency:'USD'}):'—',navDate],['Theta',riskNum(last?.theta)??'—','$/día'],['Delta β-SPY',riskNum(last?.delta)??'—',last?.ts||'—'],['Vega',riskNum(last?.vega)??'—',last?.ts||'—'],['BP Usage',riskNum(last?.bp)!==null?riskNum(last.bp)+'%':'—','reportado']].map(([title,value,sub])=>`<div><span>${title}</span><b>${value}</b><small>${sub}</small></div>`).join('');
   document.getElementById('dMetricsDate').textContent=last?'Última lectura: '+last.ts:'Sin lecturas';
+  const months=riskMonths(readings);
   grid.innerHTML=RISK_DEFS.map(def=>{
     const v=vals[def.key]??null,series=riskSeries(readings,def.key),theta=riskNum(last?.theta);
     let [state,tone]=v===null?['Sin datos','neutral']:def.zone(v);
     if(v===null&&theta!==null&&theta<=0&&['delta_theta','vega_theta'].includes(def.key))state='Sin motor temporal positivo';
     const shown=v===null?'—':(v>0&&def.key!=='bp_usage'?'+':'')+v.toLocaleString('es-ES',{minimumFractionDigits:def.places,maximumFractionDigits:def.places})+def.unit;
-    const hint=v===null&&def.key==='delta_theta'&&theta>0?'Falta SPY de la lectura':v===null&&def.key==='theta_bp'?'Falta BP utilizado real':v===null&&['theta_nav','delta_10k'].includes(def.key)?'Falta NAV de la misma fecha':'';
+    const hint=v===null&&def.key==='delta_theta'&&theta>0?(riskNum(last?.delta)===null?'Falta Delta de la lectura':'Falta SPY de la fecha de esta lectura'):v===null&&def.key==='theta_bp'?(theta===null?'Falta Theta de la lectura':'Falta BP utilizado real en dólares'):v===null&&['theta_nav','delta_10k'].includes(def.key)?'Falta NAV de la misma fecha':'';
     const source=def.key==='delta_theta'&&riskNum(last?.spy)>0?' · SPY '+last.spy:def.key==='theta_bp'&&riskNum(last?.bpUsed)>0?' · BP $'+last.bpUsed:def.key==='vega_theta'&&riskNum(last?.vega)!==null?' · Vega '+last.vega:['theta_nav','delta_10k'].includes(def.key)&&riskNum(last?.nav)>0?' · NAV $'+last.nav:'';
-    return `<article class="risk-card risk-${tone}"><div class="risk-card-top"><div><h2>${def.name}</h2><p>${def.sub}</p></div>${riskMini(series)}</div><strong>${shown}</strong><div class="risk-status">${state}</div>${hint?`<p class="risk-hint">${hint}</p>`:''}<div class="risk-card-meta">${last?.ts||'—'} · ${series.length} meses${source}</div><details><summary>Fórmula y límites</summary><p>${def.formula}</p><p><b>Umbrales:</b> ${def.limits}</p><button type="button" onclick="semaphoreClick('${def.key}')">Ver evolución</button></details></article>`;
+    const valid=readings.filter(m=>riskRatios(m)[def.key]!==null).length;
+    return `<article class="risk-card risk-${tone}"><div class="risk-card-top"><div><h2>${def.name}</h2><p>${def.sub}</p></div>${riskMini(series,months)}</div><strong>${shown}</strong><div class="risk-status">${state}</div>${hint?`<p class="risk-hint">${hint}</p>`:''}<div class="risk-card-meta">${last?.ts||'—'} · ${valid}/${readings.length} lecturas válidas${source}</div><details><summary>Fórmula y límites</summary><p>${def.formula}</p><p><b>Umbrales:</b> ${def.limits}</p><button type="button" onclick="semaphoreClick('${def.key}')">Ver evolución</button></details></article>`;
   }).join('');
 }
 function semaphoreClick(key){
   const def=RISK_DEFS.find(d=>d.key===key);if(!def)return;
-  const series=riskSeries(riskReadings(),key);
+  const readings=riskReadings(),series=riskSeries(readings,key);
+  const months=riskMonths(readings);
+  const byMonth=new Map(series.map(s=>[s.month,s.value]));
   let overlay=document.getElementById('semModalOverlay');
   if(!overlay){overlay=document.createElement('div');overlay.id='semModalOverlay';overlay.className='risk-chart-overlay';overlay.onclick=e=>{if(e.target===overlay)overlay.remove()};document.body.appendChild(overlay)}
-  overlay.innerHTML=`<div class="risk-chart-dialog"><header><h2>${def.name} · evolución mensual</h2><button onclick="document.getElementById('semModalOverlay').remove()">✕</button></header>${series.length?'<canvas id="semModalCanvas" height="240"></canvas>':'<p>Sin datos suficientes.</p>'}<p>Media mensual de ratios por observación válida · ${series.reduce((n,s)=>n+s.n,0)} lecturas.</p></div>`;
-  if(series.length&&typeof Chart!=='undefined')new Chart(document.getElementById('semModalCanvas'),{type:'line',data:{labels:series.map(s=>s.month),datasets:[{data:series.map(s=>s.value),borderColor:'#4a9eff',backgroundColor:'#4a9eff22',fill:true,tension:.2,pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString('es-ES',{maximumFractionDigits:3})+def.unit}},zoom:typeof ZCFG!=='undefined'?ZCFG:undefined},scales:{x:{ticks:{color:'#8fa4bd'},grid:{color:'#20324c'}},y:{ticks:{color:'#8fa4bd'},grid:{color:'#20324c'}}}}});
+  overlay.innerHTML=`<div class="risk-chart-dialog"><header><h2>${def.name} · evolución mensual</h2><button onclick="document.getElementById('semModalOverlay').remove()">✕</button></header>${series.length?'<canvas id="semModalCanvas" height="240"></canvas>':'<p class="risk-empty">No hay lecturas suficientes para calcular esta ratio. Cada lectura necesita los datos indicados en «Fórmula y límites».</p>'}<p>Media mensual de ratios por observación válida · ${series.reduce((n,s)=>n+s.n,0)} de ${readings.length} lecturas.</p></div>`;
+  if(series.length&&typeof Chart!=='undefined')new Chart(document.getElementById('semModalCanvas'),{type:'line',data:{labels:months,datasets:[{data:months.map(m=>byMonth.get(m)??null),spanGaps:false,borderColor:'#4a9eff',backgroundColor:'#4a9eff22',fill:false,tension:0,pointRadius:4}]},options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString('es-ES',{maximumFractionDigits:3})+def.unit}},zoom:typeof ZCFG!=='undefined'?ZCFG:undefined},scales:{x:{ticks:{color:'#8fa4bd'},grid:{color:'#20324c'}},y:{ticks:{color:'#8fa4bd'},grid:{color:'#20324c'}}}}});
 }
 
 // INIT — runs at page load

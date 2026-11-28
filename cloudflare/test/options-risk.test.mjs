@@ -8,7 +8,7 @@ const end=html.indexOf('// INIT — runs at page load',start);
 assert.ok(start>0&&end>start,'risk implementation must exist');
 const code=html.slice(start,end);
 function riskWith(snaps){
-  return new Function('SNAPS',`${code}; return {riskRatios,riskReadings,riskSeries,RISK_DEFS};`)(snaps);
+  return new Function('SNAPS',`${code}; return {riskRatios,riskReadings,riskSeries,riskMonths,RISK_DEFS};`)(snaps);
 }
 
 test('signed theta and delta, and exact dated NAV',()=>{
@@ -60,4 +60,15 @@ test('monthly trend averages each valid observation ratio, not monthly raw avera
   assert.equal(series[0].n,2);
   assert.ok(Math.abs(series[0].value-0.075)<1e-12);
   assert.deepEqual(snaps[0].metrics.map(m=>m.nav),[10000,40000]);
+});
+
+test('risk timeline leaves missing months empty instead of joining distant observations',()=>{
+  const snaps=[
+    {date:'2026-01',metrics:[{ts:'2026-01-10',theta:20,delta:10,spy:600,bpUsed:10000}]},
+    {date:'2026-03',metrics:[{ts:'2026-03-10',theta:25,delta:12,spy:650,bpUsed:12000}]}
+  ];
+  const {riskReadings,riskSeries,riskMonths}=riskWith(snaps);
+  const readings=riskReadings(),series=riskSeries(readings,'delta_theta');
+  assert.deepEqual(riskMonths(readings),['2026-01','2026-02','2026-03']);
+  assert.deepEqual(riskMonths(readings).map(m=>new Map(series.map(s=>[s.month,s.value])).get(m)??null),[3,null,3.12]);
 });
